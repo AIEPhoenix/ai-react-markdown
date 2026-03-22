@@ -1,5 +1,9 @@
 # @ai-react-markdown/core
 
+[![npm](https://img.shields.io/npm/v/@ai-react-markdown/core)](https://www.npmjs.com/package/@ai-react-markdown/core)
+[![npm downloads](https://img.shields.io/npm/dm/@ai-react-markdown/core)](https://www.npmjs.com/package/@ai-react-markdown/core)
+[![license](https://img.shields.io/npm/l/@ai-react-markdown/core)](../../LICENSE)
+
 A batteries-included React component for rendering AI-generated markdown with first-class support for LaTeX math, GFM, CJK text, and streaming content.
 
 ## Features

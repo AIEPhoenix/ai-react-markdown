@@ -1,5 +1,9 @@
 # @ai-react-markdown/mantine
 
+[![npm](https://img.shields.io/npm/v/@ai-react-markdown/mantine)](https://www.npmjs.com/package/@ai-react-markdown/mantine)
+[![npm downloads](https://img.shields.io/npm/dm/@ai-react-markdown/mantine)](https://www.npmjs.com/package/@ai-react-markdown/mantine)
+[![license](https://img.shields.io/npm/l/@ai-react-markdown/mantine)](../../LICENSE)
+
 Mantine UI integration for `@ai-react-markdown/core`. Provides a drop-in `<MantineAIMarkdown>` component that renders AI-generated markdown with Mantine-themed typography, syntax-highlighted code blocks, mermaid diagram support, and automatic color scheme detection.
 
 ## What It Adds on Top of Core
