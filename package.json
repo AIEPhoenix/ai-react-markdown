@@ -1,0 +1,69 @@
+{
+  "name": "ai-react-markdown",
+  "version": "1.2.0",
+  "private": true,
+  "type": "module",
+  "description": "A React component for rendering AI-generated Markdown with LaTeX math, GFM, syntax highlighting and more.",
+  "scripts": {
+    "build": "pnpm --filter './packages/*' run build",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "version-packages": "node scripts/version-packages.mjs",
+    "release": "pnpm build && pnpm publish -r --access public",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build"
+  },
+  "keywords": [
+    "react",
+    "markdown",
+    "ai",
+    "llm",
+    "latex",
+    "katex",
+    "gfm",
+    "streaming",
+    "react-markdown"
+  ],
+  "author": "Brian Lee <aiephoenixbl@gmail.com> (https://github.com/AIEPhoenix)",
+  "license": "MIT",
+  "homepage": "https://github.com/AIEPhoenix/ai-react-markdown#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AIEPhoenix/ai-react-markdown.git"
+  },
+  "bugs": {
+    "url": "https://github.com/AIEPhoenix/ai-react-markdown/issues"
+  },
+  "packageManager": "pnpm@10.28.1",
+  "devDependencies": {
+    "@chromatic-com/storybook": "^5.0.1",
+    "@eslint/js": "^10.0.1",
+    "@storybook/addon-a11y": "^10.2.19",
+    "@storybook/addon-docs": "^10.2.19",
+    "@storybook/addon-onboarding": "^10.2.19",
+    "@storybook/addon-themes": "^10.2.19",
+    "@storybook/addon-vitest": "^10.2.19",
+    "@storybook/react-vite": "^10.2.19",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitest/browser-playwright": "^4.1.0",
+    "@vitest/coverage-v8": "^4.1.0",
+    "autoprefixer": "^10.4.27",
+    "eslint": "^10.0.3",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "katex": "^0.16.38",
+    "playwright": "^1.58.2",
+    "postcss": "^8.5.8",
+    "postcss-cli": "^11.0.1",
+    "prettier": "^3.8.1",
+    "sass": "^1.98.0",
+    "storybook": "^10.2.19",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.57.0",
+    "vitest": "^4.1.0"
+  }
+}

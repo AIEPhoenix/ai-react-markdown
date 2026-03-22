@@ -1,0 +1,278 @@
+/* --- Variant: default --- */
+.aim-typography-root.default {
+  /* Spacing */
+  --aim-spacing-xs: 0.625rem;
+  --aim-spacing-sm: 0.75rem;
+  --aim-spacing-md: 1rem;
+  --aim-spacing-lg: 1.25rem;
+  --aim-spacing-xl: 1.5rem;
+
+  /* Font size */
+  --aim-font-size-xs: 0.75rem;
+  --aim-font-size-sm: 0.875rem;
+  --aim-font-size-md: 1rem;
+  --aim-font-size-lg: 1.125rem;
+  --aim-font-size-xl: 1.25rem;
+
+  /* Line height */
+  --aim-line-height: 1.55;
+
+  /* Radius */
+  --aim-radius-sm: 0.25rem;
+
+  /* Font family */
+  --aim-font-family-monospace:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  --aim-font-family-headings: inherit;
+
+  /* Heading sizes */
+  --aim-h1-font-size: 2.125rem;
+  --aim-h1-line-height: 1.3;
+  --aim-h1-font-weight: 700;
+  --aim-h2-font-size: 1.625rem;
+  --aim-h2-line-height: 1.35;
+  --aim-h2-font-weight: 700;
+  --aim-h3-font-size: 1.375rem;
+  --aim-h3-line-height: 1.4;
+  --aim-h3-font-weight: 700;
+  --aim-h4-font-size: 1.125rem;
+  --aim-h4-line-height: 1.45;
+  --aim-h4-font-weight: 700;
+  --aim-h5-font-size: 1rem;
+  --aim-h5-line-height: 1.5;
+  --aim-h5-font-weight: 700;
+  --aim-h6-font-size: 0.875rem;
+  --aim-h6-line-height: 1.5;
+  --aim-h6-font-weight: 700;
+}
+
+/* --- Color Scheme: light --- */
+.aim-typography-root.light {
+  --aim-color-text: inherit;
+  --aim-color-dimmed: #868e96;
+  --aim-color-anchor: #228be6;
+  --aim-color-border: #dee2e6;
+  --aim-color-code-bg: #f1f3f5;
+  --aim-color-code-text: inherit;
+  --aim-color-blockquote-bg: #f8f9fa;
+  --aim-color-mark-bg: #fff3bf;
+  --aim-color-mark-text: inherit;
+}
+
+/* --- Color Scheme: dark --- */
+.aim-typography-root.dark {
+  --aim-color-text: #c9d1d9;
+  --aim-color-dimmed: #8b949e;
+  --aim-color-anchor: #58a6ff;
+  --aim-color-border: #30363d;
+  --aim-color-code-bg: #161b22;
+  --aim-color-code-text: #c9d1d9;
+  --aim-color-blockquote-bg: #161b22;
+  --aim-color-mark-bg: #bb800926;
+  --aim-color-mark-text: inherit;
+}
+
+/* --- Base styles (consume variables only) --- */
+.aim-typography-root {
+  color: var(--aim-color-text);
+  line-height: var(--aim-line-height);
+
+  :first-child {
+    margin-top: 0;
+  }
+
+  :last-child {
+    margin-bottom: 0;
+  }
+
+  /* Headings */
+  :where(h1, h2, h3, h4, h5, h6) {
+    margin-bottom: var(--aim-spacing-xs);
+    font-family: var(--aim-font-family-headings);
+  }
+
+  :where(h1) {
+    margin-top: calc(1.5 * var(--aim-spacing-xl));
+    font-size: var(--aim-h1-font-size);
+    line-height: var(--aim-h1-line-height);
+    font-weight: var(--aim-h1-font-weight);
+  }
+
+  :where(h2) {
+    margin-top: var(--aim-spacing-xl);
+    font-size: var(--aim-h2-font-size);
+    line-height: var(--aim-h2-line-height);
+    font-weight: var(--aim-h2-font-weight);
+  }
+
+  :where(h3) {
+    margin-top: calc(0.8 * var(--aim-spacing-xl));
+    font-size: var(--aim-h3-font-size);
+    line-height: var(--aim-h3-line-height);
+    font-weight: var(--aim-h3-font-weight);
+  }
+
+  :where(h4) {
+    margin-top: calc(0.8 * var(--aim-spacing-xl));
+    font-size: var(--aim-h4-font-size);
+    line-height: var(--aim-h4-line-height);
+    font-weight: var(--aim-h4-font-weight);
+  }
+
+  :where(h5) {
+    margin-top: calc(0.5 * var(--aim-spacing-xl));
+    font-size: var(--aim-h5-font-size);
+    line-height: var(--aim-h5-line-height);
+    font-weight: var(--aim-h5-font-weight);
+  }
+
+  :where(h6) {
+    margin-top: calc(0.5 * var(--aim-spacing-xl));
+    font-size: var(--aim-h6-font-size);
+    line-height: var(--aim-h6-line-height);
+    font-weight: var(--aim-h6-font-weight);
+  }
+
+  /* Paragraph */
+  :where(p) {
+    margin-top: 0;
+    margin-bottom: var(--aim-spacing-lg);
+  }
+
+  /* Images */
+  :where(img) {
+    max-width: 100%;
+    margin-bottom: var(--aim-spacing-xs);
+  }
+
+  /* Links */
+  :where(a) {
+    color: var(--aim-color-anchor);
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  /* Mark / Highlight */
+  :where(mark) {
+    background-color: var(--aim-color-mark-bg);
+    color: var(--aim-color-mark-text);
+  }
+
+  /* Horizontal rule */
+  :where(hr) {
+    margin-top: var(--aim-spacing-md);
+    margin-bottom: var(--aim-spacing-md);
+    border: 0;
+    border-top: 1px solid var(--aim-color-border);
+  }
+
+  /* Code (inline) */
+  :where(code) {
+    line-height: var(--aim-line-height);
+    padding: 1px 5px;
+    border-radius: var(--aim-radius-sm);
+    font-family: var(--aim-font-family-monospace);
+    font-size: var(--aim-font-size-xs);
+    background-color: var(--aim-color-code-bg);
+    color: var(--aim-color-code-text);
+  }
+
+  /* Code (block) */
+  :where(pre) {
+    padding: var(--aim-spacing-xs);
+    line-height: var(--aim-line-height);
+    margin: 0;
+    margin-top: var(--aim-spacing-md);
+    margin-bottom: var(--aim-spacing-md);
+    overflow-x: auto;
+    font-family: var(--aim-font-family-monospace);
+    font-size: var(--aim-font-size-xs);
+    border-radius: var(--aim-radius-sm);
+    background-color: var(--aim-color-code-bg);
+
+    :where(code) {
+      background-color: transparent;
+      padding: 0;
+      border-radius: 0;
+      color: inherit;
+      border: 0;
+    }
+  }
+
+  /* Lists */
+  :where(ul, ol) {
+    margin-bottom: var(--aim-spacing-md);
+    padding-inline-start: var(--aim-spacing-xl);
+    list-style-position: outside;
+  }
+
+  /* Table */
+  :where(table) {
+    width: 100%;
+    border-collapse: collapse;
+    caption-side: bottom;
+    margin-bottom: var(--aim-spacing-md);
+
+    :where(caption) {
+      margin-top: var(--aim-spacing-xs);
+      font-size: var(--aim-font-size-sm);
+      color: var(--aim-color-dimmed);
+    }
+
+    :where(th) {
+      text-align: left;
+      font-weight: bold;
+      font-size: var(--aim-font-size-sm);
+      padding: var(--aim-spacing-xs) var(--aim-spacing-sm);
+    }
+
+    :where(thead th) {
+      border-bottom: 1px solid var(--aim-color-border);
+    }
+
+    :where(tfoot th) {
+      border-top: 1px solid var(--aim-color-border);
+    }
+
+    :where(td) {
+      padding: var(--aim-spacing-xs) var(--aim-spacing-sm);
+      border-bottom: 1px solid var(--aim-color-border);
+      font-size: var(--aim-font-size-sm);
+    }
+
+    :where(tr:last-of-type td) {
+      border-bottom: 0;
+    }
+  }
+
+  /* Blockquote */
+  :where(blockquote) {
+    font-size: var(--aim-font-size-lg);
+    line-height: var(--aim-line-height);
+    margin: var(--aim-spacing-md) 0;
+    border-radius: var(--aim-radius-sm);
+    padding: var(--aim-spacing-md) var(--aim-spacing-lg);
+    background-color: var(--aim-color-blockquote-bg);
+  }
+
+  /* KaTeX -- override the default 1.21em to match surrounding text */
+  :where(.katex) {
+    font-size: 1em;
+  }
+
+  /* Keyboard */
+  :where(kbd) {
+    font-family: var(--aim-font-family-monospace);
+    line-height: var(--aim-line-height);
+    font-weight: 700;
+    padding: 3px 5px;
+    font-size: 0.75rem;
+    border-radius: var(--aim-radius-sm);
+    border: 1px solid var(--aim-color-border);
+    border-bottom-width: 3px;
+    background-color: var(--aim-color-code-bg);
+  }
+}

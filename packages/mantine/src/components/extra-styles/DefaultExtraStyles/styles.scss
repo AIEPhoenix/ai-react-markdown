@@ -1,0 +1,136 @@
+.aim-mantine-extra-styles {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-items: flex-start;
+  align-items: flex-start;
+
+  white-space: normal;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
+
+  text-rendering: optimizeLegibility;
+
+  --aim-font-size-mantine-base: calc(var(--aim-font-size-root) * var(--mantine-scale));
+
+  --mantine-spacing-xs: calc(var(--aim-font-size-mantine-base) * 0.75);
+  --mantine-spacing-sm: calc(var(--aim-font-size-mantine-base) * 0.875);
+  --mantine-spacing-md: calc(var(--aim-font-size-mantine-base) * 1);
+  --mantine-spacing-lg: calc(var(--aim-font-size-mantine-base) * 1.125);
+  --mantine-spacing-xl: calc(var(--aim-font-size-mantine-base) * 1.25);
+
+  --mantine-font-size-xs: calc(var(--aim-font-size-mantine-base) * 0.75);
+  --mantine-font-size-sm: calc(var(--aim-font-size-mantine-base) * 0.875);
+  --mantine-font-size-md: calc(var(--aim-font-size-mantine-base) * 1);
+  --mantine-font-size-lg: calc(var(--aim-font-size-mantine-base) * 1.25);
+  --mantine-font-size-xl: calc(var(--aim-font-size-mantine-base) * 2);
+
+  --mantine-h1-font-size: calc(var(--aim-font-size-mantine-base) * 2.125);
+  --mantine-h2-font-size: calc(var(--aim-font-size-mantine-base) * 1.625);
+  --mantine-h3-font-size: calc(var(--aim-font-size-mantine-base) * 1.375);
+  --mantine-h4-font-size: calc(var(--aim-font-size-mantine-base) * 1.125);
+  --mantine-h5-font-size: calc(var(--aim-font-size-mantine-base) * 1);
+  --mantine-h6-font-size: calc(var(--aim-font-size-mantine-base) * 0.875);
+
+  :first-child {
+    margin-top: 0;
+  }
+
+  :last-child {
+    margin-bottom: 0;
+  }
+
+  ul,
+  ol {
+    list-style-position: outside;
+
+    margin-bottom: calc(var(--aim-font-size-mantine-base) * 0.55);
+    padding-inline-start: calc(var(--aim-font-size-mantine-base) * 1.5);
+
+    li {
+      margin-bottom: calc(var(--aim-font-size-mantine-base) * 0.275);
+    }
+  }
+
+  hr {
+    width: 100%;
+    height: 1px;
+    background-color: var(--mantine-color-text);
+  }
+
+  ul {
+    list-style-type: disc;
+  }
+
+  ul ul {
+    list-style-type: circle;
+  }
+
+  ul ul ul {
+    list-style-type: square;
+  }
+
+  ol {
+    list-style-type: decimal;
+  }
+
+  p {
+    margin-bottom: calc(var(--aim-font-size-mantine-base) * 0.5);
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+
+  blockquote {
+    font-size: var(--mantine-font-size-md);
+  }
+
+  table {
+    caption {
+      font-size: var(--mantine-font-size-md);
+    }
+    th {
+      font-size: var(--mantine-font-size-md);
+    }
+  }
+
+  pre code {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+
+  dl {
+    display: flex;
+    flex-wrap: wrap;
+    width: 100%;
+    max-width: 670px;
+  }
+  dl > * {
+    padding-top: calc(var(--aim-font-size-mantine-base) * 0.5);
+  }
+  dt {
+    width: 30%;
+    font-weight: bold;
+    text-align: right;
+  }
+  dd {
+    width: 60%;
+    padding-left: calc(var(--aim-font-size-mantine-base) * 0.5);
+    margin-left: 0px;
+  }
+  dd + dd {
+    width: 100%;
+    padding-left: calc(30% + var(--aim-font-size-mantine-base));
+  }
+  dt + dt {
+    padding-right: 60%;
+  }
+  dt + dt + dd {
+    margin-top: calc(var(--aim-font-size-mantine-base) * -1.625);
+    padding-left: calc(30% + var(--aim-font-size-mantine-base));
+  }
+}

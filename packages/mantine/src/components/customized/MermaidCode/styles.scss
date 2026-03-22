@@ -1,0 +1,66 @@
+.aim-mantine-mermaid-code {
+  width: 100%;
+  margin-bottom: 15px;
+  background: var(--mantine-color-gray-0);
+  border: 1px solid var(--mantine-color-gray-2);
+  padding: calc(0.75rem * var(--mantine-scale)) calc(0.625rem * var(--mantine-scale));
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+
+  .chart-header {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+
+    .chart-type-tag {
+      padding: calc(0.2125rem * var(--mantine-scale)) calc(0.5625rem * var(--mantine-scale));
+      color: black;
+      border: 1px solid var(--mantine-color-gray-3);
+      background: white;
+      border-radius: var(--mantine-radius-default);
+      font-size: var(--mantine-font-size-xs);
+      font-weight: 700;
+    }
+
+    .action-icon {
+      color: var(--mantine-color-text);
+      opacity: 0.5;
+
+      &:hover {
+        color: var(--mantine-color-bright);
+        opacity: 1;
+      }
+    }
+  }
+
+  & > pre {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: center;
+  }
+}
+
+.aim-mantine-mermaid-code.dark {
+  background: var(--mantine-color-dark-8);
+  border-color: var(--mantine-color-dark-6);
+
+  .chart-header {
+    .chart-type-tag {
+      color: var(--mantine-color-dark-0);
+      border-color: var(--mantine-color-dark-6);
+      background: var(--mantine-color-dark-8);
+    }
+
+    .action-icon {
+      color: var(--mantine-color-text);
+    }
+  }
+}
