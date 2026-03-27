@@ -1,0 +1,83 @@
+{
+  "name": "@ai-react-markdown/core",
+  "version": "1.2.0",
+  "description": "Core rendering engine for ai-react-markdown — LaTeX preprocessing, plugin pipeline, and React components.",
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "license": "MIT",
+  "author": "Brian Lee <aiephoenixbl@gmail.com> (https://github.com/AIEPhoenix)",
+  "homepage": "https://github.com/AIEPhoenix/ai-react-markdown/tree/main/packages/core#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AIEPhoenix/ai-react-markdown.git",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/AIEPhoenix/ai-react-markdown/issues"
+  },
+  "keywords": [
+    "react",
+    "markdown",
+    "ai",
+    "llm",
+    "latex",
+    "katex",
+    "gfm",
+    "streaming"
+  ],
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": {
+        "import": "./dist/index.d.ts",
+        "require": "./dist/index.d.cts"
+      },
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./typography/*.css": "./dist/typography/*.css"
+  },
+  "scripts": {
+    "build:js": "tsup",
+    "build:css": "sass src/components/typography/variants/:dist/typography/ && postcss dist/typography/*.css --replace",
+    "build": "pnpm run build:js && pnpm run build:css"
+  },
+  "peerDependencies": {
+    "react": ">=19.0.0",
+    "react-dom": ">=19.0.0"
+  },
+  "dependencies": {
+    "lodash-es": "^4.17.23",
+    "react-markdown": "^10.1.0",
+    "rehype-katex": "^7.0.1",
+    "rehype-raw": "^7.0.0",
+    "rehype-sanitize": "^6.0.0",
+    "rehype-unwrap-images": "^1.0.0",
+    "remark-breaks": "^4.0.0",
+    "remark-cjk-friendly": "^2.0.1",
+    "remark-cjk-friendly-gfm-strikethrough": "^2.0.1",
+    "remark-definition-list": "^2.0.0",
+    "remark-emoji": "^5.0.2",
+    "remark-gfm": "^4.0.1",
+    "remark-mark-highlight": "^0.1.1",
+    "remark-math": "^6.0.0",
+    "remark-pangu": "^2.2.0",
+    "remark-remove-comments": "^1.1.1",
+    "remark-smartypants": "^3.0.2",
+    "remark-squeeze-paragraphs": "^6.0.0",
+    "remark-supersub": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/lodash-es": "^4.17.12"
+  }
+}
