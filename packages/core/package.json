@@ -1,6 +1,6 @@
 {
   "name": "@ai-react-markdown/core",
-  "version": "1.2.0",
+  "version": "1.2.5",
   "description": "Core rendering engine for ai-react-markdown — LaTeX preprocessing, plugin pipeline, and React components.",
   "publishConfig": {
     "access": "public"
@@ -57,7 +57,6 @@
     "react-dom": ">=19.0.0"
   },
   "dependencies": {
-    "lodash-es": "^4.17.23",
     "react-markdown": "^10.1.0",
     "rehype-katex": "^7.0.1",
     "rehype-raw": "^7.0.0",
@@ -78,6 +77,7 @@
     "remark-supersub": "^1.0.0"
   },
   "devDependencies": {
-    "@types/lodash-es": "^4.17.12"
+    "@types/lodash-es": "^4.17.12",
+    "lodash-es": "^4.17.23"
   }
 }
