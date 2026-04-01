@@ -236,17 +236,6 @@ function escapeLatexPipes(text: string): string {
 }
 
 /**
- * Escape pipes in unclosed LaTeX blocks (streaming scenario).
- *
- * When content is streamed token-by-token, a `$$` or `$` delimiter may not
- * yet have its closing counterpart.  {@link escapeLatexPipes} only processes
- * *closed* blocks, so pipes inside an unclosed block are left raw and may be
- * misinterpreted as GFM table column separators by remark-gfm.
- *
- * This function detects the trailing unclosed `$$` or `$` and escapes any
- * unescaped pipes within it.
- */
-/**
  * Find the start index of the trailing unclosed `$$` or `$` delimiter.
  *
  * Scans through all dollar-sign tokens tracking open/close state.

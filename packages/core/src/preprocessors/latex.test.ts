@@ -556,7 +556,7 @@ y$ which spans lines`;
     expect(preprocessLaTeX(content)).toBe(expected);
   });
 
-  test('truncates unclosed $$ after closed blocks', () => {
+  test('truncates unclosed $$ after closed blocks (pre-escaped pipes)', () => {
     const content = '$$\\vert{}a\\vert{}$$\n\n$$\\vert{}b\\rangle';
     const expected = '$$\\vert{}a\\vert{}$$';
     expect(preprocessLaTeX(content)).toBe(expected);
