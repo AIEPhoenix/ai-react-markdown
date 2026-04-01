@@ -47,7 +47,10 @@
       "Bash(find packages/core/node_modules/hast -name *.d.ts)",
       "Bash(find node_modules/hast -name *.d.ts)",
       "Bash(find packages/core/node_modules -path */hast/index.d.ts)",
-      "WebFetch(domain:caniuse.com)"
+      "WebFetch(domain:caniuse.com)",
+      "Bash(git add:*)",
+      "Bash(git commit -m ':*)",
+      "Bash(git commit:*)"
     ]
   }
 }
