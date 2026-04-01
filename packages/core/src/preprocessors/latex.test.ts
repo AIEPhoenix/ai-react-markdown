@@ -163,6 +163,12 @@ Valid brackets $$z^2$$`;
     expect(preprocessLaTeX(content)).toBe(expected);
   });
 
+  test('handles tilde fenced code blocks', () => {
+    const content = '~~~\n$100\n$variable\n~~~\nOutside $x^2$';
+    const expected = '~~~\n$100\n$variable\n~~~\nOutside $$x^2$$';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
   test('handles complex physics equations', () => {
     const content = `- **Schrödinger Equation**: $i\\hbar\\frac{\\partial}{\\partial t}|\\psi\\rangle = \\hat{H}|\\psi\\rangle$
 - **Einstein Field Equations**: $G_{\\mu\\nu} = \\frac{8\\pi G}{c^4} T_{\\mu\\nu}$`;
@@ -329,10 +335,39 @@ y$ which spans lines`;
     expect(preprocessLaTeX(content)).toBe(expected);
   });
 
-  test('handles unclosed multiline code block gracefully', () => {
+  test('treats an unclosed backtick code fence as protected code until the end', () => {
     const content = 'before ```\n$100\nno closing fence $x^2$';
-    // Unclosed ``` — everything from ``` onward is treated as remaining text (not code)
-    const expected = 'before ```\n\\$100\nno closing fence $$x^2$$';
+    const expected = 'before ```\n$100\nno closing fence $x^2$';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('treats an unclosed tilde code fence as protected code until the end', () => {
+    const content = 'before ~~~\n$100\nno closing fence $x^2$';
+    const expected = 'before ~~~\n$100\nno closing fence $x^2$';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('handles fenced code blocks opened and closed with four backticks', () => {
+    const content = '````ts\nconst price = $100\n````\nOutside $x^2$';
+    const expected = '````ts\nconst price = $100\n````\nOutside $$x^2$$';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('handles fenced code blocks opened and closed with four tildes', () => {
+    const content = '~~~~\n$100\n$variable\n~~~~\nOutside $x^2$';
+    const expected = '~~~~\n$100\n$variable\n~~~~\nOutside $$x^2$$';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('allows a longer closing fence than the opening fence', () => {
+    const content = '```\n$100\n````\nOutside $x^2$';
+    const expected = '```\n$100\n````\nOutside $$x^2$$';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('treats a shorter closing fence as still unclosed', () => {
+    const content = '````\n$100\n```\nOutside $x^2$';
+    const expected = '````\n$100\n```\nOutside $x^2$';
     expect(preprocessLaTeX(content)).toBe(expected);
   });
 
@@ -473,6 +508,46 @@ y$ which spans lines`;
   test('display math $$ still allows multiline with pipes', () => {
     const content = '$$x +\n| y |$$';
     const expected = '$$x +\n\\vert{} y \\vert{}$$';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  // --- Unclosed LaTeX blocks (streaming) ---
+
+  test('escapes pipes in unclosed $$ block (streaming)', () => {
+    const content = '$$|\\psi\\rangle = \\alpha|0\\rangle';
+    const expected = '$$\\vert{}\\psi\\rangle = \\alpha\\vert{}0\\rangle';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('escapes pipes in unclosed $$ block with more content', () => {
+    const content =
+      '$$|\\psi\\rangle = \\alpha|0\\rangle + \\beta|1\\rangle, \\quad |\\alpha|^2 + |\\beta|^2 = 1';
+    const expected =
+      '$$\\vert{}\\psi\\rangle = \\alpha\\vert{}0\\rangle + \\beta\\vert{}1\\rangle, \\quad \\vert{}\\alpha\\vert{}^2 + \\vert{}\\beta\\vert{}^2 = 1';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('escapes pipes in unclosed $ block (streaming inline)', () => {
+    const content = '其中 $$\\vert{}0\\rangle$$ 和 $|1\\ran';
+    const expected = '其中 $$\\vert{}0\\rangle$$ 和 $\\vert{}1\\ran';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('does not double-escape pipes in already closed blocks', () => {
+    const content = '$$\\vert{}x\\vert{}$$ and $$|y|$$';
+    const expected = '$$\\vert{}x\\vert{}$$ and $$\\vert{}y\\vert{}$$';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('escapes pipes in unclosed $$ after closed blocks', () => {
+    const content = '$$|a|$$ then $$|b\\rangle';
+    const expected = '$$\\vert{}a\\vert{}$$ then $$\\vert{}b\\rangle';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('preserves table pipes when no unclosed LaTeX block', () => {
+    const content = '$$|x|$$\n\n| a | b |\n|---|---|\n| 1 | 2 |';
+    const expected = '$$\\vert{}x\\vert{}$$\n\n| a | b |\n|---|---|\n| 1 | 2 |';
     expect(preprocessLaTeX(content)).toBe(expected);
   });
 });

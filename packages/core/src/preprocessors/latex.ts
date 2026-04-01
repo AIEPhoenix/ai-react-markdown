@@ -9,9 +9,10 @@
  * 1. Escape mhchem commands (`\ce`, `\pu`)
  * 2. Escape currency dollar signs (e.g. `$100`, `$1,000.50`)
  * 3. Convert bracket delimiters (`\[...\]`, `\(...\)`) to dollar delimiters
- * 4. Escape pipes inside LaTeX to prevent GFM table interference
- * 5. Escape underscores inside `\text{...}` commands
- * 6. Convert single-dollar delimiters to double-dollar delimiters
+ * 4. Escape pipes inside closed LaTeX blocks to prevent GFM table interference
+ * 5. Escape pipes inside unclosed LaTeX blocks (streaming partial content)
+ * 6. Escape underscores inside `\text{...}` commands
+ * 7. Convert single-dollar delimiters to double-dollar delimiters
  *
  * Thanks to the implementations from the following repositories:
  * - https://github.com/lobehub/lobe-ui/blob/master/src/hooks/useMarkdown/latex.ts
@@ -25,10 +26,20 @@ interface Segment {
   isCode: boolean;
 }
 
+type FenceMarker = '`' | '~';
+
+function getRepeatedMarkerLength(content: string, start: number, marker: FenceMarker): number {
+  let end = start;
+  while (end < content.length && content[end] === marker) {
+    end += 1;
+  }
+  return end - start;
+}
+
 /**
  * Split content into alternating text and protected segments.
  * Protected segments (isCode: true) are excluded from LaTeX processing:
- * - ``` multiline code blocks
+ * - fenced multiline code blocks using 3+ backticks or tildes
  * - ` inline code
  * - HTML tags (e.g. <span>$</span> where $ should not be treated as LaTeX)
  */
@@ -37,6 +48,8 @@ function splitByProtectedRegions(content: string): Segment[] {
   let lastIndex = 0;
   let inlineStart = -1;
   let multilineStart = -1;
+  let multilineFenceMarker: FenceMarker | null = null;
+  let multilineFenceLength = 0;
 
   function pushProtected(start: number, end: number) {
     if (start > lastIndex) {
@@ -48,21 +61,28 @@ function splitByProtectedRegions(content: string): Segment[] {
 
   for (let i = 0; i < content.length; i++) {
     const char = content[i];
+    const fenceLength = char === '`' || char === '~' ? getRepeatedMarkerLength(content, i, char) : 0;
 
-    // Check for multiline code blocks
-    if (char === '`' && i + 2 < content.length && content[i + 1] === '`' && content[i + 2] === '`') {
+    // Check for multiline code blocks fenced by 3+ repeated ` or ~ markers.
+    if ((char === '`' || char === '~') && fenceLength >= 3) {
       if (multilineStart === -1) {
-        // Cancel any pending inline code — ``` takes priority over `
+        // Cancel any pending inline code — multiline fences take priority over `.
         inlineStart = -1;
         multilineStart = i;
-        i += 2;
-      } else {
-        pushProtected(multilineStart, i + 3);
+        multilineFenceMarker = char;
+        multilineFenceLength = fenceLength;
+        i += fenceLength - 1;
+      } else if (char === multilineFenceMarker && fenceLength >= multilineFenceLength) {
+        pushProtected(multilineStart, i + fenceLength);
         multilineStart = -1;
-        i += 2;
+        multilineFenceMarker = null;
+        multilineFenceLength = 0;
+        i += fenceLength - 1;
+      } else {
+        i += fenceLength - 1;
       }
     }
-    // Check for inline code (only if not in multiline)
+    // Check for inline code (only if not in multiline; ~ is not an inline delimiter)
     else if (char === '`' && multilineStart === -1) {
       if (inlineStart === -1) {
         inlineStart = i;
@@ -84,6 +104,10 @@ function splitByProtectedRegions(content: string): Segment[] {
         i += tagMatch[0].length - 1; // -1 because loop does i++
       }
     }
+  }
+
+  if (multilineStart !== -1) {
+    pushProtected(multilineStart, content.length);
   }
 
   // Push remaining text
@@ -211,6 +235,55 @@ function escapeLatexPipes(text: string): string {
 }
 
 /**
+ * Escape pipes in unclosed LaTeX blocks (streaming scenario).
+ *
+ * When content is streamed token-by-token, a `$$` or `$` delimiter may not
+ * yet have its closing counterpart.  {@link escapeLatexPipes} only processes
+ * *closed* blocks, so pipes inside an unclosed block are left raw and may be
+ * misinterpreted as GFM table column separators by remark-gfm.
+ *
+ * This function detects the trailing unclosed `$$` or `$` and escapes any
+ * unescaped pipes within it.
+ */
+function escapeLatexPipesInUnclosed(text: string): string {
+  // Find the last unclosed $$ or $ delimiter.
+  // Walk through all $$ and $ tokens, tracking open/close state.
+  let unclosedStart = -1;
+  let i = 0;
+  while (i < text.length) {
+    if (text[i] === '$' && i + 1 < text.length && text[i + 1] === '$') {
+      if (unclosedStart === -1) {
+        // Opening $$
+        unclosedStart = i;
+        i += 2;
+      } else {
+        // Closing $$
+        unclosedStart = -1;
+        i += 2;
+      }
+    } else if (text[i] === '$' && (i === 0 || text[i - 1] !== '\\') && (i + 1 >= text.length || text[i + 1] !== '$')) {
+      if (unclosedStart === -1) {
+        unclosedStart = i;
+      } else {
+        unclosedStart = -1;
+      }
+      i += 1;
+    } else {
+      i += 1;
+    }
+  }
+
+  if (unclosedStart === -1) return text;
+
+  // Escape pipes only in the unclosed tail
+  const before = text.substring(0, unclosedStart);
+  const delimLen = text[unclosedStart + 1] === '$' ? 2 : 1;
+  const delim = text.substring(unclosedStart, unclosedStart + delimLen);
+  const tail = text.substring(unclosedStart + delimLen);
+  return before + delim + replaceUnescapedPipes(tail);
+}
+
+/**
  * Escape unescaped underscores within \text{...} commands in LaTeX expressions.
  * For example, \text{node_domain} becomes \text{node\_domain},
  * but \text{node\_domain} remains \text{node\_domain}.
@@ -261,6 +334,7 @@ export function preprocessLaTeX(str: string): string {
     text = escapeCurrencyDollarSigns(text);
     text = convertLatexDelimiters(text);
     text = escapeLatexPipes(text);
+    text = escapeLatexPipesInUnclosed(text);
     text = escapeTextUnderscores(text);
     text = convertSingleToDoubleDollar(text);
     return text;
