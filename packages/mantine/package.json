@@ -1,6 +1,6 @@
 {
   "name": "@ai-react-markdown/mantine",
-  "version": "1.2.6",
+  "version": "1.2.7",
   "type": "module",
   "sideEffects": [
     "**/*.css"
@@ -28,7 +28,7 @@
     "build": "tsup"
   },
   "peerDependencies": {
-    "@ai-react-markdown/core": "^1.2.6",
+    "@ai-react-markdown/core": "^1.2.7",
     "@mantine/code-highlight": "^8.3.17",
     "@mantine/core": "^8.3.17",
     "highlight.js": "^11.11.1",
