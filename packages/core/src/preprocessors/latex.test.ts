@@ -513,18 +513,15 @@ y$ which spans lines`;
 
   // --- Unclosed LaTeX blocks (streaming) ---
 
-  test('escapes pipes in unclosed $$ block (streaming)', () => {
+  test('truncates unclosed $$ with pipes (streaming)', () => {
     const content = '$$|\\psi\\rangle = \\alpha|0\\rangle';
-    const expected = '$$\\vert{}\\psi\\rangle = \\alpha\\vert{}0\\rangle';
-    expect(preprocessLaTeX(content)).toBe(expected);
+    expect(preprocessLaTeX(content)).toBe('');
   });
 
-  test('escapes pipes in unclosed $$ block with more content', () => {
+  test('truncates unclosed $$ with pipes after text (streaming)', () => {
     const content =
-      '$$|\\psi\\rangle = \\alpha|0\\rangle + \\beta|1\\rangle, \\quad |\\alpha|^2 + |\\beta|^2 = 1';
-    const expected =
-      '$$\\vert{}\\psi\\rangle = \\alpha\\vert{}0\\rangle + \\beta\\vert{}1\\rangle, \\quad \\vert{}\\alpha\\vert{}^2 + \\vert{}\\beta\\vert{}^2 = 1';
-    expect(preprocessLaTeX(content)).toBe(expected);
+      'before\n\n$$|\\psi\\rangle = \\alpha|0\\rangle + \\beta|1\\rangle';
+    expect(preprocessLaTeX(content)).toBe('before');
   });
 
   test('escapes pipes in unclosed $ block (streaming inline)', () => {
@@ -539,15 +536,47 @@ y$ which spans lines`;
     expect(preprocessLaTeX(content)).toBe(expected);
   });
 
-  test('escapes pipes in unclosed $$ after closed blocks', () => {
+  test('truncates unclosed $$ after closed blocks', () => {
     const content = '$$|a|$$ then $$|b\\rangle';
-    const expected = '$$\\vert{}a\\vert{}$$ then $$\\vert{}b\\rangle';
+    const expected = '$$\\vert{}a\\vert{}$$ then';
     expect(preprocessLaTeX(content)).toBe(expected);
   });
 
   test('preserves table pipes when no unclosed LaTeX block', () => {
     const content = '$$|x|$$\n\n| a | b |\n|---|---|\n| 1 | 2 |';
     const expected = '$$\\vert{}x\\vert{}$$\n\n| a | b |\n|---|---|\n| 1 | 2 |';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  // --- Truncate unclosed LaTeX blocks (streaming mathFlow protection) ---
+
+  test('truncates trailing unclosed $$ block to prevent mathFlow takeover', () => {
+    const content = '写作：\n\n$$\\vert{}\\psi\\rangle = \\alpha\\vert{}0\\rangle';
+    const expected = '写作：';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('truncates unclosed $$ after closed blocks', () => {
+    const content = '$$\\vert{}a\\vert{}$$\n\n$$\\vert{}b\\rangle';
+    const expected = '$$\\vert{}a\\vert{}$$';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('does not truncate when all $$ blocks are closed', () => {
+    const content = '$$|x|$$\n\ntext\n\n$$|y|$$';
+    const expected = '$$\\vert{}x\\vert{}$$\n\ntext\n\n$$\\vert{}y\\vert{}$$';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('does not truncate unclosed single $ (no mathFlow risk)', () => {
+    const content = '其中 $$\\vert{}0\\rangle$$ 和 $\\vert{}1\\ran';
+    const expected = '其中 $$\\vert{}0\\rangle$$ 和 $\\vert{}1\\ran';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('does not truncate closed inline math', () => {
+    const content = '其中 $|0\\rangle$ 和 $|1\\rangle$ 是计算基';
+    const expected = '其中 $$\\vert{}0\\rangle$$ 和 $$\\vert{}1\\rangle$$ 是计算基';
     expect(preprocessLaTeX(content)).toBe(expected);
   });
 });
