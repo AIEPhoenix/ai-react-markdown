@@ -246,34 +246,40 @@ function escapeLatexPipes(text: string): string {
  * This function detects the trailing unclosed `$$` or `$` and escapes any
  * unescaped pipes within it.
  */
-function escapeLatexPipesInUnclosed(text: string): string {
-  // Find the last unclosed $$ or $ delimiter.
-  // Walk through all $$ and $ tokens, tracking open/close state.
+/**
+ * Find the start index of the trailing unclosed `$$` or `$` delimiter.
+ *
+ * Scans through all dollar-sign tokens tracking open/close state.
+ * Returns the index of the last *opening* delimiter that was never closed,
+ * or `-1` if every delimiter is paired.
+ *
+ * @param text  Input string to scan.
+ * @param mode  `'both'` tracks `$$` and `$`; `'double-only'` tracks only `$$`.
+ */
+function findUnclosedDelimiterStart(text: string, mode: 'both' | 'double-only'): number {
   let unclosedStart = -1;
   let i = 0;
   while (i < text.length) {
     if (text[i] === '$' && i + 1 < text.length && text[i + 1] === '$') {
-      if (unclosedStart === -1) {
-        // Opening $$
-        unclosedStart = i;
-        i += 2;
-      } else {
-        // Closing $$
-        unclosedStart = -1;
-        i += 2;
-      }
-    } else if (text[i] === '$' && (i === 0 || text[i - 1] !== '\\') && (i + 1 >= text.length || text[i + 1] !== '$')) {
-      if (unclosedStart === -1) {
-        unclosedStart = i;
-      } else {
-        unclosedStart = -1;
-      }
+      unclosedStart = unclosedStart === -1 ? i : -1;
+      i += 2;
+    } else if (
+      mode === 'both' &&
+      text[i] === '$' &&
+      (i === 0 || text[i - 1] !== '\\') &&
+      (i + 1 >= text.length || text[i + 1] !== '$')
+    ) {
+      unclosedStart = unclosedStart === -1 ? i : -1;
       i += 1;
     } else {
       i += 1;
     }
   }
+  return unclosedStart;
+}
 
+function escapeLatexPipesInUnclosed(text: string): string {
+  const unclosedStart = findUnclosedDelimiterStart(text, 'both');
   if (unclosedStart === -1) return text;
 
   // Escape pipes only in the unclosed tail
@@ -285,7 +291,7 @@ function escapeLatexPipesInUnclosed(text: string): string {
 }
 
 /**
- * Truncate trailing unclosed `$$` or `$` blocks (streaming protection).
+ * Truncate trailing unclosed `$$` blocks (streaming protection).
  *
  * During streaming, an unclosed `$$` at the start of a line triggers
  * remarkMath's `mathFlow` tokenizer, which treats all subsequent content
@@ -294,29 +300,16 @@ function escapeLatexPipesInUnclosed(text: string): string {
  * document is swallowed into one giant math node — producing a wall of
  * red KaTeX error text.
  *
- * This function detects the trailing unclosed block and removes it
+ * This function detects the trailing unclosed `$$` and removes it
  * (including any preceding whitespace/newlines) so that remarkMath never
  * sees the incomplete delimiter.  Once the closing delimiter arrives in
  * a later streaming chunk, the complete block will render normally.
+ *
+ * Only tracks `$$` — single `$` does not trigger mathFlow and is harmless
+ * when `singleDollarTextMath` is `false`.
  */
 function truncateUnclosedLatexBlock(text: string): string {
-  // Only track $$ pairs — single $ does not trigger mathFlow and is harmless
-  // when singleDollarTextMath is false.
-  let unclosedStart = -1;
-  let i = 0;
-  while (i < text.length) {
-    if (text[i] === '$' && i + 1 < text.length && text[i + 1] === '$') {
-      if (unclosedStart === -1) {
-        unclosedStart = i;
-      } else {
-        unclosedStart = -1;
-      }
-      i += 2;
-    } else {
-      i += 1;
-    }
-  }
-
+  const unclosedStart = findUnclosedDelimiterStart(text, 'double-only');
   if (unclosedStart === -1) return text;
 
   // Strip the unclosed $$ block and any trailing whitespace before it.
