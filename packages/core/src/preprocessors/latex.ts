@@ -13,6 +13,7 @@
  * 5. Escape pipes inside unclosed LaTeX blocks (streaming partial content)
  * 6. Escape underscores inside `\text{...}` commands
  * 7. Convert single-dollar delimiters to double-dollar delimiters
+ * 8. Truncate trailing unclosed LaTeX blocks (streaming protection)
  *
  * Thanks to the implementations from the following repositories:
  * - https://github.com/lobehub/lobe-ui/blob/master/src/hooks/useMarkdown/latex.ts
@@ -284,6 +285,45 @@ function escapeLatexPipesInUnclosed(text: string): string {
 }
 
 /**
+ * Truncate trailing unclosed `$$` or `$` blocks (streaming protection).
+ *
+ * During streaming, an unclosed `$$` at the start of a line triggers
+ * remarkMath's `mathFlow` tokenizer, which treats all subsequent content
+ * as part of a display math block until a closing `$$` fence is found.
+ * Since the closing fence hasn't arrived yet, the entire remainder of the
+ * document is swallowed into one giant math node — producing a wall of
+ * red KaTeX error text.
+ *
+ * This function detects the trailing unclosed block and removes it
+ * (including any preceding whitespace/newlines) so that remarkMath never
+ * sees the incomplete delimiter.  Once the closing delimiter arrives in
+ * a later streaming chunk, the complete block will render normally.
+ */
+function truncateUnclosedLatexBlock(text: string): string {
+  // Only track $$ pairs — single $ does not trigger mathFlow and is harmless
+  // when singleDollarTextMath is false.
+  let unclosedStart = -1;
+  let i = 0;
+  while (i < text.length) {
+    if (text[i] === '$' && i + 1 < text.length && text[i + 1] === '$') {
+      if (unclosedStart === -1) {
+        unclosedStart = i;
+      } else {
+        unclosedStart = -1;
+      }
+      i += 2;
+    } else {
+      i += 1;
+    }
+  }
+
+  if (unclosedStart === -1) return text;
+
+  // Strip the unclosed $$ block and any trailing whitespace before it.
+  return text.substring(0, unclosedStart).trimEnd();
+}
+
+/**
  * Escape unescaped underscores within \text{...} commands in LaTeX expressions.
  * For example, \text{node_domain} becomes \text{node\_domain},
  * but \text{node\_domain} remains \text{node\_domain}.
@@ -337,6 +377,7 @@ export function preprocessLaTeX(str: string): string {
     text = escapeLatexPipesInUnclosed(text);
     text = escapeTextUnderscores(text);
     text = convertSingleToDoubleDollar(text);
+    text = truncateUnclosedLatexBlock(text);
     return text;
   });
 
