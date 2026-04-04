@@ -65,6 +65,7 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
   const isDark = renderState.colorScheme === 'dark';
 
   const ref = useRef<HTMLPreElement>(null);
+  const renderVersionRef = useRef(0);
   const [showOriginalCode, setShowOriginalCode] = useState(false);
   const [renderError, setRenderError] = useState(false);
   const [chartType, setChartType] = useState('unknown');
@@ -84,37 +85,52 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
   }, [debouncedUpdateRenderError]);
 
   useEffect(() => {
-    if (props.code && ref.current) {
-      const renderMermaid = async () => {
-        try {
-          debouncedUpdateRenderError(false);
-          if (ref.current) {
-            mermaid.initialize({
-              startOnLoad: false,
-              securityLevel: 'loose',
-              theme: isDark ? 'dark' : 'base',
-              darkMode: isDark,
-            });
-            const parseResult = await mermaid.parse(props.code);
-            if (!parseResult) {
-              throw new Error('Failed to parse mermaid code');
-            }
-            const { svg, bindFunctions, diagramType } = await mermaid.render(
-              generateMermaidUUID(),
-              props.code,
-              ref.current
-            );
-            ref.current.innerHTML = svg;
-            bindFunctions?.(ref.current);
-            setChartType(diagramType);
-          }
-        } catch {
+    if (!props.code || !ref.current || showOriginalCode) {
+      return;
+    }
+
+    const renderVersion = ++renderVersionRef.current;
+    let cancelled = false;
+
+    const renderMermaid = async () => {
+      try {
+        debouncedUpdateRenderError(false);
+        mermaid.initialize({
+          startOnLoad: false,
+          securityLevel: 'loose',
+          theme: isDark ? 'dark' : 'base',
+          darkMode: isDark,
+        });
+        const parseResult = await mermaid.parse(props.code);
+        if (!parseResult) {
+          throw new Error('Failed to parse mermaid code');
+        }
+
+        const hostElement = ref.current;
+        if (!hostElement || cancelled || renderVersion !== renderVersionRef.current) {
+          return;
+        }
+
+        const { svg, bindFunctions, diagramType } = await mermaid.render(generateMermaidUUID(), props.code, hostElement);
+        if (!ref.current || cancelled || renderVersion !== renderVersionRef.current) {
+          return;
+        }
+
+        ref.current.innerHTML = svg;
+        bindFunctions?.(ref.current);
+        setChartType(diagramType);
+      } catch {
+        if (!cancelled && renderVersion === renderVersionRef.current) {
           debouncedUpdateRenderError(true);
         }
-      };
+      }
+    };
 
-      renderMermaid();
-    }
+    renderMermaid();
+
+    return () => {
+      cancelled = true;
+    };
   }, [props.code, isDark, showOriginalCode, debouncedUpdateRenderError]);
 
   const viewSvgInNewWindow = useCallback(() => {
