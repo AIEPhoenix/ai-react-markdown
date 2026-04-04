@@ -37,19 +37,19 @@
   },
   "devDependencies": {
     "@ai-react-markdown/core": "workspace:*",
-    "@mantine/code-highlight": "^8.3.17",
-    "@mantine/core": "^8.3.17",
+    "@mantine/code-highlight": "^8.3.18",
+    "@mantine/core": "^8.3.18",
     "@types/lodash-es": "^4.17.12",
-    "lodash-es": "^4.17.23",
     "@types/node": "^25.5.0",
     "autoprefixer": "^10.4.27",
     "esbuild-sass-plugin": "^3.7.0",
     "highlight.js": "^11.11.1",
+    "lodash-es": "^4.17.23",
     "postcss": "^8.5.8",
-    "tsup": "^8.4.0"
+    "tsup": "^8.5.1"
   },
   "dependencies": {
     "deep-parse-json": "^2.0.0",
-    "mermaid": "^11.13.0"
+    "mermaid": "^11.14.0"
   }
 }
