@@ -1,9 +1,8 @@
 'use client';
 
-import React, { memo, useMemo, useEffect, useRef, useState, useCallback } from 'react';
+import React, { memo, useEffect, useRef, useState, useCallback } from 'react';
 import { CodeHighlightControl, CodeHighlightTabs } from '@mantine/code-highlight';
 import { ActionIcon, CopyButton, Flex, Tooltip } from '@mantine/core';
-import debounce from 'lodash-es/debounce';
 import mermaid from 'mermaid';
 import { useMantineAIMarkdownRenderState } from '../../../hooks/useMantineAIMarkdownRenderState';
 import './styles.scss';
@@ -56,7 +55,7 @@ const handleViewSVGInNewWindow = (svgElement: SVGElement | null | undefined, isD
  * - Click on the rendered diagram to open the SVG in a new browser window
  * - Copy button for the raw mermaid source code
  * - Chart type label extracted from mermaid's parse result
- * - Debounced error state to avoid flickering during rapid re-renders
+ * - Preserves the last successful render across transient parse failures
  *
  * @param props.code - Raw mermaid diagram source code to render.
  */
@@ -66,23 +65,10 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
 
   const ref = useRef<HTMLPreElement>(null);
   const renderVersionRef = useRef(0);
+  const hasRenderedRef = useRef(false);
   const [showOriginalCode, setShowOriginalCode] = useState(false);
   const [renderError, setRenderError] = useState(false);
   const [chartType, setChartType] = useState('unknown');
-
-  const debouncedUpdateRenderError = useMemo(
-    () =>
-      debounce((error: boolean) => {
-        setRenderError(error);
-      }, 200),
-    []
-  );
-
-  useEffect(() => {
-    return () => {
-      debouncedUpdateRenderError.cancel();
-    };
-  }, [debouncedUpdateRenderError]);
 
   useEffect(() => {
     if (!props.code || !ref.current || showOriginalCode) {
@@ -94,7 +80,6 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
 
     const renderMermaid = async () => {
       try {
-        debouncedUpdateRenderError(false);
         mermaid.initialize({
           startOnLoad: false,
           securityLevel: 'loose',
@@ -118,20 +103,23 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
 
         ref.current.innerHTML = svg;
         bindFunctions?.(ref.current);
+        hasRenderedRef.current = true;
         setChartType(diagramType);
+        setRenderError(false);
       } catch {
-        if (!cancelled && renderVersion === renderVersionRef.current) {
-          debouncedUpdateRenderError(true);
+        if (!cancelled && renderVersion === renderVersionRef.current && !hasRenderedRef.current) {
+          setChartType('unknown');
+          setRenderError(true);
         }
       }
     };
 
-    renderMermaid();
+    void renderMermaid();
 
     return () => {
       cancelled = true;
     };
-  }, [props.code, isDark, showOriginalCode, debouncedUpdateRenderError]);
+  }, [props.code, isDark, showOriginalCode]);
 
   const viewSvgInNewWindow = useCallback(() => {
     handleViewSVGInNewWindow(ref.current?.querySelector('svg'), isDark);
