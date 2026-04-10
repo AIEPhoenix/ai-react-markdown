@@ -1,6 +1,6 @@
 {
   "name": "ai-react-markdown",
-  "version": "1.2.8",
+  "version": "1.2.9",
   "private": true,
   "type": "module",
   "description": "A React component for rendering AI-generated Markdown with LaTeX math, GFM, syntax highlighting and more.",
