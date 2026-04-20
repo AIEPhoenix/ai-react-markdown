@@ -18,6 +18,9 @@ export default defineConfig({
           name: 'unit',
           environment: 'node',
           include: ['packages/*/src/**/*.{test,spec}.{ts,tsx}'],
+          benchmark: {
+            include: ['packages/*/src/**/*.bench.{ts,tsx}'],
+          },
         },
       },
       {
@@ -36,6 +39,11 @@ export default defineConfig({
             instances: [{ browser: 'chromium' }],
           },
           setupFiles: ['.storybook/vitest.setup.ts'],
+          // Don't run benchmarks in the browser project — they're CPU-bound
+          // and run under node in the `unit` project.
+          benchmark: {
+            include: [],
+          },
         },
       },
     ],

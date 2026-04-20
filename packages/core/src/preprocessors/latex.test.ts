@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { preprocessLaTeX } from './latex';
+import { preprocessLaTeX, splitByProtectedRegions } from './latex';
 
 describe('preprocessLaTeX', () => {
   test('returns the same string if no LaTeX patterns are found', () => {
@@ -480,6 +480,56 @@ y$ which spans lines`;
     expect(preprocessLaTeX(content)).toBe(expected);
   });
 
+  // --- Paired literal-content HTML containers (issue: $ inside <code> etc.) ---
+
+  test('does not rewrite $ inside <code>...</code>', () => {
+    const content = 'inline <code>$x^2$</code> and real $y^2$';
+    const expected = 'inline <code>$x^2$</code> and real $$y^2$$';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('does not escape currency $ inside <code>...</code>', () => {
+    const content = 'see <code>$100</code> and math $z^2$';
+    const expected = 'see <code>$100</code> and math $$z^2$$';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('does not rewrite $ inside <pre>...</pre>', () => {
+    const content = '<pre>$x^2$</pre> but $y^2$';
+    const expected = '<pre>$x^2$</pre> but $$y^2$$';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('does not rewrite $ inside <kbd>...</kbd>', () => {
+    const content = 'press <kbd>$</kbd> then type $x^2$';
+    const expected = 'press <kbd>$</kbd> then type $$x^2$$';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('does not rewrite $ inside <samp>...</samp>', () => {
+    const content = 'output <samp>$100</samp> vs math $x^2$';
+    const expected = 'output <samp>$100</samp> vs math $$x^2$$';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('does not rewrite $ inside <math>...</math>', () => {
+    const content = '<math>$a$</math> and real $b$';
+    const expected = '<math>$a$</math> and real $$b$$';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('does not rewrite $ inside <svg>...</svg>', () => {
+    const content = '<svg><text>$100</text></svg> price is $50';
+    const expected = '<svg><text>$100</text></svg> price is \\$50';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('handles case-insensitive literal-content tag matching', () => {
+    const content = '<CODE>$x^2$</CODE> and $y^2$';
+    const expected = '<CODE>$x^2$</CODE> and $$y^2$$';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
   // --- Markdown escaped brackets vs LaTeX delimiters ---
 
   test('does not convert escaped markdown image \\![...\\](url) as LaTeX', () => {
@@ -578,5 +628,249 @@ y$ which spans lines`;
     const content = '其中 $|0\\rangle$ 和 $|1\\rangle$ 是计算基';
     const expected = '其中 $$\\vert{}0\\rangle$$ 和 $$\\vert{}1\\rangle$$ 是计算基';
     expect(preprocessLaTeX(content)).toBe(expected);
+  });
+});
+
+describe('preprocessLaTeX idempotence', () => {
+  // Asserts f(f(x)) === f(x): applying the preprocessor to its own output
+  // must be a no-op. Any regex change that over-eagerly re-converts a
+  // stabilized form (e.g. turning `$$...$$` back into `$...$`, escaping a
+  // `\$` twice, or mis-handling `\text{\_}`) will surface here, even if
+  // none of the concrete input→expected pairs above happen to cover it.
+  test.each([
+    // --- basics ---
+    'plain text without LaTeX',
+    '',
+    '   \n\n  ',
+    // --- single/double dollar ---
+    '$x^2 + y^2 = z^2$',
+    '$$E = mc^2$$',
+    'Inline $$a+b$$ and display $$c+d$$',
+    // --- currency ---
+    'Price is $100',
+    'Total: $29.50 plus tax',
+    '$250k is 25% of $1M',
+    // --- escaped currency (already processed form) ---
+    'Already escaped \\$50 and \\$100',
+    // --- bracket delimiters ---
+    '\\[x^2\\] and \\(y^2\\)',
+    // --- mhchem ---
+    '$\\ce{H2O}$ and $\\pu{123 J}$',
+    // --- code protection ---
+    '`$lookup` in code',
+    '```\n$100\n```\nOutside $x^2$',
+    'Mixed $$x$$ and `code with $100` text',
+    // --- underscore in \text ---
+    '$\\text{node_domain}$',
+    '$\\text{node\\_domain}$',
+    // --- pipes ---
+    '$|x|$',
+    '$$\\begin{array}{cc|c} 1 & 0 & a \\end{array}$$',
+    '$$|x| + \\begin{array}{c|c} a & b \\end{array}$$',
+    // --- HTML tag protection ---
+    'Use <span>$</span>100 and $x^2$',
+    'text <br/> and $y^2$',
+    // --- currency inside LaTeX ---
+    '$\\text{Total} = \\$500 + \\$200$',
+    '- **Simple Interest**: $A = P + Prt = $1,000 + ($1,000)(0.05)(2) = $1,100$',
+    // --- streaming partial (gets truncated) ---
+    'writing: $$\\vert{}\\psi\\rangle = \\alpha\\vert{}0\\rangle',
+    '$$|a|$$ then $$|b\\rangle',
+    // --- CJK mixed ---
+    '中文 $x^2$ 混合内容',
+    '占用：$8.29 \\text{ B} \\times 4 \\text{ bytes} \\times 2 = \\mathbf{66.3 \\text{ GB}}$',
+  ])('f(f(x)) === f(x) for: %s', (input) => {
+    const once = preprocessLaTeX(input);
+    const twice = preprocessLaTeX(once);
+    expect(twice).toBe(once);
+  });
+});
+
+describe('splitByProtectedRegions', () => {
+  test('returns single text segment for plain text', () => {
+    expect(splitByProtectedRegions('hello world')).toEqual([
+      { text: 'hello world', isCode: false },
+    ]);
+  });
+
+  test('returns empty array for empty string', () => {
+    expect(splitByProtectedRegions('')).toEqual([]);
+  });
+
+  test('identifies inline code as protected', () => {
+    expect(splitByProtectedRegions('before `code` after')).toEqual([
+      { text: 'before ', isCode: false },
+      { text: '`code`', isCode: true },
+      { text: ' after', isCode: false },
+    ]);
+  });
+
+  test('identifies backtick fenced code block as protected', () => {
+    expect(splitByProtectedRegions('before\n```\ncode\n```\nafter')).toEqual([
+      { text: 'before\n', isCode: false },
+      { text: '```\ncode\n```', isCode: true },
+      { text: '\nafter', isCode: false },
+    ]);
+  });
+
+  test('identifies tilde fenced code block as protected', () => {
+    expect(splitByProtectedRegions('before\n~~~\ncode\n~~~\nafter')).toEqual([
+      { text: 'before\n', isCode: false },
+      { text: '~~~\ncode\n~~~', isCode: true },
+      { text: '\nafter', isCode: false },
+    ]);
+  });
+
+  test('identifies known HTML tags as protected', () => {
+    expect(splitByProtectedRegions('text <span>$</span> more')).toEqual([
+      { text: 'text ', isCode: false },
+      { text: '<span>', isCode: true },
+      { text: '$', isCode: false },
+      { text: '</span>', isCode: true },
+      { text: ' more', isCode: false },
+    ]);
+  });
+
+  test('identifies HTML tag at position 0 (sticky regex regression)', () => {
+    // Regression test for the sticky-regex approach: ensures we correctly
+    // matched at position 0 (the `^` anchor was removed when switching to `/y`).
+    expect(splitByProtectedRegions('<span>x</span>')).toEqual([
+      { text: '<span>', isCode: true },
+      { text: 'x', isCode: false },
+      { text: '</span>', isCode: true },
+    ]);
+  });
+
+  test('treats unclosed backtick fence as protected until end', () => {
+    expect(splitByProtectedRegions('before ```\ncode $100')).toEqual([
+      { text: 'before ', isCode: false },
+      { text: '```\ncode $100', isCode: true },
+    ]);
+  });
+
+  test('treats unclosed tilde fence as protected until end', () => {
+    expect(splitByProtectedRegions('before ~~~\ncode $100')).toEqual([
+      { text: 'before ', isCode: false },
+      { text: '~~~\ncode $100', isCode: true },
+    ]);
+  });
+
+  test('does not treat unclosed inline backtick as protected', () => {
+    expect(splitByProtectedRegions('text ` unclosed $x^2$')).toEqual([
+      { text: 'text ` unclosed $x^2$', isCode: false },
+    ]);
+  });
+
+  test('multiline fence cancels pending inline backtick', () => {
+    expect(splitByProtectedRegions('text `start ```\ncode\n``` end` done')).toEqual([
+      { text: 'text `start ', isCode: false },
+      { text: '```\ncode\n```', isCode: true },
+      { text: ' end` done', isCode: false },
+    ]);
+  });
+
+  test('requires matching fence length to close (shorter fence stays open)', () => {
+    expect(splitByProtectedRegions('````\ncode\n```\nmore')).toEqual([
+      { text: '````\ncode\n```\nmore', isCode: true },
+    ]);
+  });
+
+  test('allows longer fence to close shorter opening', () => {
+    expect(splitByProtectedRegions('```\ncode\n````\nafter')).toEqual([
+      { text: '```\ncode\n````', isCode: true },
+      { text: '\nafter', isCode: false },
+    ]);
+  });
+
+  test('does not treat non-HTML angle brackets as protected', () => {
+    expect(splitByProtectedRegions('a < b and <Custom> tag')).toEqual([
+      { text: 'a < b and <Custom> tag', isCode: false },
+    ]);
+  });
+
+  test('handles multiple adjacent inline code blocks', () => {
+    expect(splitByProtectedRegions('`a` `b` text')).toEqual([
+      { text: '`a`', isCode: true },
+      { text: ' ', isCode: false },
+      { text: '`b`', isCode: true },
+      { text: ' text', isCode: false },
+    ]);
+  });
+
+  test('handles self-closing HTML tags', () => {
+    expect(splitByProtectedRegions('text <br/> more')).toEqual([
+      { text: 'text ', isCode: false },
+      { text: '<br/>', isCode: true },
+      { text: ' more', isCode: false },
+    ]);
+  });
+
+  test('handles code block with language specifier', () => {
+    expect(splitByProtectedRegions('```python\nprint()\n```')).toEqual([
+      { text: '```python\nprint()\n```', isCode: true },
+    ]);
+  });
+
+  test('does not cross fence marker types (backtick open, tilde close)', () => {
+    expect(splitByProtectedRegions('```\ncode\n~~~\nmore')).toEqual([
+      { text: '```\ncode\n~~~\nmore', isCode: true },
+    ]);
+  });
+
+  test('handles HTML tags with attributes', () => {
+    expect(splitByProtectedRegions('text <span class="x">$</span> end')).toEqual([
+      { text: 'text ', isCode: false },
+      { text: '<span class="x">', isCode: true },
+      { text: '$', isCode: false },
+      { text: '</span>', isCode: true },
+      { text: ' end', isCode: false },
+    ]);
+  });
+
+  test('protects entire <code>...</code> including inner text', () => {
+    expect(splitByProtectedRegions('pre <code>$x^2$</code> post')).toEqual([
+      { text: 'pre ', isCode: false },
+      { text: '<code>$x^2$</code>', isCode: true },
+      { text: ' post', isCode: false },
+    ]);
+  });
+
+  test('protects entire <pre>...</pre> including inner text', () => {
+    expect(splitByProtectedRegions('<pre>$100</pre> x')).toEqual([
+      { text: '<pre>$100</pre>', isCode: true },
+      { text: ' x', isCode: false },
+    ]);
+  });
+
+  test('protects entire <math>...</math> including inner text', () => {
+    expect(splitByProtectedRegions('<math>$a$</math>')).toEqual([
+      { text: '<math>$a$</math>', isCode: true },
+    ]);
+  });
+
+  test('protects <code> with attributes', () => {
+    expect(splitByProtectedRegions('<code class="x">$y$</code>')).toEqual([
+      { text: '<code class="x">$y$</code>', isCode: true },
+    ]);
+  });
+
+  test('case-insensitive match for <CODE>...</CODE>', () => {
+    expect(splitByProtectedRegions('<CODE>$x$</CODE>')).toEqual([
+      { text: '<CODE>$x$</CODE>', isCode: true },
+    ]);
+  });
+
+  test('unclosed <code> falls back to tag-only protection', () => {
+    expect(splitByProtectedRegions('<code>$x$ tail')).toEqual([
+      { text: '<code>', isCode: true },
+      { text: '$x$ tail', isCode: false },
+    ]);
+  });
+
+  test('self-closing <math/> is not treated as paired container', () => {
+    expect(splitByProtectedRegions('<math/>$a$')).toEqual([
+      { text: '<math/>', isCode: true },
+      { text: '$a$', isCode: false },
+    ]);
   });
 });

@@ -17,7 +17,7 @@ import type { AIMarkdownTypographyProps } from '../../defs';
 
 const DefaultTypography = memo(({ children, fontSize, variant, colorScheme, style }: AIMarkdownTypographyProps) => (
   <div
-    className={`aim-typography-root ${variant ?? ''} ${colorScheme ?? ''}`.trim()}
+    className={['aim-typography-root', variant, colorScheme].filter(Boolean).join(' ')}
     style={{ width: '100%', fontSize, ...style }}
   >
     {children}
