@@ -120,7 +120,9 @@ const AIMarkdownComponent = <
   colorScheme = 'light',
 }: AIMarkdownProps<TConfig, TRenderData>) => {
   // Normalize fontSize: number -> px string, undefined -> default rem value.
-  const usedFontSize = fontSize ? (typeof fontSize === 'number' ? `${fontSize}px` : fontSize) : '0.9375rem';
+  // Branch on `undefined` (not truthiness) so `fontSize={0}` resolves to `'0px'`.
+  const usedFontSize =
+    fontSize === undefined ? '0.9375rem' : typeof fontSize === 'number' ? `${fontSize}px` : fontSize;
 
   // Stabilize object/array props to prevent unnecessary re-renders
   // when the consumer creates new references on each render.

@@ -62,16 +62,59 @@ const LITERAL_CONTENT_CLOSE_REGEX: Record<string, RegExp> = {
 };
 
 /**
+ * Is `pos` the start of a line with at most 3 spaces of leading indentation?
+ *
+ * CommonMark requires a fence opener/closer to sit at the beginning of a
+ * line (optionally indented by up to 3 spaces). A 4-space indent turns the
+ * line into an indented-code-block candidate instead, which we do not treat
+ * as a fence at all.
+ */
+function isAtLineStart(content: string, pos: number): boolean {
+  let i = pos - 1;
+  let spaces = 0;
+  while (i >= 0 && content[i] === ' ') {
+    spaces++;
+    if (spaces > 3) return false;
+    i--;
+  }
+  return i < 0 || content[i] === '\n' || content[i] === '\r';
+}
+
+/**
+ * Find the next run of *exactly* `n` consecutive backticks at or after
+ * `start`. Runs of any other length are skipped over. Returns the start
+ * index of the matching run, or `-1` if no such run exists.
+ *
+ * Used to locate the closing delimiter of a CommonMark inline code span:
+ * the closer must be a backtick run of the *same* length as the opener.
+ */
+function findClosingBacktickRun(content: string, start: number, n: number): number {
+  let i = start;
+  while (i < content.length) {
+    if (content[i] === '`') {
+      const runLen = getRepeatedMarkerLength(content, i, '`');
+      if (runLen === n) return i;
+      i += runLen;
+    } else {
+      i += 1;
+    }
+  }
+  return -1;
+}
+
+/**
  * Split content into alternating text and protected segments.
  * Protected segments (isCode: true) are excluded from LaTeX processing:
- * - fenced multiline code blocks using 3+ backticks or tildes
- * - ` inline code
- * - HTML tags (e.g. <span>$</span> where $ should not be treated as LaTeX)
+ * - fenced multiline code blocks: 3+ backticks or tildes at the *start of a
+ *   line* (≤3 space indent). Mid-line runs are never fence openers.
+ * - inline code spans: a run of N backticks closed by another run of exactly
+ *   N backticks. May span newlines. Multi-backtick forms (e.g. `` `` `x` ``)
+ *   are supported so literal backtick characters can appear inside.
+ * - HTML tags (e.g. `<span>$</span>` where `$` should not be treated as LaTeX).
  */
 export function splitByProtectedRegions(content: string): Segment[] {
   const segments: Segment[] = [];
   let lastIndex = 0;
-  let inlineStart = -1;
   let multilineStart = -1;
   let multilineFenceMarker: FenceMarker | null = null;
   let multilineFenceLength = 0;
@@ -84,40 +127,59 @@ export function splitByProtectedRegions(content: string): Segment[] {
     lastIndex = end;
   }
 
-  for (let i = 0; i < content.length; i++) {
+  let i = 0;
+  while (i < content.length) {
     const char = content[i];
-    const fenceLength = char === '`' || char === '~' ? getRepeatedMarkerLength(content, i, char) : 0;
 
-    // Check for multiline code blocks fenced by 3+ repeated ` or ~ markers.
-    if ((char === '`' || char === '~') && fenceLength >= 3) {
-      if (multilineStart === -1) {
-        // Cancel any pending inline code — multiline fences take priority over `.
-        inlineStart = -1;
+    // Inside a fenced code block: only look for a closing fence line.
+    if (multilineStart !== -1) {
+      if (char === multilineFenceMarker) {
+        const runLen = getRepeatedMarkerLength(content, i, multilineFenceMarker);
+        if (runLen >= multilineFenceLength && isAtLineStart(content, i)) {
+          pushProtected(multilineStart, i + runLen);
+          multilineStart = -1;
+          multilineFenceMarker = null;
+          multilineFenceLength = 0;
+          i += runLen;
+          continue;
+        }
+        i += runLen;
+        continue;
+      }
+      i += 1;
+      continue;
+    }
+
+    // Outside code: check fence opener, inline code span, then HTML tag.
+    if (char === '`' || char === '~') {
+      const runLen = getRepeatedMarkerLength(content, i, char);
+
+      // Fenced code block opener: ≥3 markers and at a valid line start.
+      if (runLen >= 3 && isAtLineStart(content, i)) {
         multilineStart = i;
         multilineFenceMarker = char;
-        multilineFenceLength = fenceLength;
-        i += fenceLength - 1;
-      } else if (char === multilineFenceMarker && fenceLength >= multilineFenceLength) {
-        pushProtected(multilineStart, i + fenceLength);
-        multilineStart = -1;
-        multilineFenceMarker = null;
-        multilineFenceLength = 0;
-        i += fenceLength - 1;
-      } else {
-        i += fenceLength - 1;
+        multilineFenceLength = runLen;
+        i += runLen;
+        continue;
       }
-    }
-    // Check for inline code (only if not in multiline; ~ is not an inline delimiter)
-    else if (char === '`' && multilineStart === -1) {
-      if (inlineStart === -1) {
-        inlineStart = i;
-      } else {
-        pushProtected(inlineStart, i + 1);
-        inlineStart = -1;
+
+      // Inline code span: only backticks (tildes are never inline delimiters).
+      if (char === '`') {
+        const closeIdx = findClosingBacktickRun(content, i + runLen, runLen);
+        if (closeIdx !== -1) {
+          pushProtected(i, closeIdx + runLen);
+          i = closeIdx + runLen;
+          continue;
+        }
       }
+
+      // Unmatched run — skip the whole run so we don't re-interpret its
+      // individual backticks on subsequent iterations.
+      i += runLen;
+      continue;
     }
-    // Check for HTML tags (only if not in code block)
-    else if (char === '<' && multilineStart === -1 && inlineStart === -1) {
+
+    if (char === '<') {
       // Only match known HTML tags to avoid false positives with angle brackets
       // in markdown links (<Slides Demo>), math comparisons ($a < b$), etc.
       // Use sticky regex to match at position i without creating a substring.
@@ -144,9 +206,12 @@ export function splitByProtectedRegions(content: string): Segment[] {
           }
         }
         pushProtected(i, endIndex);
-        i = endIndex - 1; // -1 because loop does i++
+        i = endIndex;
+        continue;
       }
     }
+
+    i += 1;
   }
 
   if (multilineStart !== -1) {
@@ -181,7 +246,7 @@ const DELIMITERS_REGEX = /(?<!!)\\\[([\S\s]*?[^\\])\\](?!\()|\\\((.*?)\\\)/g;
 const ARRAY_COL_SPEC_OR_PIPE_REGEX = /(\\begin\{(?:array|tabular[x*]?)\}\{[^}]*\})|(?<!\\)\|/g;
 // Display $$ allows multiline; inline $ forbids newlines (consistent with SINGLE_DOLLAR_REGEX)
 const LATEX_BLOCK_REGEX = /\$\$([\S\s]*?)\$\$|(?<![\\$])\$(?!\$)((?:[^$\n]|\\\$)*?)(?<![\\`])\$(?!\$)/g;
-const ESCAPE_TEXT_UNDERSCORES_REGEX = /\\text{([^}]*)}/g;
+const TEXT_COMMAND = '\\text{';
 const SINGLE_DOLLAR_REGEX = /(?<![\\$])\$(?!\$)((?:[^$\n]|\\[$])+?)(?<!\\)(?<!`)\$(?!\$)/g;
 
 /**
@@ -294,16 +359,6 @@ function escapeLatexPipes(text: string): string {
 }
 
 /**
- * Find the start index of the trailing unclosed `$$` or `$` delimiter.
- *
- * Scans through all dollar-sign tokens tracking open/close state.
- * Returns the index of the last *opening* delimiter that was never closed,
- * or `-1` if every delimiter is paired.
- *
- * @param text  Input string to scan.
- * @param mode  `'both'` tracks `$$` and `$`; `'double-only'` tracks only `$$`.
- */
-/**
  * Whether the character at position `pos` is escaped by the immediately
  * preceding backslash run. An even-count run (including zero) means the
  * `$` is unescaped; an odd count means it is escaped. Example: `\\$` has
@@ -319,6 +374,16 @@ function isEscapedByBackslashRun(text: string, pos: number): boolean {
   return count % 2 === 1;
 }
 
+/**
+ * Find the start index of the trailing unclosed `$$` or `$` delimiter.
+ *
+ * Scans through all dollar-sign tokens tracking open/close state.
+ * Returns the index of the last *opening* delimiter that was never closed,
+ * or `-1` if every delimiter is paired.
+ *
+ * @param text  Input string to scan.
+ * @param mode  `'both'` tracks `$$` and `$`; `'double-only'` tracks only `$$`.
+ */
 function findUnclosedDelimiterStart(text: string, mode: 'both' | 'double-only'): number {
   let unclosedStart = -1;
   let i = 0;
@@ -385,19 +450,61 @@ function truncateUnclosedLatexBlock(text: string): string {
 }
 
 /**
- * Escape unescaped underscores within \text{...} commands in LaTeX expressions.
- * For example, \text{node_domain} becomes \text{node\_domain},
- * but \text{node\_domain} remains \text{node\_domain}.
+ * Escape unescaped underscores within `\text{...}` commands in LaTeX expressions.
+ * For example, `\text{node_domain}` becomes `\text{node\_domain}`, but
+ * `\text{node\_domain}` stays unchanged.
+ *
+ * The body scan is brace-aware: nested groups `\text{outer {inner}_x}`
+ * are matched via a depth counter that respects `\{` / `\}` escapes and
+ * the escape for `\\` itself, so the entire body (depth ≥ 0) is scanned
+ * before we escape its underscores.  An unclosed `\text{` body (missing
+ * closing brace, e.g. during streaming) is left untouched.
  *
  * @param text Input string that may contain LaTeX expressions
- * @returns String with unescaped underscores escaped within \text{...} commands
- * @modified from https://github.com/lobehub/lobe-ui/blob/master/src/hooks/useMarkdown/latex.ts
+ * @returns String with unescaped underscores escaped within `\text{...}` commands
  */
 function escapeTextUnderscores(text: string): string {
-  return text.replaceAll(ESCAPE_TEXT_UNDERSCORES_REGEX, (_match, textContent: string) => {
-    const escapedTextContent = textContent.replaceAll(/(?<!\\)_/g, '\\_');
-    return `\\text{${escapedTextContent}}`;
-  });
+  let out = '';
+  let i = 0;
+  while (i < text.length) {
+    const start = text.indexOf(TEXT_COMMAND, i);
+    if (start === -1) {
+      out += text.substring(i);
+      return out;
+    }
+
+    out += text.substring(i, start);
+    const bodyStart = start + TEXT_COMMAND.length;
+    let depth = 1;
+    let j = bodyStart;
+    while (j < text.length && depth > 0) {
+      const c = text[j];
+      if (c === '\\' && j + 1 < text.length) {
+        // Skip the escaped character so `\{`, `\}`, `\\` don't affect depth.
+        j += 2;
+        continue;
+      }
+      if (c === '{') depth++;
+      else if (c === '}') {
+        depth--;
+        if (depth === 0) break;
+      }
+      j++;
+    }
+
+    if (depth !== 0) {
+      // Unclosed \text{ — leave the remainder as-is so a later streaming
+      // chunk can complete it.
+      out += text.substring(start);
+      return out;
+    }
+
+    const body = text.substring(bodyStart, j);
+    const escapedBody = body.replaceAll(/(?<!\\)_/g, '\\_');
+    out += `\\text{${escapedBody}}`;
+    i = j + 1; // past closing `}`
+  }
+  return out;
 }
 
 /**
