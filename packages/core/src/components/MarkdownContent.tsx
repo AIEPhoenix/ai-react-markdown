@@ -14,7 +14,8 @@ import ReactMarkdown from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
 import rehypeUnwrapImages from 'rehype-unwrap-images';
-import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
+import rehypeSanitize from 'rehype-sanitize';
+import { sanitizeSchema } from './sanitizeSchema';
 import remarkBreaks from 'remark-breaks';
 import remarkCjkFriendly from 'remark-cjk-friendly';
 import remarkCjkFriendlyGfmStrikethrough from 'remark-cjk-friendly-gfm-strikethrough';
@@ -116,18 +117,7 @@ const AIMarkdownContent = memo(({ content, customComponents }: AIMarkdownContent
           },
         ],
         // Sanitize HTML while allowing <mark> (highlight) and KaTeX class names.
-        [
-          rehypeSanitize,
-          {
-            ...defaultSchema,
-            tagNames: [...(defaultSchema.tagNames || []), 'mark'],
-            attributes: {
-              ...defaultSchema.attributes,
-              // The `language-*` regex is allowed by default.
-              code: [['className', /^language-./, 'math-inline', 'math-display']],
-            },
-          },
-        ],
+        [rehypeSanitize, sanitizeSchema],
         rehypeKatex,
         rehypeUnwrapImages,
       ]}

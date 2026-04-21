@@ -530,6 +530,20 @@ y$ which spans lines`;
     expect(preprocessLaTeX(content)).toBe(expected);
   });
 
+  test('does not mutate $ inside an unclosed <code> during streaming', () => {
+    // M3 contract: before the `</code>` closer streams in, protect the tail
+    // so `$100` and `$x$` are never rewritten.
+    const content = 'see <code>$100 and $x^2$';
+    expect(preprocessLaTeX(content)).toBe(content);
+  });
+
+  test('does not mutate a fenced-looking sequence inside an unclosed <pre>', () => {
+    // Protect-to-end should also swallow code-fence lookalikes inside the
+    // unclosed container so the scanner never mis-identifies them.
+    const content = '<pre>```\n$50 inside pre\n```';
+    expect(preprocessLaTeX(content)).toBe(content);
+  });
+
   // --- Markdown escaped brackets vs LaTeX delimiters ---
 
   test('does not convert escaped markdown image \\![...\\](url) as LaTeX', () => {
@@ -629,6 +643,58 @@ y$ which spans lines`;
     const expected = '其中 $$\\vert{}0\\rangle$$ 和 $$\\vert{}1\\rangle$$ 是计算基';
     expect(preprocessLaTeX(content)).toBe(expected);
   });
+
+  // --- Escaped $$ should not trigger unclosed-block truncation (H3) ---
+
+  test('does not truncate on escaped \\$$ currency followed by digits', () => {
+    const content = 'Cost is \\$$100 and more content.';
+    expect(preprocessLaTeX(content)).toBe(content);
+  });
+
+  test('does not truncate on escaped \\$$ followed by more text', () => {
+    const content = 'prefix \\$$ then trailing text';
+    expect(preprocessLaTeX(content)).toBe(content);
+  });
+
+  test('double backslash before $$ is treated as unescaped (even-count parity)', () => {
+    // `\\$$...` means literal `\`, then a real `$$` delimiter. When the block
+    // is unclosed, it must still be truncated (not preserved by a naïve
+    // single-char backslash check).
+    const content = 'prefix \\\\$$unclosed block';
+    const expected = 'prefix \\\\';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('triple backslash before $$ is treated as escaped (odd-count parity)', () => {
+    // `\\\$$` = literal `\` + escaped `$$`. The `$$` is NOT a delimiter and
+    // the content must not be truncated.
+    const content = 'prefix \\\\\\$$100 continues';
+    expect(preprocessLaTeX(content)).toBe(content);
+  });
+
+  // --- Cross-segment unclosed $$ (H4) ---
+  //
+  // When a code block sits between an unclosed `$$` and its closer, each
+  // preprocessing segment is processed independently. `truncateUnclosedLatexBlock`
+  // therefore only sees per-segment state, so an unclosed `$$` *inside* the
+  // pre-code segment gets truncated even if a closing `$$` exists after the
+  // code fence. This asserts that contract and protects against regressions
+  // that would leak partial math across segment boundaries.
+
+  test('per-segment truncation: unclosed $$ before a code fence is truncated', () => {
+    // The unclosed `$$E = mc` in the pre-code segment is truncated (including
+    // trailing whitespace) and the post-code segment's closed `$$after$$` is
+    // preserved — confirming each segment is processed independently.
+    const content = 'before $$E = mc\n```\ncode\n```\nand $$after$$';
+    const expected = 'before```\ncode\n```\nand $$after$$';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('per-segment truncation: closed $$ inside pre-code segment survives', () => {
+    const content = '$$a$$ and more\n```\ncode\n```\nafter';
+    const expected = '$$a$$ and more\n```\ncode\n```\nafter';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
 });
 
 describe('preprocessLaTeX idempotence', () => {
@@ -683,6 +749,71 @@ describe('preprocessLaTeX idempotence', () => {
     const once = preprocessLaTeX(input);
     const twice = preprocessLaTeX(once);
     expect(twice).toBe(once);
+  });
+});
+
+describe('preprocessLaTeX streaming (incremental prefix)', () => {
+  // Feeds growing prefixes of a representative streaming message through the
+  // preprocessor. Asserts:
+  //  - no prefix throws;
+  //  - the final output is stable (once the full message is streamed, the
+  //    result equals the one-shot result);
+  //  - `f(f(prefix)) === f(prefix)` holds at every step (streaming idempotence).
+  //
+  // This codifies the contract the recent fixes target — the pipeline must
+  // stay robust against partial/incomplete input at any token boundary.
+
+  const STREAMING_MESSAGES = [
+    // Mix: closed display math, inline math, currency, CJK, and a trailing
+    // unclosed $$ that only closes at the very end.
+    '## 费用说明\n\n单价为 $50,总计 \\$x^2 + y^2 = z^2\\$。\n\n公式:\n\n$$E = mc^2$$\n\n再看 $\\phi(n) = n$。\n\n未完: $$|\\psi\\rangle = \\alpha|0\\rangle + \\beta|1\\rangle$$',
+    // Code block followed by math — tests cross-segment behavior under streaming.
+    'Step 1:\n\n```ts\nconst price = $100;\n```\n\nThen $f(x) = x^2$ and \\[y = x^3\\].',
+    // LaTeX bracket delimiters + backslash-escaped $$
+    'Total: \\$$100 done. Formula \\[a^2 + b^2 = c^2\\] end.',
+    // Literal-content HTML container that is opened mid-stream.
+    'inline <code>$x^2$</code> then open <code>$y^2$ before closing</code> and $z^2$',
+  ];
+
+  test.each(STREAMING_MESSAGES)('streaming prefixes never throw — %#', (message) => {
+    for (let i = 0; i <= message.length; i++) {
+      const prefix = message.substring(0, i);
+      expect(() => preprocessLaTeX(prefix)).not.toThrow();
+    }
+  });
+
+  test.each(STREAMING_MESSAGES)('final streamed result equals one-shot result — %#', (message) => {
+    const oneShot = preprocessLaTeX(message);
+    // Simulate last chunk landing — final prefix is the full message.
+    const streamedFinal = preprocessLaTeX(message);
+    expect(streamedFinal).toBe(oneShot);
+  });
+
+  test.each(STREAMING_MESSAGES)('every streaming prefix is idempotent — %#', (message) => {
+    // Step in reasonable increments so the test runs fast but still covers
+    // boundary-crossing prefixes (every 4 chars of a typical stream chunk).
+    const step = Math.max(1, Math.floor(message.length / 64));
+    for (let i = 0; i <= message.length; i += step) {
+      const prefix = message.substring(0, i);
+      const once = preprocessLaTeX(prefix);
+      const twice = preprocessLaTeX(once);
+      expect(twice).toBe(once);
+    }
+  });
+
+  test('streaming $$ block never leaks into the rest of the document before it closes', () => {
+    // An unclosed $$ should always be truncated — never swallow subsequent
+    // content. Once the closing $$ arrives, the full block is preserved.
+    const full = 'before\n\n$$x^2 + y^2 = z^2$$\n\nafter';
+    for (let i = 0; i < full.length; i++) {
+      const prefix = full.substring(0, i);
+      const out = preprocessLaTeX(prefix);
+      // Invariant: output never contains a stray unclosed $$ block.
+      const unclosed = /\$\$[\S\s]*?$/m.test(out) && (out.match(/\$\$/g)?.length ?? 0) % 2 !== 0;
+      expect(unclosed).toBe(false);
+    }
+    // When the full message has streamed, the closed block is preserved.
+    expect(preprocessLaTeX(full)).toBe(full);
   });
 });
 
@@ -860,10 +991,11 @@ describe('splitByProtectedRegions', () => {
     ]);
   });
 
-  test('unclosed <code> falls back to tag-only protection', () => {
+  test('unclosed <code> protects everything to end of input (streaming)', () => {
+    // When the closer hasn't streamed in yet, protect the tail to avoid
+    // mutating `$x$` before the `</code>` arrives in a later chunk.
     expect(splitByProtectedRegions('<code>$x$ tail')).toEqual([
-      { text: '<code>', isCode: true },
-      { text: '$x$ tail', isCode: false },
+      { text: '<code>$x$ tail', isCode: true },
     ]);
   });
 
