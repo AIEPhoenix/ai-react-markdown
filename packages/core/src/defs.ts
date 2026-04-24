@@ -48,19 +48,27 @@ export enum AIMarkdownRenderDisplayOptimizeAbility {
 /**
  * Configuration object controlling which markdown extensions and
  * display optimizations are active during rendering.
+ *
+ * Arrays are typed `readonly` so the interface is assignable from the frozen
+ * {@link defaultAIMarkdownRenderConfig}. Consumers can still pass mutable
+ * arrays since `readonly T[]` is assignable from `T[]`. Note: this is a
+ * compile-time hint only — user-supplied configs are not deep-frozen at
+ * runtime, so the library does not guarantee the object remains unchanged
+ * after it is passed in.
  */
 export interface AIMarkdownRenderConfig {
   /** Extra syntax extensions to enable. */
-  extraSyntaxSupported: AIMarkdownRenderExtraSyntax[];
+  readonly extraSyntaxSupported: readonly AIMarkdownRenderExtraSyntax[];
   /** Display optimization abilities to enable. */
-  displayOptimizeAbilities: AIMarkdownRenderDisplayOptimizeAbility[];
+  readonly displayOptimizeAbilities: readonly AIMarkdownRenderDisplayOptimizeAbility[];
 }
 
 /**
  * Sensible default configuration with all extensions and optimizations enabled.
- * Frozen to prevent accidental mutation.
+ * Frozen at both the top level and the inner arrays so this shared singleton
+ * cannot be mutated by any consumer.
  */
-export const defaultAIMarkdownRenderConfig: AIMarkdownRenderConfig = Object.freeze({
+export const defaultAIMarkdownRenderConfig = Object.freeze({
   extraSyntaxSupported: Object.freeze([
     AIMarkdownRenderExtraSyntax.HIGHLIGHT,
     AIMarkdownRenderExtraSyntax.DEFINITION_LIST,
@@ -71,7 +79,7 @@ export const defaultAIMarkdownRenderConfig: AIMarkdownRenderConfig = Object.free
     AIMarkdownRenderDisplayOptimizeAbility.SMARTYPANTS,
     AIMarkdownRenderDisplayOptimizeAbility.PANGU,
   ]),
-}) as AIMarkdownRenderConfig;
+}) satisfies AIMarkdownRenderConfig;
 
 /**
  * Arbitrary metadata that consumers can pass through a dedicated React context.

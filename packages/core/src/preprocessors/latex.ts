@@ -38,13 +38,37 @@ function getRepeatedMarkerLength(content: string, start: number, marker: FenceMa
 }
 
 /**
+ * Sticky regex for matching known HTML tags at a specific position.
+ * The `y` (sticky) flag anchors the match at `lastIndex`, avoiding the need
+ * to create a substring for each `<` character encountered during scanning.
+ */
+const HTML_TAG_REGEX =
+  /<\/?(span|div|p|br|hr|img|a|em|strong|b|i|u|s|sub|sup|code|pre|table|tr|td|th|thead|tbody|tfoot|ul|ol|li|dl|dt|dd|h[1-6]|blockquote|details|summary|figure|figcaption|section|article|aside|nav|header|footer|main|mark|del|ins|small|abbr|cite|dfn|kbd|samp|var|ruby|rt|rp|bdo|wbr|input|button|select|textarea|label|fieldset|legend|output|iframe|video|audio|source|canvas|svg|math|time)(?:\s[^>]*)?\/?>/iy;
+
+/**
+ * Tags whose inner text must be treated as literal (never processed as LaTeX).
+ * For these, an opening tag triggers protection of the entire paired region
+ * `<tag>...</tag>` rather than just the tag itself, so dollar signs and other
+ * LaTeX-looking characters inside (e.g. `<code>$x^2$</code>`) survive untouched.
+ */
+const LITERAL_CONTENT_TAGS = new Set(['code', 'pre', 'kbd', 'samp', 'math', 'svg']);
+const LITERAL_CONTENT_CLOSE_REGEX: Record<string, RegExp> = {
+  code: /<\/code\s*>/gi,
+  pre: /<\/pre\s*>/gi,
+  kbd: /<\/kbd\s*>/gi,
+  samp: /<\/samp\s*>/gi,
+  math: /<\/math\s*>/gi,
+  svg: /<\/svg\s*>/gi,
+};
+
+/**
  * Split content into alternating text and protected segments.
  * Protected segments (isCode: true) are excluded from LaTeX processing:
  * - fenced multiline code blocks using 3+ backticks or tildes
  * - ` inline code
  * - HTML tags (e.g. <span>$</span> where $ should not be treated as LaTeX)
  */
-function splitByProtectedRegions(content: string): Segment[] {
+export function splitByProtectedRegions(content: string): Segment[] {
   const segments: Segment[] = [];
   let lastIndex = 0;
   let inlineStart = -1;
@@ -96,13 +120,26 @@ function splitByProtectedRegions(content: string): Segment[] {
     else if (char === '<' && multilineStart === -1 && inlineStart === -1) {
       // Only match known HTML tags to avoid false positives with angle brackets
       // in markdown links (<Slides Demo>), math comparisons ($a < b$), etc.
-      const rest = content.substring(i);
-      const tagMatch = rest.match(
-        /^<\/?(span|div|p|br|hr|img|a|em|strong|b|i|u|s|sub|sup|code|pre|table|tr|td|th|thead|tbody|tfoot|ul|ol|li|dl|dt|dd|h[1-6]|blockquote|details|summary|figure|figcaption|section|article|aside|nav|header|footer|main|mark|del|ins|small|abbr|cite|dfn|kbd|samp|var|ruby|rt|rp|bdo|wbr|input|button|select|textarea|label|fieldset|legend|output|iframe|video|audio|source|canvas|svg|math|time)(?:\s[^>]*)?\/?>/i
-      );
+      // Use sticky regex to match at position i without creating a substring.
+      HTML_TAG_REGEX.lastIndex = i;
+      const tagMatch = HTML_TAG_REGEX.exec(content);
       if (tagMatch) {
-        pushProtected(i, i + tagMatch[0].length);
-        i += tagMatch[0].length - 1; // -1 because loop does i++
+        let endIndex = i + tagMatch[0].length;
+        // For literal-content tags (code/pre/math/...), protect the paired
+        // <tag>...</tag> region so inner `$` never enters LaTeX processing.
+        const tagName = tagMatch[1].toLowerCase();
+        const isOpeningPairedTag =
+          content[i + 1] !== '/' && !tagMatch[0].endsWith('/>') && LITERAL_CONTENT_TAGS.has(tagName);
+        if (isOpeningPairedTag) {
+          const closeRegex = LITERAL_CONTENT_CLOSE_REGEX[tagName];
+          closeRegex.lastIndex = endIndex;
+          const closeMatch = closeRegex.exec(content);
+          if (closeMatch) {
+            endIndex = closeMatch.index + closeMatch[0].length;
+          }
+        }
+        pushProtected(i, endIndex);
+        i = endIndex - 1; // -1 because loop does i++
       }
     }
   }
@@ -156,9 +193,22 @@ function escapeCurrencyDollarSigns(text: string): string {
   let lastIndex = 0;
   const currencyMatches = Array.from(text.matchAll(CURRENCY_REGEX));
 
+  // Track the processed content of the current line incrementally
+  // to avoid O(n²) from joining all parts on every match.
+  let currentLineProcessed = '';
+
   for (let i = 0; i < currencyMatches.length; i++) {
     const match = currencyMatches[i];
-    parts.push(text.substring(lastIndex, match.index));
+    const segment = text.substring(lastIndex, match.index);
+    parts.push(segment);
+
+    // Update currentLineProcessed: keep only content after the last newline.
+    const newlineIdx = Math.max(segment.lastIndexOf('\n'), segment.lastIndexOf('\r'));
+    if (newlineIdx !== -1) {
+      currentLineProcessed = segment.substring(newlineIdx + 1);
+    } else {
+      currentLineProcessed += segment;
+    }
 
     let needEscape = true;
     let restBeforeNextMatchOrEnd = '';
@@ -172,15 +222,18 @@ function escapeCurrencyDollarSigns(text: string): string {
     }
     const firstLineBeforeNextMatch = restBeforeNextMatchOrEnd.split(/\r\n|\r|\n/g)[0];
     if (Array.from(firstLineBeforeNextMatch.matchAll(NO_ESCAPED_DOLLAR_REGEX)).length % 2 !== 0) {
-      const previousNewContent = parts.join('');
-      const previousLastLineContent = previousNewContent.split(/\r\n|\r|\n/g).pop();
-      const wholeLineBeforeNextMatchWithoutCurrentDollar = previousLastLineContent + firstLineBeforeNextMatch;
+      const wholeLineBeforeNextMatchWithoutCurrentDollar = currentLineProcessed + firstLineBeforeNextMatch;
       if (Array.from(wholeLineBeforeNextMatchWithoutCurrentDollar.matchAll(NO_ESCAPED_DOLLAR_REGEX)).length % 2 !== 0) {
         needEscape = false;
       }
     }
 
-    parts.push(needEscape ? '\\$' : '$');
+    const replacement = needEscape ? '\\$' : '$';
+    parts.push(replacement);
+    // Append to currentLineProcessed so subsequent parity checks on the same
+    // line see the correct count of unescaped `$` (e.g. a left-as-`$` opener
+    // that the next match's check must count).
+    currentLineProcessed += replacement;
     lastIndex = match.index + 1;
   }
   parts.push(text.substring(lastIndex));
