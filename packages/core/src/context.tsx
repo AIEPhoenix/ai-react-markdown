@@ -30,19 +30,64 @@ const AIMarkdownMetadataContext = createContext<AIMarkdownMetadata | undefined>(
  * Must be called inside a component rendered as a descendant of `<AIMarkdown>`.
  * Throws if called outside the provider boundary.
  *
- * @typeParam TConfig - Expected configuration shape (defaults to {@link AIMarkdownRenderConfig}).
- * @returns The current render state (does not include metadata — use {@link useAIMarkdownMetadata} for that).
+ * ### `TConfig` is a caller-asserted type, not a derived one
  *
- * @example
+ * The generic parameter is **an assertion the caller makes about the provider
+ * above it** — TypeScript cannot verify that the actual `<AIMarkdown>` in the
+ * tree was configured with a matching `defaultConfig: TConfig`. If you pass a
+ * wider `TConfig` than what the provider actually carries, field access at
+ * compile time will look fine but resolve to `undefined` at runtime.
+ *
+ * The intended pattern is that extension packages (e.g. `@ai-react-markdown/mantine`)
+ * ship their own narrow wrapper hook alongside a matching `defaultConfig`, so the
+ * assertion is made *once* next to the provider configuration and consumers of the
+ * wrapper never touch the raw generic.
+ *
+ * @typeParam TConfig - Caller-asserted configuration shape (defaults to
+ *   {@link AIMarkdownRenderConfig}). Must be aligned with the provider's
+ *   `defaultConfig` — the library does not check this at runtime.
+ * @returns The current render state (does not include metadata — use
+ *   {@link useAIMarkdownMetadata} for that).
+ * @throws If called outside an `<AIMarkdown>` provider tree.
+ *
+ * @example Base usage — no generic, always safe:
  * ```tsx
  * function CustomCodeBlock({ children }: PropsWithChildren) {
  *   const { streaming, config } = useAIMarkdownRenderState();
- *   // ...
+ *   // config: AIMarkdownRenderConfig — guaranteed shape
  * }
  * ```
+ *
+ * @example Wrapper-hook pattern — the intended way to use an extended TConfig:
+ * ```tsx
+ * // In your extension package (pin the assertion in one place):
+ * interface ExtendedConfig extends AIMarkdownRenderConfig {
+ *   themeMode: 'light' | 'dark' | 'auto';
+ * }
+ * export const extendedDefaultConfig: ExtendedConfig = {
+ *   ...defaultAIMarkdownRenderConfig,
+ *   themeMode: 'auto',
+ * };
+ * export const useExtendedRenderState = () =>
+ *   useAIMarkdownRenderState<ExtendedConfig>();
+ *
+ * // Provider is always configured with the matching defaultConfig:
+ * <AIMarkdown defaultConfig={extendedDefaultConfig} ...>{children}</AIMarkdown>
+ *
+ * // Consumers use the narrow wrapper — no raw generic anywhere:
+ * const { config } = useExtendedRenderState();
+ * config.themeMode; // correctly typed and present at runtime
+ * ```
+ *
+ * @see `@ai-react-markdown/mantine` — real-world reference. Its
+ *   `MantineAIMarkdownRenderConfig`, `defaultMantineAIMarkdownRenderConfig`,
+ *   `<MantineAIMarkdown>` (which passes `defaultConfig` by default), and
+ *   `useMantineAIMarkdownRenderState` implement this exact pattern.
  */
 export function useAIMarkdownRenderState<TConfig extends AIMarkdownRenderConfig = AIMarkdownRenderConfig>() {
-  const context = useContext(AIMarkdownRenderStateContext) as AIMarkdownRenderState<TConfig>;
+  // `as` is intentional: TConfig is a caller assertion (see JSDoc). The
+  // alignment with the provider's `defaultConfig` is the caller's contract.
+  const context = useContext(AIMarkdownRenderStateContext) as AIMarkdownRenderState<TConfig> | null;
 
   if (!context) {
     throw new Error('useAIMarkdownRenderState must be used within an <AIMarkdown /> component.');
@@ -58,10 +103,27 @@ export function useAIMarkdownRenderState<TConfig extends AIMarkdownRenderConfig 
  * do not cause re-renders in components that only consume render state
  * (e.g. {@link MarkdownContent}).
  *
- * @typeParam TMetadata - Expected metadata shape (defaults to {@link AIMarkdownMetadata}).
+ * ### `TMetadata` is a caller-asserted type
+ *
+ * Same contract as {@link useAIMarkdownRenderState} — the generic is an
+ * assertion about the `metadata` prop passed to the provider above, not a
+ * value TypeScript can derive.  Unlike render-state config, metadata has no
+ * runtime fallback: if the provider received no `metadata`, the hook returns
+ * `undefined` regardless of the asserted type. Prefer wrapping this hook in
+ * a project-local hook that pins `TMetadata` next to the call site that
+ * actually provides the metadata.
+ *
+ * @typeParam TMetadata - Caller-asserted metadata shape (defaults to
+ *   {@link AIMarkdownMetadata}). Caller is responsible for ensuring the
+ *   provider's `metadata` prop matches this shape.
  * @returns The current metadata, or `undefined` if none was provided.
+ *
+ * @see `@ai-react-markdown/mantine` — `useMantineAIMarkdownMetadata` applies
+ *   the wrapper pattern to this hook, pinning `MantineAIMarkdownMetadata` in
+ *   a single location.
  */
 export function useAIMarkdownMetadata<TMetadata extends AIMarkdownMetadata = AIMarkdownMetadata>() {
+  // `as` is intentional: TMetadata is a caller assertion (see JSDoc).
   return useContext(AIMarkdownMetadataContext) as TMetadata | undefined;
 }
 
