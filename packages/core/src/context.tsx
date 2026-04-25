@@ -9,7 +9,6 @@
  */
 
 import { PropsWithChildren, createContext, useContext, useMemo } from 'react';
-import cloneDeep from 'lodash-es/cloneDeep';
 import mergeWith from 'lodash-es/mergeWith';
 import {
   AIMarkdownRenderConfig,
@@ -135,10 +134,11 @@ const AIMarkdownRenderStateProvider = <RCT extends AIMarkdownRenderConfig = AIMa
   config,
   children,
 }: AIMarkdownRenderStateProviderProps<RCT>) => {
-  // Deep-merge user config with defaults; clone first to avoid mutating the frozen default.
+  // Deep-merge user config with defaults into a fresh `{}` so the frozen
+  // default is never mutated — avoids the extra cloneDeep pass.
   const baseConfig = defaultConfig ?? defaultAIMarkdownRenderConfig;
   const mergedConfig = useMemo(
-    () => (config ? mergeWith(cloneDeep(baseConfig), config, configMergeCustomizer) : baseConfig),
+    () => (config ? mergeWith({}, baseConfig, config, configMergeCustomizer) as RCT : baseConfig),
     [baseConfig, config]
   );
 
