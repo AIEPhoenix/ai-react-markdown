@@ -136,6 +136,11 @@ export function splitByProtectedRegions(content: string): Segment[] {
           const closeMatch = closeRegex.exec(content);
           if (closeMatch) {
             endIndex = closeMatch.index + closeMatch[0].length;
+          } else {
+            // Streaming: closing tag hasn't arrived yet. Protect everything
+            // to the end of input so inner `$` etc. aren't mutated before
+            // the closer shows up in a later chunk.
+            endIndex = content.length;
           }
         }
         pushProtected(i, endIndex);
@@ -298,17 +303,38 @@ function escapeLatexPipes(text: string): string {
  * @param text  Input string to scan.
  * @param mode  `'both'` tracks `$$` and `$`; `'double-only'` tracks only `$$`.
  */
+/**
+ * Whether the character at position `pos` is escaped by the immediately
+ * preceding backslash run. An even-count run (including zero) means the
+ * `$` is unescaped; an odd count means it is escaped. Example: `\\$` has
+ * two preceding backslashes — the `\` escapes the `\`, leaving `$` real.
+ */
+function isEscapedByBackslashRun(text: string, pos: number): boolean {
+  let count = 0;
+  let j = pos - 1;
+  while (j >= 0 && text[j] === '\\') {
+    count++;
+    j--;
+  }
+  return count % 2 === 1;
+}
+
 function findUnclosedDelimiterStart(text: string, mode: 'both' | 'double-only'): number {
   let unclosedStart = -1;
   let i = 0;
   while (i < text.length) {
-    if (text[i] === '$' && i + 1 < text.length && text[i + 1] === '$') {
+    if (
+      text[i] === '$' &&
+      i + 1 < text.length &&
+      text[i + 1] === '$' &&
+      !isEscapedByBackslashRun(text, i)
+    ) {
       unclosedStart = unclosedStart === -1 ? i : -1;
       i += 2;
     } else if (
       mode === 'both' &&
       text[i] === '$' &&
-      (i === 0 || text[i - 1] !== '\\') &&
+      !isEscapedByBackslashRun(text, i) &&
       (i + 1 >= text.length || text[i + 1] !== '$')
     ) {
       unclosedStart = unclosedStart === -1 ? i : -1;

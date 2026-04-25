@@ -77,7 +77,14 @@
     "remark-supersub": "^1.0.0"
   },
   "devDependencies": {
+    "@types/hast": "^3.0.4",
     "@types/lodash-es": "^4.17.12",
-    "lodash-es": "^4.17.23"
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "hast-util-sanitize": "^5.0.2",
+    "hastscript": "^9.0.1",
+    "lodash-es": "^4.17.23",
+    "react": "^19",
+    "react-dom": "^19"
   }
 }
