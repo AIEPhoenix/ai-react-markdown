@@ -335,15 +335,21 @@ y$ which spans lines`;
     expect(preprocessLaTeX(content)).toBe(expected);
   });
 
-  test('treats an unclosed backtick code fence as protected code until the end', () => {
+  test('does not protect mid-line ``` as a fence (CommonMark line-start rule)', () => {
+    // Mid-line ``` is never a fence opener — at best it is an inline-code-span
+    // opener of N=3 backticks. Without a matching closing run of exactly 3
+    // backticks, the run stays literal and surrounding `$` / `$100` are
+    // normalized like any other prose.
     const content = 'before ```\n$100\nno closing fence $x^2$';
-    const expected = 'before ```\n$100\nno closing fence $x^2$';
+    const expected = 'before ```\n\\$100\nno closing fence $$x^2$$';
     expect(preprocessLaTeX(content)).toBe(expected);
   });
 
-  test('treats an unclosed tilde code fence as protected code until the end', () => {
+  test('does not protect mid-line ~~~ as a fence (CommonMark line-start rule)', () => {
+    // `~` is never an inline-code-span delimiter either, so mid-line `~~~`
+    // is just literal text and the prose is processed normally.
     const content = 'before ~~~\n$100\nno closing fence $x^2$';
-    const expected = 'before ~~~\n$100\nno closing fence $x^2$';
+    const expected = 'before ~~~\n\\$100\nno closing fence $$x^2$$';
     expect(preprocessLaTeX(content)).toBe(expected);
   });
 
@@ -695,6 +701,91 @@ y$ which spans lines`;
     const expected = '$$a$$ and more\n```\ncode\n```\nafter';
     expect(preprocessLaTeX(content)).toBe(expected);
   });
+
+  // --- Multi-backtick inline code spans (CommonMark delimiter runs) ---
+  //
+  // CommonMark: a code span is opened by a run of N backticks and closed by a
+  // run of *exactly* N backticks. The content between must NOT be rewritten —
+  // it is literal. Runs of a different length inside are literal backticks,
+  // not openers/closers. A run with no matching closer leaves the backticks
+  // as prose (not a code span at all).
+
+  test('protects a `` ``...`` `` code span that embeds a literal backtick', () => {
+    // Valid CommonMark: open with 2 backticks, content is `$x` then close with
+    // 2 backticks. The library must not rewrite the embedded `$x$` to `$$x$$`.
+    const content = 'before `` `$x^2$` `` after $y^2$';
+    const expected = 'before `` `$x^2$` `` after $$y^2$$';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('protects a triple-backtick inline code span mid-line', () => {
+    // Two ``` runs on the same line form an inline code span of N=3. The
+    // `$y$` between them must not be rewritten to `$$y$$`.
+    const content = 'before ``` and $y$ then ``` after $z$';
+    const expected = 'before ``` and $y$ then ``` after $$z$$';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('treats an unmatched mid-line ``` run as literal text', () => {
+    // No matching run of exactly 3 backticks anywhere after — the backticks
+    // stay literal and the prose is processed normally.
+    const content = 'The token ``` should be shown, then $y$';
+    const expected = 'The token ``` should be shown, then $$y$$';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('runs of unequal length do not close multi-backtick code spans', () => {
+    // The opening run has length 2; the first run inside is length 3 and must
+    // NOT close it. The closing match is the run of exactly 2 at the end.
+    const content = 'pre `` a ``` b `` post $x^2$';
+    const expected = 'pre `` a ``` b `` post $$x^2$$';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('inline code spans may span newlines and keep `$` inside literal', () => {
+    // CommonMark allows newlines inside inline code spans; `$100` must not be
+    // escaped to `\$100` because the code span still protects it.
+    const content = 'see ``$100\nnext line`` and $y$';
+    const expected = 'see ``$100\nnext line`` and $$y$$';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  // --- Brace-aware \text{...} underscore escaping ---
+
+  test('escapes underscores inside \\text{} with nested {} groups', () => {
+    // Regression for the old `[^}]*` regex: the nested `{inner}` caused the
+    // body match to stop early, leaving `_x` unescaped.
+    const content = '$\\text{outer {inner}_x}$';
+    const expected = '$$\\text{outer {inner}\\_x}$$';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('escapes underscores at every nesting depth inside \\text{}', () => {
+    const content = '$\\text{a_b {c_d {e_f}}}$';
+    const expected = '$$\\text{a\\_b {c\\_d {e\\_f}}}$$';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('respects \\{ and \\} escapes when scanning \\text{} body', () => {
+    // `\{` / `\}` inside the body must not shift the brace depth, so the real
+    // matching `}` is the final one.
+    const content = '$\\text{a\\{b_c\\}_d}$';
+    const expected = '$$\\text{a\\{b\\_c\\}\\_d}$$';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('leaves an unclosed \\text{ body untouched (streaming)', () => {
+    // No closing brace yet — the preprocessor must not mangle a partial
+    // body before a later streaming chunk completes it.
+    const content = '$\\text{foo_bar and more';
+    expect(preprocessLaTeX(content)).toBe(content);
+  });
+
+  test('handles multiple \\text{} occurrences, some with nested braces', () => {
+    const content = '$\\text{a_1} + \\text{b {c}_2} = \\text{d_3}$';
+    const expected = '$$\\text{a\\_1} + \\text{b {c}\\_2} = \\text{d\\_3}$$';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
 });
 
 describe('preprocessLaTeX idempotence', () => {
@@ -745,6 +836,16 @@ describe('preprocessLaTeX idempotence', () => {
     // --- CJK mixed ---
     '中文 $x^2$ 混合内容',
     '占用：$8.29 \\text{ B} \\times 4 \\text{ bytes} \\times 2 = \\mathbf{66.3 \\text{ GB}}$',
+    // --- Multi-backtick code spans ---
+    'before `` `$x^2$` `` after $y^2$',
+    'pre ``` a $y$ then ``` post $z$',
+    'see ``$100\nnext`` and $y$',
+    // --- Brace-aware \text{} ---
+    '$\\text{outer {inner}_x}$',
+    '$\\text{a_b {c_d {e_f}}}$',
+    '$\\text{a\\{b_c\\}_d}$',
+    // --- Unmatched mid-line backtick runs stay literal ---
+    'The token ``` should be shown, then $y$',
   ])('f(f(x)) === f(x) for: %s', (input) => {
     const once = preprocessLaTeX(input);
     const twice = preprocessLaTeX(once);
@@ -872,17 +973,19 @@ describe('splitByProtectedRegions', () => {
     ]);
   });
 
-  test('treats unclosed backtick fence as protected until end', () => {
+  test('does not treat mid-line ``` as a fence opener (CommonMark)', () => {
+    // `before \`\`\`` is mid-line; it is not a fence opener. It is only an
+    // inline-code-span opener of N=3, but without a matching closing run of
+    // exactly 3 backticks the whole sequence stays literal.
     expect(splitByProtectedRegions('before ```\ncode $100')).toEqual([
-      { text: 'before ', isCode: false },
-      { text: '```\ncode $100', isCode: true },
+      { text: 'before ```\ncode $100', isCode: false },
     ]);
   });
 
-  test('treats unclosed tilde fence as protected until end', () => {
+  test('does not treat mid-line ~~~ as a fence opener (CommonMark)', () => {
+    // `~` is never an inline-code-span delimiter; mid-line `~~~` is plain text.
     expect(splitByProtectedRegions('before ~~~\ncode $100')).toEqual([
-      { text: 'before ', isCode: false },
-      { text: '~~~\ncode $100', isCode: true },
+      { text: 'before ~~~\ncode $100', isCode: false },
     ]);
   });
 
@@ -892,11 +995,14 @@ describe('splitByProtectedRegions', () => {
     ]);
   });
 
-  test('multiline fence cancels pending inline backtick', () => {
+  test('inline code span of length N swallows intervening ``` runs', () => {
+    // The single backtick at pos 5 opens an inline code span of length 1. The
+    // two mid-line ``` runs are of length 3 and therefore cannot close it;
+    // the span keeps scanning until the matching single backtick before ` done`.
     expect(splitByProtectedRegions('text `start ```\ncode\n``` end` done')).toEqual([
-      { text: 'text `start ', isCode: false },
-      { text: '```\ncode\n```', isCode: true },
-      { text: ' end` done', isCode: false },
+      { text: 'text ', isCode: false },
+      { text: '`start ```\ncode\n``` end`', isCode: true },
+      { text: ' done', isCode: false },
     ]);
   });
 
@@ -1003,6 +1109,59 @@ describe('splitByProtectedRegions', () => {
     expect(splitByProtectedRegions('<math/>$a$')).toEqual([
       { text: '<math/>', isCode: true },
       { text: '$a$', isCode: false },
+    ]);
+  });
+
+  // --- CommonMark delimiter-run correctness ---
+
+  test('protects `` ``...`` `` multi-backtick code span containing literal backticks', () => {
+    expect(splitByProtectedRegions('before `` `x` `` after')).toEqual([
+      { text: 'before ', isCode: false },
+      { text: '`` `x` ``', isCode: true },
+      { text: ' after', isCode: false },
+    ]);
+  });
+
+  test('protects an inline code span of length 3 delimited by mid-line ``` runs', () => {
+    expect(splitByProtectedRegions('pre ``` a $x$ b ``` post')).toEqual([
+      { text: 'pre ', isCode: false },
+      { text: '``` a $x$ b ```', isCode: true },
+      { text: ' post', isCode: false },
+    ]);
+  });
+
+  test('skips backtick runs of the wrong length when matching a code-span closer', () => {
+    // Opening run of 2; the mid run of 3 is NOT a valid closer, so the span
+    // continues until the matching run of exactly 2.
+    expect(splitByProtectedRegions('pre `` x ``` y `` post')).toEqual([
+      { text: 'pre ', isCode: false },
+      { text: '`` x ``` y ``', isCode: true },
+      { text: ' post', isCode: false },
+    ]);
+  });
+
+  test('treats an unmatched mid-line ``` run as literal (no code-span close)', () => {
+    expect(splitByProtectedRegions('a ``` b then $x$')).toEqual([
+      { text: 'a ``` b then $x$', isCode: false },
+    ]);
+  });
+
+  test('requires fence closer to be at line start (≤3 space indent)', () => {
+    // Opening fence is at line start. A run of 3 backticks mid-line inside the
+    // block (`foo \`\`\` bar`) must NOT close the fence — only the run on its
+    // own line does.
+    expect(splitByProtectedRegions('```\nfoo ``` bar\n```\nafter')).toEqual([
+      { text: '```\nfoo ``` bar\n```', isCode: true },
+      { text: '\nafter', isCode: false },
+    ]);
+  });
+
+  test('allows up to 3 spaces of indentation before a fence opener', () => {
+    // CommonMark: 0-3 space indent is allowed. 4-space indent disqualifies.
+    expect(splitByProtectedRegions('text\n   ```\ncode\n   ```\nafter')).toEqual([
+      { text: 'text\n   ', isCode: false },
+      { text: '```\ncode\n   ```', isCode: true },
+      { text: '\nafter', isCode: false },
     ]);
   });
 });
