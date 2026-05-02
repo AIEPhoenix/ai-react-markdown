@@ -82,7 +82,7 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
       try {
         mermaid.initialize({
           startOnLoad: false,
-          securityLevel: 'loose',
+          securityLevel: 'strict',
           theme: isDark ? 'dark' : 'base',
           darkMode: isDark,
         });
