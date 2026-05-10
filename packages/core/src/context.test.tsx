@@ -71,7 +71,7 @@ describe('AIMarkdownRenderStateProvider config merge', () => {
         colorScheme="light"
         defaultConfig={consumerDefault}
         config={{
-          extraSyntaxSupported: [AIMarkdownRenderExtraSyntax.SUBSCRIPT],
+          extraSyntaxSupported: [AIMarkdownRenderExtraSyntax.DEFINITION_LIST],
           displayOptimizeAbilities: [AIMarkdownRenderDisplayOptimizeAbility.PANGU],
         }}
       >
@@ -109,7 +109,7 @@ describe('AIMarkdownRenderStateProvider config merge', () => {
         <ConfigProbe />
       </AIMarkdownRenderStateProvider>
     );
-    expect(html).toContain('HIGHLIGHT,DEFINITION_LIST,SUBSCRIPT');
+    expect(html).toContain('HIGHLIGHT,DEFINITION_LIST');
     expect(html).toContain('REMOVE_COMMENTS,SMARTYPANTS,PANGU');
   });
 });

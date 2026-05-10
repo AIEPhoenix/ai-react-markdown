@@ -45,7 +45,6 @@ import type { AIMarkdownCustomComponents } from '../../src/index';
  * HTML tags that the AIMarkdown rendering pipeline can produce. Covers:
  * - default mdast-util-to-hast output (headings, lists, tables, etc.)
  * - remark-mark-highlight (`mark`)
- * - remark-supersub (`sup`, `sub`)
  * - remark-definition-list (`dl`/`dt`/`dd`)
  * - rehype-raw passthrough of sanitized raw HTML
  * - synthetic footnote section

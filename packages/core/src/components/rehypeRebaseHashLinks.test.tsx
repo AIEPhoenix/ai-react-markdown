@@ -11,8 +11,13 @@ import AIMarkdown from '../index';
 import rehypeRebaseHashLinks from './rehypeRebaseHashLinks';
 import type { Element, Root } from 'hast';
 
-function render(md: string) {
-  return renderToStaticMarkup(<AIMarkdown content={md} />);
+// Pin a deterministic documentId across the integration tests so we can
+// assert on stable id/href strings. The auto-generated `useId()` value is
+// covered separately by the multi-document test below.
+const TEST_DOCUMENT = 'tst';
+
+function render(md: string, documentId: string = TEST_DOCUMENT) {
+  return renderToStaticMarkup(<AIMarkdown content={md} documentId={documentId} />);
 }
 
 function extractIdsAndHrefs(html: string) {
@@ -27,30 +32,62 @@ describe('rehypeRebaseHashLinks (integration with full AIMarkdown pipeline)', ()
     const html = render('See[^x].\n\n[^x]: hello world');
     const { ids, hrefs } = extractIdsAndHrefs(html);
 
+    // No prefix segment should ever appear twice (double-prefix bug).
+    expect(html).not.toMatch(/tst-user-content-tst-user-content-/);
     expect(html).not.toMatch(/user-content-user-content-/);
     const idSet = new Set(ids);
     for (const href of hrefs) {
       expect(idSet.has(href.slice(1))).toBe(true);
     }
+    // Every id/href that survives sanitize must carry the document prefix.
+    for (const id of ids) {
+      expect(id.startsWith(`${TEST_DOCUMENT}-user-content-`)).toBe(true);
+    }
   });
 
   test('raw HTML <h2 id="foo"> + markdown link [link](#foo) navigate', () => {
     const html = render('<h2 id="foo">Hello</h2>\n\n[goto](#foo)');
-    expect(html).toContain('id="user-content-foo"');
-    expect(html).toContain('href="#user-content-foo"');
+    expect(html).toContain(`id="${TEST_DOCUMENT}-user-content-foo"`);
+    expect(html).toContain(`href="#${TEST_DOCUMENT}-user-content-foo"`);
     expect(html).not.toMatch(/user-content-user-content-/);
   });
 
   test('clobber-vector ids like id="window" still get prefixed for safety', () => {
     const html = render('<div id="window">x</div>\n\n[link](#window)');
-    expect(html).toContain('id="user-content-window"');
-    expect(html).toContain('href="#user-content-window"');
+    expect(html).toContain(`id="${TEST_DOCUMENT}-user-content-window"`);
+    expect(html).toContain(`href="#${TEST_DOCUMENT}-user-content-window"`);
   });
 
   test('external URL hashes are not rebased', () => {
     const html = render('[ext](https://example.com#section)');
     expect(html).toContain('href="https://example.com#section"');
     expect(html).not.toContain('user-content-');
+  });
+
+  test('two documents with different documentIds do not share id prefixes', () => {
+    const htmlA = render('See[^x].\n\n[^x]: a', 'doc-a');
+    const htmlB = render('See[^x].\n\n[^x]: b', 'doc-b');
+
+    expect(htmlA).toContain('doc-a-user-content-');
+    expect(htmlA).not.toContain('doc-b-user-content-');
+    expect(htmlB).toContain('doc-b-user-content-');
+    expect(htmlB).not.toContain('doc-a-user-content-');
+  });
+
+  test('auto-generated documentId becomes URI-encoded in the prefix', () => {
+    // Render without an explicit documentId; useId() output flows through
+    // `encodeURIComponent` at the prefix construction site, so any reserved
+    // character (e.g. `:` if React ever reverts to `:r0:` style) shows up
+    // percent-encoded inside the id attribute — never raw, never empty.
+    const html = renderToStaticMarkup(<AIMarkdown content="<h2 id='foo'>x</h2>" />);
+    const { ids } = extractIdsAndHrefs(html);
+    expect(ids.length).toBeGreaterThan(0);
+    for (const id of ids) {
+      // The prefix segment must be non-empty (encodeURIComponent of any
+      // non-empty string yields a non-empty result) and the suffix must be
+      // the original clobber form derived from the source `id="foo"`.
+      expect(id).toMatch(/^[A-Za-z0-9%_-]+-user-content-foo$/);
+    }
   });
 });
 

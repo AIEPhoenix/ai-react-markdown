@@ -28,7 +28,6 @@ import remarkCjkFriendlyGfmStrikethrough from 'remark-cjk-friendly-gfm-strikethr
 import remarkMath from 'remark-math';
 import { remarkMark as remarkMarkHighlight } from 'remark-mark-highlight';
 import { remarkDefinitionList, defListHastHandlers } from 'remark-definition-list';
-import remarkSupersub from 'remark-supersub';
 import remarkRemoveComments from 'remark-remove-comments';
 import remarkSmartypants from 'remark-smartypants';
 import remarkPangu from 'remark-pangu';
@@ -52,13 +51,21 @@ interface PluginConfig {
 const ALL_EXTRAS: AIMarkdownRenderExtraSyntax[] = [
   AIMarkdownRenderExtraSyntax.HIGHLIGHT,
   AIMarkdownRenderExtraSyntax.DEFINITION_LIST,
-  AIMarkdownRenderExtraSyntax.SUBSCRIPT,
 ];
 const ALL_DISPLAY: AIMarkdownRenderDisplayOptimizeAbility[] = [
   AIMarkdownRenderDisplayOptimizeAbility.REMOVE_COMMENTS,
   AIMarkdownRenderDisplayOptimizeAbility.SMARTYPANTS,
   AIMarkdownRenderDisplayOptimizeAbility.PANGU,
 ];
+
+// Deterministic document id used by both sides of the byte-equivalence test
+// so the per-document clobber prefix matches and the two pipelines stay
+// byte-identical. The legacy path mirrors the production prefix-construction
+// shape (`encodeURIComponent(documentId) + '-user-content-'`) so this test
+// catches any divergence between the two — even when the chosen id contains
+// no reserved characters and the encode is a no-op.
+const TEST_DOCUMENT_ID = 'be';
+const TEST_CLOBBER_PREFIX = `${encodeURIComponent(TEST_DOCUMENT_ID)}-user-content-`;
 
 function legacyPlugins(config: PluginConfig) {
   // Mirrors MarkdownContent.tsx's plugin assembly order EXACTLY so any
@@ -69,8 +76,6 @@ function legacyPlugins(config: PluginConfig) {
         return remarkMarkHighlight;
       case AIMarkdownRenderExtraSyntax.DEFINITION_LIST:
         return remarkDefinitionList;
-      case AIMarkdownRenderExtraSyntax.SUBSCRIPT:
-        return remarkSupersub;
     }
   });
   const displayPlugins = config.display.map((ability) => {
@@ -97,8 +102,8 @@ function legacyPlugins(config: PluginConfig) {
     ] as never,
     rehypePlugins: [
       [rehypeRaw, { passThrough: [] }],
-      [rehypeSanitize, sanitizeSchema],
-      rehypeRebaseHashLinks,
+      [rehypeSanitize, { ...sanitizeSchema, clobberPrefix: TEST_CLOBBER_PREFIX }],
+      [rehypeRebaseHashLinks, { prefix: TEST_CLOBBER_PREFIX }],
       rehypeKatex,
       rehypeUnwrapImages,
     ] as never,
@@ -128,7 +133,14 @@ function renderNew(md: string, config: PluginConfig, blockMemoEnabled = true): s
     blockMemoEnabled,
   };
   return renderToStaticMarkup(
-    <AIMarkdownRenderStateProvider streaming={false} fontSize="14px" variant="default" colorScheme="light" config={cfg}>
+    <AIMarkdownRenderStateProvider
+      streaming={false}
+      fontSize="14px"
+      variant="default"
+      colorScheme="light"
+      documentId={TEST_DOCUMENT_ID}
+      config={cfg}
+    >
       <AIMarkdownContent content={md} />
     </AIMarkdownRenderStateProvider>
   );
@@ -164,11 +176,6 @@ const extraSyntaxCases: Array<[string, PluginConfig, string]> = [
     'definition list — DEFINITION_LIST plugin',
     { extras: [AIMarkdownRenderExtraSyntax.DEFINITION_LIST], display: [] },
     'Term\n:   Definition body one.\n\nOther\n:   Another definition.',
-  ],
-  [
-    'super/subscript (H~2~O, e^iπ^) — SUBSCRIPT plugin',
-    { extras: [AIMarkdownRenderExtraSyntax.SUBSCRIPT], display: [] },
-    'Water is H~2~O and e^iπ^ = -1.',
   ],
 ];
 

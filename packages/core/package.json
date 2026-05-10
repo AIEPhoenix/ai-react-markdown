@@ -78,7 +78,6 @@
     "remark-remove-comments": "^1.1.1",
     "remark-smartypants": "^3.0.2",
     "remark-squeeze-paragraphs": "^6.0.0",
-    "remark-supersub": "^1.0.0",
     "unified": "^11.0.5",
     "unist-util-visit": "^5.1.0",
     "vfile": "^6.0.3"

@@ -58,7 +58,6 @@ import remarkEmoji from 'remark-emoji';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import { remarkDefinitionList, defListHastHandlers } from 'remark-definition-list';
-import remarkSupersub from 'remark-supersub';
 import { remarkMark as remarkMarkHighlight } from 'remark-mark-highlight';
 import remarkSqueezeParagraphs from 'remark-squeeze-paragraphs';
 import remarkSmartypants from 'remark-smartypants';
@@ -83,7 +82,6 @@ const DisplayOptimizeRemarkPluginMap = {
 const ExtraSyntaxRemarkPluginMap = {
   [AIMarkdownRenderExtraSyntax.HIGHLIGHT]: remarkMarkHighlight,
   [AIMarkdownRenderExtraSyntax.DEFINITION_LIST]: remarkDefinitionList,
-  [AIMarkdownRenderExtraSyntax.SUBSCRIPT]: remarkSupersub,
 };
 
 /** Stable empty object to avoid unnecessary re-renders when no custom components are given. */
@@ -257,7 +255,23 @@ LegacyRenderer.displayName = 'LegacyRenderer';
  * renderer or the legacy renderer based on `config.blockMemoEnabled`.
  */
 const AIMarkdownContent = memo(({ content, customComponents }: AIMarkdownContentProps) => {
-  const { config } = useAIMarkdownRenderState();
+  const { config, documentId } = useAIMarkdownRenderState();
+
+  // Per-document clobber prefix. Combines the document id with the standard
+  // `user-content-` prefix so that:
+  //   1. Every clobberable attribute (`id`, hash hrefs) in this document is
+  //      namespaced by `documentId` — two documents on the same page cannot
+  //      cross-link (footnotes, in-doc anchors, etc.).
+  //   2. The `user-content-` segment is preserved for visual continuity with
+  //      GitHub's convention and for the original clobber-protection role.
+  //
+  // `encodeURIComponent` runs at the prefix construction site (not at the
+  // documentId storage site) so the value exposed via context retains its
+  // React-native identity (e.g. `useId()`'s `_r_0_`), while the bytes that
+  // actually land in `id="..."` / `href="#..."` are URI-fragment safe under
+  // every possible React version's id format — including hypothetical future
+  // formats that introduce characters reserved in URIs.
+  const clobberPrefix = `${encodeURIComponent(documentId)}-user-content-`;
 
   // Resolve extra-syntax remark plugins and check if definition list HAST handlers are needed.
   const { extraSyntaxRemarkPlugins, enableDefinitionList } = useMemo(
@@ -311,15 +325,17 @@ const AIMarkdownContent = memo(({ content, customComponents }: AIMarkdownContent
       // Allow raw HTML through so rehype-sanitize can handle it.
       [rehypeRaw, { passThrough: [] }],
       // Sanitize HTML while allowing <mark> (highlight) and KaTeX class names.
-      [rehypeSanitize, sanitizeSchema],
+      // Override `clobberPrefix` with the instance-scoped value so every id
+      // and clobberable attribute is namespaced to this `<AIMarkdown>` instance.
+      [rehypeSanitize, { ...sanitizeSchema, clobberPrefix }],
       // Re-prefix intra-document hash hrefs so they match the ids that
-      // rehype-sanitize just clobbered (paired with `clobberPrefix: ''`
-      // below to keep the prefix layer single and clean).
-      rehypeRebaseHashLinks,
+      // rehype-sanitize just clobbered. Must use the SAME prefix as the schema
+      // above — that's why both read from `clobberPrefix`.
+      [rehypeRebaseHashLinks, { prefix: clobberPrefix }],
       rehypeKatex,
       rehypeUnwrapImages,
     ],
-    []
+    [clobberPrefix]
   );
 
   const remarkRehypeOptions = useMemo<RemarkRehypeOptions>(

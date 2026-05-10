@@ -8,7 +8,7 @@
  * @module context
  */
 
-import { PropsWithChildren, createContext, useContext, useMemo } from 'react';
+import { PropsWithChildren, createContext, useContext, useId, useMemo } from 'react';
 import mergeWith from 'lodash-es/mergeWith';
 import {
   AIMarkdownRenderConfig,
@@ -136,6 +136,19 @@ export interface AIMarkdownRenderStateProviderProps<
   variant: AIMarkdownVariant;
   colorScheme: AIMarkdownColorScheme;
   /**
+   * Logical-document identifier used as the id namespace for clobberable
+   * attributes (id / hash hrefs). Optional — when omitted, the provider
+   * auto-generates one via {@link useId} so the provider stays drop-in
+   * usable for direct consumers (e.g. extension packages that don't go
+   * through `<AIMarkdown>`).
+   *
+   * Pass the SAME value to multiple providers / `<AIMarkdown>` instances
+   * when they render chunks of the same logical document — their id
+   * prefixes will align so cross-chunk anchors and (once the parser sees
+   * the full doc) footnote navigation work.
+   */
+  documentId?: string;
+  /**
    * Base default config to merge against. When omitted, falls back to
    * {@link defaultAIMarkdownRenderConfig}. Sub-packages (e.g. mantine) can
    * pass their own extended defaults here.
@@ -192,6 +205,7 @@ const AIMarkdownRenderStateProvider = <RCT extends AIMarkdownRenderConfig = AIMa
   fontSize,
   variant,
   colorScheme,
+  documentId,
   defaultConfig,
   config,
   children,
@@ -204,6 +218,13 @@ const AIMarkdownRenderStateProvider = <RCT extends AIMarkdownRenderConfig = AIMa
     [baseConfig, config]
   );
 
+  // Fallback id when the caller did not supply one. `useId()` is SSR-safe
+  // and stable per component instance. We expose its raw value; HTML/URI
+  // safety is applied at the use site (see `MarkdownContent.tsx`'s
+  // `encodeURIComponent` wrap around `documentId`).
+  const fallbackId = useId();
+  const resolvedDocumentId = documentId && documentId.length > 0 ? documentId : fallbackId;
+
   // Freeze the state object to enforce immutability downstream.
   const state = useMemo(
     () =>
@@ -212,9 +233,10 @@ const AIMarkdownRenderStateProvider = <RCT extends AIMarkdownRenderConfig = AIMa
         fontSize,
         variant,
         colorScheme,
+        documentId: resolvedDocumentId,
         config: mergedConfig,
       }),
-    [streaming, fontSize, variant, colorScheme, mergedConfig]
+    [streaming, fontSize, variant, colorScheme, resolvedDocumentId, mergedConfig]
   );
 
   return <AIMarkdownRenderStateContext.Provider value={state}>{children}</AIMarkdownRenderStateContext.Provider>;
