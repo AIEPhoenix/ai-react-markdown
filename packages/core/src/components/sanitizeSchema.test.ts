@@ -136,3 +136,59 @@ describe('sanitizeSchema integration', () => {
     expect(after).toBe(snapshot);
   });
 });
+
+describe('sanitizeSchema cross-chunk extension', () => {
+  test('allows <cross-chunk-link> with label/referenceType/documentId', () => {
+    const tree = {
+      type: 'root',
+      children: [
+        {
+          type: 'element',
+          tagName: 'cross-chunk-link',
+          properties: { label: 'X', referenceType: 'full', documentId: 'doc' },
+          children: [{ type: 'text', value: 'click' }],
+        },
+      ],
+    };
+    const out = sanitize(tree as any, sanitizeSchema as any) as any;
+    const node = out.children[0];
+    expect(node.tagName).toBe('cross-chunk-link');
+    expect(node.properties.label).toBe('X');
+  });
+
+  test('allows <cross-chunk-image> + <footnote-sup>', () => {
+    const tree = {
+      type: 'root',
+      children: [
+        { type: 'element', tagName: 'cross-chunk-image', properties: { label: 'X', alt: 'a' }, children: [] },
+        { type: 'element', tagName: 'footnote-sup', properties: { label: 'Y', documentId: 'd' }, children: [] },
+      ],
+    };
+    const out = sanitize(tree as any, sanitizeSchema as any) as any;
+    expect(out.children[0].tagName).toBe('cross-chunk-image');
+    expect(out.children[1].tagName).toBe('footnote-sup');
+  });
+
+  test('preserves numeric localOccurrence on <footnote-sup> through sanitize', () => {
+    // customMdastHandlers emits localOccurrence as a NUMBER (the chunk-local
+    // 1-based occurrence index). FootnoteSupNumber needs it on the props to
+    // compute the document-wide occurrence — if hast-util-sanitize ever
+    // strips numeric attributes, multi-ref disambiguation silently breaks
+    // (the inline sup short-circuits to null when localOccurrence is set
+    // but chunkSym/globalOcc lookup fails).
+    const tree = {
+      type: 'root',
+      children: [
+        {
+          type: 'element',
+          tagName: 'footnote-sup',
+          properties: { label: 'Y', localOccurrence: 2, documentId: 'd' },
+          children: [],
+        },
+      ],
+    };
+    const out = sanitize(tree as any, sanitizeSchema as any) as any;
+    expect(out.children[0].tagName).toBe('footnote-sup');
+    expect(out.children[0].properties.localOccurrence).toBe(2);
+  });
+});

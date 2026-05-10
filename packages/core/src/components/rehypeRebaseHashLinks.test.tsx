@@ -98,8 +98,15 @@ describe('rehypeRebaseHashLinks (unit, plugin in isolation)', () => {
 
   function runPlugin(anchor: Element, prefix?: string) {
     const tree: Root = { type: 'root', children: [anchor] };
-    const transformer = rehypeRebaseHashLinks(prefix ? { prefix } : undefined);
-    transformer(tree, undefined as never);
+    // `rehypeRebaseHashLinks` is typed as a unified `Plugin`, which expects
+    // a Processor `this`. Calling it directly as a free function for unit
+    // testing requires sidestepping that `this`-binding check; cast to a
+    // direct factory shape.
+    const factory = rehypeRebaseHashLinks as unknown as (options?: {
+      prefix?: string;
+    }) => ((tree: Root, file: unknown) => void) | undefined;
+    const transformer = factory(prefix ? { prefix } : undefined);
+    transformer?.(tree, {} as never);
     return anchor.properties?.href;
   }
 

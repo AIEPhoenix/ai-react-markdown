@@ -46,15 +46,21 @@ export function mergeClassNameAllowlist(
   return entries;
 }
 
+const crossChunkTags = ['cross-chunk-link', 'cross-chunk-image', 'footnote-sup'] as const;
+
 /**
  * The full sanitize schema used by the markdown renderer: extends
- * `defaultSchema` to allow `<mark>` and the KaTeX math class names.
+ * `defaultSchema` to allow `<mark>`, the KaTeX math class names, and the
+ * three custom hast tags emitted by cross-chunk coordination handlers.
  */
 export const sanitizeSchema: Schema = {
   ...defaultSchema,
-  tagNames: [...(defaultSchema.tagNames || []), 'mark'],
+  tagNames: [...(defaultSchema.tagNames || []), 'mark', ...crossChunkTags],
   attributes: {
     ...defaultSchema.attributes,
     code: mergeClassNameAllowlist(defaultSchema.attributes?.code, ['math-inline', 'math-display']),
+    'cross-chunk-link': ['label', 'referenceType', 'documentId'],
+    'cross-chunk-image': ['label', 'referenceType', 'documentId', 'alt'],
+    'footnote-sup': ['label', 'localOccurrence', 'documentId'],
   },
 };

@@ -20,6 +20,8 @@ import type { Root as MdastRoot, RootContent as MdastContent, Nodes as MdastNode
 import type { ReactNode } from 'react';
 import { visit } from 'unist-util-visit';
 import { renderHastSubtree, type Options } from './markdown';
+import { normalizeId } from './normalizeId';
+import type { Registry } from './documentRegistry';
 
 /**
  * mdast types whose presence in a block makes that block dependent on
@@ -51,7 +53,17 @@ const CTX_TYPES: ReadonlySet<string> = TAINT_TYPES;
  * `renderHastSubtree`). Marked Readonly to discourage callers from mutating
  * the captured options reference between frames.
  */
-export type PostOptions = Readonly<Options>;
+export interface PostOptions extends Readonly<Options> {
+  /** Required for cross-chunk coordination. Provided by AIMarkdownContent
+   *  when wrapped in <AIMarkdownDocuments>; undefined in standalone mode. */
+  registry?: Registry;
+  /** Required when registry is set. Per-chunk Symbol; used by fingerprint
+   *  to encode canonical-vs-this comparison. */
+  thisChunkSymbol?: symbol;
+  /** Required when registry is set. From useAIMarkdownRenderState; entered
+   *  into fingerprint so id/href prefix changes invalidate the cache. */
+  clobberPrefix?: string;
+}
 
 /** Source-level identity of one renderable hast block. */
 export interface BlockInfo {
@@ -70,6 +82,14 @@ export interface BlockInfo {
   startColumn: number;
   /** True if the block contains any TAINT_TYPES node — invalidate on globalCtx change. */
   hasReference: boolean;
+  /** TAINT-block 专属：按节点类型分桶的 label set。Normalized 形态（uppercase）。
+   *  Undefined when hasReference === false. */
+  taintLabels?: {
+    footnoteRefLabels: string[];
+    linkRefLabels: string[];
+    imageRefLabels: string[];
+    footnoteDefLabels: string[];
+  };
 }
 
 /** Cache entry for one rendered block. */
@@ -226,11 +246,55 @@ const FOOTNOTE_SECTION_KEY = '__footnote_section__';
  */
 export function buildBlocks(mdast: MdastRoot, hast: HastRoot, source: string): BuildBlocksResult {
   const mdastByOffset = new Map<number, MdastContent>();
+  // Sorted [start, end, node] table for the range-containment fallback used
+  // when a hast block's offset is INSIDE an mdast node's source range
+  // (`rehype-raw` splitting one mdast `html` node into multiple hast
+  // siblings is the canonical case). Pre-sorted because mdast children come
+  // out of remark-parse in source order; we collect positioned ones in
+  // place, preserving order. Binary search at lookup time replaces the
+  // previous O(N) `findLast` — without it, M hast blocks × N mdast children
+  // degrades to O(N×M) on pathological streams with many splits.
+  type Range = { start: number; end: number; node: MdastContent };
+  const mdastRanges: Range[] = [];
   for (const child of mdast.children) {
     const off = child.position?.start.offset;
+    const endOff = child.position?.end.offset;
     if (off !== undefined) {
       mdastByOffset.set(off, child);
     }
+    if (off !== undefined && endOff !== undefined) {
+      mdastRanges.push({ start: off, end: endOff, node: child });
+    }
+  }
+  if (process.env.NODE_ENV !== 'production') {
+    for (let i = 1; i < mdastRanges.length; i++) {
+      if (mdastRanges[i].start < mdastRanges[i - 1].start) {
+        // Should never trip: mdast.children is source-order. If it does
+        // trip, the binary search below is wrong — surface it loudly so
+        // we sort defensively rather than silently misroute hast blocks.
+        throw new Error(
+          'block-memo: mdast.children not sorted by source offset — ' +
+            'a remark plugin is reordering top-level children.'
+        );
+      }
+    }
+  }
+  function findContainingMdast(offset: number): MdastContent | undefined {
+    // Upper-bound binary search: find first index where range.start > offset.
+    // The candidate is the immediate predecessor (largest start <= offset).
+    let lo = 0;
+    let hi = mdastRanges.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (mdastRanges[mid].start <= offset) lo = mid + 1;
+      else hi = mid;
+    }
+    const idx = lo - 1;
+    if (idx < 0) return undefined;
+    const r = mdastRanges[idx];
+    // Top-level mdast children have non-overlapping source ranges, so the
+    // single largest-start candidate is the unique container (if any).
+    return offset < r.end ? r.node : undefined;
   }
 
   const ctxParts: unknown[] = [];
@@ -280,11 +344,7 @@ export function buildBlocks(mdast: MdastRoot, hast: HastRoot, source: string): B
     let mdastNode = mdastByOffset.get(hastOffset);
 
     if (!mdastNode) {
-      mdastNode = mdast.children.findLast((child) => {
-        const startOff = child.position?.start.offset;
-        const endOff = child.position?.end.offset;
-        return startOff !== undefined && endOff !== undefined && startOff <= hastOffset && hastOffset < endOff;
-      });
+      mdastNode = findContainingMdast(hastOffset);
     }
 
     if (!mdastNode) {
@@ -311,12 +371,21 @@ export function buildBlocks(mdast: MdastRoot, hast: HastRoot, source: string): B
     }
 
     let hasReference = false;
+    const footnoteRefLabels: string[] = [];
+    const linkRefLabels: string[] = [];
+    const imageRefLabels: string[] = [];
+    const footnoteDefLabels: string[] = [];
     visit(mdastNode, (n) => {
-      if (TAINT_TYPES.has(n.type)) {
-        hasReference = true;
-        return false;
-      }
-      return undefined;
+      if (!TAINT_TYPES.has(n.type)) return;
+      hasReference = true;
+      const id = 'identifier' in n ? normalizeId(String(n.identifier)) : null;
+      if (id === null) return;
+      if (n.type === 'footnoteReference') footnoteRefLabels.push(id);
+      else if (n.type === 'linkReference') linkRefLabels.push(id);
+      else if (n.type === 'imageReference') imageRefLabels.push(id);
+      else if (n.type === 'footnoteDefinition') footnoteDefLabels.push(id);
+      // 'definition' nodes don't carry per-block fingerprint significance
+      // (they're metadata, not visible); intentionally not bucketed.
     });
 
     const mdastPos = mdastNode.position;
@@ -331,6 +400,11 @@ export function buildBlocks(mdast: MdastRoot, hast: HastRoot, source: string): B
       startLine: mdastPos.start.line,
       startColumn: mdastPos.start.column,
       hasReference,
+      ...(hasReference
+        ? {
+            taintLabels: { footnoteRefLabels, linkRefLabels, imageRefLabels, footnoteDefLabels },
+          }
+        : {}),
     };
     blocks.push(info);
     blockHasts.push(el);
@@ -343,6 +417,45 @@ export function buildBlocks(mdast: MdastRoot, hast: HastRoot, source: string): B
   }
 
   return { plan, globalCtx, blocks, blockHasts, synthetic };
+}
+
+/**
+ * Compute a per-block cache fingerprint from the registry slice this block
+ * actually depends on (footnote/link/image refs and footnote defs). Two blocks
+ * with the same fingerprint render byte-equal output; if any encoded value
+ * differs, the block must re-render.
+ *
+ * Encoding format (deterministic, stable across versions):
+ *   `<clobberPrefix>|fn:<L>=<globalNumber>|lr:<L>=<url>|<title>|ir:<L>=<url>|fd:<L>=<canonical>/<refCount>`
+ *
+ * @param taintLabels - Per-block label dependency footprint (from BlockInfo.taintLabels).
+ * @param registry    - Shared cross-chunk registry.
+ * @param thisChunkSym- The Symbol of the chunk this rendering belongs to (for canonical-vs-this comparison).
+ * @param clobberPrefix - The documentId-derived id prefix; included so href/id changes invalidate.
+ */
+export function computeBlockFingerprint(
+  taintLabels: NonNullable<BlockInfo['taintLabels']>,
+  registry: Registry,
+  thisChunkSym: symbol,
+  clobberPrefix: string
+): string {
+  const parts: string[] = [clobberPrefix];
+  for (const label of taintLabels.footnoteRefLabels) {
+    parts.push(`fn:${label}=${registry.globalNumber(label) ?? 'null'}`);
+  }
+  for (const label of taintLabels.linkRefLabels) {
+    const def = registry.resolveLinkDef(label);
+    parts.push(`lr:${label}=${def?.url ?? 'null'}|${def?.title ?? ''}`);
+  }
+  for (const label of taintLabels.imageRefLabels) {
+    const def = registry.resolveLinkDef(label);
+    parts.push(`ir:${label}=${def?.url ?? 'null'}|${def?.title ?? ''}`);
+  }
+  for (const label of taintLabels.footnoteDefLabels) {
+    const isCanonical = registry.canonicalFootnoteFor(label) === thisChunkSym ? 1 : 0;
+    parts.push(`fd:${label}=${isCanonical}/${registry.getRefsForLabel(label)}`);
+  }
+  return parts.join('|');
 }
 
 /**
@@ -393,8 +506,30 @@ export function renderBlocksWithCache(
     }
 
     if (item.kind === 'synthetic') {
+      // Cross-chunk coordination: in coordinated mode (registry AND this chunk's
+      // Symbol registered) the per-chunk local `<section data-footnotes>` is
+      // replaced by `<AggregateFootnotesIfLast>` mounted at the end of each
+      // document's last chunk. Skip the local synthetic to avoid duplicate
+      // footers across chunks.
+      //
+      // The thisChunkSymbol guard preserves SSR semantics: during
+      // `renderToStaticMarkup` useEffect doesn't fire, so the chunk hasn't
+      // registered with the registry yet (`thisChunkSymbol` undefined). Falling
+      // back to the local footer keeps each chunk's defs visible in the static
+      // output — which is what `byteEquivalence.test.tsx` exercises and what
+      // users doing SSR-without-hydration expect.
+      if (postOptions.registry && postOptions.thisChunkSymbol) {
+        continue;
+      }
+      // Standalone mode (or SSR pre-registration): cache the local section by
+      // globalCtx and render it.
       const cached = prev.footnoteSection;
-      const node = cached && cached.ctx === globalCtx ? cached.node : renderHastSubtree(item.el, postOptions);
+      let node: ReactNode;
+      if (cached && cached.ctx === globalCtx) {
+        node = cached.node;
+      } else {
+        node = renderHastSubtree(item.el, postOptions);
+      }
       next.footnoteSection = { ctx: globalCtx, node };
       rendered.push({ node, reactKey: item.reactKey });
       continue;
@@ -409,24 +544,72 @@ export function renderBlocksWithCache(
     }
     const occ = bucket.length;
 
-    const blockCtx = block.hasReference ? globalCtx : '';
-    const entry = prev.blocks.get(block.raw)?.[occ];
-    const valid =
-      entry !== undefined &&
-      entry.ctx === blockCtx &&
-      entry.startOffset === block.startOffset &&
-      entry.startLine === block.startLine &&
-      entry.startColumn === block.startColumn;
-    const node = valid ? entry.node : renderHastSubtree(item.el, postOptions);
+    if (block.hasReference) {
+      const useFingerprint =
+        postOptions.registry &&
+        block.taintLabels &&
+        postOptions.thisChunkSymbol &&
+        postOptions.clobberPrefix !== undefined;
+      const blockCtx = useFingerprint
+        ? computeBlockFingerprint(
+            block.taintLabels!,
+            postOptions.registry!,
+            postOptions.thisChunkSymbol!,
+            postOptions.clobberPrefix!
+          )
+        : globalCtx; // fallback: standalone mode pre-v6 behavior
 
-    bucket.push({
-      node,
-      ctx: blockCtx,
-      startOffset: block.startOffset,
-      startLine: block.startLine,
-      startColumn: block.startColumn,
-    });
-    rendered.push({ node, reactKey: item.reactKey });
+      const entry = prev.blocks.get(block.raw)?.[occ];
+      const valid =
+        entry !== undefined &&
+        entry.ctx === blockCtx &&
+        entry.startOffset === block.startOffset &&
+        entry.startLine === block.startLine &&
+        entry.startColumn === block.startColumn;
+
+      let node: ReactNode;
+      if (valid) {
+        node = entry.node; // cache hit: skip everything
+      } else {
+        // Coordinated-mode hast post-transforms used to run here, but the
+        // aggregate footer (AggregateFootnotesIfLast) now reconstructs the
+        // footnote section from registry state, and the synthetic plan item
+        // for `<section data-footnotes>` is skipped earlier in this loop.
+        // Regular blocks never contain a top-level footnote section, so a
+        // post-transform pass would be a no-op anyway.
+        node = renderHastSubtree(item.el, postOptions);
+      }
+
+      bucket.push({
+        node,
+        ctx: blockCtx,
+        startOffset: block.startOffset,
+        startLine: block.startLine,
+        startColumn: block.startColumn,
+      });
+      rendered.push({ node, reactKey: item.reactKey });
+      continue;
+    }
+
+    // Non-TAINT block: existing cache-by-(raw, occurrence, '', position) path
+    {
+      const entry = prev.blocks.get(block.raw)?.[occ];
+      const valid =
+        entry !== undefined &&
+        entry.ctx === '' &&
+        entry.startOffset === block.startOffset &&
+        entry.startLine === block.startLine &&
+        entry.startColumn === block.startColumn;
+      const node = valid ? entry.node : renderHastSubtree(item.el, postOptions);
+      bucket.push({
+        node,
+        ctx: '',
+        startOffset: block.startOffset,
+        startLine: block.startLine,
+        startColumn: block.startColumn,
+      });
+      rendered.push({ node, reactKey: item.reactKey });
+    }
   }
 
   cacheRef.current = next;

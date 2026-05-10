@@ -220,8 +220,7 @@ const AIMarkdownRenderStateProvider = <RCT extends AIMarkdownRenderConfig = AIMa
 
   // Fallback id when the caller did not supply one. `useId()` is SSR-safe
   // and stable per component instance. We expose its raw value; HTML/URI
-  // safety is applied at the use site (see `MarkdownContent.tsx`'s
-  // `encodeURIComponent` wrap around `documentId`).
+  // safety is applied at the `clobberPrefix` derivation below.
   const fallbackId = useId();
   const resolvedDocumentId = documentId && documentId.length > 0 ? documentId : fallbackId;
 
@@ -234,6 +233,13 @@ const AIMarkdownRenderStateProvider = <RCT extends AIMarkdownRenderConfig = AIMa
         variant,
         colorScheme,
         documentId: resolvedDocumentId,
+        // URI-fragment safe per-document prefix derived once here so downstream
+        // consumers (MarkdownContent, cross-chunk placeholder components) read
+        // from one canonical source. `encodeURIComponent` runs at the prefix
+        // construction site, not at the documentId storage site, so consumers
+        // accessing `documentId` directly still see the raw React-native value
+        // (e.g. `useId()`'s `_r_0_`) while id="..."/href="#..." bytes are safe.
+        clobberPrefix: `${encodeURIComponent(resolvedDocumentId)}-user-content-`,
         config: mergedConfig,
       }),
     [streaming, fontSize, variant, colorScheme, resolvedDocumentId, mergedConfig]

@@ -12,12 +12,31 @@
  *   `defaultAIMarkdownRenderConfig` (mark highlight, definition list,
  *   super/subscript, remove-comments, smartypants, pangu) MUST run on the
  *   same content as the legacy bare `<Markdown>` reference.
+ *
+ * Scope of "byte-equivalence" in this suite:
+ *
+ * - **Standalone path** (the `describe('byte-equivalence ...')` blocks
+ *   below): full `expect(renderNew).toBe(renderLegacy)` byte-for-byte
+ *   equality. This is the strong contract.
+ *
+ * - **Cross-chunk path** (`describe('cross-chunk semantic equivalence')`):
+ *   regex-strip and sort. Backref anchors are stripped, all remaining
+ *   tags are dropped, and the resulting token sets are compared via
+ *   set equality. This is **semantic** equivalence only — aggregate
+ *   footer whitespace, attribute ordering, separator characters, and
+ *   in-body markup divergence between the single-doc and chunked
+ *   renderings are NOT enforced here. The chunked output is a
+ *   deliberately weaker guarantee because the aggregate footer is
+ *   synthesised separately from mdast-util-to-hast's footer emission.
+ *   Do not assume the chunked output is byte-stable across releases.
  */
 
 import { describe, test, expect } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import Markdown from './markdown';
 import AIMarkdownContent from './MarkdownContent';
+import AIMarkdown from '../index';
+import { AIMarkdownDocuments } from './AIMarkdownDocuments';
 import AIMarkdownRenderStateProvider from '../context';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
@@ -37,6 +56,7 @@ import rehypeKatex from 'rehype-katex';
 import rehypeUnwrapImages from 'rehype-unwrap-images';
 import { sanitizeSchema } from './sanitizeSchema';
 import rehypeRebaseHashLinks from './rehypeRebaseHashLinks';
+import rehypeFooterAdorn from './rehypeFooterAdorn';
 import {
   AIMarkdownRenderExtraSyntax,
   AIMarkdownRenderDisplayOptimizeAbility,
@@ -103,6 +123,7 @@ function legacyPlugins(config: PluginConfig) {
     rehypePlugins: [
       [rehypeRaw, { passThrough: [] }],
       [rehypeSanitize, { ...sanitizeSchema, clobberPrefix: TEST_CLOBBER_PREFIX }],
+      rehypeFooterAdorn,
       [rehypeRebaseHashLinks, { prefix: TEST_CLOBBER_PREFIX }],
       rehypeKatex,
       rehypeUnwrapImages,
@@ -131,6 +152,7 @@ function renderNew(md: string, config: PluginConfig, blockMemoEnabled = true): s
     extraSyntaxSupported: config.extras,
     displayOptimizeAbilities: config.display,
     blockMemoEnabled,
+    preserveOrphanReferences: true,
   };
   return renderToStaticMarkup(
     <AIMarkdownRenderStateProvider
@@ -263,6 +285,59 @@ describe('byte-equivalence: blockMemoEnabled toggle produces identical output', 
       const enabled = renderNew(md, config, true);
       const disabled = renderNew(md, config, false);
       expect(enabled).toBe(disabled);
+    });
+  }
+});
+
+describe('cross-chunk semantic equivalence', () => {
+  function renderSingle(source: string, documentId: string): string {
+    return renderToStaticMarkup(<AIMarkdown content={source} documentId={documentId} />);
+  }
+  function renderChunked(chunks: string[], documentId: string): string {
+    return renderToStaticMarkup(
+      <AIMarkdownDocuments>
+        {chunks.map((c, i) => (
+          <AIMarkdown key={i} content={c} documentId={documentId} />
+        ))}
+      </AIMarkdownDocuments>
+    );
+  }
+
+  function extractFootnoteItems(html: string): { label: string; text: string }[] {
+    // crude but bounded: match all <li id="..." data-footnote-ref … >...</li>
+    const re = /<li[^>]+id="[^"]*-user-content-fn-([^"]+)"[^>]*>([\s\S]*?)<\/li>/g;
+    const out: { label: string; text: string }[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(html))) {
+      // Strip backref anchors (and their ↩ glyph children) before tag-strip
+      // so single-doc rendering (which keeps backrefs) compares cleanly to
+      // chunked rendering (where Direction A omits backref counts and the
+      // footer never gets to emit them, or transformStripBackrefs removes
+      // them after-the-fact).
+      const withoutBackrefs = m[2].replace(/<a[^>]*data-footnote-backref[^>]*>[\s\S]*?<\/a>/g, '');
+      // strip remaining tags from text content
+      const txt = withoutBackrefs.replace(/<[^>]*>/g, '').trim();
+      out.push({ label: m[1], text: txt });
+    }
+    return out;
+  }
+
+  const corpus: [name: string, full: string, split: string[]][] = [
+    ['fn-simple', 'See [^x].\n\n[^x]: hello', ['See [^x].\n', '\n[^x]: hello']],
+    ['linkref-full', '[click][x]\n\n[x]: https://example.com', ['[click][x]\n', '\n[x]: https://example.com']],
+    ['linkref-shortcut', '[x]\n\n[x]: https://example.com', ['[x]\n', '\n[x]: https://example.com']],
+    ['linkref-collapsed', '[x][]\n\n[x]: https://example.com', ['[x][]\n', '\n[x]: https://example.com']],
+  ];
+
+  for (const [name, full, split] of corpus) {
+    test(`semantic equivalence: ${name}`, () => {
+      const singleHtml = renderSingle(full, name);
+      const chunkedHtml = renderChunked(split, name);
+      const singleItems = extractFootnoteItems(singleHtml);
+      const chunkedItems = extractFootnoteItems(chunkedHtml);
+      // Sort by label for stable comparison; chunked may scatter footers.
+      const norm = (xs: typeof singleItems) => xs.slice().sort((a, b) => a.label.localeCompare(b.label));
+      expect(norm(chunkedItems)).toEqual(norm(singleItems));
     });
   }
 });

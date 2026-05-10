@@ -79,6 +79,18 @@ export interface AIMarkdownRenderConfig {
    * @default true
    */
   readonly blockMemoEnabled: boolean;
+  /**
+   * Default `true`. Controls Direction A: whether `<AIMarkdown>` (standalone
+   * mode) protects orphan `footnoteDefinition` nodes from being silently
+   * dropped by `mdast-util-to-hast` when no corresponding `footnoteReference`
+   * exists. Implemented via a custom `footnoteDefinition` handler that
+   * proactively registers the label in `state.footnoteOrder`.
+   *
+   * When `<AIMarkdown>` is wrapped in `<AIMarkdownDocuments>`, this field
+   * is ignored — the wrapper's `preserveOrphanReferences` prop overrides
+   * unconditionally for all chunks under it.
+   */
+  readonly preserveOrphanReferences: boolean;
 }
 
 /**
@@ -97,6 +109,7 @@ export const defaultAIMarkdownRenderConfig = Object.freeze({
     AIMarkdownRenderDisplayOptimizeAbility.PANGU,
   ]),
   blockMemoEnabled: true,
+  preserveOrphanReferences: true,
 }) satisfies AIMarkdownRenderConfig;
 
 /**
@@ -203,6 +216,14 @@ export interface AIMarkdownRenderState<TConfig extends AIMarkdownRenderConfig = 
    * always win.
    */
   documentId: string;
+  /**
+   * Per-document URI-safe id prefix used by all clobberable attributes
+   * (`id="…"` / `href="#…"`). Derived once by the provider as
+   * `${encodeURIComponent(documentId)}-user-content-` and exposed here so
+   * downstream consumers (placeholder components, cross-chunk anchor logic)
+   * read a single canonical source instead of recomputing locally.
+   */
+  clobberPrefix: string;
   /** Active render configuration. */
   config: TConfig;
 }

@@ -85,6 +85,35 @@ Both packages support streaming content from LLMs:
 
 The `streaming` flag propagates via React context, allowing custom renderers to adapt (e.g. show a cursor or disable copy buttons).
 
+## Cross-chunk coordination
+
+When a single logical markdown document is split across multiple
+`<AIMarkdown>` instances (chunked streaming for chat, etc.), wrap them
+in `<AIMarkdownDocuments>` to coordinate footnotes, link references,
+and image references across chunks sharing a `documentId`:
+
+```tsx
+<AIMarkdownDocuments>
+  {message.chunks.map((c, i) => (
+    <AIMarkdown key={i} content={c} documentId={message.id} />
+  ))}
+</AIMarkdownDocuments>
+```
+
+Without the wrapper, each `<AIMarkdown>` is independent -- current
+behavior. Mantine integration is unaffected; nest `<MantineAIMarkdown>`
+inside the wrapper exactly the same way.
+
+A new `config.preserveOrphanReferences` (default `true`) controls
+whether `<AIMarkdown>` protects `[^x]: orphan` defs from silent drop
+by `mdast-util-to-hast` (the default behavior when no matching
+`footnoteReference` exists). Setting it to `false` reverts to the
+pre-1.4 silent-drop behavior. The same flag is available on the
+wrapper as a prop and overrides each chunk's config unconditionally.
+
+See `docs/superpowers/specs/2026-05-12-cross-chunk-references-design.md`
+for the full design.
+
 ## Documentation
 
 See the README in each package for full API reference:
