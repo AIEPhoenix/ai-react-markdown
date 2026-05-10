@@ -43,7 +43,7 @@ export function buildTransform(ctx: TransformContext): BuildVisitor<Root> {
           const value = element.properties[key];
           const test = (urlAttributes as Record<string, ReadonlyArray<string> | null>)[key];
           if (test === null || test.includes(element.tagName)) {
-            element.properties[key] = ctx.urlTransform(String(value ?? ''), key, element);
+            element.properties[key] = ctx.urlTransform(String(value || ''), key, element);
           }
         }
       }
