@@ -21,6 +21,7 @@ import rehypeRaw from 'rehype-raw';
 import rehypeUnwrapImages from 'rehype-unwrap-images';
 import rehypeSanitize from 'rehype-sanitize';
 import { sanitizeSchema } from './sanitizeSchema';
+import rehypeRebaseHashLinks from './rehypeRebaseHashLinks';
 import remarkBreaks from 'remark-breaks';
 import remarkCjkFriendly from 'remark-cjk-friendly';
 import remarkCjkFriendlyGfmStrikethrough from 'remark-cjk-friendly-gfm-strikethrough';
@@ -125,6 +126,10 @@ const AIMarkdownContent = memo(({ content, customComponents }: AIMarkdownContent
       [rehypeRaw, { passThrough: [] }],
       // Sanitize HTML while allowing <mark> (highlight) and KaTeX class names.
       [rehypeSanitize, sanitizeSchema],
+      // Re-prefix intra-document hash hrefs so they match the ids that
+      // rehype-sanitize just clobbered (paired with `clobberPrefix: ''`
+      // below to keep the prefix layer single and clean).
+      rehypeRebaseHashLinks,
       rehypeKatex,
       rehypeUnwrapImages,
     ],
@@ -134,6 +139,12 @@ const AIMarkdownContent = memo(({ content, customComponents }: AIMarkdownContent
   const remarkRehypeOptions = useMemo<RemarkRehypeOptions>(
     () => ({
       allowDangerousHtml: true,
+      // Suppress mdast-util-to-hast's `user-content-` prefix on footnote
+      // ids/hrefs; rehype-sanitize will apply the same prefix downstream
+      // and `rehypeRebaseHashLinks` mirrors it onto matching hash hrefs.
+      // Without this, ids would end up double-prefixed
+      // (`user-content-user-content-fn-x`).
+      clobberPrefix: '',
       handlers: {
         // Inject definition-list HAST handlers when the extension is active.
         ...(enableDefinitionList ? defListHastHandlers : {}),
