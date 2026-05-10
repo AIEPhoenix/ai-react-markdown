@@ -1,25 +1,35 @@
 /**
- * Synchronous Markdown component. Ported 1:1 from react-markdown v10
- * (`Markdown` named/default export). The async `MarkdownAsync` and
- * hooks-based `MarkdownHooks` variants are not ported — they aren't used
- * anywhere in this library.
+ * Synchronous Markdown component. Ported from react-markdown v10
+ * (`Markdown` named/default export) and refactored to expose the pipeline as
+ * three independently callable stages so callers can interpose between them
+ * (notably the block-memo cache in `MarkdownContent`).
+ *
+ * Public stages:
+ * - {@link parseStage}        — `createProcessor` → `parse` → raw mdast
+ * - {@link transformStage}    — `runSync` → final hast root
+ * - {@link renderHastSubtree} — visit transform + `toJsxRuntime` on a hast tree or block
+ *
+ * The legacy synchronous {@link Markdown} export is preserved and now delegates
+ * to those three stages so behavior matches react-markdown 1:1.
  *
  * @module components/markdown/Markdown
  */
 
 import { unreachable } from 'devlop';
 import { toJsxRuntime } from 'hast-util-to-jsx-runtime';
-import type { Root } from 'hast';
-import { Fragment, type ReactElement } from 'react';
+import type { Element, Root as HastRoot, RootContent } from 'hast';
+import type { Root as MdastRoot } from 'mdast';
+import { Fragment, type ReactElement, type ReactNode } from 'react';
 import { jsx, jsxs } from 'react/jsx-runtime';
+import type { Processor } from 'unified';
 import { visit } from 'unist-util-visit';
+import type { VFile } from 'vfile';
 import { createFile, createProcessor } from './processor';
 import { buildTransform } from './transform';
 import type { Deprecation, Options } from './types';
 import { defaultUrlTransform } from './urlTransform';
 
-const changelog =
-  'https://github.com/remarkjs/react-markdown/blob/main/changelog.md';
+const changelog = 'https://github.com/remarkjs/react-markdown/blob/main/changelog.md';
 
 /** Mirrors the deprecation table react-markdown ships — kept verbatim so error
  *  messages and changelog hashes match upstream. */
@@ -59,28 +69,11 @@ const deprecations: ReadonlyArray<Readonly<Deprecation>> = [
 ];
 
 /**
- * Render a markdown string to React elements.
- *
- * Mirrors `react-markdown`'s synchronous `<Markdown>` exactly: same prop
- * shape, same plugin pipeline (remark-parse → remarkPlugins → remark-rehype →
- * rehypePlugins → toJsxRuntime), same deprecation errors. Use this directly
- * via the local barrel; outside callers should keep using `<AIMarkdown>`.
+ * Validate options that have nothing to do with the input markdown — kept
+ * separate so the block-memo wrapper can validate once per render rather than
+ * once per block-render call.
  */
-export function Markdown(options: Readonly<Options>): ReactElement {
-  const processor = createProcessor(options);
-  const file = createFile(options);
-  return post(processor.runSync(processor.parse(file), file), options);
-}
-
-function post(tree: Root, options: Readonly<Options>): ReactElement {
-  const allowedElements = options.allowedElements;
-  const allowElement = options.allowElement;
-  const components = options.components;
-  const disallowedElements = options.disallowedElements;
-  const skipHtml = options.skipHtml;
-  const unwrapDisallowed = options.unwrapDisallowed;
-  const urlTransform = options.urlTransform || defaultUrlTransform;
-
+function validateOptions(options: Readonly<Options>): void {
   for (const deprecation of deprecations) {
     if (Object.hasOwn(options, deprecation.from)) {
       unreachable(
@@ -97,27 +90,74 @@ function post(tree: Root, options: Readonly<Options>): ReactElement {
     }
   }
 
-  if (allowedElements && disallowedElements) {
-    unreachable(
-      'Unexpected combined `allowedElements` and `disallowedElements`, expected one or the other'
-    );
+  if (options.allowedElements && options.disallowedElements) {
+    unreachable('Unexpected combined `allowedElements` and `disallowedElements`, expected one or the other');
   }
+}
+
+/** Bundled processor + parsed mdast + VFile, ready to feed `transformStage`. */
+export interface ParsedMarkdown {
+  processor: Processor<MdastRoot, MdastRoot, HastRoot, undefined, undefined>;
+  file: VFile;
+  mdast: MdastRoot;
+}
+
+/**
+ * Stage 1: validate options, build the unified processor, parse the markdown
+ * source into raw (pre-transform) mdast. The returned `mdast` is mutated in
+ * place by remark plugins during {@link transformStage}, but its top-level
+ * `position` offsets remain valid keys for hast→mdast lookup.
+ */
+export function parseStage(options: Readonly<Options>): ParsedMarkdown {
+  validateOptions(options);
+  const processor = createProcessor(options);
+  const file = createFile(options);
+  const mdast = processor.parse(file);
+  return { processor, file, mdast };
+}
+
+/**
+ * Stage 2: run remark transformers, remark-rehype, and rehype plugins. Returns
+ * the final hast Root. The mdast in {@link ParsedMarkdown} may be mutated
+ * by remark transformers as a side effect of this call.
+ */
+export function transformStage(parsed: ParsedMarkdown): HastRoot {
+  return parsed.processor.runSync(parsed.mdast, parsed.file);
+}
+
+/**
+ * Stage 3: apply the hast visit transform (urlTransform, allow/disallow
+ * filters, raw HTML handling) and render via `hast-util-to-jsx-runtime`.
+ *
+ * Accepts either the full hast Root or a single top-level child (typed as
+ * `RootContent` to match hast's union of element/text/comment/etc.). When
+ * given a single child, the child is wrapped in a synthetic Root so the
+ * splice-based filters (`unwrapDisallowed`) have a parent context to work
+ * against.
+ *
+ * Note: the visit transform mutates the input tree in place. For the legacy
+ * `<Markdown>` flow this is harmless (the tree is freshly produced). For the
+ * block-memo flow, hast is also fresh per render, so callers do not need to
+ * defensively clone.
+ */
+export function renderHastSubtree(tree: HastRoot | RootContent, options: Readonly<Options>): ReactNode {
+  const root: HastRoot = tree.type === 'root' ? tree : { type: 'root', children: [tree] };
 
   visit(
-    tree,
+    root,
     buildTransform({
-      allowedElements,
-      allowElement,
-      disallowedElements,
-      skipHtml,
-      unwrapDisallowed,
-      urlTransform,
+      allowedElements: options.allowedElements,
+      allowElement: options.allowElement,
+      disallowedElements: options.disallowedElements,
+      skipHtml: options.skipHtml,
+      unwrapDisallowed: options.unwrapDisallowed,
+      urlTransform: options.urlTransform || defaultUrlTransform,
     })
   );
 
-  return toJsxRuntime(tree, {
+  return toJsxRuntime(root, {
     Fragment,
-    components,
+    components: options.components,
     ignoreInvalidStyle: true,
     jsx,
     jsxs,
@@ -126,4 +166,22 @@ function post(tree: Root, options: Readonly<Options>): ReactElement {
   });
 }
 
+/**
+ * Render a markdown string to React elements.
+ *
+ * Mirrors `react-markdown`'s synchronous `<Markdown>` exactly: same prop
+ * shape, same plugin pipeline (remark-parse → remarkPlugins → remark-rehype →
+ * rehypePlugins → toJsxRuntime), same deprecation errors. Use this directly
+ * via the local barrel; outside callers should keep using `<AIMarkdown>`.
+ */
+export function Markdown(options: Readonly<Options>): ReactElement {
+  const parsed = parseStage(options);
+  const tree = transformStage(parsed);
+  return renderHastSubtree(tree, options) as ReactElement;
+}
+
 export default Markdown;
+
+// Re-export for typing convenience at call sites that hold onto a single
+// top-level hast block.
+export type { Element as HastElement, HastRoot, RootContent as HastChild };

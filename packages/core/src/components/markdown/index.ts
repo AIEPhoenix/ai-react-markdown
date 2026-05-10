@@ -6,13 +6,7 @@
  * @module components/markdown
  */
 
-export { default, Markdown } from './Markdown';
+export { default, Markdown, parseStage, transformStage, renderHastSubtree } from './Markdown';
+export type { ParsedMarkdown } from './Markdown';
 export { defaultUrlTransform } from './urlTransform';
-export type {
-  AllowElement,
-  Components,
-  Deprecation,
-  ExtraProps,
-  Options,
-  UrlTransform,
-} from './types';
+export type { AllowElement, Components, Deprecation, ExtraProps, Options, UrlTransform } from './types';
