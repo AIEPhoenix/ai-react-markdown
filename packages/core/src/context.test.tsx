@@ -22,6 +22,12 @@ function ConfigProbe() {
   );
 }
 
+describe('defaultAIMarkdownRenderConfig', () => {
+  test('blockMemoEnabled defaults to true', () => {
+    expect(defaultAIMarkdownRenderConfig.blockMemoEnabled).toBe(true);
+  });
+});
+
 describe('AIMarkdownRenderStateProvider config merge', () => {
   test('does not mutate the frozen default config when user config is provided', () => {
     const snapshot = JSON.stringify(defaultAIMarkdownRenderConfig);
@@ -53,6 +59,7 @@ describe('AIMarkdownRenderStateProvider config merge', () => {
     const consumerDefault = {
       extraSyntaxSupported: [AIMarkdownRenderExtraSyntax.HIGHLIGHT],
       displayOptimizeAbilities: [AIMarkdownRenderDisplayOptimizeAbility.REMOVE_COMMENTS],
+      blockMemoEnabled: true,
     };
     const snapshot = JSON.stringify(consumerDefault);
 
@@ -98,12 +105,7 @@ describe('AIMarkdownRenderStateProvider config merge', () => {
 
   test('without a user config, the default config is exposed directly', () => {
     const html = renderToString(
-      <AIMarkdownRenderStateProvider
-        streaming={false}
-        fontSize="14px"
-        variant="default"
-        colorScheme="light"
-      >
+      <AIMarkdownRenderStateProvider streaming={false} fontSize="14px" variant="default" colorScheme="light">
         <ConfigProbe />
       </AIMarkdownRenderStateProvider>
     );

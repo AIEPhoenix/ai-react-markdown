@@ -62,6 +62,25 @@ export interface AIMarkdownRenderConfig {
   readonly extraSyntaxSupported: readonly AIMarkdownRenderExtraSyntax[];
   /** Display optimization abilities to enable. */
   readonly displayOptimizeAbilities: readonly AIMarkdownRenderDisplayOptimizeAbility[];
+  /**
+   * Whether to enable block-level memoization across renders.
+   *
+   * When `true` (default), the renderer splits each rendered document into
+   * per-block units and memoizes the React subtree of each block by its
+   * source identity (`raw + occurrence + ctx + position`). Unchanged blocks
+   * during streaming skip `toJsxRuntime` and React reconcile work, reducing
+   * per-frame cost roughly proportional to the unchanged fraction of the
+   * document. Output is byte-identical to the disabled path.
+   *
+   * When `false`, the renderer falls back to the legacy bare `<Markdown>`
+   * flow — every render runs the full pipeline end-to-end with no
+   * cross-frame reuse. Useful for debugging, for environments where the
+   * extra `useRef`-backed cache is undesirable, or as an escape hatch if a
+   * future custom rehype plugin interacts badly with the plan abstraction.
+   *
+   * @default true
+   */
+  readonly blockMemoEnabled: boolean;
 }
 
 /**
@@ -80,6 +99,7 @@ export const defaultAIMarkdownRenderConfig = Object.freeze({
     AIMarkdownRenderDisplayOptimizeAbility.SMARTYPANTS,
     AIMarkdownRenderDisplayOptimizeAbility.PANGU,
   ]),
+  blockMemoEnabled: true,
 }) satisfies AIMarkdownRenderConfig;
 
 /**
