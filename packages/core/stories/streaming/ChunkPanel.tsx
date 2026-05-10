@@ -1,16 +1,10 @@
 'use client';
 
 import { useEffect, useRef, type CSSProperties } from 'react';
-import type { ChunkSample } from './useStreamProfiler';
+import type { ChunkSample } from './useRenderProfiler';
 import { getStreamingTheme, type ColorScheme } from './theme';
 
-export const ChunkPanel = ({
-  chunks,
-  colorScheme,
-}: {
-  chunks: ChunkSample[];
-  colorScheme: ColorScheme;
-}) => {
+export const ChunkPanel = ({ chunks, colorScheme }: { chunks: ChunkSample[]; colorScheme: ColorScheme }) => {
   const tailRef = useRef<HTMLDivElement>(null);
   const theme = getStreamingTheme(colorScheme);
 
