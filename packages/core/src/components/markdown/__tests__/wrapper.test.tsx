@@ -30,6 +30,9 @@ describe('local Markdown wrapper (core)', () => {
       'Markdown',
       'default',
       'defaultUrlTransform',
+      'parseStage',
+      'renderHastSubtree',
+      'transformStage',
     ]);
   });
 });
@@ -76,21 +79,15 @@ describe('Markdown', () => {
   });
 
   test('should support a block quote', () => {
-    expect(renderToStaticMarkup(<Markdown children="> a" />)).toBe(
-      '<blockquote>\n<p>a</p>\n</blockquote>'
-    );
+    expect(renderToStaticMarkup(<Markdown children="> a" />)).toBe('<blockquote>\n<p>a</p>\n</blockquote>');
   });
 
   test('should support a break', () => {
-    expect(renderToStaticMarkup(<Markdown children={'a\\\nb'} />)).toBe(
-      '<p>a<br/>\nb</p>'
-    );
+    expect(renderToStaticMarkup(<Markdown children={'a\\\nb'} />)).toBe('<p>a<br/>\nb</p>');
   });
 
   test('should support a code (block, flow; indented)', () => {
-    expect(renderToStaticMarkup(<Markdown children="    a" />)).toBe(
-      '<pre><code>a\n</code></pre>'
-    );
+    expect(renderToStaticMarkup(<Markdown children="    a" />)).toBe('<pre><code>a\n</code></pre>');
   });
 
   test('should support a code (block, flow; fenced)', () => {
@@ -100,23 +97,15 @@ describe('Markdown', () => {
   });
 
   test('should support a delete (GFM)', () => {
-    expect(
-      renderToStaticMarkup(<Markdown children="~a~" remarkPlugins={[remarkGfm]} />)
-    ).toBe('<p><del>a</del></p>');
+    expect(renderToStaticMarkup(<Markdown children="~a~" remarkPlugins={[remarkGfm]} />)).toBe('<p><del>a</del></p>');
   });
 
   test('should support an emphasis', () => {
-    expect(renderToStaticMarkup(<Markdown children="*a*" />)).toBe(
-      '<p><em>a</em></p>'
-    );
+    expect(renderToStaticMarkup(<Markdown children="*a*" />)).toBe('<p><em>a</em></p>');
   });
 
   test('should support a footnote (GFM)', () => {
-    expect(
-      renderToStaticMarkup(
-        <Markdown children={'a[^x]\n\n[^x]: y'} remarkPlugins={[remarkGfm]} />
-      )
-    ).toBe(
+    expect(renderToStaticMarkup(<Markdown children={'a[^x]\n\n[^x]: y'} remarkPlugins={[remarkGfm]} />)).toBe(
       '<p>a<sup><a href="#user-content-fn-x" id="user-content-fnref-x" data-footnote-ref="true" aria-describedby="footnote-label">1</a></sup></p>\n<section data-footnotes="true" class="footnotes"><h2 class="sr-only" id="footnote-label">Footnotes</h2>\n<ol>\n<li id="user-content-fn-x">\n<p>y <a href="#user-content-fnref-x" data-footnote-backref="" aria-label="Back to reference 1" class="data-footnote-backref">↩</a></p>\n</li>\n</ol>\n</section>'
     );
   });
@@ -126,17 +115,11 @@ describe('Markdown', () => {
   });
 
   test('should support an html (default)', () => {
-    expect(renderToStaticMarkup(<Markdown children="<i>a</i>" />)).toBe(
-      '<p>&lt;i&gt;a&lt;/i&gt;</p>'
-    );
+    expect(renderToStaticMarkup(<Markdown children="<i>a</i>" />)).toBe('<p>&lt;i&gt;a&lt;/i&gt;</p>');
   });
 
   test('should support an html (w/ `rehype-raw`)', () => {
-    expect(
-      renderToStaticMarkup(
-        <Markdown children="<i>a</i>" rehypePlugins={[rehypeRaw]} />
-      )
-    ).toBe('<p><i>a</i></p>');
+    expect(renderToStaticMarkup(<Markdown children="<i>a</i>" rehypePlugins={[rehypeRaw]} />)).toBe('<p><i>a</i></p>');
   });
 
   test('should support an image', () => {
@@ -159,55 +142,37 @@ describe('Markdown', () => {
   });
 
   test('should support code (text, inline)', () => {
-    expect(renderToStaticMarkup(<Markdown children="`a`" />)).toBe(
-      '<p><code>a</code></p>'
-    );
+    expect(renderToStaticMarkup(<Markdown children="`a`" />)).toBe('<p><code>a</code></p>');
   });
 
   test('should support a link', () => {
-    expect(renderToStaticMarkup(<Markdown children="[a](b)" />)).toBe(
-      '<p><a href="b">a</a></p>'
-    );
+    expect(renderToStaticMarkup(<Markdown children="[a](b)" />)).toBe('<p><a href="b">a</a></p>');
   });
 
   test('should support a link w/ a title', () => {
-    expect(renderToStaticMarkup(<Markdown children="[a](b (c))" />)).toBe(
-      '<p><a href="b" title="c">a</a></p>'
-    );
+    expect(renderToStaticMarkup(<Markdown children="[a](b (c))" />)).toBe('<p><a href="b" title="c">a</a></p>');
   });
 
   test('should support a link reference / definition', () => {
-    expect(renderToStaticMarkup(<Markdown children={'[a]\n\n[a]: b'} />)).toBe(
-      '<p><a href="b">a</a></p>'
-    );
+    expect(renderToStaticMarkup(<Markdown children={'[a]\n\n[a]: b'} />)).toBe('<p><a href="b">a</a></p>');
   });
 
   test('should support prototype poluting identifiers', () => {
     expect(
-      renderToStaticMarkup(
-        <Markdown
-          children={'[][__proto__] [][constructor]\n\n[__proto__]: a\n[constructor]: b'}
-        />
-      )
+      renderToStaticMarkup(<Markdown children={'[][__proto__] [][constructor]\n\n[__proto__]: a\n[constructor]: b'} />)
     ).toBe('<p><a href="a"></a> <a href="b"></a></p>');
   });
 
   test('should support duplicate definitions', () => {
-    expect(
-      renderToStaticMarkup(<Markdown children={'[a][]\n\n[a]: b\n[a]: c'} />)
-    ).toBe('<p><a href="b">a</a></p>');
+    expect(renderToStaticMarkup(<Markdown children={'[a][]\n\n[a]: b\n[a]: c'} />)).toBe('<p><a href="b">a</a></p>');
   });
 
   test('should support a list (unordered) / list item', () => {
-    expect(renderToStaticMarkup(<Markdown children="* a" />)).toBe(
-      '<ul>\n<li>a</li>\n</ul>'
-    );
+    expect(renderToStaticMarkup(<Markdown children="* a" />)).toBe('<ul>\n<li>a</li>\n</ul>');
   });
 
   test('should support a list (ordered) / list item', () => {
-    expect(renderToStaticMarkup(<Markdown children="1. a" />)).toBe(
-      '<ol>\n<li>a</li>\n</ol>'
-    );
+    expect(renderToStaticMarkup(<Markdown children="1. a" />)).toBe('<ol>\n<li>a</li>\n</ol>');
   });
 
   test('should support a paragraph', () => {
@@ -215,17 +180,11 @@ describe('Markdown', () => {
   });
 
   test('should support a strong', () => {
-    expect(renderToStaticMarkup(<Markdown children="**a**" />)).toBe(
-      '<p><strong>a</strong></p>'
-    );
+    expect(renderToStaticMarkup(<Markdown children="**a**" />)).toBe('<p><strong>a</strong></p>');
   });
 
   test('should support a table (GFM)', () => {
-    expect(
-      renderToStaticMarkup(
-        <Markdown children={'| a |\n| - |\n| b |'} remarkPlugins={[remarkGfm]} />
-      )
-    ).toBe(
+    expect(renderToStaticMarkup(<Markdown children={'| a |\n| - |\n| b |'} remarkPlugins={[remarkGfm]} />)).toBe(
       '<table><thead><tr><th>a</th></tr></thead><tbody><tr><td>b</td></tr></tbody></table>'
     );
   });
@@ -233,10 +192,7 @@ describe('Markdown', () => {
   test('should support a table (GFM; w/ align)', () => {
     expect(
       renderToStaticMarkup(
-        <Markdown
-          children={'| a | b | c | d |\n| :- | :-: | -: | - |'}
-          remarkPlugins={[remarkGfm]}
-        />
+        <Markdown children={'| a | b | c | d |\n| :- | :-: | -: | - |'} remarkPlugins={[remarkGfm]} />
       )
     ).toBe(
       '<table><thead><tr><th style="text-align:left">a</th><th style="text-align:center">b</th><th style="text-align:right">c</th><th>d</th></tr></thead></table>'
@@ -248,69 +204,51 @@ describe('Markdown', () => {
   });
 
   test('should support ab absolute path', () => {
-    expect(renderToStaticMarkup(<Markdown children="[](/a)" />)).toBe(
-      '<p><a href="/a"></a></p>'
-    );
+    expect(renderToStaticMarkup(<Markdown children="[](/a)" />)).toBe('<p><a href="/a"></a></p>');
   });
 
   test('should support an absolute URL', () => {
-    expect(renderToStaticMarkup(<Markdown children="[](http://a.com)" />)).toBe(
-      '<p><a href="http://a.com"></a></p>'
-    );
+    expect(renderToStaticMarkup(<Markdown children="[](http://a.com)" />)).toBe('<p><a href="http://a.com"></a></p>');
   });
 
   test('should support a URL w/ uppercase protocol', () => {
-    expect(renderToStaticMarkup(<Markdown children="[](HTTPS://A.COM)" />)).toBe(
-      '<p><a href="HTTPS://A.COM"></a></p>'
-    );
+    expect(renderToStaticMarkup(<Markdown children="[](HTTPS://A.COM)" />)).toBe('<p><a href="HTTPS://A.COM"></a></p>');
   });
 
   test('should make a `javascript:` URL safe', () => {
-    expect(
-      renderToStaticMarkup(<Markdown children="[](javascript:alert(1))" />)
-    ).toBe('<p><a href=""></a></p>');
+    expect(renderToStaticMarkup(<Markdown children="[](javascript:alert(1))" />)).toBe('<p><a href=""></a></p>');
   });
 
   test('should make a `vbscript:` URL safe', () => {
-    expect(
-      renderToStaticMarkup(<Markdown children="[](vbscript:alert(1))" />)
-    ).toBe('<p><a href=""></a></p>');
+    expect(renderToStaticMarkup(<Markdown children="[](vbscript:alert(1))" />)).toBe('<p><a href=""></a></p>');
   });
 
   test('should make a `VBSCRIPT:` URL safe', () => {
-    expect(
-      renderToStaticMarkup(<Markdown children="[](VBSCRIPT:alert(1))" />)
-    ).toBe('<p><a href=""></a></p>');
+    expect(renderToStaticMarkup(<Markdown children="[](VBSCRIPT:alert(1))" />)).toBe('<p><a href=""></a></p>');
   });
 
   test('should make a `file:` URL safe', () => {
-    expect(
-      renderToStaticMarkup(<Markdown children="[](file:///etc/passwd)" />)
-    ).toBe('<p><a href=""></a></p>');
+    expect(renderToStaticMarkup(<Markdown children="[](file:///etc/passwd)" />)).toBe('<p><a href=""></a></p>');
   });
 
   test('should allow an empty URL', () => {
-    expect(renderToStaticMarkup(<Markdown children="[]()" />)).toBe(
-      '<p><a href=""></a></p>'
-    );
+    expect(renderToStaticMarkup(<Markdown children="[]()" />)).toBe('<p><a href=""></a></p>');
   });
 
   test('should support search (`?`) in a URL', () => {
-    expect(
-      renderToStaticMarkup(<Markdown children="[](a?javascript:alert(1))" />)
-    ).toBe('<p><a href="a?javascript:alert(1)"></a></p>');
-  });
-
-  test('should support hash (`&`) in a URL', () => {
-    expect(renderToStaticMarkup(<Markdown children="[](a?b&c=d)" />)).toBe(
-      '<p><a href="a?b&amp;c=d"></a></p>'
+    expect(renderToStaticMarkup(<Markdown children="[](a?javascript:alert(1))" />)).toBe(
+      '<p><a href="a?javascript:alert(1)"></a></p>'
     );
   });
 
+  test('should support hash (`&`) in a URL', () => {
+    expect(renderToStaticMarkup(<Markdown children="[](a?b&c=d)" />)).toBe('<p><a href="a?b&amp;c=d"></a></p>');
+  });
+
   test('should support hash (`#`) in a URL', () => {
-    expect(
-      renderToStaticMarkup(<Markdown children="[](a#javascript:alert(1))" />)
-    ).toBe('<p><a href="a#javascript:alert(1)"></a></p>');
+    expect(renderToStaticMarkup(<Markdown children="[](a#javascript:alert(1))" />)).toBe(
+      '<p><a href="a#javascript:alert(1)"></a></p>'
+    );
   });
 
   test('should support `urlTransform` (`href` on `a`)', () => {
@@ -362,62 +300,43 @@ describe('Markdown', () => {
   });
 
   test('should support `skipHtml`', () => {
-    expect(renderToStaticMarkup(<Markdown children="a<i>b</i>c" skipHtml />)).toBe(
-      '<p>abc</p>'
-    );
+    expect(renderToStaticMarkup(<Markdown children="a<i>b</i>c" skipHtml />)).toBe('<p>abc</p>');
   });
 
   test('should support `allowedElements` (drop unlisted nodes)', () => {
-    expect(
-      renderToStaticMarkup(
-        <Markdown children={'# *a*\n* b'} allowedElements={['h1', 'li', 'ul']} />
-      )
-    ).toBe('<h1></h1>\n<ul>\n<li>b</li>\n</ul>');
+    expect(renderToStaticMarkup(<Markdown children={'# *a*\n* b'} allowedElements={['h1', 'li', 'ul']} />)).toBe(
+      '<h1></h1>\n<ul>\n<li>b</li>\n</ul>'
+    );
   });
 
   test('should support `allowedElements` as a function', () => {
     expect(
-      renderToStaticMarkup(
-        <Markdown
-          children="*a* **b**"
-          allowElement={(element) => element.tagName !== 'em'}
-        />
-      )
+      renderToStaticMarkup(<Markdown children="*a* **b**" allowElement={(element) => element.tagName !== 'em'} />)
     ).toBe('<p> <strong>b</strong></p>');
   });
 
   test('should support `disallowedElements`', () => {
-    expect(
-      renderToStaticMarkup(
-        <Markdown children={'# *a*\n* b'} disallowedElements={['em']} />
-      )
-    ).toBe('<h1></h1>\n<ul>\n<li>b</li>\n</ul>');
+    expect(renderToStaticMarkup(<Markdown children={'# *a*\n* b'} disallowedElements={['em']} />)).toBe(
+      '<h1></h1>\n<ul>\n<li>b</li>\n</ul>'
+    );
   });
 
   test('should fail for both `allowedElements` and `disallowedElements`', () => {
     expect(() => {
-      renderToStaticMarkup(
-        <Markdown children="" allowedElements={['p']} disallowedElements={['a']} />
-      );
-    }).toThrow(
-      /Unexpected combined `allowedElements` and `disallowedElements`, expected one or the other/
-    );
+      renderToStaticMarkup(<Markdown children="" allowedElements={['p']} disallowedElements={['a']} />);
+    }).toThrow(/Unexpected combined `allowedElements` and `disallowedElements`, expected one or the other/);
   });
 
   test('should support `unwrapDisallowed` w/ `allowedElements`', () => {
-    expect(
-      renderToStaticMarkup(
-        <Markdown children="# *a*" unwrapDisallowed allowedElements={['h1']} />
-      )
-    ).toBe('<h1>a</h1>');
+    expect(renderToStaticMarkup(<Markdown children="# *a*" unwrapDisallowed allowedElements={['h1']} />)).toBe(
+      '<h1>a</h1>'
+    );
   });
 
   test('should support `unwrapDisallowed` w/ `disallowedElements`', () => {
-    expect(
-      renderToStaticMarkup(
-        <Markdown children="# *a*" unwrapDisallowed disallowedElements={['em']} />
-      )
-    ).toBe('<h1>a</h1>');
+    expect(renderToStaticMarkup(<Markdown children="# *a*" unwrapDisallowed disallowedElements={['em']} />)).toBe(
+      '<h1>a</h1>'
+    );
   });
 
   test('should support `remarkRehypeOptions`', () => {
@@ -435,9 +354,7 @@ describe('Markdown', () => {
   });
 
   test('should support `components`', () => {
-    expect(
-      renderToStaticMarkup(<Markdown children="# a" components={{ h1: 'h2' }} />)
-    ).toBe('<h2>a</h2>');
+    expect(renderToStaticMarkup(<Markdown children="# a" components={{ h1: 'h2' }} />)).toBe('<h2>a</h2>');
   });
 
   test('should support `components` as functions', () => {
@@ -483,11 +400,9 @@ describe('Markdown', () => {
       return <Tag {...rest} />;
     }
 
-    expect(
-      renderToStaticMarkup(
-        <Markdown children={'# a\n## b'} components={{ h1: heading, h2: heading }} />
-      )
-    ).toBe('<h1>a</h1>\n<h2>b</h2>');
+    expect(renderToStaticMarkup(<Markdown children={'# a\n## b'} components={{ h1: heading, h2: heading }} />)).toBe(
+      '<h1>a</h1>\n<h2>b</h2>'
+    );
 
     expect(calls).toBe(2);
   });
@@ -605,9 +520,7 @@ describe('Markdown', () => {
           remarkPlugins={[remarkGfm]}
         />
       )
-    ).toBe(
-      '<table><thead><tr><th>a</th></tr></thead><tbody><tr><td>b</td></tr></tbody></table>'
-    );
+    ).toBe('<table><thead><tr><th>a</th></tr></thead><tbody><tr><td>b</td></tr></tbody></table>');
 
     expect(calls).toBe(2);
   });
@@ -639,9 +552,7 @@ describe('Markdown', () => {
           remarkPlugins={[remarkGfm]}
         />
       )
-    ).toBe(
-      '<table><thead><tr><th>a</th></tr></thead><tbody><tr><td>b</td></tr></tbody></table>'
-    );
+    ).toBe('<table><thead><tr><th>a</th></tr></thead><tbody><tr><td>b</td></tr></tbody></table>');
 
     expect(tdCalls).toBe(1);
     expect(thCalls).toBe(1);
@@ -687,19 +598,14 @@ describe('Markdown', () => {
   });
 
   test('should support plugins (`remark-gfm`)', () => {
-    expect(
-      renderToStaticMarkup(<Markdown children="a ~b~ c" remarkPlugins={[remarkGfm]} />)
-    ).toBe('<p>a <del>b</del> c</p>');
+    expect(renderToStaticMarkup(<Markdown children="a ~b~ c" remarkPlugins={[remarkGfm]} />)).toBe(
+      '<p>a <del>b</del> c</p>'
+    );
   });
 
   test('should support plugins (`remark-toc`)', () => {
     expect(
-      renderToStaticMarkup(
-        <Markdown
-          children={'# a\n## Contents\n## b\n### c\n## d'}
-          remarkPlugins={[remarkToc]}
-        />
-      )
+      renderToStaticMarkup(<Markdown children={'# a\n## Contents\n## b\n### c\n## d'} remarkPlugins={[remarkToc]} />)
     ).toBe(
       `<h1>a</h1>
 <h2>Contents</h2>
@@ -729,9 +635,9 @@ describe('Markdown', () => {
       };
     }
 
-    expect(
-      renderToStaticMarkup(<Markdown children="c" rehypePlugins={[plugin]} />)
-    ).toBe('<input id="a" aria-describedby="b" required=""/><p>c</p>');
+    expect(renderToStaticMarkup(<Markdown children="c" rehypePlugins={[plugin]} />)).toBe(
+      '<input id="a" aria-describedby="b" required=""/><p>c</p>'
+    );
   });
 
   test('should support data properties', () => {
@@ -746,9 +652,9 @@ describe('Markdown', () => {
       };
     }
 
-    expect(
-      renderToStaticMarkup(<Markdown children="b" rehypePlugins={[plugin]} />)
-    ).toBe('<i data-whatever="a"></i><p>b</p>');
+    expect(renderToStaticMarkup(<Markdown children="b" rehypePlugins={[plugin]} />)).toBe(
+      '<i data-whatever="a"></i><p>b</p>'
+    );
   });
 
   test('should support comma separated properties', () => {
@@ -763,9 +669,9 @@ describe('Markdown', () => {
       };
     }
 
-    expect(
-      renderToStaticMarkup(<Markdown children="c" rehypePlugins={[plugin]} />)
-    ).toBe('<i accept="a, b"></i><p>c</p>');
+    expect(renderToStaticMarkup(<Markdown children="c" rehypePlugins={[plugin]} />)).toBe(
+      '<i accept="a, b"></i><p>c</p>'
+    );
   });
 
   test('should support `style` properties', () => {
@@ -780,9 +686,9 @@ describe('Markdown', () => {
       };
     }
 
-    expect(
-      renderToStaticMarkup(<Markdown children="a" rehypePlugins={[plugin]} />)
-    ).toBe('<i style="color:red;font-weight:bold"></i><p>a</p>');
+    expect(renderToStaticMarkup(<Markdown children="a" rehypePlugins={[plugin]} />)).toBe(
+      '<i style="color:red;font-weight:bold"></i><p>a</p>'
+    );
   });
 
   test('should support `style` properties w/ vendor prefixes', () => {
@@ -797,9 +703,9 @@ describe('Markdown', () => {
       };
     }
 
-    expect(
-      renderToStaticMarkup(<Markdown children="a" rehypePlugins={[plugin]} />)
-    ).toBe('<i style="-ms-b:1;-webkit-c:2"></i><p>a</p>');
+    expect(renderToStaticMarkup(<Markdown children="a" rehypePlugins={[plugin]} />)).toBe(
+      '<i style="-ms-b:1;-webkit-c:2"></i><p>a</p>'
+    );
   });
 
   test('should support broken `style` properties', () => {
@@ -814,9 +720,7 @@ describe('Markdown', () => {
       };
     }
 
-    expect(
-      renderToStaticMarkup(<Markdown children="a" rehypePlugins={[plugin]} />)
-    ).toBe('<i></i><p>a</p>');
+    expect(renderToStaticMarkup(<Markdown children="a" rehypePlugins={[plugin]} />)).toBe('<i></i><p>a</p>');
   });
 
   test('should support SVG elements', () => {
@@ -854,9 +758,7 @@ describe('Markdown', () => {
       };
     }
 
-    expect(
-      renderToStaticMarkup(<Markdown children="a" rehypePlugins={[plugin]} />)
-    ).toBe(
+    expect(renderToStaticMarkup(<Markdown children="a" rehypePlugins={[plugin]} />)).toBe(
       '<svg viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg"><title>SVG `&lt;circle&gt;` element</title><circle cx="120" cy="120" r="100"></circle><path stroke-miterlimit="-1"></path></svg><p>a</p>'
     );
   });
@@ -868,9 +770,7 @@ describe('Markdown', () => {
       };
     }
 
-    expect(
-      renderToStaticMarkup(<Markdown children="a" rehypePlugins={[plugin]} />)
-    ).toBe('<p>a</p>');
+    expect(renderToStaticMarkup(<Markdown children="a" rehypePlugins={[plugin]} />)).toBe('<p>a</p>');
   });
 
   test('should support table cells w/ style', () => {
@@ -886,11 +786,7 @@ describe('Markdown', () => {
 
     expect(
       renderToStaticMarkup(
-        <Markdown
-          children={'| a  |\n| :- |'}
-          remarkPlugins={[remarkGfm]}
-          rehypePlugins={[plugin]}
-        />
+        <Markdown children={'| a  |\n| :- |'} remarkPlugins={[remarkGfm]} rehypePlugins={[plugin]} />
       )
     ).toBe('<table><thead><tr><th style="color:red;text-align:left">a</th></tr></thead></table>');
   });
@@ -903,9 +799,7 @@ describe('Markdown', () => {
       };
     }
 
-    expect(
-      renderToStaticMarkup(<Markdown children="a" rehypePlugins={[plugin]} />)
-    ).toBe('');
+    expect(renderToStaticMarkup(<Markdown children="a" rehypePlugins={[plugin]} />)).toBe('');
   });
 
   test('defaultUrlTransform exposes the url-safety logic', () => {
