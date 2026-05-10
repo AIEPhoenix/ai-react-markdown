@@ -104,6 +104,9 @@ importers:
       html-url-attributes:
         specifier: ^3.0.1
         version: 3.0.1
+      mdast-util-to-hast:
+        specifier: ^13.2.1
+        version: 13.2.1
       rehype-katex:
         specifier: ^7.0.1
         version: 7.0.1

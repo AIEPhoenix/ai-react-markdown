@@ -60,6 +60,7 @@ describe('AIMarkdownRenderStateProvider config merge', () => {
       extraSyntaxSupported: [AIMarkdownRenderExtraSyntax.HIGHLIGHT],
       displayOptimizeAbilities: [AIMarkdownRenderDisplayOptimizeAbility.REMOVE_COMMENTS],
       blockMemoEnabled: true,
+      preserveOrphanReferences: true,
     };
     const snapshot = JSON.stringify(consumerDefault);
 

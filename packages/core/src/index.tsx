@@ -268,5 +268,13 @@ export {
 export { useAIMarkdownRenderState, useAIMarkdownMetadata } from './context';
 export { useStableValue };
 
+// Cross-chunk coordination wrapper + hook
+export { AIMarkdownDocuments, useDocumentRegistry } from './components/AIMarkdownDocuments';
+export type { AIMarkdownDocumentsProps } from './components/AIMarkdownDocuments';
+// Registry types — consumers writing typed helpers around useDocumentRegistry
+// (`function helper(r: Registry)`) need these. The Registry shape itself is a
+// public contract: we maintain backwards compat across minor versions.
+export type { Registry, ChunkData, FootnoteDef, LinkDef, RefRecord, RefKind } from './components/documentRegistry';
+
 // Utils
 export type { PartialDeep } from './typings/partial-deep';

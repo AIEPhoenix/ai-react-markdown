@@ -6,7 +6,16 @@ import eslintConfigPrettier from 'eslint-config-prettier';
 
 export default defineConfig(
   {
-    ignores: ['**/dist/**', '**/node_modules/**', '**/.storybook/**'],
+    ignores: [
+      '**/dist/**',
+      '**/node_modules/**',
+      '**/.storybook/**',
+      // Build output — companion to `3a1b045 chore: gitignore storybook-static/`,
+      // which added the artifact dir to .gitignore but missed the eslint
+      // config. Linting bundled JS produces tens of thousands of false-
+      // positive errors against minified code.
+      '**/storybook-static/**',
+    ],
   },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],

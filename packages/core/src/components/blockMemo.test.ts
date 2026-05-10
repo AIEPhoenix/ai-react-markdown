@@ -25,6 +25,7 @@ import rehypeRebaseHashLinks from './rehypeRebaseHashLinks';
 import type { ReactNode } from 'react';
 import {
   buildBlocks,
+  computeBlockFingerprint,
   createCache,
   isFootnoteSection,
   hasMdastSource,
@@ -32,6 +33,7 @@ import {
   type Cache,
   type PostOptions,
 } from './blockMemo';
+import { createRegistry, type Registry } from './documentRegistry';
 
 interface PipelineOptions {
   removeComments?: boolean;
@@ -818,5 +820,264 @@ describe('renderBlocksWithCache — misc scenarios', () => {
     const built2 = buildBlocks(m2, h2, 'Hello');
     const r2 = renderBlocksWithCache(cacheRef, built2.plan, built2.globalCtx, {});
     expect(r2[0].node).toBe(r1[0].node);
+  });
+});
+
+describe('buildBlocks per-block taintLabels (v6)', () => {
+  test('records footnoteRef labels per block', () => {
+    // Refs only parse as footnoteReference when a matching definition exists;
+    // include definitions so the paragraph block contains real ref nodes.
+    const source = 'See [^x] and [^y].\n\n[^x]: x\n\n[^y]: y';
+    const processor = unified().use(remarkParse).use(remarkGfm).use(remarkRehype);
+    const mdast = processor.parse(source);
+    const hast = processor.runSync(mdast) as HastRoot;
+    const built = buildBlocks(mdast as MdastRoot, hast, source);
+
+    const blk = built.blocks[0];
+    expect(blk.hasReference).toBe(true);
+    expect(blk.taintLabels).toBeDefined();
+    expect(blk.taintLabels!.footnoteRefLabels.sort()).toEqual(['X', 'Y']);
+  });
+
+  test('records linkRef + imageRef + footnoteDef separately', () => {
+    // Link/image refs need matching definitions to parse as reference nodes.
+    const source = '[click][a] and ![alt][b].\n\n[a]: /a\n\n[b]: /b\n\n[^c]: def text';
+    const processor = unified().use(remarkParse).use(remarkGfm).use(remarkRehype);
+    const mdast = processor.parse(source);
+    const hast = processor.runSync(mdast) as HastRoot;
+    const built = buildBlocks(mdast as MdastRoot, hast, source);
+    // First TAINT block: linkRef + imageRef
+    const para = built.blocks.find((b) => b.taintLabels?.linkRefLabels.length);
+    expect(para?.taintLabels?.linkRefLabels).toEqual(['A']);
+    expect(para?.taintLabels?.imageRefLabels).toEqual(['B']);
+    // The footnoteDefinition lives in synthetic footer typically; here treat as block-level
+    // (synthetic is a separate plan item; this test only verifies non-synthetic blocks).
+  });
+
+  test('non-TAINT block has taintLabels undefined', () => {
+    const source = 'Just plain text.';
+    const processor = unified().use(remarkParse).use(remarkGfm).use(remarkRehype);
+    const mdast = processor.parse(source);
+    const hast = processor.runSync(mdast) as HastRoot;
+    const built = buildBlocks(mdast as MdastRoot, hast, source);
+    expect(built.blocks[0].hasReference).toBe(false);
+    expect(built.blocks[0].taintLabels).toBeUndefined();
+  });
+});
+
+describe('computeBlockFingerprint (v6)', () => {
+  test('empty taintLabels yields just clobberPrefix', () => {
+    const reg = createRegistry();
+    const sym = Symbol('chunk');
+    const fp = computeBlockFingerprint(
+      { footnoteRefLabels: [], linkRefLabels: [], imageRefLabels: [], footnoteDefLabels: [] },
+      reg,
+      sym,
+      'doc-user-content-'
+    );
+    expect(fp).toBe('doc-user-content-');
+  });
+
+  test('footnote ref label encoded with globalNumber', () => {
+    const reg = createRegistry();
+    const sym = reg.allocateSymbol('chunk-A');
+    reg.contributeChunkData(sym, {
+      refs: [{ label: 'X', kind: 'footnote' }],
+      defs: new Map(),
+      linkDefs: new Map(),
+      ownFootnoteLabels: new Set(),
+      ownLinkLabels: new Set(),
+    });
+    const fp = computeBlockFingerprint(
+      { footnoteRefLabels: ['X'], linkRefLabels: [], imageRefLabels: [], footnoteDefLabels: [] },
+      reg,
+      sym,
+      'doc-user-content-'
+    );
+    expect(fp).toBe('doc-user-content-|fn:X=1');
+  });
+
+  test('canonical change in registry → different fingerprint', () => {
+    const reg = createRegistry();
+    const a = reg.allocateSymbol('chunk-A');
+    const b = reg.allocateSymbol('chunk-B');
+    reg.contributeChunkData(a, {
+      refs: [],
+      defs: new Map([['X', { identifier: 'X', contentSource: 'A' }]]),
+      linkDefs: new Map(),
+      ownFootnoteLabels: new Set(['X']),
+      ownLinkLabels: new Set(),
+    });
+    const taint = { footnoteRefLabels: [], linkRefLabels: [], imageRefLabels: [], footnoteDefLabels: ['X'] };
+    const fpAFirst = computeBlockFingerprint(taint, reg, a, 'doc-');
+    // A is canonical, fingerprint encodes 1
+    expect(fpAFirst).toContain('fd:X=1');
+    const fpBFirst = computeBlockFingerprint(taint, reg, b, 'doc-');
+    // B is non-canonical, fingerprint encodes 0
+    expect(fpBFirst).toContain('fd:X=0');
+    expect(fpAFirst).not.toBe(fpBFirst);
+  });
+
+  test('refCount included in footnoteDef fingerprint', () => {
+    const reg = createRegistry();
+    const a = reg.allocateSymbol('A');
+    reg.contributeChunkData(a, {
+      refs: [
+        { label: 'X', kind: 'footnote' },
+        { label: 'X', kind: 'footnote' },
+      ],
+      defs: new Map(),
+      linkDefs: new Map(),
+      ownFootnoteLabels: new Set(),
+      ownLinkLabels: new Set(),
+    });
+    const fp = computeBlockFingerprint(
+      { footnoteRefLabels: [], linkRefLabels: [], imageRefLabels: [], footnoteDefLabels: ['X'] },
+      reg,
+      a,
+      'doc-'
+    );
+    expect(fp).toContain('/2');
+  });
+
+  test('image title change invalidates fingerprint (v6.1 blocker 2 fix)', () => {
+    const reg = createRegistry();
+    const a = reg.allocateSymbol('A');
+    const taint = { footnoteRefLabels: [], linkRefLabels: [], imageRefLabels: ['X'], footnoteDefLabels: [] };
+    reg.contributeChunkData(a, {
+      refs: [],
+      defs: new Map(),
+      linkDefs: new Map([['X', { identifier: 'X', url: 'https://x.png', title: 'first' }]]),
+      ownFootnoteLabels: new Set(),
+      ownLinkLabels: new Set(['X']),
+    });
+    const fp1 = computeBlockFingerprint(taint, reg, a, 'doc-');
+    reg.contributeChunkData(a, {
+      refs: [],
+      defs: new Map(),
+      linkDefs: new Map([['X', { identifier: 'X', url: 'https://x.png', title: 'second' }]]),
+      ownFootnoteLabels: new Set(),
+      ownLinkLabels: new Set(['X']),
+    });
+    const fp2 = computeBlockFingerprint(taint, reg, a, 'doc-');
+    expect(fp1).not.toBe(fp2); // title delta must invalidate cache
+  });
+
+  test('cross-chunk refCount aggregation (v6.1 spec clarification)', () => {
+    const reg = createRegistry();
+    const a = reg.allocateSymbol('A');
+    const b = reg.allocateSymbol('B');
+    // A defines X but has no refs to X locally
+    reg.contributeChunkData(a, {
+      refs: [],
+      defs: new Map([['X', { identifier: 'X', contentSource: 'def in A' }]]),
+      linkDefs: new Map(),
+      ownFootnoteLabels: new Set(['X']),
+      ownLinkLabels: new Set(),
+    });
+    // Initial fingerprint for A's def block: refCount 0
+    const taint = { footnoteRefLabels: [], linkRefLabels: [], imageRefLabels: [], footnoteDefLabels: ['X'] };
+    const fpBefore = computeBlockFingerprint(taint, reg, a, 'doc-');
+    expect(fpBefore).toContain('fd:X=1/0');
+    // B contributes a ref to X (cross-chunk). registry.getRefsForLabel('X') should rise to 1.
+    reg.contributeChunkData(b, {
+      refs: [{ label: 'X', kind: 'footnote' }],
+      defs: new Map(),
+      linkDefs: new Map(),
+      ownFootnoteLabels: new Set(),
+      ownLinkLabels: new Set(),
+    });
+    const fpAfter = computeBlockFingerprint(taint, reg, a, 'doc-');
+    expect(fpAfter).toContain('fd:X=1/1');
+    expect(fpBefore).not.toBe(fpAfter); // A's def block must invalidate
+  });
+});
+
+describe('renderBlocksWithCache fingerprint cache (v6)', () => {
+  function makeOpts(registry: Registry | undefined, thisChunkSym?: symbol, clobberPrefix = 'doc-'): PostOptions {
+    return Object.freeze({
+      components: {},
+      urlTransform: (u: string) => u,
+      allowedElements: undefined,
+      disallowedElements: undefined,
+      allowElement: undefined,
+      skipHtml: false,
+      unwrapDisallowed: false,
+      registry,
+      thisChunkSymbol: thisChunkSym,
+      clobberPrefix,
+    });
+  }
+
+  test('TAINT block with stable fingerprint hits cache', () => {
+    // Footnote definition included in source so remark-gfm parses [^x] as a footnoteReference
+    // (a bare `See [^x].` without a definition is left as plain text).
+    const source = 'See [^x].\n\n[^x]: hello';
+    const processor = unified().use(remarkParse).use(remarkGfm).use(remarkRehype);
+    const mdast = processor.parse(source);
+    const hast = processor.runSync(mdast) as HastRoot;
+    const built = buildBlocks(mdast as MdastRoot, hast, source);
+    const reg = createRegistry();
+    const sym = reg.allocateSymbol('chunk');
+    reg.contributeChunkData(sym, {
+      refs: [{ label: 'X', kind: 'footnote' }],
+      defs: new Map(),
+      linkDefs: new Map(),
+      ownFootnoteLabels: new Set(),
+      ownLinkLabels: new Set(),
+    });
+
+    const cacheRef = { current: createCache() };
+    const opts = makeOpts(reg, sym);
+    renderBlocksWithCache(cacheRef, built.plan, built.globalCtx, opts);
+    const e1 = cacheRef.current.blocks.get('See [^x].')?.[0];
+    renderBlocksWithCache(cacheRef, built.plan, built.globalCtx, opts);
+    const e2 = cacheRef.current.blocks.get('See [^x].')?.[0];
+    expect(e1?.node).toBe(e2?.node); // same ReactNode → cache hit
+  });
+
+  test('TAINT block with changed fingerprint misses cache', () => {
+    // Footnote definition included so [^x] parses as a footnoteReference.
+    const source = 'See [^x].\n\n[^x]: hello';
+    const processor = unified().use(remarkParse).use(remarkGfm).use(remarkRehype);
+    const mdast = processor.parse(source);
+    const hast = processor.runSync(mdast) as HastRoot;
+    const built = buildBlocks(mdast as MdastRoot, hast, source);
+    const reg = createRegistry();
+    const sym = reg.allocateSymbol('chunk');
+
+    const cacheRef = { current: createCache() };
+    const opts = makeOpts(reg, sym);
+    renderBlocksWithCache(cacheRef, built.plan, built.globalCtx, opts);
+    const e1 = cacheRef.current.blocks.get('See [^x].')?.[0];
+
+    // Mutate registry: add the ref so globalNumber returns 1 (was null before)
+    reg.contributeChunkData(sym, {
+      refs: [{ label: 'X', kind: 'footnote' }],
+      defs: new Map(),
+      linkDefs: new Map(),
+      ownFootnoteLabels: new Set(),
+      ownLinkLabels: new Set(),
+    });
+
+    renderBlocksWithCache(cacheRef, built.plan, built.globalCtx, opts);
+    const e2 = cacheRef.current.blocks.get('See [^x].')?.[0];
+    expect(e1?.node).not.toBe(e2?.node); // different ReactNode → cache miss → re-rendered
+  });
+
+  test('standalone (no registry) falls back to globalCtx, byte-equiv to pre-v6', () => {
+    const source = 'See [^x].\n\n[^x]: hello';
+    const processor = unified().use(remarkParse).use(remarkGfm).use(remarkRehype);
+    const mdast = processor.parse(source);
+    const hast = processor.runSync(mdast) as HastRoot;
+    const built = buildBlocks(mdast as MdastRoot, hast, source);
+
+    const cacheRef = { current: createCache() };
+    const opts = makeOpts(undefined); // no registry → fallback path
+    renderBlocksWithCache(cacheRef, built.plan, built.globalCtx, opts);
+    const e1 = cacheRef.current.blocks.get('See [^x].')?.[0];
+    renderBlocksWithCache(cacheRef, built.plan, built.globalCtx, opts);
+    const e2 = cacheRef.current.blocks.get('See [^x].')?.[0];
+    expect(e1?.node).toBe(e2?.node); // globalCtx unchanged → cache hit
   });
 });
