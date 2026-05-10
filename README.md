@@ -22,9 +22,9 @@ A React component library for rendering AI-generated Markdown with first-class s
 
 ## Packages
 
-| Package | Description |
-| --- | --- |
-| [`@ai-react-markdown/core`](./packages/core) | Framework-agnostic core renderer. GFM, LaTeX, CJK, streaming, metadata context, custom components. |
+| Package                                            | Description                                                                                                                |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| [`@ai-react-markdown/core`](./packages/core)       | Framework-agnostic core renderer. GFM, LaTeX, CJK, streaming, metadata context, custom components.                         |
 | [`@ai-react-markdown/mantine`](./packages/mantine) | Mantine UI integration. Adds themed typography, code highlighting, Mermaid diagrams, and automatic color scheme detection. |
 
 ## Quick Start

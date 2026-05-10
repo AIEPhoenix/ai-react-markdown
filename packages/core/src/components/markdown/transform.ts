@@ -36,10 +36,7 @@ export function buildTransform(ctx: TransformContext): BuildVisitor<Root> {
       let key: string;
 
       for (key in urlAttributes) {
-        if (
-          Object.hasOwn(urlAttributes, key) &&
-          Object.hasOwn(element.properties, key)
-        ) {
+        if (Object.hasOwn(urlAttributes, key) && Object.hasOwn(element.properties, key)) {
           const value = element.properties[key];
           const test = (urlAttributes as Record<string, ReadonlyArray<string> | null>)[key];
           if (test === null || test.includes(element.tagName)) {

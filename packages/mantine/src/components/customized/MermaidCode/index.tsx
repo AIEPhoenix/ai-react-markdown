@@ -99,7 +99,11 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
           return;
         }
 
-        const { svg, bindFunctions, diagramType } = await mermaid.render(generateMermaidUUID(), props.code, hostElement);
+        const { svg, bindFunctions, diagramType } = await mermaid.render(
+          generateMermaidUUID(),
+          props.code,
+          hostElement
+        );
         if (!ref.current || cancelled || renderVersion !== renderVersionRef.current) {
           return;
         }

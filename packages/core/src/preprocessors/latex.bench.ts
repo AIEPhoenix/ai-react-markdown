@@ -39,23 +39,20 @@ const realisticDoc = realisticChunk.repeat(10);
 // Each repeated line contains a LaTeX expression with multiple `$N` currency
 // matches inside — this is exactly the "odd parity" path that previously
 // called `parts.join('')` on every match (O(n²) in the line count).
-const currencyStressLine =
-  '- $A = P + Prt = $1,000 + ($1,000)(0.05)(2) = $1,100$ per year.';
+const currencyStressLine = '- $A = P + Prt = $1,000 + ($1,000)(0.05)(2) = $1,100$ per year.';
 const currencyStressDoc = `${currencyStressLine}\n`.repeat(200);
 
 // Stress-test the sticky-regex refactor in splitByProtectedRegions.
 // Many `<` characters force the HTML-tag regex check on each occurrence;
 // the old implementation created a new substring per `<`.
-const htmlStressChunk =
-  '<span>a</span><br/><div>b</div><em>c</em><strong>d</strong> text $x^2$ ';
+const htmlStressChunk = '<span>a</span><br/><div>b</div><em>c</em><strong>d</strong> text $x^2$ ';
 const htmlStressDoc = htmlStressChunk.repeat(200);
 
 // Stress-test the other sticky-regex path: `<` characters that DON'T match any
 // known HTML tag (math comparisons, Obsidian-style angle-bracket links, custom
 // tag names). These trigger a regex attempt per `<` that fails, which is a
 // separate hot path from the success-match case above.
-const htmlFalsePositiveChunk =
-  'a < b and b < c < d; see <Section A> for $x^2$ and <CustomTag> too. ';
+const htmlFalsePositiveChunk = 'a < b and b < c < d; see <Section A> for $x^2$ and <CustomTag> too. ';
 const htmlFalsePositiveDoc = htmlFalsePositiveChunk.repeat(200);
 
 // ── Benchmarks ─────────────────────────────────────────────────────────────

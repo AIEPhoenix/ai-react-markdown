@@ -121,8 +121,7 @@ const AIMarkdownComponent = <
 }: AIMarkdownProps<TConfig, TRenderData>) => {
   // Normalize fontSize: number -> px string, undefined -> default rem value.
   // Branch on `undefined` (not truthiness) so `fontSize={0}` resolves to `'0px'`.
-  const usedFontSize =
-    fontSize === undefined ? '0.9375rem' : typeof fontSize === 'number' ? `${fontSize}px` : fontSize;
+  const usedFontSize = fontSize === undefined ? '0.9375rem' : typeof fontSize === 'number' ? `${fontSize}px` : fontSize;
 
   // Stabilize object/array props to prevent unnecessary re-renders
   // when the consumer creates new references on each render.
@@ -146,10 +145,7 @@ const AIMarkdownComponent = <
 
   // Stabilize the inline style passed to Typography; otherwise its memo wrapper
   // breaks on every parent render even when the font-size hasn't changed.
-  const typographyStyle = useMemo(
-    () => ({ '--aim-font-size-root': usedFontSize }) as CSSProperties,
-    [usedFontSize]
-  );
+  const typographyStyle = useMemo(() => ({ '--aim-font-size-root': usedFontSize }) as CSSProperties, [usedFontSize]);
 
   return (
     <AIMarkdownMetadataProvider<TRenderData> metadata={metadata}>

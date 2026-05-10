@@ -38,10 +38,7 @@ export const buildScenarios = (payload: string): Record<string, ScenarioConfig> 
   return SCENARIO_FACTORIES_FROM(fullPayload, blocks);
 };
 
-const SCENARIO_FACTORIES_FROM = (
-  fullPayload: string,
-  blocks: string[],
-): Record<string, ScenarioConfig> => ({
+const SCENARIO_FACTORIES_FROM = (fullPayload: string, blocks: string[]): Record<string, ScenarioConfig> => ({
   largeAppend: {
     label: 'A. Single large append',
     description:
@@ -152,8 +149,7 @@ const SCENARIO_FACTORIES_FROM = (
     description: 'Random chunk size 2–8 chars + random delay 15–60ms. Mimics real LLM token jitter.',
     hypothesis: 'The most realistic profile — what a chat UI will actually face.',
     run: (push, done) => {
-      const randInt = (min: number, max: number) =>
-        Math.floor(Math.random() * (max - min + 1)) + min;
+      const randInt = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
       let cancelled = false;
       let pos = 0;
       (async () => {

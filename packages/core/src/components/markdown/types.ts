@@ -30,11 +30,7 @@ export type AllowElement = (
 ) => boolean | null | undefined;
 
 /** Transform every URL on every element attribute. Return null/empty to strip. */
-export type UrlTransform = (
-  url: string,
-  key: string,
-  node: Readonly<Element>
-) => string | null | undefined;
+export type UrlTransform = (url: string, key: string, node: Readonly<Element>) => string | null | undefined;
 
 /** Configuration for the {@link Markdown} component. */
 export interface Options {

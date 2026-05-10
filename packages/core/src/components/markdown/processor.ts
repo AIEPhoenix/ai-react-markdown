@@ -31,11 +31,7 @@ export function createProcessor(
     ? { ...options.remarkRehypeOptions, ...emptyRemarkRehypeOptions }
     : emptyRemarkRehypeOptions;
 
-  return unified()
-    .use(remarkParse)
-    .use(remarkPlugins)
-    .use(remarkRehype, remarkRehypeOptions)
-    .use(rehypePlugins);
+  return unified().use(remarkParse).use(remarkPlugins).use(remarkRehype, remarkRehypeOptions).use(rehypePlugins);
 }
 
 /**
@@ -51,9 +47,7 @@ export function createFile(options: Readonly<Options>): VFile {
   if (typeof children === 'string') {
     file.value = children;
   } else {
-    unreachable(
-      'Unexpected value `' + String(children) + '` for `children` prop, expected `string`'
-    );
+    unreachable('Unexpected value `' + String(children) + '` for `children` prop, expected `string`');
   }
 
   return file;
