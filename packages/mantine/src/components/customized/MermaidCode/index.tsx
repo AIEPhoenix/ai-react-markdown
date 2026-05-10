@@ -7,6 +7,9 @@ import mermaid from 'mermaid';
 import { useMantineAIMarkdownRenderState } from '../../../hooks/useMantineAIMarkdownRenderState';
 import './styles.scss';
 
+/** Static `<pre>` style for the mermaid container. */
+const PRE_STYLE = { cursor: 'pointer', overflow: 'auto', width: '100%', padding: '0.5rem' } as const;
+
 /**
  * Generate a unique ID for mermaid SVG rendering.
  * Combines a timestamp with a random suffix to avoid collisions when
@@ -223,11 +226,7 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
             </CopyButton>
           </Flex>
         </div>
-        <pre
-          ref={ref}
-          style={{ cursor: 'pointer', overflow: 'auto', width: '100%', padding: '0.5rem' }}
-          onClick={() => viewSvgInNewWindow()}
-        />
+        <pre ref={ref} style={PRE_STYLE} onClick={viewSvgInNewWindow} />
       </div>
     </>
   );

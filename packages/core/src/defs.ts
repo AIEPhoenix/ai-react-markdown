@@ -9,13 +9,14 @@
  */
 
 import { ComponentType, CSSProperties, PropsWithChildren } from 'react';
-import type { Components } from 'react-markdown';
+import type { Components } from './components/markdown';
 
 /**
  * Custom component overrides for the markdown renderer.
- * Alias for `react-markdown`'s `Components` type, re-exported under the
- * library's `AIMarkdown` naming convention so consumers don't need a
- * direct `react-markdown` dependency for type imports.
+ * Alias for the local Markdown wrapper's `Components` type (a vendored fork of
+ * react-markdown's), re-exported under the library's `AIMarkdown` naming
+ * convention so consumers don't need a direct `react-markdown` dependency
+ * for type imports.
  */
 export type AIMarkdownCustomComponents = Components;
 

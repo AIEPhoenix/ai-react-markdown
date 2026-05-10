@@ -126,6 +126,13 @@ const AIMarkdownComponent = <
 
   // Stabilize object/array props to prevent unnecessary re-renders
   // when the consumer creates new references on each render.
+  //
+  // `metadata` is INTENTIONALLY excluded — its shape is opaque to the library
+  // and may be arbitrarily large (e.g. full chat session, document tree). A
+  // blanket lodash isEqual deep-compare here would penalize every render with
+  // an unbounded scan. Stabilizing metadata is the consumer's responsibility:
+  // if their custom renderers do reference-equal work on it, they should
+  // useMemo their metadata at the call site.
   const stableDefaultConfig = useStableValue(defaultConfig);
   const stableConfig = useStableValue(config);
   const stablePreprocessors = useStableValue(contentPreprocessors);
@@ -135,6 +142,13 @@ const AIMarkdownComponent = <
   const usedContent = useMemo(
     () => (content ? preprocessAIMDContent(content, stablePreprocessors) : content),
     [content, stablePreprocessors]
+  );
+
+  // Stabilize the inline style passed to Typography; otherwise its memo wrapper
+  // breaks on every parent render even when the font-size hasn't changed.
+  const typographyStyle = useMemo(
+    () => ({ '--aim-font-size-root': usedFontSize }) as CSSProperties,
+    [usedFontSize]
   );
 
   return (
@@ -155,7 +169,7 @@ const AIMarkdownComponent = <
           // --aim-font-size-root: absolute font-size anchor so inner CSS can
           //   bypass em-compounding in deeply nested markdown structures.
           // See AIMarkdownTypographyProps.style JSDoc for the full variable list.
-          style={{ '--aim-font-size-root': usedFontSize } as CSSProperties}
+          style={typographyStyle}
         >
           {ExtraStyles ? (
             <ExtraStyles>

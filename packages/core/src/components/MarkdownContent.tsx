@@ -1,16 +1,21 @@
 /**
  * Core markdown rendering component.
  *
- * Wraps `react-markdown` with a curated set of remark and rehype plugins
- * for GFM, math/LaTeX, emoji, CJK support, and configurable extra syntax
- * extensions and display optimizations. Plugin selection is driven by the
+ * Wraps the local `Markdown` (a vendored fork of react-markdown — see
+ * `./markdown/`) with a curated set of remark and rehype plugins for GFM,
+ * math/LaTeX, emoji, CJK support, and configurable extra syntax extensions
+ * and display optimizations. Plugin selection is driven by the
  * {@link AIMarkdownRenderConfig} from context.
  *
  * @module components/MarkdownContent
  */
 
 import { memo, useMemo } from 'react';
-import ReactMarkdown from 'react-markdown';
+import Markdown, { type Options as MarkdownOptions } from './markdown';
+
+type RemarkPlugins = NonNullable<MarkdownOptions['remarkPlugins']>;
+type RehypePlugins = NonNullable<MarkdownOptions['rehypePlugins']>;
+type RemarkRehypeOptions = NonNullable<MarkdownOptions['remarkRehypeOptions']>;
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
 import rehypeUnwrapImages from 'rehype-unwrap-images';
@@ -62,7 +67,7 @@ interface AIMarkdownContentProps {
 
 /**
  * Internal component that assembles the remark/rehype plugin chain based on
- * the current render config and delegates to `ReactMarkdown`.
+ * the current render config and delegates to `Markdown`.
  */
 const AIMarkdownContent = memo(({ content, customComponents }: AIMarkdownContentProps) => {
   const { config } = useAIMarkdownRenderState();
@@ -84,57 +89,69 @@ const AIMarkdownContent = memo(({ content, customComponents }: AIMarkdownContent
     return customComponents ? { ...DefaultCustomComponents, ...customComponents } : DefaultCustomComponents;
   }, [customComponents]);
 
-  return (
-    <ReactMarkdown
-      remarkPlugins={[
-        // --- Core plugins (always active) ---
-        remarkGfm,
-        [
-          remarkMath,
-          {
-            // Disable single-dollar inline math to avoid conflicts with currency
-            // signs and other dollar usages; the preprocessor converts $...$ to $$...$$.
-            singleDollarTextMath: false,
-          },
-        ],
-        // --- Configurable extra syntax plugins ---
-        ...extraSyntaxRemarkPlugins,
-        // --- Formatting & normalization ---
-        remarkBreaks,
-        remarkEmoji,
-        remarkSqueezeParagraphs,
-        remarkCjkFriendly,
-        remarkCjkFriendlyGfmStrikethrough,
-        // --- Configurable display optimizations ---
-        ...displayOptimizeRemarkPlugins,
-      ]}
-      rehypePlugins={[
-        // Allow raw HTML through so rehype-sanitize can handle it.
-        [
-          rehypeRaw,
-          {
-            passThrough: [],
-          },
-        ],
-        // Sanitize HTML while allowing <mark> (highlight) and KaTeX class names.
-        [rehypeSanitize, sanitizeSchema],
-        rehypeKatex,
-        rehypeUnwrapImages,
-      ]}
-      remarkRehypeOptions={{
-        allowDangerousHtml: true,
-        handlers: {
-          // Inject definition-list HAST handlers when the extension is active.
-          ...(enableDefinitionList ? defListHastHandlers : {}),
+  // Stable plugin/options arrays — react-markdown's internal useMemo
+  // for the unified processor depends on these by reference.
+  const remarkPlugins = useMemo<RemarkPlugins>(
+    () => [
+      // --- Core plugins (always active) ---
+      remarkGfm,
+      [
+        remarkMath,
+        {
+          // Disable single-dollar inline math to avoid conflicts with currency
+          // signs and other dollar usages; the preprocessor converts $...$ to $$...$$.
+          singleDollarTextMath: false,
         },
-      }}
+      ],
+      // --- Configurable extra syntax plugins ---
+      ...extraSyntaxRemarkPlugins,
+      // --- Formatting & normalization ---
+      remarkBreaks,
+      remarkEmoji,
+      remarkSqueezeParagraphs,
+      remarkCjkFriendly,
+      remarkCjkFriendlyGfmStrikethrough,
+      // --- Configurable display optimizations ---
+      ...displayOptimizeRemarkPlugins,
+    ],
+    [extraSyntaxRemarkPlugins, displayOptimizeRemarkPlugins]
+  );
+
+  const rehypePlugins = useMemo<RehypePlugins>(
+    () => [
+      // Allow raw HTML through so rehype-sanitize can handle it.
+      [rehypeRaw, { passThrough: [] }],
+      // Sanitize HTML while allowing <mark> (highlight) and KaTeX class names.
+      [rehypeSanitize, sanitizeSchema],
+      rehypeKatex,
+      rehypeUnwrapImages,
+    ],
+    []
+  );
+
+  const remarkRehypeOptions = useMemo<RemarkRehypeOptions>(
+    () => ({
+      allowDangerousHtml: true,
+      handlers: {
+        // Inject definition-list HAST handlers when the extension is active.
+        ...(enableDefinitionList ? defListHastHandlers : {}),
+      },
+    }),
+    [enableDefinitionList]
+  );
+
+  return (
+    <Markdown
+      remarkPlugins={remarkPlugins}
+      rehypePlugins={rehypePlugins}
+      remarkRehypeOptions={remarkRehypeOptions}
       components={usedComponents}
       // NOTE: The default `urlTransform` in Windows environments treats local
       // paths (e.g. `C:/...`) as unsafe. Uncomment the line below if needed:
       // urlTransform={(url: string) => url}
     >
       {content}
-    </ReactMarkdown>
+    </Markdown>
   );
 });
 
