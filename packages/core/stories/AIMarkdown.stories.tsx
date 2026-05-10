@@ -6,6 +6,7 @@ import '../src/components/typography/variants/all.scss';
 import { withThemedBackground } from './decorators';
 import { STREAMING_DEMO_CONTENT, useStreamedContent } from './streamingHelpers';
 import { StreamingPlayground } from './streaming/StreamingPlayground';
+import { BlockMemoComparison } from './streaming/BlockMemoComparison';
 import { DEFAULT_PAYLOAD } from './streaming/scenarios';
 import { getStreamingTheme } from './streaming/theme';
 
@@ -138,6 +139,43 @@ export const StreamingProfiler: Story = {
         colorScheme={currentTheme}
         showProfiler
         initialScenario="ultraFast"
+        payload={args.content ?? DEFAULT_PAYLOAD}
+      />
+    );
+  },
+};
+
+/**
+ * Side-by-side comparison of the same content streamed through both render
+ * paths simultaneously. Left column has `blockMemoEnabled: true` (default);
+ * right column has it explicitly disabled. Each column has its own
+ * `<React.Profiler>` boundary measuring commit cost in isolation, plus a
+ * summary banner that reports the cumulative commit-time savings.
+ *
+ * The realistic-LLM scenario (`randomTokens`, 2-8 char chunks every 15-60ms)
+ * is the most representative of real chat-UI rendering pressure.
+ */
+export const BlockMemoCompare: Story = {
+  args: {
+    content: DEFAULT_PAYLOAD,
+  },
+  argTypes: {
+    content: {
+      control: 'text',
+      description: 'Markdown payload streamed by every scenario. Edit to test your own content.',
+    },
+    streaming: { table: { disable: true } },
+  },
+  parameters: {
+    controls: { exclude: ['streaming'] },
+    layout: 'fullscreen',
+  },
+  render: (args, context) => {
+    const currentTheme = context.globals.theme === 'dark' ? 'dark' : 'light';
+    return (
+      <BlockMemoComparison
+        colorScheme={currentTheme}
+        initialScenario="randomTokens"
         payload={args.content ?? DEFAULT_PAYLOAD}
       />
     );

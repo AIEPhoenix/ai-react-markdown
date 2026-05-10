@@ -4,7 +4,7 @@ import { Profiler, useCallback, useEffect, useRef, useState, type CSSProperties 
 import AIMarkdown from '../../src/index';
 import { buildScenarios, DEFAULT_PAYLOAD, SCENARIO_KEYS, type ScenarioKey } from './scenarios';
 import { useMemo } from 'react';
-import { useStreamProfiler } from './useStreamProfiler';
+import { useRenderProfiler } from './useRenderProfiler';
 import { ProfilerPanel } from './ProfilerPanel';
 import { ChunkPanel } from './ChunkPanel';
 import { getStreamingTheme, type ColorScheme } from './theme';
@@ -32,7 +32,7 @@ export const StreamingPlayground = ({
   const [running, setRunning] = useState(false);
   const cancelRef = useRef<(() => void) | null>(null);
 
-  const { snapshot, onRender, recordChunk, reset } = useStreamProfiler();
+  const { snapshot, onRender, recordChunk, reset, targetRef } = useRenderProfiler<HTMLDivElement>({ running });
   const theme = getStreamingTheme(colorScheme);
 
   const stop = useCallback(() => {
@@ -65,7 +65,7 @@ export const StreamingPlayground = ({
       cancelRef.current?.();
       cancelRef.current = null;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const config = scenarios[scenario];
@@ -112,7 +112,7 @@ export const StreamingPlayground = ({
   };
 
   const streamingMarkup = (
-    <div style={renderSurfaceStyle}>
+    <div style={renderSurfaceStyle} ref={targetRef}>
       <Profiler id="streaming-playground" onRender={onRender}>
         <AIMarkdown content={content} streaming={running} colorScheme={colorScheme} />
       </Profiler>
