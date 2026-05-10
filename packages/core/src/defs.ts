@@ -29,8 +29,6 @@ export enum AIMarkdownRenderExtraSyntax {
   HIGHLIGHT = 'HIGHLIGHT',
   /** Definition list syntax. @see https://michelf.ca/projects/php-markdown/extra/#def-list */
   DEFINITION_LIST = 'DEFINITION_LIST',
-  /** Superscript (`^text^`) and subscript (`~text~`) syntax. */
-  SUBSCRIPT = 'SUBSCRIPT',
 }
 
 /**
@@ -92,7 +90,6 @@ export const defaultAIMarkdownRenderConfig = Object.freeze({
   extraSyntaxSupported: Object.freeze([
     AIMarkdownRenderExtraSyntax.HIGHLIGHT,
     AIMarkdownRenderExtraSyntax.DEFINITION_LIST,
-    AIMarkdownRenderExtraSyntax.SUBSCRIPT,
   ]),
   displayOptimizeAbilities: Object.freeze([
     AIMarkdownRenderDisplayOptimizeAbility.REMOVE_COMMENTS,
@@ -190,6 +187,22 @@ export interface AIMarkdownRenderState<TConfig extends AIMarkdownRenderConfig = 
   variant: AIMarkdownVariant;
   /** Active color scheme. */
   colorScheme: AIMarkdownColorScheme;
+  /**
+   * Stable identifier unique to this *logical markdown document*. Used as
+   * the id namespace for clobberable attributes (`id`, hash hrefs) so two
+   * documents on the same page don't cross-link — e.g. clicking a footnote
+   * `[^1]` in message A won't scroll to the `[^1]` definition in message B.
+   *
+   * Named `documentId` (not `instanceId`) intentionally: when one logical
+   * markdown document is split into multiple `<AIMarkdown>` instances
+   * (chunked / streamed rendering), every chunk SHOULD share the same value
+   * so id-prefixes align across the chunks.
+   *
+   * Auto-generated via React's `useId()` (SSR-safe, stable across
+   * re-renders) when not provided by the consumer; consumer-supplied values
+   * always win.
+   */
+  documentId: string;
   /** Active render configuration. */
   config: TConfig;
 }

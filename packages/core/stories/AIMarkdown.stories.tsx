@@ -92,7 +92,8 @@ export const Streaming: Story = {
 
 export const StreamingStress: Story = {
   args: {
-    content: DEFAULT_PAYLOAD,
+    content:
+      '# Markdown 脚注功能测试文档\n\n这是一个用于验证编辑器是否支持脚注（Footnotes）语法的测试文档。\n\n## 一、 基础引用\n这里是一个简单的脚注引用[^1]。\n这里是一个使用文本作为标识符的脚注引用[^ref]。\n\n## 二、 连续引用与重复引用\n脚注标识符不一定要按数字顺序排列，渲染时通常会自动重新编号。\n这是第三个脚注[^3]。\n我们可以再次引用第一个脚注[^1]，大多数渲染器会正确指向同一个注释。\n\n## 三、 多行与复杂内容\n脚注内可以包含多段文字或代码块[^complex]。\n\n## 四、 列表中的应用\n* 列表项一 [^item-1]\n* 列表项二 [^item-2]\n\n---\n\n## 脚注定义区\n(通常建议放在文档末尾，但其实写在文档任何位置都可以)\n\n[^1]: 这是第一个脚注的简单描述。\n[^ref]: 脚注标识符可以使用字母或单词，但在预览中通常会被转换成数字。\n[^3]: 乱序编写的脚注定义。\n\n[^complex]: 这是复杂脚注的第一段。\n\n    这是复杂脚注的第二段，通过缩进（4个空格或1个制表符）来包含在同一个脚注中。\n    \n    ```python\n    def hello():\n        print("Hello from a footnote!")\n    ```\n\n[^item-1]: 关于列表项一的补充说明。\n[^item-2]: 关于列表项二的补充说明。',
   },
   argTypes: {
     content: {

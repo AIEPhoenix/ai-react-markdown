@@ -21,7 +21,7 @@
 
 'use client';
 
-import { useMemo, memo, type CSSProperties } from 'react';
+import { useMemo, memo, useId, type CSSProperties } from 'react';
 import AIMarkdownRenderStateProvider, {
   AIMarkdownMetadataProvider,
   AIMarkdownRenderStateProviderProps,
@@ -96,6 +96,28 @@ export interface AIMarkdownProps<
   variant?: AIMarkdownVariant;
   /** Color scheme name. Defaults to `'light'`. */
   colorScheme?: AIMarkdownColorScheme;
+  /**
+   * Stable identifier for the *logical markdown document* this `<AIMarkdown>`
+   * is rendering. Used as the id namespace for all clobberable attributes
+   * (`id`, hash hrefs) so two documents on the same page do not cross-link —
+   * e.g. clicking a footnote `[^1]` in message A will not scroll to the
+   * `[^1]` definition in message B.
+   *
+   * Why `documentId` and not `instanceId`: when one logical document is
+   * split across multiple `<AIMarkdown>` instances (chunked / streamed
+   * rendering), every chunk should share the SAME `documentId` so their
+   * id-prefixes line up. The id is per-document, not per-React-instance.
+   *
+   * When omitted, an id is auto-generated via React's `useId()` (SSR-safe
+   * and stable across re-renders). Pass an explicit value when you need
+   * deterministic ids (snapshot tests, cross-component deep links) or when
+   * multiple instances render the same logical document.
+   *
+   * Consumer-supplied values pass through `encodeURIComponent` at the prefix
+   * construction site, so any string is safe — including ids with reserved
+   * characters like `:`, `/`, or spaces.
+   */
+  documentId?: string;
 }
 
 /**
@@ -118,10 +140,19 @@ const AIMarkdownComponent = <
   ExtraStyles,
   variant = 'default',
   colorScheme = 'light',
+  documentId,
 }: AIMarkdownProps<TConfig, TRenderData>) => {
   // Normalize fontSize: number -> px string, undefined -> default rem value.
   // Branch on `undefined` (not truthiness) so `fontSize={0}` resolves to `'0px'`.
   const usedFontSize = fontSize === undefined ? '0.9375rem' : typeof fontSize === 'number' ? `${fontSize}px` : fontSize;
+
+  // Auto-generate a stable id when the consumer didn't supply one. We hand
+  // back React's native `useId()` value verbatim — any URI/HTML-attribute
+  // safety transformation happens downstream at the prefix construction site
+  // (see `MarkdownContent.tsx`), so the value exposed via context retains its
+  // React identity (useful for debugging and DevTools association).
+  const generatedId = useId();
+  const usedDocumentId = documentId && documentId.length > 0 ? documentId : generatedId;
 
   // Stabilize object/array props to prevent unnecessary re-renders
   // when the consumer creates new references on each render.
@@ -154,6 +185,7 @@ const AIMarkdownComponent = <
         fontSize={usedFontSize}
         variant={variant}
         colorScheme={colorScheme}
+        documentId={usedDocumentId}
         defaultConfig={stableDefaultConfig}
         config={stableConfig}
       >
