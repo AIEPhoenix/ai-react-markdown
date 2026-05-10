@@ -12,17 +12,26 @@
  * @module components/typography/Default
  */
 
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import type { AIMarkdownTypographyProps } from '../../defs';
 
-const DefaultTypography = memo(({ children, fontSize, variant, colorScheme, style }: AIMarkdownTypographyProps) => (
-  <div
-    className={['aim-typography-root', variant, colorScheme].filter(Boolean).join(' ')}
-    style={{ width: '100%', fontSize, ...style }}
-  >
-    {children}
-  </div>
-));
+const DefaultTypography = memo(
+  ({ children, fontSize, variant, colorScheme, style }: AIMarkdownTypographyProps) => {
+    const className = useMemo(
+      () => ['aim-typography-root', variant, colorScheme].filter(Boolean).join(' '),
+      [variant, colorScheme]
+    );
+    const mergedStyle = useMemo(
+      () => ({ width: '100%' as const, fontSize, ...style }),
+      [fontSize, style]
+    );
+    return (
+      <div className={className} style={mergedStyle}>
+        {children}
+      </div>
+    );
+  }
+);
 
 DefaultTypography.displayName = 'DefaultTypography';
 

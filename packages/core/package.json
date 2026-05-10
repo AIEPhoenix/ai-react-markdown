@@ -57,7 +57,9 @@
     "react-dom": ">=19.0.0"
   },
   "dependencies": {
-    "react-markdown": "^10.1.0",
+    "devlop": "^1.1.0",
+    "hast-util-to-jsx-runtime": "^2.3.6",
+    "html-url-attributes": "^3.0.1",
     "rehype-katex": "^7.0.1",
     "rehype-raw": "^7.0.0",
     "rehype-sanitize": "^6.0.0",
@@ -71,20 +73,27 @@
     "remark-mark-highlight": "^0.1.1",
     "remark-math": "^6.0.0",
     "remark-pangu": "^2.2.0",
+    "remark-parse": "^11.0.0",
+    "remark-rehype": "^11.1.2",
     "remark-remove-comments": "^1.1.1",
     "remark-smartypants": "^3.0.2",
     "remark-squeeze-paragraphs": "^6.0.0",
-    "remark-supersub": "^1.0.0"
+    "remark-supersub": "^1.0.0",
+    "unified": "^11.0.5",
+    "unist-util-visit": "^5.1.0",
+    "vfile": "^6.0.3"
   },
   "devDependencies": {
     "@types/hast": "^3.0.4",
     "@types/lodash-es": "^4.17.12",
+    "@types/mdast": "^4.0.4",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "hast-util-sanitize": "^5.0.2",
     "hastscript": "^9.0.1",
     "lodash-es": "^4.17.23",
     "react": "^19",
-    "react-dom": "^19"
+    "react-dom": "^19",
+    "remark-toc": "^9.0.0"
   }
 }
