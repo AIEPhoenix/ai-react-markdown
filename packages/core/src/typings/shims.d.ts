@@ -5,3 +5,10 @@ declare module 'remark-pangu' {
   const remarkPangu: Plugin;
   export default remarkPangu;
 }
+
+/**
+ * Minimal ambient `process` for guarded dev-only invariants. Consumers'
+ * bundlers (Vite, webpack, Next) replace `process.env.NODE_ENV` with a string
+ * literal at build time, matching React's own pattern.
+ */
+declare const process: { env: { NODE_ENV?: string } };
