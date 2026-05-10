@@ -16,9 +16,7 @@ function firstChildElement(tree: ReturnType<typeof sanitize>): Element {
 
 describe('mergeClassNameAllowlist', () => {
   test('returns a new className entry when existing is undefined', () => {
-    expect(mergeClassNameAllowlist(undefined, ['math-inline'])).toEqual([
-      ['className', 'math-inline'],
-    ]);
+    expect(mergeClassNameAllowlist(undefined, ['math-inline'])).toEqual([['className', 'math-inline']]);
   });
 
   test('appends a className entry when existing has no className', () => {
@@ -29,9 +27,7 @@ describe('mergeClassNameAllowlist', () => {
   });
 
   test('merges extras into the existing className tuple entry', () => {
-    const existing: Parameters<typeof mergeClassNameAllowlist>[0] = [
-      ['className', /^language-./],
-    ];
+    const existing: Parameters<typeof mergeClassNameAllowlist>[0] = [['className', /^language-./]];
     expect(mergeClassNameAllowlist(existing, ['math-inline', 'math-display'])).toEqual([
       ['className', /^language-./, 'math-inline', 'math-display'],
     ]);
@@ -56,15 +52,11 @@ describe('mergeClassNameAllowlist', () => {
     // Documents the semantics change noted in the helper's docblock: an
     // upstream switch to `'className'` (allow-all) would be narrowed to an
     // allow-list by the merge. Defensive case, not currently triggered.
-    expect(mergeClassNameAllowlist(['className'], ['math-inline'])).toEqual([
-      ['className', 'math-inline'],
-    ]);
+    expect(mergeClassNameAllowlist(['className'], ['math-inline'])).toEqual([['className', 'math-inline']]);
   });
 
   test('does not mutate the input array', () => {
-    const existing: Parameters<typeof mergeClassNameAllowlist>[0] = [
-      ['className', /^language-./],
-    ];
+    const existing: Parameters<typeof mergeClassNameAllowlist>[0] = [['className', /^language-./]];
     const snapshot = JSON.parse(JSON.stringify(existing));
     mergeClassNameAllowlist(existing, ['math-inline']);
     expect(JSON.parse(JSON.stringify(existing))).toEqual(snapshot);
@@ -110,9 +102,7 @@ describe('sanitizeSchema integration', () => {
     // `remark-math` + `rehype-katex` emit display math as
     // `<code class="language-math math-display">`. Covers the real-world
     // multi-class case that a single-class test would miss.
-    const tree = h('div', [
-      h('code', { className: ['language-math', 'math-display'] }, 'x'),
-    ]);
+    const tree = h('div', [h('code', { className: ['language-math', 'math-display'] }, 'x')]);
     const sanitized = sanitize(tree, sanitizeSchema);
     const code = firstChildElement(sanitized);
     expect(code.properties.className).toEqual(['language-math', 'math-display']);
@@ -139,14 +129,10 @@ describe('sanitizeSchema integration', () => {
   test('does not mutate the underlying defaultSchema', () => {
     // M6-style guarantee: building our schema must not poison the shared
     // `defaultSchema` singleton exported by rehype-sanitize.
-    const snapshot = JSON.stringify(defaultSchema, (_k, v) =>
-      v instanceof RegExp ? v.toString() : v
-    );
+    const snapshot = JSON.stringify(defaultSchema, (_k, v) => (v instanceof RegExp ? v.toString() : v));
     // Force a fresh build by re-importing the module's schema via our helper.
     mergeClassNameAllowlist(defaultSchema.attributes?.code, ['math-inline', 'math-display']);
-    const after = JSON.stringify(defaultSchema, (_k, v) =>
-      v instanceof RegExp ? v.toString() : v
-    );
+    const after = JSON.stringify(defaultSchema, (_k, v) => (v instanceof RegExp ? v.toString() : v));
     expect(after).toBe(snapshot);
   });
 });

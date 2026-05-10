@@ -589,8 +589,7 @@ y$ which spans lines`;
   });
 
   test('truncates unclosed $$ with pipes after text (streaming)', () => {
-    const content =
-      'before\n\n$$|\\psi\\rangle = \\alpha|0\\rangle + \\beta|1\\rangle';
+    const content = 'before\n\n$$|\\psi\\rangle = \\alpha|0\\rangle + \\beta|1\\rangle';
     expect(preprocessLaTeX(content)).toBe('before');
   });
 
@@ -920,9 +919,7 @@ describe('preprocessLaTeX streaming (incremental prefix)', () => {
 
 describe('splitByProtectedRegions', () => {
   test('returns single text segment for plain text', () => {
-    expect(splitByProtectedRegions('hello world')).toEqual([
-      { text: 'hello world', isCode: false },
-    ]);
+    expect(splitByProtectedRegions('hello world')).toEqual([{ text: 'hello world', isCode: false }]);
   });
 
   test('returns empty array for empty string', () => {
@@ -1007,9 +1004,7 @@ describe('splitByProtectedRegions', () => {
   });
 
   test('requires matching fence length to close (shorter fence stays open)', () => {
-    expect(splitByProtectedRegions('````\ncode\n```\nmore')).toEqual([
-      { text: '````\ncode\n```\nmore', isCode: true },
-    ]);
+    expect(splitByProtectedRegions('````\ncode\n```\nmore')).toEqual([{ text: '````\ncode\n```\nmore', isCode: true }]);
   });
 
   test('allows longer fence to close shorter opening', () => {
@@ -1049,9 +1044,7 @@ describe('splitByProtectedRegions', () => {
   });
 
   test('does not cross fence marker types (backtick open, tilde close)', () => {
-    expect(splitByProtectedRegions('```\ncode\n~~~\nmore')).toEqual([
-      { text: '```\ncode\n~~~\nmore', isCode: true },
-    ]);
+    expect(splitByProtectedRegions('```\ncode\n~~~\nmore')).toEqual([{ text: '```\ncode\n~~~\nmore', isCode: true }]);
   });
 
   test('handles HTML tags with attributes', () => {
@@ -1080,9 +1073,7 @@ describe('splitByProtectedRegions', () => {
   });
 
   test('protects entire <math>...</math> including inner text', () => {
-    expect(splitByProtectedRegions('<math>$a$</math>')).toEqual([
-      { text: '<math>$a$</math>', isCode: true },
-    ]);
+    expect(splitByProtectedRegions('<math>$a$</math>')).toEqual([{ text: '<math>$a$</math>', isCode: true }]);
   });
 
   test('protects <code> with attributes', () => {
@@ -1092,17 +1083,13 @@ describe('splitByProtectedRegions', () => {
   });
 
   test('case-insensitive match for <CODE>...</CODE>', () => {
-    expect(splitByProtectedRegions('<CODE>$x$</CODE>')).toEqual([
-      { text: '<CODE>$x$</CODE>', isCode: true },
-    ]);
+    expect(splitByProtectedRegions('<CODE>$x$</CODE>')).toEqual([{ text: '<CODE>$x$</CODE>', isCode: true }]);
   });
 
   test('unclosed <code> protects everything to end of input (streaming)', () => {
     // When the closer hasn't streamed in yet, protect the tail to avoid
     // mutating `$x$` before the `</code>` arrives in a later chunk.
-    expect(splitByProtectedRegions('<code>$x$ tail')).toEqual([
-      { text: '<code>$x$ tail', isCode: true },
-    ]);
+    expect(splitByProtectedRegions('<code>$x$ tail')).toEqual([{ text: '<code>$x$ tail', isCode: true }]);
   });
 
   test('self-closing <math/> is not treated as paired container', () => {
@@ -1141,9 +1128,7 @@ describe('splitByProtectedRegions', () => {
   });
 
   test('treats an unmatched mid-line ``` run as literal (no code-span close)', () => {
-    expect(splitByProtectedRegions('a ``` b then $x$')).toEqual([
-      { text: 'a ``` b then $x$', isCode: false },
-    ]);
+    expect(splitByProtectedRegions('a ``` b then $x$')).toEqual([{ text: 'a ``` b then $x$', isCode: false }]);
   });
 
   test('requires fence closer to be at line start (≤3 space indent)', () => {

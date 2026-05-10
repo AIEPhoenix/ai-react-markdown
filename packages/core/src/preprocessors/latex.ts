@@ -388,12 +388,7 @@ function findUnclosedDelimiterStart(text: string, mode: 'both' | 'double-only'):
   let unclosedStart = -1;
   let i = 0;
   while (i < text.length) {
-    if (
-      text[i] === '$' &&
-      i + 1 < text.length &&
-      text[i + 1] === '$' &&
-      !isEscapedByBackslashRun(text, i)
-    ) {
+    if (text[i] === '$' && i + 1 < text.length && text[i + 1] === '$' && !isEscapedByBackslashRun(text, i)) {
       unclosedStart = unclosedStart === -1 ? i : -1;
       i += 2;
     } else if (

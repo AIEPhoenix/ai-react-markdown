@@ -15,17 +15,11 @@ export interface StreamedContent {
   restart: () => void;
 }
 
-const randInt = (min: number, max: number) =>
-  Math.floor(Math.random() * (max - min + 1)) + min;
+const randInt = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
 
 export const useStreamedContent = (
   fullText: string,
-  {
-    chunkSizeMin = 2,
-    chunkSizeMax = 8,
-    chunkDelayMin = 15,
-    chunkDelayMax = 60,
-  }: UseStreamedContentOptions = {},
+  { chunkSizeMin = 2, chunkSizeMax = 8, chunkDelayMin = 15, chunkDelayMax = 60 }: UseStreamedContentOptions = {}
 ): StreamedContent => {
   const [position, setPosition] = useState(0);
   const [generation, restart] = useReducer((n: number) => n + 1, 0);

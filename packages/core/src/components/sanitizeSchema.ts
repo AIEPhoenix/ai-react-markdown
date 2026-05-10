@@ -41,9 +41,7 @@ export function mergeClassNameAllowlist(
   }
   const current = entries[idx];
   const merged: AttributeEntry =
-    typeof current === 'string'
-      ? ['className', ...extraClassNames]
-      : [...current, ...extraClassNames];
+    typeof current === 'string' ? ['className', ...extraClassNames] : [...current, ...extraClassNames];
   entries[idx] = merged;
   return entries;
 }
@@ -57,9 +55,6 @@ export const sanitizeSchema: Schema = {
   tagNames: [...(defaultSchema.tagNames || []), 'mark'],
   attributes: {
     ...defaultSchema.attributes,
-    code: mergeClassNameAllowlist(defaultSchema.attributes?.code, [
-      'math-inline',
-      'math-display',
-    ]),
+    code: mergeClassNameAllowlist(defaultSchema.attributes?.code, ['math-inline', 'math-display']),
   },
 };

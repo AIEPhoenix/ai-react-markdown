@@ -15,23 +15,18 @@
 import { memo, useMemo } from 'react';
 import type { AIMarkdownTypographyProps } from '../../defs';
 
-const DefaultTypography = memo(
-  ({ children, fontSize, variant, colorScheme, style }: AIMarkdownTypographyProps) => {
-    const className = useMemo(
-      () => ['aim-typography-root', variant, colorScheme].filter(Boolean).join(' '),
-      [variant, colorScheme]
-    );
-    const mergedStyle = useMemo(
-      () => ({ width: '100%' as const, fontSize, ...style }),
-      [fontSize, style]
-    );
-    return (
-      <div className={className} style={mergedStyle}>
-        {children}
-      </div>
-    );
-  }
-);
+const DefaultTypography = memo(({ children, fontSize, variant, colorScheme, style }: AIMarkdownTypographyProps) => {
+  const className = useMemo(
+    () => ['aim-typography-root', variant, colorScheme].filter(Boolean).join(' '),
+    [variant, colorScheme]
+  );
+  const mergedStyle = useMemo(() => ({ width: '100%' as const, fontSize, ...style }), [fontSize, style]);
+  return (
+    <div className={className} style={mergedStyle}>
+      {children}
+    </div>
+  );
+});
 
 DefaultTypography.displayName = 'DefaultTypography';
 

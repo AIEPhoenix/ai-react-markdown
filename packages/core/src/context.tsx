@@ -200,7 +200,7 @@ const AIMarkdownRenderStateProvider = <RCT extends AIMarkdownRenderConfig = AIMa
   // default is never mutated — avoids the extra cloneDeep pass.
   const baseConfig = defaultConfig ?? defaultAIMarkdownRenderConfig;
   const mergedConfig = useMemo(
-    () => (config ? mergeWith({}, baseConfig, config, configMergeCustomizer) as RCT : baseConfig),
+    () => (config ? (mergeWith({}, baseConfig, config, configMergeCustomizer) as RCT) : baseConfig),
     [baseConfig, config]
   );
 
