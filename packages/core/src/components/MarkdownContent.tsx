@@ -89,8 +89,10 @@ const AIMarkdownContent = memo(({ content, customComponents }: AIMarkdownContent
     return customComponents ? { ...DefaultCustomComponents, ...customComponents } : DefaultCustomComponents;
   }, [customComponents]);
 
-  // Stable plugin/options arrays — react-markdown's internal useMemo
-  // for the unified processor depends on these by reference.
+  // Stable plugin/options arrays so this component's React.memo wrapper can
+  // skip re-renders when only the parent re-rendered. The vendored sync
+  // `<Markdown>` rebuilds the unified processor on every call regardless —
+  // there is no internal processor cache to feed.
   const remarkPlugins = useMemo<RemarkPlugins>(
     () => [
       // --- Core plugins (always active) ---
