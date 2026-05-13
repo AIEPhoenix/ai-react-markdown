@@ -1,6 +1,6 @@
 {
   "name": "@ai-react-markdown/mantine",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "Mantine UI integration for ai-react-markdown — themed typography, syntax highlighting via @mantine/code-highlight, Mermaid diagrams, and automatic color scheme detection.",
   "publishConfig": {
     "access": "public"
@@ -54,7 +54,7 @@
     "build": "tsup"
   },
   "peerDependencies": {
-    "@ai-react-markdown/core": "^1.4.1",
+    "@ai-react-markdown/core": "^1.4.2",
     "@mantine/code-highlight": "^8.3.17",
     "@mantine/core": "^8.3.17",
     "highlight.js": "^11.11.1",
