@@ -14,7 +14,7 @@ A React component library for rendering AI-generated Markdown with first-class s
 - **Mermaid diagrams** -- interactive SVG diagrams with dark/light theme support
 - **Emoji** -- shortcode support (`:smile:`)
 - **CJK-friendly** -- proper line breaking and pangu spacing for Chinese, Japanese, and Korean text
-- **Extra syntax** -- highlight, definition lists, superscript/subscript
+- **Extra syntax** -- highlight, definition lists
 - **Streaming-aware** -- built-in `streaming` flag for LLM token-by-token rendering
 - **Customizable** -- swap typography, color scheme, renderers, and inject extra style wrappers
 - **Metadata context** -- pass arbitrary data to nested components without prop drilling
@@ -104,15 +104,15 @@ Without the wrapper, each `<AIMarkdown>` is independent -- current
 behavior. Mantine integration is unaffected; nest `<MantineAIMarkdown>`
 inside the wrapper exactly the same way.
 
-A new `config.preserveOrphanReferences` (default `true`) controls
-whether `<AIMarkdown>` protects `[^x]: orphan` defs from silent drop
-by `mdast-util-to-hast` (the default behavior when no matching
+A `config.preserveOrphanReferences` (default `true`) controls whether
+`<AIMarkdown>` protects `[^x]: orphan` defs from silent drop by
+`mdast-util-to-hast` (the default behavior when no matching
 `footnoteReference` exists). Setting it to `false` reverts to the
 pre-1.4 silent-drop behavior. The same flag is available on the
 wrapper as a prop and overrides each chunk's config unconditionally.
 
-See `docs/superpowers/specs/2026-05-12-cross-chunk-references-design.md`
-for the full design.
+See the [`@ai-react-markdown/core` README](./packages/core/README.md#cross-chunk-coordination)
+for the full `<AIMarkdownDocuments>` API and `useDocumentRegistry` hook.
 
 ## Documentation
 
