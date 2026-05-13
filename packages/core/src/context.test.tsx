@@ -241,3 +241,55 @@ describe('useAIMarkdownMetadata extended generic (wrapper-hook pattern)', () => 
     expect(html).toContain('data-testid="role"></span>');
   });
 });
+
+function DocumentIdProbe() {
+  const { documentId, clobberPrefix } = useAIMarkdownRenderState();
+  return (
+    <>
+      <span data-testid="documentId">{documentId}</span>
+      <span data-testid="clobberPrefix">{clobberPrefix}</span>
+    </>
+  );
+}
+
+describe('AIMarkdownRenderStateProvider documentId shortening', () => {
+  test('long documentId is hashed in clobberPrefix but kept raw on state.documentId', () => {
+    const uuid = '550e8400-e29b-41d4-a716-446655440000';
+    const html = renderToString(
+      <AIMarkdownRenderStateProvider
+        streaming={false}
+        fontSize="14px"
+        variant="default"
+        colorScheme="light"
+        documentId={uuid}
+      >
+        <DocumentIdProbe />
+      </AIMarkdownRenderStateProvider>
+    );
+    // state.documentId stays raw — registry keying and consumer code that
+    // reads it directly are unaffected by the prefix shortening.
+    expect(html).toContain(`data-testid="documentId">${uuid}</span>`);
+    // clobberPrefix uses the shortened form: short Base62 + the constant tail.
+    // It must NOT contain the raw UUID.
+    expect(html).not.toMatch(/data-testid="clobberPrefix">[^<]*550e8400/);
+    expect(html).toMatch(/data-testid="clobberPrefix">[A-Za-z0-9]{1,6}-user-content-/);
+  });
+
+  test('short documentId passes through unchanged into clobberPrefix', () => {
+    // Short ids (≤16 chars) stay verbatim — this is the contract that keeps
+    // existing snapshot tests, deep-link URLs, and hand-picked ids stable.
+    const html = renderToString(
+      <AIMarkdownRenderStateProvider
+        streaming={false}
+        fontSize="14px"
+        variant="default"
+        colorScheme="light"
+        documentId="msg-7"
+      >
+        <DocumentIdProbe />
+      </AIMarkdownRenderStateProvider>
+    );
+    expect(html).toContain('data-testid="documentId">msg-7</span>');
+    expect(html).toContain('data-testid="clobberPrefix">msg-7-user-content-</span>');
+  });
+});

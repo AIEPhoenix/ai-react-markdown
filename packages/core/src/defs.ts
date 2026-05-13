@@ -218,10 +218,18 @@ export interface AIMarkdownRenderState<TConfig extends AIMarkdownRenderConfig = 
   documentId: string;
   /**
    * Per-document URI-safe id prefix used by all clobberable attributes
-   * (`id="…"` / `href="#…"`). Derived once by the provider as
-   * `${encodeURIComponent(documentId)}-user-content-` and exposed here so
-   * downstream consumers (placeholder components, cross-chunk anchor logic)
-   * read a single canonical source instead of recomputing locally.
+   * (`id="…"` / `href="#…"`). Derived once by the provider and exposed here
+   * so downstream consumers (placeholder components, cross-chunk anchor
+   * logic) read a single canonical source instead of recomputing locally.
+   *
+   * Derivation is `${encodeURIComponent(shortenDocumentId(documentId))}-user-content-`:
+   * `documentId` is first run through a MurmurHash3 → Base62 shortener
+   * (no-op for ids ≤16 chars, ≤6-char hash otherwise) to keep the rendered
+   * HTML compact when consumers pass long UUIDs/nanoids. The shortening
+   * is purely a render-output concern — `state.documentId` itself is left
+   * raw, and registry keying (`useDocumentRegistry`) reads that raw value.
+   * Do not reconstruct this prefix from `documentId` at call sites; always
+   * read it through this field.
    */
   clobberPrefix: string;
   /** Active render configuration. */

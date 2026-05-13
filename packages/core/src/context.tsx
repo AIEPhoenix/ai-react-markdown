@@ -18,6 +18,7 @@ import {
   AIMarkdownColorScheme,
   defaultAIMarkdownRenderConfig,
 } from './defs';
+import { shortenDocumentId } from './components/shortenDocumentId';
 import type { PartialDeep } from './typings/partial-deep';
 
 const AIMarkdownRenderStateContext = createContext<AIMarkdownRenderState<AIMarkdownRenderConfig> | null>(null);
@@ -239,7 +240,15 @@ const AIMarkdownRenderStateProvider = <RCT extends AIMarkdownRenderConfig = AIMa
         // construction site, not at the documentId storage site, so consumers
         // accessing `documentId` directly still see the raw React-native value
         // (e.g. `useId()`'s `_r_0_`) while id="..."/href="#..." bytes are safe.
-        clobberPrefix: `${encodeURIComponent(resolvedDocumentId)}-user-content-`,
+        //
+        // `shortenDocumentId` is applied here (NOT at the documentId storage
+        // site) for the same reason: consumer-supplied UUIDs and nanoids
+        // shouldn't bloat every rendered `id="…"`. Registry keying — which
+        // reads `state.documentId` directly — stays on the raw value, so the
+        // shortening is a pure HTML-output concern and the `useDocumentRegistry`
+        // API surface is unaffected. Pure function ⇒ all chunks sharing one
+        // logical documentId still produce identical prefixes.
+        clobberPrefix: `${encodeURIComponent(shortenDocumentId(resolvedDocumentId))}-user-content-`,
         config: mergedConfig,
       }),
     [streaming, fontSize, variant, colorScheme, resolvedDocumentId, mergedConfig]
