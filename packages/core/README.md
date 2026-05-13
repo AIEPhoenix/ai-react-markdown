@@ -12,7 +12,7 @@ A batteries-included React component for rendering AI-generated markdown with fi
 - **LaTeX math** -- inline and display math rendered with KaTeX; smart preprocessing handles currency `$` signs, bracket delimiters (`\[...\]`, `\(...\)`), pipe escaping, and mhchem commands
 - **Emoji** -- shortcode support (`:smile:`) via `remark-emoji`
 - **CJK-friendly** -- proper line breaking and spacing for Chinese, Japanese, and Korean text
-- **Extra syntax** -- highlight (`==text==`), definition lists, superscript/subscript
+- **Extra syntax** -- highlight (`==text==`), definition lists
 - **Display optimizations** -- SmartyPants typography, pangu CJK spacing, HTML comment removal
 - **Streaming-aware** -- built-in `streaming` flag propagated via context for custom components
 - **Customizable** -- swap typography, color scheme, individual markdown element renderers, and inject extra style wrappers
@@ -137,7 +137,60 @@ import AIMarkdown, {
 />;
 ```
 
-When you provide a partial `config`, it is deep-merged with the defaults. Array values (like `extraSyntaxSupported`) are **replaced entirely**, not merged by index -- so the example above enables only the highlight extension, disabling definition lists and subscript.
+When you provide a partial `config`, it is deep-merged with the defaults. Array values (like `extraSyntaxSupported`) are **replaced entirely**, not merged by index -- so the example above enables only the highlight extension, disabling definition lists.
+
+### Other Config Fields
+
+| Field                      | Type      | Default | Description                                                                                                                                                                                                                                                                                                                                   |
+| -------------------------- | --------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `blockMemoEnabled`         | `boolean` | `true`  | Enables block-level memoization: the renderer splits each document into per-block units and memoizes each block's React subtree by source identity, so unchanged blocks skip `toJsxRuntime` and React reconcile work during streaming. Output is byte-identical to the disabled path. Set `false` as an escape hatch for debugging.           |
+| `preserveOrphanReferences` | `boolean` | `true`  | Protects orphan `[^x]: …` footnote definitions from being silently dropped by `mdast-util-to-hast` when no matching `[^x]` reference exists. Useful for streamed content where the reference may arrive in a later chunk. Inside `<AIMarkdownDocuments>`, the wrapper's `preserveOrphanReferences` prop overrides this field unconditionally. |
+
+## Cross-chunk Coordination
+
+When a single logical markdown document is split across multiple
+`<AIMarkdown>` instances (chunked streaming for chat UIs, etc.), wrap
+them in `<AIMarkdownDocuments>` and pass the SAME `documentId` to every
+chunk to coordinate footnotes, link references, and image references
+across chunks:
+
+```tsx
+import AIMarkdown, { AIMarkdownDocuments } from '@ai-react-markdown/core';
+
+<AIMarkdownDocuments>
+  {message.chunks.map((c, i) => (
+    <AIMarkdown key={i} content={c} documentId={message.id} />
+  ))}
+</AIMarkdownDocuments>;
+```
+
+Without the wrapper, each `<AIMarkdown>` is independent — its
+references resolve only within its own content (current standalone
+behavior).
+
+### `<AIMarkdownDocuments>` Props
+
+| Prop                       | Type        | Default | Description                                                                                                                                                                                                                                |
+| -------------------------- | ----------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `preserveOrphanReferences` | `boolean`   | `true`  | Controls orphan-reference protection for every chunk under this wrapper. Unconditionally overrides each chunk's `config.preserveOrphanReferences`. Does not gate cross-chunk coordination itself (that's gated by wrapper + `documentId`). |
+| `children`                 | `ReactNode` | -       | The `<AIMarkdown>` instances to coordinate. Nesting `<AIMarkdownDocuments>` inside another `<AIMarkdownDocuments>` throws.                                                                                                                 |
+
+### `useDocumentRegistry(documentId)`
+
+Returns the cross-chunk `Registry` for the given `documentId`, or
+`null` when called outside `<AIMarkdownDocuments>` or when
+`documentId` is empty. The `Registry` shape is exported and stable
+across minor versions — use it when writing typed helpers that operate
+on the cross-chunk registry directly.
+
+```tsx
+import { useDocumentRegistry, type Registry } from '@ai-react-markdown/core';
+
+function MyHelper({ documentId }: { documentId: string }) {
+  const registry: Registry | null = useDocumentRegistry(documentId);
+  // null when no <AIMarkdownDocuments> ancestor — treat as "run standalone".
+}
+```
 
 ## Hooks
 
@@ -160,13 +213,15 @@ function CustomCodeBlock({ children }: PropsWithChildren) {
 
 **Returns** `AIMarkdownRenderState<TConfig>`:
 
-| Field         | Type                    | Description                                         |
-| ------------- | ----------------------- | --------------------------------------------------- |
-| `streaming`   | `boolean`               | Whether content is being streamed.                  |
-| `fontSize`    | `string`                | Resolved CSS font-size value.                       |
-| `variant`     | `AIMarkdownVariant`     | Active typography variant.                          |
-| `colorScheme` | `AIMarkdownColorScheme` | Active color scheme.                                |
-| `config`      | `TConfig`               | Active render configuration (merged with defaults). |
+| Field           | Type                    | Description                                                                                                                                                                                                               |
+| --------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `streaming`     | `boolean`               | Whether content is being streamed.                                                                                                                                                                                        |
+| `fontSize`      | `string`                | Resolved CSS font-size value.                                                                                                                                                                                             |
+| `variant`       | `AIMarkdownVariant`     | Active typography variant.                                                                                                                                                                                                |
+| `colorScheme`   | `AIMarkdownColorScheme` | Active color scheme.                                                                                                                                                                                                      |
+| `documentId`    | `string`                | Stable id for the logical markdown document — caller-supplied or auto-generated via `useId()`.                                                                                                                            |
+| `clobberPrefix` | `string`                | URI-safe id prefix derived from `documentId`, used by every clobberable HTML attribute (`id=…` / `href="#…"`). Read this from the render state rather than recomputing locally when writing components that emit anchors. |
+| `config`        | `TConfig`               | Active render configuration (merged with defaults).                                                                                                                                                                       |
 
 ### `useAIMarkdownMetadata<TMetadata>()`
 
@@ -355,7 +410,7 @@ interface MyMetadata extends AIMarkdownMetadata {
 />;
 ```
 
-Sub-packages like `@ai-react-markdown/mantine` use this pattern to extend the base config with additional options (e.g. `forceSameFontSize`, `codeBlock.autoDetectUnknownLanguage`) while inheriting all core functionality.
+Sub-packages like `@ai-react-markdown/mantine` use this pattern to extend the base config with additional options (e.g. `codeBlock.defaultExpanded`, `codeBlock.autoDetectUnknownLanguage`) while inheriting all core functionality.
 
 Similarly, hooks accept generic parameters for type-safe access:
 
@@ -388,9 +443,14 @@ The metadata and render state providers are deliberately separated so that metad
 
 - `AIMarkdown` -- the main component (memoized)
 
+### Components
+
+- `AIMarkdownDocuments` -- optional outer wrapper enabling cross-chunk coordination
+
 ### Types
 
 - `AIMarkdownProps`
+- `AIMarkdownDocumentsProps`
 - `AIMarkdownCustomComponents`
 - `AIMarkdownRenderConfig`
 - `AIMarkdownRenderState`
@@ -403,6 +463,7 @@ The metadata and render state providers are deliberately separated so that metad
 - `AIMarkdownColorScheme`
 - `AIMDContentPreprocessor`
 - `PartialDeep`
+- Cross-chunk registry types: `Registry`, `ChunkData`, `FootnoteDef`, `LinkDef`, `RefRecord`, `RefKind`
 
 ### Enums and Constants
 
@@ -414,6 +475,7 @@ The metadata and render state providers are deliberately separated so that metad
 
 - `useAIMarkdownRenderState()`
 - `useAIMarkdownMetadata()`
+- `useDocumentRegistry()`
 - `useStableValue()`
 
 ## License

@@ -14,7 +14,7 @@ Mantine UI integration for `@ai-react-markdown/core`. Provides a drop-in `<Manti
 - **Automatic color scheme** -- detects Mantine's computed color scheme (`useComputedColorScheme`) and passes it to the core renderer automatically
 - **Mantine-scoped CSS** -- extra styles wrapper overrides Mantine spacing/font-size custom properties to use relative `em` units, ensuring consistent scaling at any base font size
 
-All core features (GFM, LaTeX math, CJK support, streaming, metadata context, content preprocessors, custom components) are inherited from `@ai-react-markdown/core`.
+All core features (GFM, LaTeX math, CJK support, streaming, metadata context, content preprocessors, custom components, cross-chunk coordination via `<AIMarkdownDocuments>`) are inherited from `@ai-react-markdown/core`. To coordinate footnotes / link refs / image refs across chunked-stream `<MantineAIMarkdown>` instances, wrap them in `<AIMarkdownDocuments>` (imported from `@ai-react-markdown/core`) and pass the same `documentId` to every chunk — Mantine integration is unaffected.
 
 ## Installation
 
@@ -35,7 +35,7 @@ yarn add @ai-react-markdown/mantine @ai-react-markdown/core
 {
   "react": ">=19",
   "react-dom": ">=19",
-  "@ai-react-markdown/core": "^1.0.2",
+  "@ai-react-markdown/core": "^1.4.0",
   "@mantine/core": "^8.3.17",
   "@mantine/code-highlight": "^8.3.17",
   "highlight.js": "^11.11.1"
@@ -99,7 +99,7 @@ Extends `AIMarkdownProps` from the core package. All core props are supported; l
 | ---------------------- | -------------------------------- | -------------------------------------- | -------------------------------------------------------------------- |
 | `content`              | `string`                         | **(required)**                         | Raw markdown content to render.                                      |
 | `streaming`            | `boolean`                        | `false`                                | Whether content is actively being streamed.                          |
-| `fontSize`             | `number \| string`               | `'0.875rem'`                           | Base font size. Numbers are treated as pixels.                       |
+| `fontSize`             | `number \| string`               | `'0.9375rem'`                          | Base font size. Numbers are treated as pixels. Inherited from core.  |
 | `variant`              | `AIMarkdownVariant`              | `'default'`                            | Typography variant name.                                             |
 | `colorScheme`          | `AIMarkdownColorScheme`          | Auto-detected                          | Color scheme. Defaults to Mantine's computed color scheme.           |
 | `config`               | `PartialDeep<TConfig>`           | `undefined`                            | Partial render config, deep-merged with defaults.                    |
