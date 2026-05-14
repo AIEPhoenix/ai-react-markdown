@@ -96,6 +96,8 @@ function StreamingChat({ content, isStreaming }: { content: string; isStreaming:
 | `Typography`           | `AIMarkdownTypographyComponent`  | `DefaultTypography`             | Typography wrapper component.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `ExtraStyles`          | `AIMarkdownExtraStylesComponent` | `undefined`                     | Optional extra style wrapper rendered between typography and content.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `documentId`           | `string`                         | auto via `useId()`              | Stable id for the _logical markdown document_ this `<AIMarkdown>` is rendering. Used as the id namespace for clobberable attributes (`id`, hash hrefs) so two documents on the same page do not cross-link (footnote `[^1]` in message A won't scroll to `[^1]` in message B). When one document is split into chunks rendered by multiple `<AIMarkdown>` instances, pass the SAME `documentId` to every chunk so prefixes align. The value is passed through `encodeURIComponent` before being injected into HTML attributes, so any string is safe (React's `useId()` output, your own opaque ids, user-supplied UUIDs). Long ids (>16 chars, e.g. UUIDs) are hashed via MurmurHash3 to a short Base62 form **inside the rendered `id="…"`/`href="#…"` prefix only** to keep HTML compact; `state.documentId` itself and registry keying via `useDocumentRegistry` stay raw, so deep linking and any consumer code reading `documentId` are unaffected. |
+| `urlTransform`         | `UrlTransform \| null`           | `defaultUrlTransform`           | Override the URL allowlist applied to `href`, `src`, and similar attributes. The default mirrors GitHub: `http`, `https`, `irc`, `ircs`, `mailto`, `xmpp`. Pass a function defined at module scope (or memoized) to permit additional schemes — see [Custom URL Schemes and Sanitization](#custom-url-schemes-and-sanitization).                                                                                                                                                                                                                                                                                            |
+| `sanitizeSchema`       | `SanitizeSchema`                 | library default                 | Override the `rehype-sanitize` schema. Build with [`extendSanitizeSchema`](#custom-url-schemes-and-sanitization) so the library's cross-chunk tag and KaTeX className allowlists survive — hand-rolling silently drops them.                                                                                                                                                                                                                                                                                                                                                                                                |
 
 ## Configuration
 
@@ -191,6 +193,107 @@ function MyHelper({ documentId }: { documentId: string }) {
   // null when no <AIMarkdownDocuments> ancestor — treat as "run standalone".
 }
 ```
+
+## Custom URL Schemes and Sanitization
+
+By default `<AIMarkdown>` only renders links and images whose URLs use the standard set of safe protocols (`http`, `https`, `irc`, `ircs`, `mailto`, `xmpp`). Anything else — `javascript:`, `data:`, or your own `myapp://` — is stripped. This protects against XSS in LLM-generated markdown but also means private application schemes are unreachable without configuration.
+
+### The Two-Gate Model
+
+Sanitization runs in **two independent gates** (defense in depth):
+
+1. **`urlTransform`** — runs first, on every URL-bearing attribute, and rewrites disallowed URLs to `''`.
+2. **`rehype-sanitize` schema** — runs second, and drops the entire `href`/`src`/`cite` attribute when the protocol is not in its own allowlist.
+
+For a private scheme to render, **both gates must permit it**. Allowing only one is the most common pitfall.
+
+### Allowing a Custom Scheme
+
+Define both gates at module scope so their reference identity is stable across renders (this keeps the per-block memo cache warm):
+
+```tsx
+import AIMarkdown, {
+  defaultUrlTransform,
+  extendSanitizeSchema,
+} from '@ai-react-markdown/core';
+
+// Gate 1: compose with the default so https/mailto/etc. still work.
+const ALLOWED = /^myapp:/i;
+const URL_TRANSFORM = (url, key, node) =>
+  ALLOWED.test(url) ? url : defaultUrlTransform(url, key, node);
+
+// Gate 2: extend the library schema so it permits the scheme on href + src.
+const SCHEMA = extendSanitizeSchema((s) => {
+  s.protocols.href.push('myapp');
+  s.protocols.src.push('myapp');
+});
+
+function App() {
+  return (
+    <AIMarkdown
+      content={markdown}
+      urlTransform={URL_TRANSFORM}
+      sanitizeSchema={SCHEMA}
+    />
+  );
+}
+```
+
+### `extendSanitizeSchema((draft) => Schema | void)`
+
+Hands you a deep clone of the library's default sanitize schema. Mutate it freely (the original singleton is never touched) or return a replacement object. Library invariants — cross-chunk coordination tags (`cross-chunk-link`, `cross-chunk-image`, `footnote-sup`), the KaTeX `math-inline` / `math-display` className allowlist, the `<mark>` allowance — survive untouched. **Hand-rolling a schema that doesn't spread these invariants silently breaks coordinated rendering**, which is why the helper is the recommended path.
+
+```tsx
+const SCHEMA = extendSanitizeSchema((s) => {
+  s.tagNames.push('my-widget');                         // add a tag
+  s.protocols.href.push('myapp');                       // permit a protocol
+  s.attributes['my-widget'] = ['data-id', 'data-mode']; // allow attributes
+  // No `return` needed — mutate-only is fine.
+});
+```
+
+**Footguns** (also documented in JSDoc):
+
+- Returning `null` is treated like returning nothing (the mutated draft is used).
+- Reassigning the local parameter (`s = { ... }`) does NOT replace the draft — JS only rebinds the local. Either mutate the original or `return` an explicit value.
+- Throwing inside the modifier propagates uncaught. Usually fine because the helper is called once at module load.
+
+### Reference Stability and the Cache
+
+Both `urlTransform` and `sanitizeSchema` are tracked by the per-block memo cache. Defining them inline:
+
+```tsx
+// 🚫 Anti-pattern — discards the entire markdown cache on every parent re-render.
+<AIMarkdown
+  urlTransform={(url, k, n) => /* … */}
+  sanitizeSchema={extendSanitizeSchema((s) => /* … */)}
+/>
+```
+
+… creates fresh references every render, invalidates the cache, and undermines streaming performance. In development the library will `console.warn` after detecting 3+ identity flips on either prop. The warning is dead-code-eliminated in production builds. Define both values at module scope, or memoize with `useMemo` if they depend on state.
+
+### Regex Escaping for `+` / `-` / `.` in Scheme Names
+
+Per RFC 3986 scheme names may contain `+`, `-`, and `.` — all regex metacharacters. Write `/^web\+app:/i`, **not** `/^web+app:/i` (the latter would match `we`, `wee`, `weee`, …, silently broadening the allowlist).
+
+### Escape Hatch: Hand-rolled Schema
+
+If you need full control, the library's default schema is also exported as `sanitizeSchema`. **Spread it** so cross-chunk and KaTeX additions survive:
+
+```tsx
+import AIMarkdown, { sanitizeSchema } from '@ai-react-markdown/core';
+
+const fullCustom = {
+  ...sanitizeSchema, // ← required to keep cross-chunk + math invariants
+  // your overrides here
+};
+```
+
+The `extendSanitizeSchema` helper exists precisely because consumers tend to forget that spread. Prefer the helper unless you have a specific reason.
+
+### API Stability of `UrlTransform` and `SanitizeSchema`
+
+Both prop types track their respective upstream packages — `UrlTransform` follows `react-markdown`'s shape and `SanitizeSchema` follows `rehype-sanitize`'s. They may evolve with those packages' major versions. Hand-construct schemas via the helpers (rather than typing your own from scratch) and you'll inherit any upstream-driven changes automatically.
 
 ## Hooks
 
@@ -462,6 +565,7 @@ The metadata and render state providers are deliberately separated so that metad
 - `AIMarkdownVariant`
 - `AIMarkdownColorScheme`
 - `AIMDContentPreprocessor`
+- `UrlTransform`, `SanitizeSchema` -- prop-type aliases for the URL handling props (track upstream `react-markdown` / `rehype-sanitize` shapes)
 - `PartialDeep`
 - Cross-chunk registry types: `Registry`, `ChunkData`, `FootnoteDef`, `LinkDef`, `RefRecord`, `RefKind`
 
@@ -470,6 +574,12 @@ The metadata and render state providers are deliberately separated so that metad
 - `AIMarkdownRenderExtraSyntax`
 - `AIMarkdownRenderDisplayOptimizeAbility`
 - `defaultAIMarkdownRenderConfig`
+- `defaultUrlTransform` -- the library's built-in URL-allowlist transform; compose with this when supplying a custom `urlTransform`
+- `sanitizeSchema` -- the library's built-in `rehype-sanitize` schema; spread this when hand-rolling a custom schema (or use `extendSanitizeSchema` instead)
+
+### Helpers
+
+- `extendSanitizeSchema((draft) => Schema | void)` -- mutate-and-return factory that produces a sanitize schema from a deep clone of the library default; preserves cross-chunk and KaTeX invariants
 
 ### Hooks (re-exported)
 
