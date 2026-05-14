@@ -39,7 +39,10 @@ import {
   AIMarkdownVariant,
   AIMarkdownColorScheme,
 } from './defs';
+import type { SanitizeSchema } from './components/extendSanitizeSchema';
+import type { UrlTransform } from './components/markdown';
 import useStableValue from './hooks/useStableValue';
+import useReferenceFlipWarning from './hooks/useReferenceFlipWarning';
 import DefaultTypography from './components/typography/Default';
 
 /**
@@ -118,6 +121,90 @@ export interface AIMarkdownProps<
    * characters like `:`, `/`, or spaces.
    */
   documentId?: string;
+  /**
+   * Override the function that decides which URL protocols are allowed
+   * through the FIRST sanitization gate. The default allowlist mirrors
+   * `react-markdown` / GitHub: `http`, `https`, `irc`, `ircs`, `mailto`,
+   * `xmpp`. Anything else is rewritten to `''`.
+   *
+   * **Recommended pattern**: compose with the exported
+   * {@link defaultUrlTransform} so the built-in XSS protections survive,
+   * and define the result at module scope so its identity is stable across
+   * renders:
+   *
+   * ```ts
+   * import AIMarkdown, { defaultUrlTransform } from '@ai-react-markdown/core';
+   *
+   * const ALLOWED = /^(myapp|tel):/i;
+   * const URL_TRANSFORM = (url, key, node) =>
+   *   ALLOWED.test(url) ? url : defaultUrlTransform(url, key, node);
+   *
+   * function App() {
+   *   return <AIMarkdown urlTransform={URL_TRANSFORM} ... />;
+   * }
+   * ```
+   *
+   * **Regex-escaping**: scheme names per RFC 3986 may contain `+`, `-`, and
+   * `.` (e.g. `web+app`, `coap+tcp`). All three are regex metacharacters,
+   * so write `/^web\+app:/i` rather than `/^web+app:/i`. The latter would
+   * match URLs starting with `we`, `wee`, `weee`, … and silently broaden
+   * the allowlist.
+   *
+   * **Reference stability matters.** The block-memo cache treats this prop
+   * as a dependency. Defining the function inline (`urlTransform={(url) =>
+   * …}`) creates a new closure on every parent render, discards the cache
+   * for the entire markdown document on each render, and effectively
+   * disables Phase 5 memoization. In development the library will
+   * `console.warn` if it detects this pattern.
+   *
+   * Allowing a protocol here is necessary but **not sufficient** to render
+   * a link — the second gate (`rehype-sanitize`) also enforces its own
+   * protocol allowlist. See the {@link sanitizeSchema} prop and the
+   * matching {@link extendSanitizeSchema} helper for the second gate.
+   *
+   * **API stability**: the `UrlTransform` type tracks the upstream
+   * `react-markdown` shape and may change with its major versions.
+   */
+  urlTransform?: UrlTransform | null;
+  /**
+   * Override the `rehype-sanitize` schema applied to the rendered output.
+   * The library default ({@link sanitizeSchema}) extends `rehype-sanitize`'s
+   * own `defaultSchema` with the `<mark>` tag, KaTeX class names, and the
+   * cross-chunk coordination tags (`cross-chunk-link`, `cross-chunk-image`,
+   * `footnote-sup`).
+   *
+   * **Recommended pattern**: build the schema with {@link extendSanitizeSchema}
+   * (mutate-and-return form) so those library additions stay intact, and
+   * define the result at module scope:
+   *
+   * ```ts
+   * import AIMarkdown, { extendSanitizeSchema } from '@ai-react-markdown/core';
+   *
+   * const SCHEMA = extendSanitizeSchema((s) => {
+   *   s.protocols.href.push('myapp');
+   *   s.protocols.src.push('myapp');
+   * });
+   *
+   * function App() {
+   *   return <AIMarkdown sanitizeSchema={SCHEMA} ... />;
+   * }
+   * ```
+   *
+   * **Footgun**: hand-rolling a schema (e.g. spreading from
+   * `rehype-sanitize`'s `defaultSchema` directly) silently drops the
+   * cross-chunk tag allowlist — coordinated multi-chunk rendering will then
+   * lose its placeholders. Prefer the helper unless you have a specific
+   * reason to opt out.
+   *
+   * **Reference stability matters.** Inline `<AIMarkdown sanitizeSchema={{
+   * ...sanitizeSchema, protocols: {...} }}>` is mitigated by an internal
+   * `useStableValue` deep-equal pass, but the safer pattern is still
+   * module-scope. Development builds will `console.warn` on identity flips.
+   *
+   * **API stability**: the `SanitizeSchema` type tracks the upstream
+   * `rehype-sanitize` shape and may change with its major versions.
+   */
+  sanitizeSchema?: SanitizeSchema;
 }
 
 /**
@@ -141,6 +228,8 @@ const AIMarkdownComponent = <
   variant = 'default',
   colorScheme = 'light',
   documentId,
+  urlTransform,
+  sanitizeSchema,
 }: AIMarkdownProps<TConfig, TRenderData>) => {
   // Normalize fontSize: number -> px string, undefined -> default rem value.
   // Branch on `undefined` (not truthiness) so `fontSize={0}` resolves to `'0px'`.
@@ -153,6 +242,14 @@ const AIMarkdownComponent = <
   // React identity (useful for debugging and DevTools association).
   const generatedId = useId();
   const usedDocumentId = documentId && documentId.length > 0 ? documentId : generatedId;
+
+  // Dev-mode flip-rate warnings on the two cache-sensitive props. These
+  // MUST run BEFORE `useStableValue` below, otherwise a deep-equal collapse
+  // would mask the very anti-pattern they exist to surface (inline schema
+  // re-built every render). Both hook calls become dead code in production
+  // via `__DEV__` constant folding inside the hook implementation.
+  useReferenceFlipWarning(urlTransform, 'urlTransform');
+  useReferenceFlipWarning(sanitizeSchema, 'sanitizeSchema');
 
   // Stabilize object/array props to prevent unnecessary re-renders
   // when the consumer creates new references on each render.
@@ -167,6 +264,18 @@ const AIMarkdownComponent = <
   const stableConfig = useStableValue(config);
   const stablePreprocessors = useStableValue(contentPreprocessors);
   const stableCustomComponents = useStableValue(customComponents);
+  // Stabilize the sanitize schema so callers who construct it inline (against
+  // our recommendation) don't blow the rehypePlugins memo on every render.
+  // Also covers the common case of spreading defaults to add a single
+  // protocol — the deep-equal check collapses identity churn. The flip
+  // warning above runs on the RAW prop (before this stabilize) so the user
+  // still sees the warning even though the cache stays warm.
+  const stableSanitizeSchema = useStableValue(sanitizeSchema);
+  // urlTransform is intentionally NOT stabilized — useStableValue uses
+  // lodash isEqual, which is not meaningful for functions (two different
+  // closures over the same logic will never be equal). The JSDoc on the
+  // prop already requires callers to pass a stable function reference; we
+  // forward it as-is so the behavior is honest.
 
   // Run the preprocessing pipeline (LaTeX normalization + user preprocessors).
   const usedContent = useMemo(
@@ -201,10 +310,20 @@ const AIMarkdownComponent = <
         >
           {ExtraStyles ? (
             <ExtraStyles>
-              <AIMarkdownContent content={usedContent} customComponents={stableCustomComponents} />
+              <AIMarkdownContent
+                content={usedContent}
+                customComponents={stableCustomComponents}
+                urlTransform={urlTransform ?? undefined}
+                sanitizeSchema={stableSanitizeSchema}
+              />
             </ExtraStyles>
           ) : (
-            <AIMarkdownContent content={usedContent} customComponents={stableCustomComponents} />
+            <AIMarkdownContent
+              content={usedContent}
+              customComponents={stableCustomComponents}
+              urlTransform={urlTransform ?? undefined}
+              sanitizeSchema={stableSanitizeSchema}
+            />
           )}
         </Typography>
       </AIMarkdownRenderStateProvider>
@@ -267,6 +386,20 @@ export {
 // Hooks -- for custom components to access render state & metadata
 export { useAIMarkdownRenderState, useAIMarkdownMetadata } from './context';
 export { useStableValue };
+
+// URL handling — primitives for the `urlTransform` prop and a factory
+// helper for the `sanitizeSchema` prop on `<AIMarkdown>`.
+//
+// `urlTransform` has no helper because composition with `defaultUrlTransform`
+// is already the natural JS pattern (one-line closure). `extendSanitizeSchema`
+// is provided because the library default schema includes invariants
+// (cross-chunk tag allowlist, KaTeX className allowlist, …) that hand-rolled
+// extensions tend to silently drop — the helper bakes in the safe path.
+export { defaultUrlTransform } from './components/markdown';
+export type { UrlTransform } from './components/markdown';
+export { sanitizeSchema } from './components/sanitizeSchema';
+export { extendSanitizeSchema } from './components/extendSanitizeSchema';
+export type { SanitizeSchema } from './components/extendSanitizeSchema';
 
 // Cross-chunk coordination wrapper + hook
 export { AIMarkdownDocuments, useDocumentRegistry } from './components/AIMarkdownDocuments';

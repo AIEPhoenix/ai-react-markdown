@@ -74,6 +74,7 @@ import {
 import { collectDefLabels } from './collectDefLabels';
 import { useDocumentRegistry, usePreserveOrphanReferences } from './AIMarkdownDocuments';
 import type { Registry } from './documentRegistry';
+import type { SanitizeSchema } from './extendSanitizeSchema';
 import { augmentSourceWithPhantoms } from './remarkInjectPhantomDefs';
 import { buildCrossChunkHandlers } from './customMdastHandlers';
 import { normalizeForMatch } from './normalizeId';
@@ -111,6 +112,19 @@ interface AIMarkdownContentProps {
   content: string;
   /** Optional react-markdown component overrides (e.g. custom code block renderer). */
   customComponents?: AIMarkdownCustomComponents;
+  /**
+   * Optional URL transform applied during the hast pipeline. When omitted,
+   * the vendored Markdown wrapper falls back to its built-in
+   * `defaultUrlTransform` (https/mailto/etc. allowlist).
+   */
+  urlTransform?: MarkdownOptions['urlTransform'];
+  /**
+   * Optional `rehype-sanitize` schema. When omitted, the library default
+   * ({@link sanitizeSchema}) is used. Callers should produce this via
+   * {@link extendSanitizeSchema} to avoid silently dropping the cross-chunk
+   * tag allowlist.
+   */
+  sanitizeSchema?: SanitizeSchema;
 }
 
 interface RendererProps {
@@ -119,6 +133,7 @@ interface RendererProps {
   remarkPlugins: RemarkPlugins;
   rehypePlugins: RehypePlugins;
   remarkRehypeOptions: RemarkRehypeOptions;
+  urlTransform: MarkdownOptions['urlTransform'];
 }
 
 /**
@@ -127,11 +142,11 @@ interface RendererProps {
  * unified pipeline (parse → transform → buildBlocks → renderBlocksWithCache).
  */
 const BlockMemoizedRenderer = memo(
-  ({ content, usedComponents, remarkPlugins, rehypePlugins, remarkRehypeOptions }: RendererProps) => {
+  ({ content, usedComponents, remarkPlugins, rehypePlugins, remarkRehypeOptions, urlTransform }: RendererProps) => {
     // Vendored Markdown options that AIMarkdown does not currently expose. They
     // are tracked in the G3 flush below so the cache stays correct if any of
-    // these are ever surfaced upstream.
-    const urlTransform: MarkdownOptions['urlTransform'] = undefined;
+    // these are ever surfaced upstream. `urlTransform` is now a real prop —
+    // the remaining five are still internal `undefined`.
     const allowedElements: MarkdownOptions['allowedElements'] = undefined;
     const disallowedElements: MarkdownOptions['disallowedElements'] = undefined;
     const allowElement: MarkdownOptions['allowElement'] = undefined;
@@ -585,12 +600,13 @@ BlockMemoizedRenderer.displayName = 'BlockMemoizedRenderer';
  * cross-chunk behavior, keep `blockMemoEnabled: true` (the default).
  */
 const LegacyRenderer = memo(
-  ({ content, usedComponents, remarkPlugins, rehypePlugins, remarkRehypeOptions }: RendererProps) => (
+  ({ content, usedComponents, remarkPlugins, rehypePlugins, remarkRehypeOptions, urlTransform }: RendererProps) => (
     <Markdown
       remarkPlugins={remarkPlugins}
       rehypePlugins={rehypePlugins}
       remarkRehypeOptions={remarkRehypeOptions}
       components={usedComponents}
+      urlTransform={urlTransform}
     >
       {content}
     </Markdown>
@@ -603,8 +619,19 @@ LegacyRenderer.displayName = 'LegacyRenderer';
  * the current render config, then dispatches to either the block-memo
  * renderer or the legacy renderer based on `config.blockMemoEnabled`.
  */
-const AIMarkdownContent = memo(({ content, customComponents }: AIMarkdownContentProps) => {
+const AIMarkdownContent = memo(
+  ({ content, customComponents, urlTransform, sanitizeSchema: customSanitizeSchema }: AIMarkdownContentProps) => {
   const { config, clobberPrefix } = useAIMarkdownRenderState();
+  // Dev-mode flip warnings live in the parent `<AIMarkdown>` (`./../index.tsx`)
+  // — they MUST run BEFORE `useStableValue` collapses identity churn, otherwise
+  // an inline-but-deep-equal `sanitizeSchema` would be silently stabilized and
+  // the warning would never fire. Don't add a duplicate call here.
+  // Resolve schema: caller-provided override (from `extendSanitizeSchema(...)`
+  // or a hand-rolled Schema) wins; otherwise the library default. Reference
+  // identity is preserved by the parent `<AIMarkdown>`'s `useStableValue`,
+  // so this picks one of two stable references rather than minting a new
+  // object every render — important for the rehypePlugins memo below.
+  const usedSanitizeSchema = customSanitizeSchema ?? sanitizeSchema;
 
   // Resolve extra-syntax remark plugins and check if definition list HAST handlers are needed.
   const { extraSyntaxRemarkPlugins, enableDefinitionList } = useMemo(
@@ -657,10 +684,13 @@ const AIMarkdownContent = memo(({ content, customComponents }: AIMarkdownContent
     () => [
       // Allow raw HTML through so rehype-sanitize can handle it.
       [rehypeRaw, { passThrough: [] }],
-      // Sanitize HTML while allowing <mark> (highlight) and KaTeX class names.
-      // Override `clobberPrefix` with the instance-scoped value so every id
-      // and clobberable attribute is namespaced to this `<AIMarkdown>` instance.
-      [rehypeSanitize, { ...sanitizeSchema, clobberPrefix }],
+      // Sanitize HTML while allowing <mark> (highlight), KaTeX class names,
+      // and any extra protocols the caller permitted via the `sanitizeSchema`
+      // prop. Override `clobberPrefix` with the instance-scoped value so every
+      // id and clobberable attribute is namespaced to this `<AIMarkdown>`
+      // instance — the spread order is intentional: our prefix wins over any
+      // caller-supplied prefix on the schema.
+      [rehypeSanitize, { ...usedSanitizeSchema, clobberPrefix }],
       // Normalize the auto-generated `<section data-footnotes>`: strip the
       // sr-only `<h2>Footnotes</h2>` label and prepend `<hr>`. Keeps standalone
       // single-doc rendering visually consistent with the cross-chunk aggregate
@@ -673,7 +703,7 @@ const AIMarkdownContent = memo(({ content, customComponents }: AIMarkdownContent
       rehypeKatex,
       rehypeUnwrapImages,
     ],
-    [clobberPrefix]
+    [clobberPrefix, usedSanitizeSchema]
   );
 
   const remarkRehypeOptions = useMemo<RemarkRehypeOptions>(
@@ -701,9 +731,11 @@ const AIMarkdownContent = memo(({ content, customComponents }: AIMarkdownContent
       remarkPlugins={remarkPlugins}
       rehypePlugins={rehypePlugins}
       remarkRehypeOptions={remarkRehypeOptions}
+      urlTransform={urlTransform}
     />
   );
-});
+  }
+);
 
 AIMarkdownContent.displayName = 'AIMarkdownContent';
 
