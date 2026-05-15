@@ -110,11 +110,7 @@ describe('rehypeRebaseHashLinks (integration with full AIMarkdown pipeline)', ()
       (s as unknown as { clobberPrefix: string }).clobberPrefix = 'x-';
     });
     const html = renderToStaticMarkup(
-      <AIMarkdown
-        content="<h2 id='bar'>y</h2>"
-        documentId={TEST_DOCUMENT}
-        sanitizeSchema={draftWithBadPrefix}
-      />
+      <AIMarkdown content="<h2 id='bar'>y</h2>" documentId={TEST_DOCUMENT} sanitizeSchema={draftWithBadPrefix} />
     );
     expect(html).not.toContain('x-bar');
     expect(html).toContain(`${TEST_DOCUMENT}-user-content-bar`);

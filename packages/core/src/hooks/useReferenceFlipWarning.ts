@@ -19,8 +19,7 @@
 import { useRef } from 'react';
 
 /** Module-scope dev flag. Bundlers fold this to a constant in production. */
-const __DEV__ =
-  typeof process !== 'undefined' && process.env.NODE_ENV !== 'production';
+const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production';
 
 /** How many identity flips before the first warning fires. */
 const FLIP_THRESHOLD = 3;
@@ -42,12 +41,7 @@ export interface FlipState {
  * Caller supplies `now` so tests can control the clock without mocking
  * `Date.now()`.
  */
-export function trackFlip(
-  state: FlipState,
-  value: unknown,
-  propName: string,
-  now: number
-): void {
+export function trackFlip(state: FlipState, value: unknown, propName: string, now: number): void {
   if (state.prev === value) return;
   state.flips++;
   state.prev = value;

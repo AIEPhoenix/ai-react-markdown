@@ -50,10 +50,9 @@ const NESTED_WRAPPER_MESSAGE =
  * satisfied because every render of THIS inner component goes through all
  * the hooks in the same order.
  */
-const AIMarkdownDocumentsRoot: FC<Required<Pick<AIMarkdownDocumentsProps, 'preserveOrphanReferences'>> & PropsWithChildren> = ({
-  preserveOrphanReferences,
-  children,
-}) => {
+const AIMarkdownDocumentsRoot: FC<
+  Required<Pick<AIMarkdownDocumentsProps, 'preserveOrphanReferences'>> & PropsWithChildren
+> = ({ preserveOrphanReferences, children }) => {
   // Registries are persistent across renders. Map<documentId, Registry>.
   //
   // Eviction: each registry receives an `onEmpty` callback that the
@@ -137,13 +136,13 @@ export const AIMarkdownDocuments: FC<AIMarkdownDocumentsProps> = ({ preserveOrph
     if (process.env.NODE_ENV !== 'production') {
       throw new Error(NESTED_WRAPPER_MESSAGE);
     }
-    console.error(`[ai-react-markdown] ${NESTED_WRAPPER_MESSAGE} Falling back to the outer wrapper; the inner wrapper is a no-op.`);
+    console.error(
+      `[ai-react-markdown] ${NESTED_WRAPPER_MESSAGE} Falling back to the outer wrapper; the inner wrapper is a no-op.`
+    );
     return <>{children}</>;
   }
   return (
-    <AIMarkdownDocumentsRoot preserveOrphanReferences={preserveOrphanReferences}>
-      {children}
-    </AIMarkdownDocumentsRoot>
+    <AIMarkdownDocumentsRoot preserveOrphanReferences={preserveOrphanReferences}>{children}</AIMarkdownDocumentsRoot>
   );
 };
 

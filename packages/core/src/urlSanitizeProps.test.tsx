@@ -16,10 +16,7 @@
 
 import { renderToString, renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, test } from 'vitest';
-import AIMarkdown, {
-  defaultUrlTransform,
-  extendSanitizeSchema,
-} from '.';
+import AIMarkdown, { defaultUrlTransform, extendSanitizeSchema } from '.';
 
 describe('AIMarkdown — default URL handling (no custom props)', () => {
   test('strips javascript: hrefs (XSS protection)', () => {
@@ -41,17 +38,12 @@ describe('AIMarkdown — default URL handling (no custom props)', () => {
 describe('AIMarkdown — `urlTransform` prop (composition with defaultUrlTransform)', () => {
   // Module-scope: the recommended pattern for stable identity across renders.
   const ALLOWED = /^myapp:/i;
-  const URL_TRANSFORM = (
-    url: string,
-    key: string,
-    node: Parameters<typeof defaultUrlTransform>[2]
-  ) => (ALLOWED.test(url) ? url : defaultUrlTransform(url, key, node));
+  const URL_TRANSFORM = (url: string, key: string, node: Parameters<typeof defaultUrlTransform>[2]) =>
+    ALLOWED.test(url) ? url : defaultUrlTransform(url, key, node);
 
   test('lets a custom transform pass a private scheme through gate 1', () => {
     // Without a matching `sanitizeSchema`, gate 2 still drops the `href`.
-    const html = renderToStaticMarkup(
-      <AIMarkdown content="[click](myapp://thing/X)" urlTransform={URL_TRANSFORM} />
-    );
+    const html = renderToStaticMarkup(<AIMarkdown content="[click](myapp://thing/X)" urlTransform={URL_TRANSFORM} />);
     expect(html).not.toContain('myapp://');
   });
 
@@ -69,9 +61,7 @@ describe('AIMarkdown — `sanitizeSchema` prop (mutate-and-return form via exten
   test('accepts a custom schema that extends the protocol allowlist', () => {
     // Without a matching urlTransform, gate 1 strips the URL to '' before
     // sanitize even sees it. So the custom schema alone is also not enough.
-    const html = renderToStaticMarkup(
-      <AIMarkdown content="[click](myapp://thing/X)" sanitizeSchema={SCHEMA} />
-    );
+    const html = renderToStaticMarkup(<AIMarkdown content="[click](myapp://thing/X)" sanitizeSchema={SCHEMA} />);
     expect(html).not.toContain('myapp://');
   });
 });
@@ -79,11 +69,8 @@ describe('AIMarkdown — `sanitizeSchema` prop (mutate-and-return form via exten
 describe('AIMarkdown — both gates open via the recommended patterns (the real use case)', () => {
   // Module-scope, called once: stable references for both props.
   const ALLOWED = /^myapp:/i;
-  const URL_TRANSFORM = (
-    url: string,
-    key: string,
-    node: Parameters<typeof defaultUrlTransform>[2]
-  ) => (ALLOWED.test(url) ? url : defaultUrlTransform(url, key, node));
+  const URL_TRANSFORM = (url: string, key: string, node: Parameters<typeof defaultUrlTransform>[2]) =>
+    ALLOWED.test(url) ? url : defaultUrlTransform(url, key, node);
   const SCHEMA = extendSanitizeSchema((s) => {
     s.protocols!.href!.push('myapp');
     s.protocols!.src!.push('myapp');
@@ -91,11 +78,7 @@ describe('AIMarkdown — both gates open via the recommended patterns (the real 
 
   test('renders an <a> with a private-scheme href when both gates allow it', () => {
     const html = renderToStaticMarkup(
-      <AIMarkdown
-        content="[ref](myapp://thing/12345)"
-        urlTransform={URL_TRANSFORM}
-        sanitizeSchema={SCHEMA}
-      />
+      <AIMarkdown content="[ref](myapp://thing/12345)" urlTransform={URL_TRANSFORM} sanitizeSchema={SCHEMA} />
     );
     expect(html).toContain('myapp://thing/12345');
     expect(html).toContain('href="myapp://thing/12345"');
@@ -103,11 +86,7 @@ describe('AIMarkdown — both gates open via the recommended patterns (the real 
 
   test('renders an <img> with a private-scheme src when both gates allow it', () => {
     const html = renderToStaticMarkup(
-      <AIMarkdown
-        content="![alt](myapp://image/9)"
-        urlTransform={URL_TRANSFORM}
-        sanitizeSchema={SCHEMA}
-      />
+      <AIMarkdown content="![alt](myapp://image/9)" urlTransform={URL_TRANSFORM} sanitizeSchema={SCHEMA} />
     );
     expect(html).toContain('myapp://image/9');
     expect(html).toContain('src="myapp://image/9"');
@@ -117,22 +96,14 @@ describe('AIMarkdown — both gates open via the recommended patterns (the real 
     // `URL_TRANSFORM` falls through to `defaultUrlTransform` for non-myapp
     // URLs, so javascript: gets nuked at gate 1.
     const html = renderToStaticMarkup(
-      <AIMarkdown
-        content="[xss](javascript:alert(1))"
-        urlTransform={URL_TRANSFORM}
-        sanitizeSchema={SCHEMA}
-      />
+      <AIMarkdown content="[xss](javascript:alert(1))" urlTransform={URL_TRANSFORM} sanitizeSchema={SCHEMA} />
     );
     expect(html).not.toContain('javascript:');
   });
 
   test('https still works with the relaxed pair', () => {
     const html = renderToStaticMarkup(
-      <AIMarkdown
-        content="[link](https://example.com)"
-        urlTransform={URL_TRANSFORM}
-        sanitizeSchema={SCHEMA}
-      />
+      <AIMarkdown content="[link](https://example.com)" urlTransform={URL_TRANSFORM} sanitizeSchema={SCHEMA} />
     );
     expect(html).toContain('https://example.com');
   });
@@ -175,9 +146,7 @@ describe('AIMarkdown — SSR determinism with semantically equal inputs', () => 
         <AIMarkdown
           content="[ref](myapp://x)"
           documentId="stable-doc"
-          urlTransform={(url, key, node) =>
-            /^myapp:/i.test(url) ? url : defaultUrlTransform(url, key, node)
-          }
+          urlTransform={(url, key, node) => (/^myapp:/i.test(url) ? url : defaultUrlTransform(url, key, node))}
           sanitizeSchema={extendSanitizeSchema((s) => {
             s.protocols!.href!.push('myapp');
           })}

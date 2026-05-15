@@ -35,11 +35,7 @@ function WithProvider({
   );
   return (
     <AIMarkdownDocuments>
-      {policy ? (
-        <CrossChunkUrlContext.Provider value={policy}>{inner}</CrossChunkUrlContext.Provider>
-      ) : (
-        inner
-      )}
+      {policy ? <CrossChunkUrlContext.Provider value={policy}>{inner}</CrossChunkUrlContext.Provider> : inner}
     </AIMarkdownDocuments>
   );
 }
@@ -216,10 +212,7 @@ describe('crossChunkPlaceholders — URL sanitization (render-time two-gate)', (
   // already run for in-tree elements. `sanitizeCrossChunkUrl` is the
   // explicit re-application.
 
-  function seedAndRenderLink(
-    rawUrl: string,
-    policy?: CrossChunkUrlPolicy
-  ): string {
+  function seedAndRenderLink(rawUrl: string, policy?: CrossChunkUrlPolicy): string {
     function Seed() {
       const ctx = __internalGetContext();
       const reg = ctx!.getRegistry('doc');
@@ -244,10 +237,7 @@ describe('crossChunkPlaceholders — URL sanitization (render-time two-gate)', (
     );
   }
 
-  function seedAndRenderImage(
-    rawUrl: string,
-    policy?: CrossChunkUrlPolicy
-  ): string {
+  function seedAndRenderImage(rawUrl: string, policy?: CrossChunkUrlPolicy): string {
     function Seed() {
       const ctx = __internalGetContext();
       const reg = ctx!.getRegistry('doc');
@@ -305,11 +295,8 @@ describe('crossChunkPlaceholders — URL sanitization (render-time two-gate)', (
   });
 
   test('CrossChunkLink + a custom myapp scheme requires BOTH gates to permit it', () => {
-    const allowMyappTransform = (
-      url: string,
-      key: string,
-      node: Parameters<typeof defaultUrlTransform>[2]
-    ) => (/^myapp:/i.test(url) ? url : defaultUrlTransform(url, key, node));
+    const allowMyappTransform = (url: string, key: string, node: Parameters<typeof defaultUrlTransform>[2]) =>
+      /^myapp:/i.test(url) ? url : defaultUrlTransform(url, key, node);
 
     // Gate 1 (urlTransform) allows, gate 2 (schema) does NOT.
     const halfOpenPolicy: CrossChunkUrlPolicy = {
@@ -359,9 +346,7 @@ describe('crossChunkPlaceholders — URL sanitization (render-time two-gate)', (
       urlTransform: onlyHref,
       sanitizeSchema: defaultLibrarySchema,
     };
-    expect(seedAndRenderLink('https://tracker.example/x', policy)).toContain(
-      'href="https://tracker.example/x"'
-    );
+    expect(seedAndRenderLink('https://tracker.example/x', policy)).toContain('href="https://tracker.example/x"');
     // Image must NOT include the URL — onlyHref returned '' for src.
     const imgHtml = seedAndRenderImage('https://tracker.example/x', policy);
     expect(imgHtml).not.toContain('https://tracker.example/x');

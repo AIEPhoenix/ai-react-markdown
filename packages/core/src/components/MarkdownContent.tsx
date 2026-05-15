@@ -150,7 +150,15 @@ interface RendererProps {
  * unified pipeline (parse → transform → buildBlocks → renderBlocksWithCache).
  */
 const BlockMemoizedRenderer = memo(
-  ({ content, usedComponents, remarkPlugins, rehypePlugins, remarkRehypeOptions, urlTransform, sanitizeSchema: usedSanitizeSchema }: RendererProps) => {
+  ({
+    content,
+    usedComponents,
+    remarkPlugins,
+    rehypePlugins,
+    remarkRehypeOptions,
+    urlTransform,
+    sanitizeSchema: usedSanitizeSchema,
+  }: RendererProps) => {
     // Vendored Markdown options that AIMarkdown does not currently expose. They
     // are tracked in the G3 flush below so the cache stays correct if any of
     // these are ever surfaced upstream. `urlTransform` is now a real prop —
@@ -653,7 +661,15 @@ const LegacyRenderer = memo(
   // coordination entirely, so there's no placeholder needing the schema.
   // Rebind to an underscore-prefixed local so the project's
   // no-unused-vars rule (which allows `_`-prefixed names) accepts it.
-  ({ content, usedComponents, remarkPlugins, rehypePlugins, remarkRehypeOptions, urlTransform, sanitizeSchema: _sanitizeSchema }: RendererProps) => (
+  ({
+    content,
+    usedComponents,
+    remarkPlugins,
+    rehypePlugins,
+    remarkRehypeOptions,
+    urlTransform,
+    sanitizeSchema: _sanitizeSchema,
+  }: RendererProps) => (
     <Markdown
       remarkPlugins={remarkPlugins}
       rehypePlugins={rehypePlugins}
@@ -674,120 +690,120 @@ LegacyRenderer.displayName = 'LegacyRenderer';
  */
 const AIMarkdownContent = memo(
   ({ content, customComponents, urlTransform, sanitizeSchema: customSanitizeSchema }: AIMarkdownContentProps) => {
-  const { config, clobberPrefix } = useAIMarkdownRenderState();
-  // Dev-mode flip warnings live in the parent `<AIMarkdown>` (`./../index.tsx`)
-  // — they MUST run BEFORE `useStableValue` collapses identity churn, otherwise
-  // an inline-but-deep-equal `sanitizeSchema` would be silently stabilized and
-  // the warning would never fire. Don't add a duplicate call here.
-  // Resolve schema: caller-provided override (from `extendSanitizeSchema(...)`
-  // or a hand-rolled Schema) wins; otherwise the library default. Reference
-  // identity is preserved by the parent `<AIMarkdown>`'s `useStableValue`,
-  // so this picks one of two stable references rather than minting a new
-  // object every render — important for the rehypePlugins memo below.
-  const usedSanitizeSchema = customSanitizeSchema ?? sanitizeSchema;
+    const { config, clobberPrefix } = useAIMarkdownRenderState();
+    // Dev-mode flip warnings live in the parent `<AIMarkdown>` (`./../index.tsx`)
+    // — they MUST run BEFORE `useStableValue` collapses identity churn, otherwise
+    // an inline-but-deep-equal `sanitizeSchema` would be silently stabilized and
+    // the warning would never fire. Don't add a duplicate call here.
+    // Resolve schema: caller-provided override (from `extendSanitizeSchema(...)`
+    // or a hand-rolled Schema) wins; otherwise the library default. Reference
+    // identity is preserved by the parent `<AIMarkdown>`'s `useStableValue`,
+    // so this picks one of two stable references rather than minting a new
+    // object every render — important for the rehypePlugins memo below.
+    const usedSanitizeSchema = customSanitizeSchema ?? sanitizeSchema;
 
-  // Resolve extra-syntax remark plugins and check if definition list HAST handlers are needed.
-  const { extraSyntaxRemarkPlugins, enableDefinitionList } = useMemo(
-    () => ({
-      extraSyntaxRemarkPlugins: config.extraSyntaxSupported.map((syntax) => ExtraSyntaxRemarkPluginMap[syntax]),
-      enableDefinitionList: config.extraSyntaxSupported.includes(AIMarkdownRenderExtraSyntax.DEFINITION_LIST),
-    }),
-    [config.extraSyntaxSupported]
-  );
+    // Resolve extra-syntax remark plugins and check if definition list HAST handlers are needed.
+    const { extraSyntaxRemarkPlugins, enableDefinitionList } = useMemo(
+      () => ({
+        extraSyntaxRemarkPlugins: config.extraSyntaxSupported.map((syntax) => ExtraSyntaxRemarkPluginMap[syntax]),
+        enableDefinitionList: config.extraSyntaxSupported.includes(AIMarkdownRenderExtraSyntax.DEFINITION_LIST),
+      }),
+      [config.extraSyntaxSupported]
+    );
 
-  const displayOptimizeRemarkPlugins = useMemo(() => {
-    return config.displayOptimizeAbilities.map((ability) => DisplayOptimizeRemarkPluginMap[ability]);
-  }, [config.displayOptimizeAbilities]);
+    const displayOptimizeRemarkPlugins = useMemo(() => {
+      return config.displayOptimizeAbilities.map((ability) => DisplayOptimizeRemarkPluginMap[ability]);
+    }, [config.displayOptimizeAbilities]);
 
-  const usedComponents = useMemo(() => {
-    return customComponents ? { ...DefaultCustomComponents, ...customComponents } : DefaultCustomComponents;
-  }, [customComponents]);
+    const usedComponents = useMemo(() => {
+      return customComponents ? { ...DefaultCustomComponents, ...customComponents } : DefaultCustomComponents;
+    }, [customComponents]);
 
-  // Stable plugin/options arrays so this component's React.memo wrapper can
-  // skip re-renders when only the parent re-rendered. The vendored
-  // `parseStage` rebuilds the unified processor on every call regardless —
-  // there is no internal processor cache to feed.
-  const remarkPlugins = useMemo<RemarkPlugins>(
-    () => [
-      // --- Core plugins (always active) ---
-      remarkGfm,
-      [
-        remarkMath,
-        {
-          // Disable single-dollar inline math to avoid conflicts with currency
-          // signs and other dollar usages; the preprocessor converts $...$ to $$...$$.
-          singleDollarTextMath: false,
-        },
+    // Stable plugin/options arrays so this component's React.memo wrapper can
+    // skip re-renders when only the parent re-rendered. The vendored
+    // `parseStage` rebuilds the unified processor on every call regardless —
+    // there is no internal processor cache to feed.
+    const remarkPlugins = useMemo<RemarkPlugins>(
+      () => [
+        // --- Core plugins (always active) ---
+        remarkGfm,
+        [
+          remarkMath,
+          {
+            // Disable single-dollar inline math to avoid conflicts with currency
+            // signs and other dollar usages; the preprocessor converts $...$ to $$...$$.
+            singleDollarTextMath: false,
+          },
+        ],
+        // --- Configurable extra syntax plugins ---
+        ...extraSyntaxRemarkPlugins,
+        // --- Formatting & normalization ---
+        remarkBreaks,
+        remarkEmoji,
+        remarkSqueezeParagraphs,
+        remarkCjkFriendly,
+        remarkCjkFriendlyGfmStrikethrough,
+        // --- Configurable display optimizations ---
+        ...displayOptimizeRemarkPlugins,
       ],
-      // --- Configurable extra syntax plugins ---
-      ...extraSyntaxRemarkPlugins,
-      // --- Formatting & normalization ---
-      remarkBreaks,
-      remarkEmoji,
-      remarkSqueezeParagraphs,
-      remarkCjkFriendly,
-      remarkCjkFriendlyGfmStrikethrough,
-      // --- Configurable display optimizations ---
-      ...displayOptimizeRemarkPlugins,
-    ],
-    [extraSyntaxRemarkPlugins, displayOptimizeRemarkPlugins]
-  );
+      [extraSyntaxRemarkPlugins, displayOptimizeRemarkPlugins]
+    );
 
-  const rehypePlugins = useMemo<RehypePlugins>(
-    () => [
-      // Allow raw HTML through so rehype-sanitize can handle it.
-      [rehypeRaw, { passThrough: [] }],
-      // Sanitize HTML while allowing <mark> (highlight), KaTeX class names,
-      // and any extra protocols the caller permitted via the `sanitizeSchema`
-      // prop. Override `clobberPrefix` with the instance-scoped value so every
-      // id and clobberable attribute is namespaced to this `<AIMarkdown>`
-      // instance — the spread order is intentional: our prefix wins over any
-      // caller-supplied prefix on the schema.
-      [rehypeSanitize, { ...usedSanitizeSchema, clobberPrefix }],
-      // Normalize the auto-generated `<section data-footnotes>`: strip the
-      // sr-only `<h2>Footnotes</h2>` label and prepend `<hr>`. Keeps standalone
-      // single-doc rendering visually consistent with the cross-chunk aggregate
-      // footer (which builds the same shape from scratch).
-      rehypeFooterAdorn,
-      // Re-prefix intra-document hash hrefs so they match the ids that
-      // rehype-sanitize just clobbered. Must use the SAME prefix as the schema
-      // above — that's why both read from `clobberPrefix`.
-      [rehypeRebaseHashLinks, { prefix: clobberPrefix }],
-      rehypeKatex,
-      rehypeUnwrapImages,
-    ],
-    [clobberPrefix, usedSanitizeSchema]
-  );
+    const rehypePlugins = useMemo<RehypePlugins>(
+      () => [
+        // Allow raw HTML through so rehype-sanitize can handle it.
+        [rehypeRaw, { passThrough: [] }],
+        // Sanitize HTML while allowing <mark> (highlight), KaTeX class names,
+        // and any extra protocols the caller permitted via the `sanitizeSchema`
+        // prop. Override `clobberPrefix` with the instance-scoped value so every
+        // id and clobberable attribute is namespaced to this `<AIMarkdown>`
+        // instance — the spread order is intentional: our prefix wins over any
+        // caller-supplied prefix on the schema.
+        [rehypeSanitize, { ...usedSanitizeSchema, clobberPrefix }],
+        // Normalize the auto-generated `<section data-footnotes>`: strip the
+        // sr-only `<h2>Footnotes</h2>` label and prepend `<hr>`. Keeps standalone
+        // single-doc rendering visually consistent with the cross-chunk aggregate
+        // footer (which builds the same shape from scratch).
+        rehypeFooterAdorn,
+        // Re-prefix intra-document hash hrefs so they match the ids that
+        // rehype-sanitize just clobbered. Must use the SAME prefix as the schema
+        // above — that's why both read from `clobberPrefix`.
+        [rehypeRebaseHashLinks, { prefix: clobberPrefix }],
+        rehypeKatex,
+        rehypeUnwrapImages,
+      ],
+      [clobberPrefix, usedSanitizeSchema]
+    );
 
-  const remarkRehypeOptions = useMemo<RemarkRehypeOptions>(
-    () => ({
-      allowDangerousHtml: true,
-      // Suppress mdast-util-to-hast's `user-content-` prefix on footnote
-      // ids/hrefs; rehype-sanitize will apply the same prefix downstream
-      // and `rehypeRebaseHashLinks` mirrors it onto matching hash hrefs.
-      // Without this, ids would end up double-prefixed
-      // (`user-content-user-content-fn-x`).
-      clobberPrefix: '',
-      handlers: {
-        // Inject definition-list HAST handlers when the extension is active.
-        ...(enableDefinitionList ? defListHastHandlers : {}),
-      },
-    }),
-    [enableDefinitionList]
-  );
+    const remarkRehypeOptions = useMemo<RemarkRehypeOptions>(
+      () => ({
+        allowDangerousHtml: true,
+        // Suppress mdast-util-to-hast's `user-content-` prefix on footnote
+        // ids/hrefs; rehype-sanitize will apply the same prefix downstream
+        // and `rehypeRebaseHashLinks` mirrors it onto matching hash hrefs.
+        // Without this, ids would end up double-prefixed
+        // (`user-content-user-content-fn-x`).
+        clobberPrefix: '',
+        handlers: {
+          // Inject definition-list HAST handlers when the extension is active.
+          ...(enableDefinitionList ? defListHastHandlers : {}),
+        },
+      }),
+      [enableDefinitionList]
+    );
 
-  const Renderer = config.blockMemoEnabled ? BlockMemoizedRenderer : LegacyRenderer;
-  return (
-    <Renderer
-      content={content}
-      usedComponents={usedComponents}
-      remarkPlugins={remarkPlugins}
-      rehypePlugins={rehypePlugins}
-      remarkRehypeOptions={remarkRehypeOptions}
-      urlTransform={urlTransform}
-      sanitizeSchema={usedSanitizeSchema}
-    />
-  );
+    const Renderer = config.blockMemoEnabled ? BlockMemoizedRenderer : LegacyRenderer;
+    return (
+      <Renderer
+        content={content}
+        usedComponents={usedComponents}
+        remarkPlugins={remarkPlugins}
+        rehypePlugins={rehypePlugins}
+        remarkRehypeOptions={remarkRehypeOptions}
+        urlTransform={urlTransform}
+        sanitizeSchema={usedSanitizeSchema}
+      />
+    );
   }
 );
 

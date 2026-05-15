@@ -115,9 +115,7 @@ describe('extractContributions', () => {
 
     test('custom urlTransform returning null collapses to empty string', () => {
       const mdast = parseMdast(`[lbl]: https://blocked.example\n`);
-      const out = Array.from(
-        extractContributions(mdast, { urlTransform: () => null as unknown as string })
-      );
+      const out = Array.from(extractContributions(mdast, { urlTransform: () => null as unknown as string }));
       const linkDef = out.find((c) => c.kind === 'linkDef');
       expect((linkDef as { url: string }).url).toBe('');
     });

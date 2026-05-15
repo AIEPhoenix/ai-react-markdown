@@ -37,9 +37,7 @@ describe('extendSanitizeSchema — mutate-and-return form', () => {
     expect(defaultLibrarySchema.tagNames).not.toContain('mythical-tag');
     // Default attributes.code retains the original code className tuple.
     const codeAttrs = defaultLibrarySchema.attributes?.code ?? [];
-    const codeClassEntry = codeAttrs.find(
-      (e) => Array.isArray(e) && e[0] === 'className'
-    );
+    const codeClassEntry = codeAttrs.find((e) => Array.isArray(e) && e[0] === 'className');
     expect(codeClassEntry).toBeDefined();
   });
 
@@ -72,9 +70,9 @@ describe('extendSanitizeSchema — mutate-and-return form', () => {
     // which we previously considered but dropped over mobile-Safari support).
     const schema = extendSanitizeSchema(() => {});
     const codeAttrs = schema.attributes?.code ?? [];
-    const classNameEntry = codeAttrs.find(
-      (entry) => Array.isArray(entry) && entry[0] === 'className'
-    ) as readonly unknown[] | undefined;
+    const classNameEntry = codeAttrs.find((entry) => Array.isArray(entry) && entry[0] === 'className') as
+      | readonly unknown[]
+      | undefined;
     expect(classNameEntry).toBeDefined();
     // The RegExp from defaultSchema should still BE a RegExp (not a plain object).
     expect(classNameEntry!.some((v) => v instanceof RegExp)).toBe(true);
