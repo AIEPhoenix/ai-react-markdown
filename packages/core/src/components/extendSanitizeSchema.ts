@@ -92,9 +92,7 @@ export type SanitizeSchema = typeof defaultSchema;
  *   convention, `null`) is treated the same as a mutate-only call.
  * @returns A new `Schema` object — never the library default singleton.
  */
-export function extendSanitizeSchema(
-  modifier: (draft: SanitizeSchema) => SanitizeSchema | void
-): SanitizeSchema {
+export function extendSanitizeSchema(modifier: (draft: SanitizeSchema) => SanitizeSchema | void): SanitizeSchema {
   // lodash-es `cloneDeep` over the native `structuredClone` because the
   // latter is unavailable on iOS Safari < 15.4 (March 2022) and on older
   // Android WebViews that are still common on mid-tier devices. lodash-es

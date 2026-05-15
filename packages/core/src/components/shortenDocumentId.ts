@@ -46,7 +46,7 @@ function toBase62(n: number): string {
 
 /** 32-bit unsigned rotate-left, in pure JS. */
 function rotl32(x: number, r: number): number {
-  return (((x << r) | (x >>> (32 - r))) >>> 0);
+  return ((x << r) | (x >>> (32 - r))) >>> 0;
 }
 
 // MurmurHash3 x86 32-bit mixing constants — from Appleby's reference impl.
@@ -87,11 +87,7 @@ function murmur3_32(s: string, seed: number = 0): number {
   // ── Body: 4-byte little-endian blocks ───────────────────────────────────
   for (let i = 0; i < nblocks; i++) {
     const b = i * 4;
-    let k1 =
-      bytes[b] |
-      (bytes[b + 1] << 8) |
-      (bytes[b + 2] << 16) |
-      (bytes[b + 3] << 24);
+    let k1 = bytes[b] | (bytes[b + 1] << 8) | (bytes[b + 2] << 16) | (bytes[b + 3] << 24);
 
     k1 = Math.imul(k1, C1);
     k1 = rotl32(k1, 15);
