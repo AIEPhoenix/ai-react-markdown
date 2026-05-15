@@ -34,16 +34,23 @@ export function buildTransform(ctx: TransformContext): BuildVisitor<Root> {
     if (node.type === 'element') {
       const element = node as Element;
       let key: string;
+      // hast's `Element.properties` is typed `Properties | undefined`. In the
+      // current pipeline every emitter sets it to at least `{}`, but a future
+      // custom handler that omits `properties` would otherwise blow up in
+      // `Object.hasOwn` here — keep the fallback so the transform stays robust
+      // against new handler shapes.
+      const properties = element.properties ?? {};
 
       for (key in urlAttributes) {
-        if (Object.hasOwn(urlAttributes, key) && Object.hasOwn(element.properties, key)) {
-          const value = element.properties[key];
+        if (Object.hasOwn(urlAttributes, key) && Object.hasOwn(properties, key)) {
+          const value = properties[key];
           const test = (urlAttributes as Record<string, ReadonlyArray<string> | null>)[key];
           if (test === null || test.includes(element.tagName)) {
-            element.properties[key] = ctx.urlTransform(String(value || ''), key, element);
+            properties[key] = ctx.urlTransform(String(value || ''), key, element);
           }
         }
       }
+      element.properties = properties;
     }
 
     if (node.type === 'element') {

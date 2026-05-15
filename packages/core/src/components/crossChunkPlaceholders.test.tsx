@@ -3,21 +3,43 @@ import { renderToString } from 'react-dom/server';
 import type { ReactNode } from 'react';
 import { AIMarkdownDocuments, __internalGetContext } from './AIMarkdownDocuments';
 import { ChunkSymbolContext } from './chunkSymbolContext';
+import { CrossChunkUrlContext, type CrossChunkUrlPolicy } from './crossChunkUrlContext';
 import AIMarkdownRenderStateProvider from '../context';
 import { CrossChunkImage, CrossChunkLink, FootnoteSupNumber } from './crossChunkPlaceholders';
+import { defaultUrlTransform } from './markdown';
+import { extendSanitizeSchema } from './extendSanitizeSchema';
+import { sanitizeSchema as defaultLibrarySchema } from './sanitizeSchema';
 
-function WithProvider({ children, documentId }: { children: ReactNode; documentId: string }) {
+function WithProvider({
+  children,
+  documentId,
+  policy,
+}: {
+  children: ReactNode;
+  documentId: string;
+  /** Optional override for the cross-chunk URL policy context. When omitted
+   *  the placeholders fall back to the library defaults inside the
+   *  components themselves — useful for verifying that fallback path. */
+  policy?: CrossChunkUrlPolicy;
+}) {
+  const inner = (
+    <AIMarkdownRenderStateProvider
+      streaming={false}
+      fontSize="14px"
+      variant="default"
+      colorScheme="light"
+      documentId={documentId}
+    >
+      {children}
+    </AIMarkdownRenderStateProvider>
+  );
   return (
     <AIMarkdownDocuments>
-      <AIMarkdownRenderStateProvider
-        streaming={false}
-        fontSize="14px"
-        variant="default"
-        colorScheme="light"
-        documentId={documentId}
-      >
-        {children}
-      </AIMarkdownRenderStateProvider>
+      {policy ? (
+        <CrossChunkUrlContext.Provider value={policy}>{inner}</CrossChunkUrlContext.Provider>
+      ) : (
+        inner
+      )}
     </AIMarkdownDocuments>
   );
 }
@@ -183,5 +205,165 @@ describe('crossChunkPlaceholders', () => {
     );
     expect(html).toContain('![alt text][X]');
     expect(html).not.toContain('<img');
+  });
+});
+
+describe('crossChunkPlaceholders — URL sanitization (render-time two-gate)', () => {
+  // These tests pin the render-time symmetry contract: cross-chunk
+  // link/image placeholders must observable-match the standalone hast pass.
+  // The placeholders bypass `transform.ts` + `rehype-sanitize`'s protocols
+  // gate because their URL is read from the registry AFTER both gates have
+  // already run for in-tree elements. `sanitizeCrossChunkUrl` is the
+  // explicit re-application.
+
+  function seedAndRenderLink(
+    rawUrl: string,
+    policy?: CrossChunkUrlPolicy
+  ): string {
+    function Seed() {
+      const ctx = __internalGetContext();
+      const reg = ctx!.getRegistry('doc');
+      const sym = reg.allocateSymbol('seed');
+      reg.contributeChunkData(sym, {
+        refs: [],
+        defs: new Map(),
+        linkDefs: new Map([['X', { identifier: 'X', url: rawUrl }]]),
+        ownFootnoteLabels: new Set(),
+        ownLinkLabels: new Set(['X']),
+      });
+      return (
+        <CrossChunkLink label="X" referenceType="full">
+          click
+        </CrossChunkLink>
+      );
+    }
+    return renderToString(
+      <WithProvider documentId="doc" policy={policy}>
+        <Seed />
+      </WithProvider>
+    );
+  }
+
+  function seedAndRenderImage(
+    rawUrl: string,
+    policy?: CrossChunkUrlPolicy
+  ): string {
+    function Seed() {
+      const ctx = __internalGetContext();
+      const reg = ctx!.getRegistry('doc');
+      const sym = reg.allocateSymbol('seed');
+      reg.contributeChunkData(sym, {
+        refs: [],
+        defs: new Map(),
+        linkDefs: new Map([['X', { identifier: 'X', url: rawUrl }]]),
+        ownFootnoteLabels: new Set(),
+        ownLinkLabels: new Set(['X']),
+      });
+      return <CrossChunkImage label="X" referenceType="full" alt="pic" />;
+    }
+    return renderToString(
+      <WithProvider documentId="doc" policy={policy}>
+        <Seed />
+      </WithProvider>
+    );
+  }
+
+  test('CrossChunkLink strips javascript: even if the registry stored it raw (defense-in-depth)', () => {
+    // Bypass the contribute-time gate by seeding the registry directly with
+    // a malicious URL — verifies the render-time gate ALONE is sufficient.
+    const html = seedAndRenderLink('javascript:alert(1)');
+    expect(html).not.toContain('javascript:');
+    // The <a> still renders (empty href), matching standalone behavior
+    // where `rehype-sanitize` drops `href` to the empty string rather than
+    // unwrapping the element.
+    expect(html).toContain('<a');
+  });
+
+  test('CrossChunkImage strips javascript: src (defense-in-depth)', () => {
+    const html = seedAndRenderImage('javascript:alert(1)');
+    expect(html).not.toContain('javascript:');
+    // The <img> still renders (with empty src), matching standalone.
+    expect(html).toContain('<img');
+  });
+
+  test('CrossChunkLink renders an https:// def via default policy', () => {
+    const html = seedAndRenderLink('https://example.com/x');
+    expect(html).toContain('href="https://example.com/x"');
+  });
+
+  test('CrossChunkLink honors a policy whose schema removes a default protocol', () => {
+    // Adversarial schema: drop `mailto` from protocols.href. Standalone
+    // would strip the href; cross-chunk must do the same.
+    const schema = extendSanitizeSchema((s) => {
+      s.protocols!.href = s.protocols!.href!.filter((p) => p !== 'mailto');
+    });
+    const html = seedAndRenderLink('mailto:a@b.com', {
+      urlTransform: defaultUrlTransform,
+      sanitizeSchema: schema,
+    });
+    expect(html).not.toContain('mailto:');
+  });
+
+  test('CrossChunkLink + a custom myapp scheme requires BOTH gates to permit it', () => {
+    const allowMyappTransform = (
+      url: string,
+      key: string,
+      node: Parameters<typeof defaultUrlTransform>[2]
+    ) => (/^myapp:/i.test(url) ? url : defaultUrlTransform(url, key, node));
+
+    // Gate 1 (urlTransform) allows, gate 2 (schema) does NOT.
+    const halfOpenPolicy: CrossChunkUrlPolicy = {
+      urlTransform: allowMyappTransform,
+      sanitizeSchema: defaultLibrarySchema, // myapp NOT in protocols.href
+    };
+    expect(seedAndRenderLink('myapp://thing', halfOpenPolicy)).not.toContain('myapp://');
+
+    // Both gates open → the scheme passes through.
+    const fullOpenSchema = extendSanitizeSchema((s) => {
+      s.protocols!.href!.push('myapp');
+    });
+    const fullOpenPolicy: CrossChunkUrlPolicy = {
+      urlTransform: allowMyappTransform,
+      sanitizeSchema: fullOpenSchema,
+    };
+    expect(seedAndRenderLink('myapp://thing', fullOpenPolicy)).toContain('href="myapp://thing"');
+  });
+
+  test('Asymmetric schema: href allows myapp, src does NOT — image variant is stripped', () => {
+    // This is the exact codex-flagged scenario: a key-aware policy where
+    // `<a href>` allows the scheme but `<img src>` does not. Standalone
+    // enforces the asymmetry via `protocols.href` vs `protocols.src`;
+    // cross-chunk must observe the same.
+    const allowAll = (url: string) => url;
+    const asymmetric = extendSanitizeSchema((s) => {
+      s.protocols!.href!.push('myapp');
+      // deliberately NOT mutating protocols.src
+    });
+    const policy: CrossChunkUrlPolicy = {
+      urlTransform: allowAll,
+      sanitizeSchema: asymmetric,
+    };
+    expect(seedAndRenderLink('myapp://thing', policy)).toContain('href="myapp://thing"');
+    expect(seedAndRenderImage('myapp://thing', policy)).not.toContain('myapp://');
+  });
+
+  test('Key-aware urlTransform: blocks tracker pixels on <img> but allows on <a>', () => {
+    // A common real-world pattern: allow a tracker URL as a clickable link
+    // (user opted in by clicking) but never as a <img src> (silent
+    // tracking pixel). Cross-chunk must honor key-awareness. Modeled here
+    // as a urlTransform that explicitly returns '' for the `src` key —
+    // this is the literal user opt-in: "I never want this URL as image
+    // src no matter what."
+    const onlyHref = (url: string, key: string) => (key === 'href' ? url : '');
+    const policy: CrossChunkUrlPolicy = {
+      urlTransform: onlyHref,
+      sanitizeSchema: defaultLibrarySchema,
+    };
+    expect(seedAndRenderLink('https://tracker.example/x', policy)).toContain(
+      'href="https://tracker.example/x"'
+    );
+    // Image must NOT include the URL — onlyHref returned '' for src.
+    const imgHtml = seedAndRenderImage('https://tracker.example/x', policy);
+    expect(imgHtml).not.toContain('https://tracker.example/x');
   });
 });

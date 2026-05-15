@@ -11,8 +11,6 @@
  * @see https://github.com/remarkjs/react-markdown/blob/main/test.jsx
  */
 
-/* eslint-disable react/no-unescaped-entities */
-
 import type { Root } from 'hast';
 import { renderToStaticMarkup } from 'react-dom/server';
 import rehypeRaw from 'rehype-raw';

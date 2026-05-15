@@ -1,12 +1,14 @@
 /**
- * Builds a `rehype-sanitize` schema by handing the caller a deep clone of the
- * library default ({@link sanitizeSchema}) to mutate or replace.
+ * Builds a `rehype-sanitize` schema by handing the caller a deep clone of
+ * the library's internal default schema to mutate or replace.
  *
  * The mutate-and-return pattern matches the ergonomics of Next.js's
  * `webpack(config)` and Express middleware: a callback receives a draft,
  * either modifies it in place (returning nothing) or returns a fresh object
  * to replace it. The library guarantees the draft is a deep clone, so direct
- * mutation never leaks into the shared default singleton.
+ * mutation never leaks into the singleton — and the singleton itself is not
+ * exported, so consumers cannot accidentally hand-roll a schema that drops
+ * the library's cross-chunk tag allowlist or KaTeX className additions.
  *
  * @module components/extendSanitizeSchema
  */
@@ -52,6 +54,16 @@ export type SanitizeSchema = typeof defaultSchema;
  *   ...s,
  *   tagNames: [...(s.tagNames ?? []), 'my-widget'],
  * }));
+ * ```
+ *
+ * @example Inspect the library default (e.g. to learn what's already allowed):
+ * ```ts
+ * // The draft handed to the modifier IS the library default, deep-cloned.
+ * // Logging it once at module load surfaces every default field — protocols,
+ * // attributes, tagNames, etc. — without ever exposing the singleton itself.
+ * extendSanitizeSchema((s) => {
+ *   console.log('default sanitize schema:', s);
+ * });
  * ```
  *
  * @remarks Allowing a protocol on `protocols.href` lets the URL through the

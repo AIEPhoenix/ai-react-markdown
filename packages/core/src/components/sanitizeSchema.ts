@@ -1,5 +1,5 @@
 /**
- * Builds the `rehype-sanitize` schema used by {@link MarkdownContent}.
+ * Builds the `rehype-sanitize` schema used by the internal markdown renderer.
  *
  * Extracted into its own module so the merge logic can be unit-tested in
  * isolation without pulling in React or the full markdown pipeline.
@@ -7,6 +7,7 @@
  * @module components/sanitizeSchema
  */
 
+import cloneDeep from 'lodash-es/cloneDeep';
 import { defaultSchema } from 'rehype-sanitize';
 
 type Schema = typeof defaultSchema;
@@ -52,8 +53,22 @@ const crossChunkTags = ['cross-chunk-link', 'cross-chunk-image', 'footnote-sup']
  * The full sanitize schema used by the markdown renderer: extends
  * `defaultSchema` to allow `<mark>`, the KaTeX math class names, and the
  * three custom hast tags emitted by cross-chunk coordination handlers.
+ *
+ * **Owns its arrays and objects.** The shallow spread of `defaultSchema`
+ * alone would leave `attributes.a`, `attributes.img`, `protocols`,
+ * `ancestors`, and similar nested fields aliased to `rehype-sanitize`'s
+ * default singleton. A consumer who reasonably (but mistakenly) writes
+ * `sanitizeSchema.protocols.href.push('myapp')` would then poison
+ * `rehype-sanitize`'s `defaultSchema` for every other consumer in the
+ * process — a cross-package side-effect that's near-impossible to debug.
+ *
+ * One `cloneDeep` at module init breaks that aliasing without measurable
+ * cost (init-time only, single small object graph). The recommended
+ * extension API is still {@link extendSanitizeSchema}, which clones again
+ * per call; this layer just makes the exported singleton safe if someone
+ * skips the helper.
  */
-export const sanitizeSchema: Schema = {
+export const sanitizeSchema: Schema = cloneDeep({
   ...defaultSchema,
   tagNames: [...(defaultSchema.tagNames || []), 'mark', ...crossChunkTags],
   attributes: {
@@ -63,4 +78,4 @@ export const sanitizeSchema: Schema = {
     'cross-chunk-image': ['label', 'referenceType', 'documentId', 'alt'],
     'footnote-sup': ['label', 'localOccurrence', 'documentId'],
   },
-};
+});

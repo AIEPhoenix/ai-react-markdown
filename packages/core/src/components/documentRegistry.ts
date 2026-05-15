@@ -56,29 +56,90 @@ export interface ChunkData {
   ownLinkLabels: Set<string>;
 }
 
+/**
+ * Public, read-only view of the cross-chunk registry. This is the type
+ * surfaced by `useDocumentRegistry` and re-exported from the package
+ * barrel. Consumers can:
+ *
+ *   - read the registry's current state (`chunkOrder`, `chunkData`,
+ *     `labelSet`, `version`)
+ *   - observe changes (`subscribe`)
+ *   - run selectors (`globalNumber`, `resolveLinkDef`, …)
+ *
+ * Mutators — `registerChunk`, `allocateSymbol`, `releaseSymbol`,
+ * `contributeLabels`, `contributeChunkData` — are intentionally off this
+ * interface. Driving the registry directly is reserved for internal
+ * coordinators (the package's own `MarkdownContent` renderer) and tests,
+ * which import the wider `RegistryInternal` type from this module.
+ * `RegistryInternal` is exported here but NOT re-exported from the package
+ * barrel — keeping mutators off the public surface prevents a misbehaving
+ * consumer-component from corrupting refcounts, skipping version bumps, or
+ * otherwise breaking the invariants the renderer relies on.
+ */
 export interface Registry {
-  /** Chunk mount-order Symbol list. **Read-only from outside the registry.**
-   *  Direct mutation (`.push`, `.splice`, index assignment) corrupts
-   *  footnote numbering, "last chunk" detection, and eviction. Use the
-   *  `allocateSymbol` / `releaseSymbol` / `registerChunk` API instead. */
+  /** Chunk mount-order Symbol list. **Read-only.** Direct mutation
+   *  (`.push`, `.splice`, index assignment) corrupts footnote numbering,
+   *  "last chunk" detection, and eviction. */
   readonly chunkOrder: readonly symbol[];
-  /** Chunk Symbol → contribution payload. **Read-only from outside.**
-   *  Use `contributeChunkData` / `contributeLabels` / `registerChunk` to
-   *  publish; direct `.set` / `.delete` bypasses version bumps and
-   *  subscriber wake-ups. */
+  /** Chunk Symbol → contribution payload. **Read-only.** Direct `.set` /
+   *  `.delete` bypasses version bumps and subscriber wake-ups. */
   readonly chunkData: ReadonlyMap<symbol, ChunkData>;
   /** Union of own-def labels across all chunks. PASS 0.5 phantom-injection
-   *  driver. **Read-only from outside.** The registry derives this from
-   *  per-chunk contributions; direct mutation breaks the derivation. */
+   *  driver. **Read-only.** The registry derives this from per-chunk
+   *  contributions; direct mutation breaks the derivation. */
   readonly labelSet: {
     readonly footnoteLabels: ReadonlySet<string>;
     readonly linkLabels: ReadonlySet<string>;
   };
-  /** Monotonic version counter bumped by every mutation. **Read-only from
-   *  outside** — consumers should observe via `subscribe`, not by writing. */
+  /** Monotonic version counter bumped by every mutation. **Read-only** —
+   *  consumers should observe via `subscribe`, not by writing. */
   readonly version: number;
 
-  // === API ===
+  subscribe(cb: () => void): () => void;
+
+  // Selectors (memoized internally by version).
+  canonicalFootnoteFor(label: string): symbol | null;
+  canonicalLinkFor(label: string): symbol | null;
+  globalNumber(label: string): number | null;
+  /**
+   * Resolve a cross-chunk link definition by label. The returned `url` is the
+   * value the contributing chunk's `urlTransform` produced — cross-chunk
+   * link/image references run a second, per-attribute sanitization pass
+   * (`urlTransform` + `sanitizeSchema.protocols`) at render time, so the
+   * placeholder components themselves never trust this value blindly.
+   *
+   * Consumers reading `def.url` directly (custom backlink panels, analytics,
+   * dev tooling) receive a defense-in-depth-filtered string but should still
+   * pipe it through their own `urlTransform` if they intend to render it as
+   * an `href`/`src` — the contribute-time pass uses the `'href'` key and a
+   * synthetic `<a>` node, so a key-aware policy may treat the value
+   * differently when used as an `<img src>`.
+   */
+  resolveLinkDef(label: string): LinkDef | null;
+  getRefsForLabel(label: string): number;
+  /** Map a chunk-local footnote-ref occurrence index (1-based, as emitted by
+   *  `customMdastHandlers`) to the corresponding document-wide occurrence
+   *  index across all chunks. Used by `FootnoteSupNumber` to build a unique
+   *  `id="fnref-X-N"` for each ref instance and by `AggregateFootnotesIfLast`
+   *  to enumerate per-occurrence backrefs. Returns `null` if the ref isn't
+   *  registered yet (registry mid-flight). */
+  globalOccurrenceForRef(chunkSym: symbol, label: string, localOccurrence: number): number | null;
+}
+
+/**
+ * Internal registry surface — extends {@link Registry} with the mutator
+ * methods and implementation-private fields (reactId-keyed refcount table,
+ * subscriber set, microtask-coalesce flag, `_notify` itself).
+ *
+ * Exported from this module so internal coordinators (`MarkdownContent`)
+ * and tests can hold a strongly-typed reference, but **not** re-exported
+ * from the package barrel — a consumer flipping `_notifyScheduled = true`
+ * or pushing into `chunkOrder` directly would silently break the
+ * coalesce / numbering invariants. The runtime value returned by
+ * {@link createRegistry} always satisfies this wider shape; public consumers
+ * just see the narrowed {@link Registry} view.
+ */
+export interface RegistryInternal extends Registry {
   /** Allocate (or reuse, for Strict Mode remount) the chunk Symbol for
    *  `reactId` AND publish this chunk's own def labels (footnotes + links)
    *  in one call. Canonical pair API used by `MarkdownContent`'s allocate
@@ -93,32 +154,7 @@ export interface Registry {
   releaseSymbol(reactId: string): void;
   contributeLabels(symbol: symbol, footnotes: Set<string>, links: Set<string>): void;
   contributeChunkData(symbol: symbol, data: ChunkData): void;
-  subscribe(cb: () => void): () => void;
 
-  // Selectors (memoized internally by version).
-  canonicalFootnoteFor(label: string): symbol | null;
-  canonicalLinkFor(label: string): symbol | null;
-  globalNumber(label: string): number | null;
-  resolveLinkDef(label: string): LinkDef | null;
-  getRefsForLabel(label: string): number;
-  /** Map a chunk-local footnote-ref occurrence index (1-based, as emitted by
-   *  `customMdastHandlers`) to the corresponding document-wide occurrence
-   *  index across all chunks. Used by `FootnoteSupNumber` to build a unique
-   *  `id="fnref-X-N"` for each ref instance and by `AggregateFootnotesIfLast`
-   *  to enumerate per-occurrence backrefs. Returns `null` if the ref isn't
-   *  registered yet (registry mid-flight). */
-  globalOccurrenceForRef(chunkSym: symbol, label: string, localOccurrence: number): number | null;
-}
-
-/**
- * The shape actually realised inside `createRegistry`. Includes
- * implementation-private fields (reactId-keyed refcount table, subscriber
- * set, microtask-coalesce flag, `_notify` itself). Kept off the public
- * {@link Registry} interface so the dts emit doesn't leak mutable internals
- * — a consumer flipping `_notifyScheduled = true` would otherwise be able
- * to silently break the coalesce invariant.
- */
-interface RegistryInternal extends Registry {
   _reactIdMap: Map<string, { symbol: symbol; refcount: number }>;
   _subscribers: Set<() => void>;
   _notifyScheduled: boolean;
@@ -139,7 +175,7 @@ interface RegistryInternal extends Registry {
  * no other code can interleave between the empty-state check and the
  * caller's eviction logic.
  */
-export function createRegistry(onEmpty?: () => void): Registry {
+export function createRegistry(onEmpty?: () => void): RegistryInternal {
   const reg = {
     chunkOrder: [] as symbol[],
     chunkData: new Map<symbol, ChunkData>(),
@@ -373,8 +409,9 @@ export function createRegistry(onEmpty?: () => void): Registry {
     },
   };
   // Internally `reg` has both the public API and the private state.
-  // The return type narrows to the public {@link Registry} so the dts
-  // emit doesn't expose `_reactIdMap` / `_subscribers` / `_notifyScheduled` /
-  // `_notify` — those are operational invariants, not API surface.
-  return reg as unknown as RegistryInternal as Registry;
+  // The return type is {@link RegistryInternal} so internal callers
+  // (`MarkdownContent`, tests) hold a strongly-typed handle to the
+  // mutators and private state. Public consumers see only the narrow
+  // {@link Registry} via `useDocumentRegistry`'s return type.
+  return reg as unknown as RegistryInternal;
 }

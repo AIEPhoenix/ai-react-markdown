@@ -19,7 +19,6 @@ import { describe, expect, test } from 'vitest';
 import AIMarkdown, {
   defaultUrlTransform,
   extendSanitizeSchema,
-  sanitizeSchema,
 } from '.';
 
 describe('AIMarkdown — default URL handling (no custom props)', () => {
@@ -136,27 +135,6 @@ describe('AIMarkdown — both gates open via the recommended patterns (the real 
       />
     );
     expect(html).toContain('https://example.com');
-  });
-
-  test('hand-rolled raw schema also works (escape hatch path)', () => {
-    // Power-user path: skip the helper, build the schema by hand. Required
-    // discipline: spread the library `sanitizeSchema` so cross-chunk tags
-    // survive. Test exists to prove the prop still accepts a raw `Schema`.
-    const handRolled = {
-      ...sanitizeSchema,
-      protocols: {
-        ...(sanitizeSchema.protocols ?? {}),
-        href: [...(sanitizeSchema.protocols?.href ?? []), 'myapp'],
-      },
-    };
-    const html = renderToStaticMarkup(
-      <AIMarkdown
-        content="[ref](myapp://x)"
-        urlTransform={URL_TRANSFORM}
-        sanitizeSchema={handRolled}
-      />
-    );
-    expect(html).toContain('href="myapp://x"');
   });
 
   test('cross-chunk tags survive via extendSanitizeSchema (regression guard)', () => {

@@ -7,7 +7,7 @@
 
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, test } from 'vitest';
-import AIMarkdown from '../index';
+import AIMarkdown, { extendSanitizeSchema } from '../index';
 import rehypeRebaseHashLinks from './rehypeRebaseHashLinks';
 import type { Element, Root } from 'hast';
 
@@ -72,6 +72,52 @@ describe('rehypeRebaseHashLinks (integration with full AIMarkdown pipeline)', ()
     expect(htmlA).not.toContain('doc-b-user-content-');
     expect(htmlB).toContain('doc-b-user-content-');
     expect(htmlB).not.toContain('doc-a-user-content-');
+  });
+
+  test('library clobberPrefix wins over a caller-supplied schema clobberPrefix', () => {
+    // The default rehypePlugins spread is `{ ...usedSanitizeSchema, clobberPrefix }`
+    // — the library's `${documentId}-user-content-` is appended LAST so it
+    // overrides any `clobberPrefix` baked into the caller's schema. This
+    // invariant is what keeps `rehypeRebaseHashLinks` and `rehype-sanitize`
+    // aligned on a single prefix (the renamed "double-prefix" bug returns
+    // immediately if the order ever flips). Pin it explicitly so a future
+    // refactor of the spread can't silently regress the contract.
+    const HOSTILE_SCHEMA = extendSanitizeSchema((s) => {
+      // Force a different clobberPrefix on the caller's schema. The pipeline
+      // must IGNORE this value and use the documentId-derived prefix.
+      (s as unknown as { clobberPrefix: string }).clobberPrefix = 'totally-wrong-';
+    });
+
+    const html = renderToStaticMarkup(
+      <AIMarkdown
+        content="<h2 id='foo'>x</h2>\n\n[goto](#foo)"
+        documentId={TEST_DOCUMENT}
+        sanitizeSchema={HOSTILE_SCHEMA}
+      />
+    );
+
+    // No id or href should carry the hostile prefix.
+    expect(html).not.toContain('totally-wrong-');
+    // Real ids/hrefs MUST use the documentId-derived prefix.
+    expect(html).toContain(`${TEST_DOCUMENT}-user-content-foo`);
+  });
+
+  test('extendSanitizeSchema with custom clobberPrefix is also overridden', () => {
+    // Same invariant as the hostile schema test, but expressed via the
+    // canonical `extendSanitizeSchema` path — proves the spread order in
+    // the pipeline does NOT depend on how the schema was constructed.
+    const draftWithBadPrefix = extendSanitizeSchema((s) => {
+      (s as unknown as { clobberPrefix: string }).clobberPrefix = 'x-';
+    });
+    const html = renderToStaticMarkup(
+      <AIMarkdown
+        content="<h2 id='bar'>y</h2>"
+        documentId={TEST_DOCUMENT}
+        sanitizeSchema={draftWithBadPrefix}
+      />
+    );
+    expect(html).not.toContain('x-bar');
+    expect(html).toContain(`${TEST_DOCUMENT}-user-content-bar`);
   });
 
   test('auto-generated documentId becomes URI-encoded in the prefix', () => {

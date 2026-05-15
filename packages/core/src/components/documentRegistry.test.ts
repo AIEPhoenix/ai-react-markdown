@@ -2,11 +2,14 @@ import { describe, test, expect } from 'vitest';
 import { createRegistry, type Registry } from './documentRegistry';
 
 // Compile-time guards that the exported `Registry` interface forbids direct
-// mutation of its structural fields. The previous shape (`chunkOrder: symbol[]`,
-// etc.) let a downstream consumer corrupt footnote numbering and registry
-// eviction by `.push`-ing rogue symbols or `.set`-ing chunkData entries.
-// These `@ts-expect-error` lines fail if the readonly modifiers ever regress.
+// mutation of its structural fields AND forbids access to the internal
+// mutator methods (`registerChunk`, `allocateSymbol`, …). The previous
+// shape (`chunkOrder: symbol[]` plus public mutators) let a downstream
+// consumer corrupt footnote numbering and registry eviction by `.push`-ing
+// rogue symbols, `.set`-ing chunkData entries, or driving the API
+// directly. These `@ts-expect-error` lines fail if either contract regresses.
 function _readonlyContractGuard(_reg: Registry): void {
+  // --- Readonly structural fields ---
   // @ts-expect-error chunkOrder is `readonly symbol[]` — push() removed.
   _reg.chunkOrder.push(Symbol('rogue'));
   // @ts-expect-error chunkData is `ReadonlyMap` — set() removed.
@@ -15,6 +18,19 @@ function _readonlyContractGuard(_reg: Registry): void {
   _reg.labelSet.footnoteLabels.add('X');
   // @ts-expect-error version is `readonly number` — assignment removed.
   _reg.version = 999;
+  // --- Mutator methods live on RegistryInternal, NOT on the public Registry ---
+  // @ts-expect-error registerChunk is on RegistryInternal — not the public surface.
+  _reg.registerChunk('rogue', new Set(), new Set());
+  // @ts-expect-error allocateSymbol is on RegistryInternal — not the public surface.
+  _reg.allocateSymbol('rogue');
+  // @ts-expect-error releaseSymbol is on RegistryInternal — not the public surface.
+  _reg.releaseSymbol('rogue');
+  // @ts-expect-error contributeLabels is on RegistryInternal — not the public surface.
+  _reg.contributeLabels(Symbol('rogue'), new Set(), new Set());
+  // @ts-expect-error contributeChunkData is on RegistryInternal — not the public surface.
+  _reg.contributeChunkData(Symbol('rogue'), {} as never);
+  // @ts-expect-error private state never appears on Registry.
+  _reg._notify();
 }
 void _readonlyContractGuard;
 

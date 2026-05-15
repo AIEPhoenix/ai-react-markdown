@@ -1,6 +1,6 @@
 {
   "name": "@ai-react-markdown/core",
-  "version": "1.4.3",
+  "version": "1.4.4",
   "description": "Core rendering engine for ai-react-markdown — LaTeX preprocessing, plugin pipeline, and React components.",
   "publishConfig": {
     "access": "public"
@@ -50,11 +50,19 @@
   "scripts": {
     "build:js": "tsup",
     "build:css": "sass src/components/typography/variants/:dist/typography/ && postcss dist/typography/*.css --replace",
-    "build": "pnpm run build:js && pnpm run build:css"
+    "build": "pnpm run build:js && pnpm run build:css",
+    "test": "vitest --run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "peerDependencies": {
     "react": ">=19.0.0",
-    "react-dom": ">=19.0.0"
+    "react-dom": ">=19.0.0",
+    "katex": "^0.16.0"
+  },
+  "peerDependenciesMeta": {
+    "katex": {
+      "optional": true
+    }
   },
   "dependencies": {
     "devlop": "^1.1.0",

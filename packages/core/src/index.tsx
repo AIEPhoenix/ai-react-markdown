@@ -159,8 +159,8 @@ export interface AIMarkdownProps<
    *
    * Allowing a protocol here is necessary but **not sufficient** to render
    * a link — the second gate (`rehype-sanitize`) also enforces its own
-   * protocol allowlist. See the {@link sanitizeSchema} prop and the
-   * matching {@link extendSanitizeSchema} helper for the second gate.
+   * protocol allowlist. See the `sanitizeSchema` prop on this component
+   * and the {@link extendSanitizeSchema} helper for the second gate.
    *
    * **API stability**: the `UrlTransform` type tracks the upstream
    * `react-markdown` shape and may change with its major versions.
@@ -168,10 +168,11 @@ export interface AIMarkdownProps<
   urlTransform?: UrlTransform | null;
   /**
    * Override the `rehype-sanitize` schema applied to the rendered output.
-   * The library default ({@link sanitizeSchema}) extends `rehype-sanitize`'s
-   * own `defaultSchema` with the `<mark>` tag, KaTeX class names, and the
-   * cross-chunk coordination tags (`cross-chunk-link`, `cross-chunk-image`,
-   * `footnote-sup`).
+   * The library default extends `rehype-sanitize`'s own `defaultSchema`
+   * with the `<mark>` tag, KaTeX class names, and the cross-chunk
+   * coordination tags (`cross-chunk-link`, `cross-chunk-image`,
+   * `footnote-sup`). The default is not exported as a value — see
+   * {@link extendSanitizeSchema} for how to inspect or extend it safely.
    *
    * **Recommended pattern**: build the schema with {@link extendSanitizeSchema}
    * (mutate-and-return form) so those library additions stay intact, and
@@ -196,10 +197,11 @@ export interface AIMarkdownProps<
    * lose its placeholders. Prefer the helper unless you have a specific
    * reason to opt out.
    *
-   * **Reference stability matters.** Inline `<AIMarkdown sanitizeSchema={{
-   * ...sanitizeSchema, protocols: {...} }}>` is mitigated by an internal
-   * `useStableValue` deep-equal pass, but the safer pattern is still
-   * module-scope. Development builds will `console.warn` on identity flips.
+   * **Reference stability matters.** An inline call
+   * (`sanitizeSchema={extendSanitizeSchema((s) => { … })}`) is mitigated by
+   * an internal `useStableValue` deep-equal pass, but the safer pattern is
+   * still module-scope. Development builds will `console.warn` on identity
+   * flips.
    *
    * **API stability**: the `SanitizeSchema` type tracks the upstream
    * `rehype-sanitize` shape and may change with its major versions.
@@ -392,12 +394,18 @@ export { useStableValue };
 //
 // `urlTransform` has no helper because composition with `defaultUrlTransform`
 // is already the natural JS pattern (one-line closure). `extendSanitizeSchema`
-// is provided because the library default schema includes invariants
-// (cross-chunk tag allowlist, KaTeX className allowlist, …) that hand-rolled
-// extensions tend to silently drop — the helper bakes in the safe path.
+// is the ONLY supported way to build a custom sanitize schema — it hands the
+// caller a deep clone of the library default (which itself includes invariants
+// like the cross-chunk tag allowlist and KaTeX className allowlist), so direct
+// mutation is safe and the invariants are preserved automatically. The library
+// default schema is intentionally NOT exported as a value to prevent the
+// classic shallow-spread footgun (`{ ...sanitizeSchema }` aliases nested
+// arrays). Consumers who want to read default values can invoke the helper
+// with a logging modifier — see `extendSanitizeSchema`'s JSDoc for the
+// recipe. Only the `SanitizeSchema` type is exported, for callers building
+// typed helpers around the prop.
 export { defaultUrlTransform } from './components/markdown';
 export type { UrlTransform } from './components/markdown';
-export { sanitizeSchema } from './components/sanitizeSchema';
 export { extendSanitizeSchema } from './components/extendSanitizeSchema';
 export type { SanitizeSchema } from './components/extendSanitizeSchema';
 

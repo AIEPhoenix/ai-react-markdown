@@ -15,12 +15,18 @@ import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
+import remarkBreaks from 'remark-breaks';
+import remarkEmoji from 'remark-emoji';
+import remarkSqueezeParagraphs from 'remark-squeeze-paragraphs';
+import remarkCjkFriendly from 'remark-cjk-friendly';
+import remarkCjkFriendlyGfmStrikethrough from 'remark-cjk-friendly-gfm-strikethrough';
 import remarkRehype from 'remark-rehype';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize from 'rehype-sanitize';
 import rehypeKatex from 'rehype-katex';
 import rehypeUnwrapImages from 'rehype-unwrap-images';
 import rehypeRebaseHashLinks from './rehypeRebaseHashLinks';
+import rehypeFooterAdorn from './rehypeFooterAdorn';
 import { sanitizeSchema } from './sanitizeSchema';
 import type { Root, Element } from 'hast';
 
@@ -35,6 +41,40 @@ function runFullPipeline(content: string): Root {
     })
     .use(rehypeRaw, { passThrough: [] })
     .use(rehypeSanitize, sanitizeSchema)
+    .use(rehypeRebaseHashLinks)
+    .use(rehypeKatex)
+    .use(rehypeUnwrapImages);
+
+  const file = processor.parse(content);
+  return processor.runSync(file, content) as Root;
+}
+
+/** Runs the EXACT default-on plugin stack from `MarkdownContent.tsx`. The
+ *  block-memo cache (`blockMemo.ts:buildBlocks`) keys per-block entries by
+ *  `position.start.offset` on top-level hast children — every plugin in the
+ *  default stack must therefore preserve top-level positions or the cache
+ *  silently produces incorrect output. This test pins the contract so that
+ *  any future plugin addition to the always-on stack must be deliberately
+ *  checked against this invariant (and added here). */
+function runProductionPipeline(content: string): Root {
+  const processor = unified()
+    .use(remarkParse)
+    // --- Core remark plugins (always on; mirror MarkdownContent.tsx) ---
+    .use(remarkGfm)
+    .use(remarkMath, { singleDollarTextMath: false })
+    .use(remarkBreaks)
+    .use(remarkEmoji)
+    .use(remarkSqueezeParagraphs)
+    .use(remarkCjkFriendly)
+    .use(remarkCjkFriendlyGfmStrikethrough)
+    .use(remarkRehype, {
+      allowDangerousHtml: true,
+      clobberPrefix: '',
+    })
+    // --- Rehype stack (always on; mirror MarkdownContent.tsx) ---
+    .use(rehypeRaw, { passThrough: [] })
+    .use(rehypeSanitize, sanitizeSchema)
+    .use(rehypeFooterAdorn)
     .use(rehypeRebaseHashLinks)
     .use(rehypeKatex)
     .use(rehypeUnwrapImages);
@@ -118,5 +158,106 @@ describe('hast position metadata preservation through rehype pipeline', () => {
     for (const block of blocks) {
       expect(block.position).toBeDefined();
     }
+  });
+});
+
+describe('production-pipeline position preservation (default-on plugin stack)', () => {
+  // The block-memo cache keys per-block entries on `position.start.offset` of
+  // top-level hast children. If any default-on plugin ever strips position
+  // metadata, the cache silently produces stale output. The cases below
+  // exercise every plugin in the always-on stack against representative
+  // content; adding a new always-on plugin must include a matching case here.
+
+  test('remarkBreaks soft-break content keeps top-level positions', () => {
+    // remarkBreaks turns soft line breaks into <br>. The transformation
+    // happens INSIDE paragraphs — top-level paragraph offsets must survive.
+    const hast = runProductionPipeline('Line one\nLine two\n\nNext block');
+    const blocks = hast.children.filter((c): c is Element => c.type === 'element');
+    expect(blocks.length).toBeGreaterThanOrEqual(2);
+    for (const block of blocks) {
+      expect(block.position).toBeDefined();
+    }
+  });
+
+  test('remarkEmoji shortcode replacement preserves top-level positions', () => {
+    // `:smile:` is rewritten inside text nodes; the wrapping paragraph's
+    // position must remain intact even though its inner text mutates.
+    const hast = runProductionPipeline('Hi :smile:\n\nBye :wave:');
+    const blocks = hast.children.filter((c): c is Element => c.type === 'element');
+    expect(blocks.length).toBe(2);
+    for (const block of blocks) {
+      expect(block.position).toBeDefined();
+    }
+  });
+
+  test('remarkSqueezeParagraphs preserves top-level positions on surviving blocks', () => {
+    // Squeezing removes empty paragraphs. The blocks that remain must still
+    // carry their original source offsets — block-memo treats those as
+    // cache keys.
+    const hast = runProductionPipeline('First\n\n\n\nSecond');
+    const blocks = hast.children.filter((c): c is Element => c.type === 'element');
+    for (const block of blocks) {
+      expect(block.position).toBeDefined();
+    }
+  });
+
+  test('remarkCjkFriendly / strikethrough preserve positions on CJK content', () => {
+    // Mixed CJK + ASCII text; both CJK plugins rewrite intra-block
+    // whitespace but must not strip top-level position.
+    const hast = runProductionPipeline('中文段落 with English\n\n~~删除线 strikethrough~~');
+    const blocks = hast.children.filter((c): c is Element => c.type === 'element');
+    expect(blocks.length).toBeGreaterThanOrEqual(2);
+    for (const block of blocks) {
+      expect(block.position).toBeDefined();
+    }
+  });
+
+  test('rehypeFooterAdorn keeps the synthetic footnote section position-free', () => {
+    // rehypeFooterAdorn strips the sr-only <h2> from the footnote section
+    // and prepends an <hr>. The synthetic section itself must STAY
+    // position-less (block-memo's "synthetic footer" detection) and the
+    // surrounding real blocks must KEEP their positions.
+    const hast = runProductionPipeline('See[^a].\n\n[^a]: body.');
+    const blocks = hast.children.filter((c): c is Element => c.type === 'element');
+    const synthetic = blocks.filter((b) => !b.position);
+    const real = blocks.filter((b) => b.position);
+    expect(synthetic.length).toBe(1);
+    expect(synthetic[0].tagName).toBe('section');
+    expect(real.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test('all default-on plugins combined — kitchen-sink invariant', () => {
+    // Exercises the full default stack in one input. If any single plugin
+    // strips position on a real block under realistic content, this fails.
+    const md = [
+      '# Title 🎯',
+      '',
+      'Para with :tada: shortcode and *italic*.',
+      '',
+      '中英混排 paragraph with $E = mc^2$ inline math.',
+      '',
+      '```js',
+      'console.log("code");',
+      '```',
+      '',
+      '| a | b |',
+      '|---|---|',
+      '| 1 | 2 |',
+      '',
+      '<h2 id="raw">Raw HTML</h2>',
+      '',
+      'Refers to[^x].',
+      '',
+      '[^x]: footnote body.',
+    ].join('\n');
+    const hast = runProductionPipeline(md);
+    const blocks = hast.children.filter((c): c is Element => c.type === 'element');
+    const real = blocks.filter((b) => b.position);
+    const synthetic = blocks.filter((b) => !b.position);
+    // At minimum: title + 2 paras + code + table + raw h2 + ref para = 7 real blocks.
+    expect(real.length).toBeGreaterThanOrEqual(6);
+    // Synthetic footer is exactly one section.
+    expect(synthetic.length).toBe(1);
+    expect(synthetic[0].tagName).toBe('section');
   });
 });

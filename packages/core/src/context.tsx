@@ -102,7 +102,7 @@ export function useAIMarkdownRenderState<TConfig extends AIMarkdownRenderConfig 
  *
  * Metadata lives in a separate React context so that changes to metadata
  * do not cause re-renders in components that only consume render state
- * (e.g. {@link MarkdownContent}).
+ * (e.g. the internal `MarkdownContent` renderer).
  *
  * ### `TMetadata` is a caller-asserted type
  *

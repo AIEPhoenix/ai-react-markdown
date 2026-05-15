@@ -40,7 +40,7 @@
  */
 
 import { Fragment, memo, useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import Markdown, { parseStage, transformStage, type Options as MarkdownOptions } from './markdown';
+import Markdown, { parseStage, transformStage, defaultUrlTransform, type Options as MarkdownOptions } from './markdown';
 
 type RemarkPlugins = NonNullable<MarkdownOptions['remarkPlugins']>;
 type RehypePlugins = NonNullable<MarkdownOptions['rehypePlugins']>;
@@ -73,12 +73,13 @@ import {
 } from '../defs';
 import { collectDefLabels } from './collectDefLabels';
 import { useDocumentRegistry, usePreserveOrphanReferences } from './AIMarkdownDocuments';
-import type { Registry } from './documentRegistry';
+import type { RegistryInternal } from './documentRegistry';
 import type { SanitizeSchema } from './extendSanitizeSchema';
 import { augmentSourceWithPhantoms } from './remarkInjectPhantomDefs';
 import { buildCrossChunkHandlers } from './customMdastHandlers';
 import { normalizeForMatch } from './normalizeId';
 import { crossChunkComponents } from './crossChunkPlaceholders';
+import { CrossChunkUrlContext, type CrossChunkUrlPolicy } from './crossChunkUrlContext';
 import { extractContributions } from './extractContributions';
 import { extractDefBodiesFromHast } from './extractDefBodiesFromHast';
 import { AggregateFootnotesIfLast } from './aggregateFootnotesIfLast';
@@ -120,7 +121,8 @@ interface AIMarkdownContentProps {
   urlTransform?: MarkdownOptions['urlTransform'];
   /**
    * Optional `rehype-sanitize` schema. When omitted, the library default
-   * ({@link sanitizeSchema}) is used. Callers should produce this via
+   * is used (not publicly exported as a value — see
+   * {@link extendSanitizeSchema}). Callers should produce this via
    * {@link extendSanitizeSchema} to avoid silently dropping the cross-chunk
    * tag allowlist.
    */
@@ -134,6 +136,12 @@ interface RendererProps {
   rehypePlugins: RehypePlugins;
   remarkRehypeOptions: RemarkRehypeOptions;
   urlTransform: MarkdownOptions['urlTransform'];
+  /** Resolved sanitize schema. Propagated to cross-chunk placeholders via
+   *  {@link CrossChunkUrlContext} so they can apply the same `protocols.*`
+   *  allowlist that `rehype-sanitize` applies to in-tree `<a>`/`<img>` —
+   *  see `crossChunkUrlSanitize.ts` for why this must happen at render
+   *  time rather than at contribute time. */
+  sanitizeSchema: SanitizeSchema;
 }
 
 /**
@@ -142,7 +150,7 @@ interface RendererProps {
  * unified pipeline (parse → transform → buildBlocks → renderBlocksWithCache).
  */
 const BlockMemoizedRenderer = memo(
-  ({ content, usedComponents, remarkPlugins, rehypePlugins, remarkRehypeOptions, urlTransform }: RendererProps) => {
+  ({ content, usedComponents, remarkPlugins, rehypePlugins, remarkRehypeOptions, urlTransform, sanitizeSchema: usedSanitizeSchema }: RendererProps) => {
     // Vendored Markdown options that AIMarkdown does not currently expose. They
     // are tracked in the G3 flush below so the cache stays correct if any of
     // these are ever surfaced upstream. `urlTransform` is now a real prop —
@@ -158,7 +166,14 @@ const BlockMemoizedRenderer = memo(
     // without `<AIMarkdownDocuments>`): the gating is on `registry` truthiness.
     const { documentId, clobberPrefix, config } = useAIMarkdownRenderState();
     const reactId = useId();
-    const registry = useDocumentRegistry(documentId);
+    // The runtime value behind `useDocumentRegistry` is always a
+    // `RegistryInternal` (see `createRegistry`); the public hook narrows
+    // the return type to `Registry` so external consumers don't see the
+    // mutator methods. Here — the canonical internal coordinator — we
+    // widen back to `RegistryInternal` once at the top so subsequent
+    // mutator calls (`registerChunk`, `releaseSymbol`, `contributeChunkData`)
+    // type-check without scattered `as` casts.
+    const registry = useDocumentRegistry(documentId) as RegistryInternal | null;
     // Allocate-and-publish state: the Symbol for THIS chunk PAIRED with the
     // registry it was allocated from. Modelling as state — instead of a
     // ref — makes both fields real deps for downstream effects, so React's
@@ -175,7 +190,7 @@ const BlockMemoizedRenderer = memo(
     // `onEmpty`'s `chunkData.size === 0` check never sees as gone, leaking
     // the registry. Storing the registry alongside the sym lets Effect 2
     // gate on `allocation.registry === registry` and skip the stale tick.
-    const [allocation, setAllocation] = useState<{ registry: Registry; sym: symbol } | null>(null);
+    const [allocation, setAllocation] = useState<{ registry: RegistryInternal; sym: symbol } | null>(null);
     const sym = allocation && allocation.registry === registry ? allocation.sym : null;
 
     // Subscribe to registry version changes. Without this, useMemo deps that
@@ -238,7 +253,7 @@ const BlockMemoizedRenderer = memo(
       allowElement: typeof allowElement;
       skipHtml: typeof skipHtml;
       unwrapDisallowed: typeof unwrapDisallowed;
-      registry: Registry | null;
+      registry: RegistryInternal | null;
       symbol: symbol | null;
     }>({
       usedComponents,
@@ -465,7 +480,7 @@ const BlockMemoizedRenderer = memo(
     // allocate effect commits its setSym(...). The previous microtask/flushSync
     // dance is gone; React's dep system enforces "allocate before contribute".
     const lastContributionRef = useRef<{
-      registry: Registry;
+      registry: RegistryInternal;
       symbol: symbol;
       fp: string;
     } | null>(null);
@@ -482,8 +497,25 @@ const BlockMemoizedRenderer = memo(
       // render with full plugin output (math, raw HTML, defLists, …).
       const defMeta = new Map<string, { identifier: string; sourceIdentifier: string; contentSource: string }>();
       const linkDefs = new Map<string, { identifier: string; url: string; title?: string }>();
+      // Defense in depth for cross-chunk URLs: pass the resolved urlTransform
+      // (caller-supplied or default protocol allowlist) into extractContributions
+      // so `linkDef.url` enters the registry already sanitized. The render-time
+      // gate in `CrossChunkLink` / `CrossChunkImage` (`sanitizeCrossChunkUrl`)
+      // is the primary defense and IS per-attribute correct (`'href'` for `<a>`,
+      // `'src'` for `<img>`). This contribute-time pass is a coarser belt-and-
+      // suspenders layer — it uses the fixed `'href'` key because at contribute
+      // time we don't yet know whether a given def will be consumed as a link
+      // or an image. Known corner: a key-aware urlTransform that allows a
+      // scheme on `src` but NOT on `href` (e.g. a media-only allowlist) will
+      // see its cross-chunk images render empty, even though standalone images
+      // would have rendered the URL. If you hit this, drop the prop on this
+      // call site — render-time is sufficient for security; the entry here is
+      // a hygiene-of-registry-contents convenience for any future consumer
+      // reading `Registry.resolveLinkDef` directly.
+      const resolvedUrlTransform = urlTransform ?? defaultUrlTransform;
       for (const node of extractContributions(parsed.mdast, {
         phantomFootnoteLabels: targetPhantoms.missingFootnotes,
+        urlTransform: resolvedUrlTransform,
       })) {
         if (node.kind === 'ref') {
           refs.push({ label: node.label, kind: node.refKind, referenceType: node.referenceType });
@@ -548,10 +580,24 @@ const BlockMemoizedRenderer = memo(
         ownFootnoteLabels: ownLabels.footnoteLabels,
         ownLinkLabels: ownLabels.linkLabels,
       });
-    }, [parsed, ownLabels, registry, targetPhantoms, sym, hast, clobberPrefix]);
+    }, [parsed, ownLabels, registry, targetPhantoms, sym, hast, clobberPrefix, urlTransform]);
 
     // Intentional cache memoization via cacheRef; see G3 comment above.
     const rendered = renderBlocksWithCache(cacheRef, built.plan, built.globalCtx, postOptions);
+
+    // Cross-chunk URL sanitization policy — read by `CrossChunkLink` and
+    // `CrossChunkImage` at render time to apply the same two-gate pipeline
+    // (urlTransform + protocols allowlist) the standalone in-tree pass
+    // applies. Resolved here so the same `defaultUrlTransform` /
+    // `sanitizeSchema` fallbacks the rest of the pipeline uses are honored
+    // — no chance of drift between standalone and cross-chunk paths.
+    const crossChunkUrlPolicy = useMemo<CrossChunkUrlPolicy>(
+      () => ({
+        urlTransform: urlTransform || defaultUrlTransform,
+        sanitizeSchema: usedSanitizeSchema,
+      }),
+      [urlTransform, usedSanitizeSchema]
+    );
 
     // React keys come from buildBlocks:
     //   - `block-${hastOffset}` for cacheable blocks (the hast element's own
@@ -567,20 +613,22 @@ const BlockMemoizedRenderer = memo(
     // Render the aggregate footer here so it sits at the end of the LAST
     // chunk's output. The component is a no-op when this chunk is not last.
     return (
-      <ChunkSymbolContext.Provider value={sym}>
-        {rendered.map(({ node, reactKey }) => (
-          <Fragment key={reactKey}>{node}</Fragment>
-        ))}
-        {registry && sym ? (
-          <AggregateFootnotesIfLast
-            registry={registry}
-            thisChunkSym={sym}
-            clobberPrefix={clobberPrefix}
-            postOptions={postOptions}
-            preserveOrphanReferences={effectivePreserveOrphan}
-          />
-        ) : null}
-      </ChunkSymbolContext.Provider>
+      <CrossChunkUrlContext.Provider value={crossChunkUrlPolicy}>
+        <ChunkSymbolContext.Provider value={sym}>
+          {rendered.map(({ node, reactKey }) => (
+            <Fragment key={reactKey}>{node}</Fragment>
+          ))}
+          {registry && sym ? (
+            <AggregateFootnotesIfLast
+              registry={registry}
+              thisChunkSym={sym}
+              clobberPrefix={clobberPrefix}
+              postOptions={postOptions}
+              preserveOrphanReferences={effectivePreserveOrphan}
+            />
+          ) : null}
+        </ChunkSymbolContext.Provider>
+      </CrossChunkUrlContext.Provider>
     );
   }
 );
@@ -600,7 +648,12 @@ BlockMemoizedRenderer.displayName = 'BlockMemoizedRenderer';
  * cross-chunk behavior, keep `blockMemoEnabled: true` (the default).
  */
 const LegacyRenderer = memo(
-  ({ content, usedComponents, remarkPlugins, rehypePlugins, remarkRehypeOptions, urlTransform }: RendererProps) => (
+  // `sanitizeSchema` is accepted (and ignored) here purely for prop-shape
+  // parity with `BlockMemoizedRenderer` — legacy mode skips cross-chunk
+  // coordination entirely, so there's no placeholder needing the schema.
+  // Rebind to an underscore-prefixed local so the project's
+  // no-unused-vars rule (which allows `_`-prefixed names) accepts it.
+  ({ content, usedComponents, remarkPlugins, rehypePlugins, remarkRehypeOptions, urlTransform, sanitizeSchema: _sanitizeSchema }: RendererProps) => (
     <Markdown
       remarkPlugins={remarkPlugins}
       rehypePlugins={rehypePlugins}
@@ -732,6 +785,7 @@ const AIMarkdownContent = memo(
       rehypePlugins={rehypePlugins}
       remarkRehypeOptions={remarkRehypeOptions}
       urlTransform={urlTransform}
+      sanitizeSchema={usedSanitizeSchema}
     />
   );
   }

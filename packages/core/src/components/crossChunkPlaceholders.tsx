@@ -15,6 +15,10 @@ import { type ReactNode, isValidElement, useCallback, useContext, useSyncExterna
 import { useAIMarkdownRenderState } from '../context';
 import { useDocumentRegistry } from './AIMarkdownDocuments';
 import { ChunkSymbolContext } from './chunkSymbolContext';
+import { CrossChunkUrlContext } from './crossChunkUrlContext';
+import { sanitizeCrossChunkUrl } from './crossChunkUrlSanitize';
+import { defaultUrlTransform } from './markdown';
+import { sanitizeSchema as defaultSanitizeSchema } from './sanitizeSchema';
 import type { LinkDef } from './documentRegistry';
 
 type RefType = 'full' | 'collapsed' | 'shortcut' | undefined;
@@ -22,7 +26,6 @@ type RefType = 'full' | 'collapsed' | 'shortcut' | undefined;
 /** Module-level SSR snapshot constant. Hoisted out of components so its
  *  identity is stable across renders. */
 const SSR_NUM_SNAPSHOT = () => 0;
-const SSR_DEF_SNAPSHOT = () => null;
 
 interface FootnoteSupProps {
   label: string;
@@ -128,14 +131,40 @@ function literalLink(rt: RefType, label: string, children: ReactNode): string {
 export function CrossChunkLink({ label, referenceType, children }: CrossChunkLinkProps): ReactNode {
   const { documentId } = useAIMarkdownRenderState();
   const registry = useDocumentRegistry(documentId);
+  const policy = useContext(CrossChunkUrlContext);
+  // Subscription pattern matches `FootnoteSupNumber`: useSyncExternalStore
+  // wakes us up on any registry mutation; the actual def is read directly
+  // from the registry after the hook. Keeping subscription separate from
+  // value lookup means the SSR snapshot (`registry?.version ?? 0`) doesn't
+  // need to materialize a real `LinkDef` — and the post-hook read sees
+  // whatever's in the registry at the moment of render, including data
+  // seeded synchronously by tests or by sibling chunks that committed
+  // before this one mounted.
   const subscribe = useCallback((cb: () => void) => (registry ? registry.subscribe(cb) : () => {}), [registry]);
-  const getSnapshot = useCallback(() => registry?.resolveLinkDef(label) ?? null, [registry, label]);
-  const def = useSyncExternalStore<LinkDef | null>(subscribe, getSnapshot, SSR_DEF_SNAPSHOT);
+  const getSnapshot = useCallback(() => registry?.version ?? 0, [registry]);
+  useSyncExternalStore(subscribe, getSnapshot, SSR_NUM_SNAPSHOT);
+  const def: LinkDef | null = registry?.resolveLinkDef(label) ?? null;
   if (!def) {
     return literalLink(referenceType, label, children);
   }
+  // Apply the same two-gate sanitization the standalone in-tree pipeline
+  // applies to `<a href>` (urlTransform + rehype-sanitize protocols.href).
+  // Cross-chunk URLs are read from the registry at render time, AFTER both
+  // hast-pass gates have run — without this, a custom scheme allowed by
+  // `urlTransform` but disallowed in `sanitizeSchema.protocols.href` would
+  // render correctly in standalone but slip through cross-chunk (and same
+  // for `javascript:` if the contribute-time gate is ever bypassed).
+  // Fallback to safe defaults when the policy context is missing (the
+  // placeholder rendered outside an `<AIMarkdown>` ancestor — a test path).
+  const url = sanitizeCrossChunkUrl(
+    def.url,
+    'href',
+    'a',
+    policy?.urlTransform ?? defaultUrlTransform,
+    policy?.sanitizeSchema ?? defaultSanitizeSchema
+  );
   return (
-    <a href={def.url} title={def.title}>
+    <a href={url} title={def.title}>
       {children}
     </a>
   );
@@ -162,13 +191,29 @@ function literalImage(rt: RefType, label: string, alt: string): string {
 export function CrossChunkImage({ label, referenceType, alt = '' }: CrossChunkImageProps): ReactNode {
   const { documentId } = useAIMarkdownRenderState();
   const registry = useDocumentRegistry(documentId);
+  const policy = useContext(CrossChunkUrlContext);
+  // Same subscription-only useSyncExternalStore pattern as CrossChunkLink —
+  // see that component for the rationale.
   const subscribe = useCallback((cb: () => void) => (registry ? registry.subscribe(cb) : () => {}), [registry]);
-  const getSnapshot = useCallback(() => registry?.resolveLinkDef(label) ?? null, [registry, label]);
-  const def = useSyncExternalStore<LinkDef | null>(subscribe, getSnapshot, SSR_DEF_SNAPSHOT);
+  const getSnapshot = useCallback(() => registry?.version ?? 0, [registry]);
+  useSyncExternalStore(subscribe, getSnapshot, SSR_NUM_SNAPSHOT);
+  const def: LinkDef | null = registry?.resolveLinkDef(label) ?? null;
   if (!def) {
     return literalImage(referenceType, label, alt);
   }
-  return <img src={def.url} alt={alt} title={def.title} />;
+  // Sanitize for the `<img src>` shape: pass `key='src'` so a key-aware
+  // urlTransform (allowing a scheme on `href` only, say) does the right
+  // thing, and check against `sanitizeSchema.protocols.src` (which may
+  // differ from `protocols.href`). See `crossChunkUrlSanitize.ts` for the
+  // full rationale.
+  const url = sanitizeCrossChunkUrl(
+    def.url,
+    'src',
+    'img',
+    policy?.urlTransform ?? defaultUrlTransform,
+    policy?.sanitizeSchema ?? defaultSanitizeSchema
+  );
+  return <img src={url} alt={alt} title={def.title} />;
 }
 
 /**

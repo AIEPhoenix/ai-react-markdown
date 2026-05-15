@@ -4,6 +4,7 @@ import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
 import type { Root as MdastRoot } from 'mdast';
 import { extractContributions, type Contribution } from './extractContributions';
+import { defaultUrlTransform } from './markdown';
 
 function parseMdast(source: string): MdastRoot {
   return unified().use(remarkParse).use(remarkGfm).parse(source) as MdastRoot;
@@ -75,5 +76,60 @@ describe('extractContributions', () => {
     const out = collect(mdast);
     const linkDef = out.find((c) => c.kind === 'linkDef');
     expect(linkDef).toMatchObject({ kind: 'linkDef', label: 'LBL', url: 'https://ex.com', title: 'Title' });
+  });
+
+  describe('urlTransform option (cross-chunk URL sanitization)', () => {
+    // Cross-chunk link/image placeholders read URLs from the registry, NOT
+    // from the in-tree hast — so react-markdown's `transform.ts` urlTransform
+    // pass doesn't see them. Without contribute-time sanitization, a chunk
+    // defining `[evil]: javascript:alert(1)` could XSS a sibling chunk that
+    // references it. Tests below pin the gate at the contribute boundary.
+
+    test('defaultUrlTransform strips javascript: linkDef urls to empty string', () => {
+      const mdast = parseMdast(`[evil]: javascript:alert(1)\n`);
+      const out = Array.from(extractContributions(mdast, { urlTransform: defaultUrlTransform }));
+      const linkDef = out.find((c) => c.kind === 'linkDef');
+      expect(linkDef).toBeDefined();
+      // Empty url, NOT the literal javascript: scheme.
+      expect((linkDef as { url: string }).url).toBe('');
+    });
+
+    test('defaultUrlTransform preserves https linkDef urls', () => {
+      const mdast = parseMdast(`[ok]: https://example.com "T"\n`);
+      const out = Array.from(extractContributions(mdast, { urlTransform: defaultUrlTransform }));
+      const linkDef = out.find((c) => c.kind === 'linkDef');
+      expect((linkDef as { url: string; title?: string }).url).toBe('https://example.com');
+      expect((linkDef as { url: string; title?: string }).title).toBe('T');
+    });
+
+    test('custom urlTransform sees `href` key and a synthetic <a> node', () => {
+      const seen: Array<{ url: string; key: string; tagName: string }> = [];
+      const urlTransform = (url: string, key: string, node: { tagName?: string }) => {
+        seen.push({ url, key, tagName: node.tagName ?? '' });
+        return url;
+      };
+      const mdast = parseMdast(`[lbl]: myapp://thing\n`);
+      Array.from(extractContributions(mdast, { urlTransform }));
+      expect(seen).toEqual([{ url: 'myapp://thing', key: 'href', tagName: 'a' }]);
+    });
+
+    test('custom urlTransform returning null collapses to empty string', () => {
+      const mdast = parseMdast(`[lbl]: https://blocked.example\n`);
+      const out = Array.from(
+        extractContributions(mdast, { urlTransform: () => null as unknown as string })
+      );
+      const linkDef = out.find((c) => c.kind === 'linkDef');
+      expect((linkDef as { url: string }).url).toBe('');
+    });
+
+    test('omitting urlTransform preserves v1 raw-url behavior (back-compat)', () => {
+      // Library callers must always opt in to sanitization. Unit-test
+      // fixtures that build minimal calls (and don't care about URL safety)
+      // keep working without a urlTransform argument.
+      const mdast = parseMdast(`[evil]: javascript:alert(1)\n`);
+      const out = collect(mdast);
+      const linkDef = out.find((c) => c.kind === 'linkDef');
+      expect((linkDef as { url: string }).url).toBe('javascript:alert(1)');
+    });
   });
 });
