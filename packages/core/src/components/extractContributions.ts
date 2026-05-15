@@ -15,8 +15,10 @@
  */
 import { SKIP, visit } from 'unist-util-visit';
 import type { Root as MdastRoot } from 'mdast';
+import type { Element as HastElement } from 'hast';
 import { normalizeId } from './normalizeId';
 import { SENTINEL_LINK_URL } from './remarkInjectPhantomDefs';
+import type { UrlTransform } from './markdown';
 
 export type Contribution =
   | {
@@ -33,6 +35,49 @@ export interface ExtractContributionsOptions {
    *  Defs matching these are skipped to avoid leaking sentinel rows into
    *  registry.chunkData. */
   phantomFootnoteLabels?: Set<string>;
+  /**
+   * Caller's resolved URL transform (typically `props.urlTransform ??
+   * defaultUrlTransform`). Applied to every emitted `linkDef.url` so the
+   * registry stores already-sanitized URLs.
+   *
+   * Cross-chunk link/image references render through the registry rather
+   * than the in-tree hast (which is where react-markdown's transform pass
+   * normally enforces `urlTransform`). Without this, a chunk defining
+   * `[evil]: javascript:alert(1)` could XSS a sibling chunk that uses
+   * `[click][evil]` — the standalone path strips the protocol; the cross-
+   * chunk path would have rendered `<a href="javascript:…">`. Sanitizing at
+   * contribute time also benefits any future consumer that reads
+   * `Registry.resolveLinkDef` directly.
+   *
+   * Invocation contract mirrors react-markdown's hast-pass call site
+   * (`buildTransform` in `./markdown/transform.ts`): a synthetic
+   * `<a href={url}>` element stands in for the node argument since
+   * mdast `definition` nodes have no hast counterpart. The key is `'href'`
+   * — link defs are far more common than image defs, and protocol-allowlist
+   * transforms (including `defaultUrlTransform`) are key-agnostic anyway.
+   * A `null` return collapses to the empty string, matching how
+   * `transform.ts` would render a blocked attribute.
+   *
+   * Omitting this option preserves v1 behavior (URLs stored raw). Library
+   * callers should always supply it; the option stays optional so unit-test
+   * fixtures that don't care about URL safety can construct minimal calls.
+   */
+  urlTransform?: UrlTransform;
+}
+
+/** Synthetic hast element used as the third argument to `urlTransform` at
+ *  contribute time. `transform.ts` passes a real Element with all the
+ *  reference's properties; here we only have the bare def URL, so a minimal
+ *  stand-in suffices. `defaultUrlTransform` ignores it; key-aware custom
+ *  transforms see a sensible default shape. */
+function fakeAnchorElement(url: string): HastElement {
+  return { type: 'element', tagName: 'a', properties: { href: url }, children: [] };
+}
+
+function sanitizeDefUrl(url: string, urlTransform: UrlTransform | undefined): string {
+  if (!urlTransform) return url;
+  const result = urlTransform(url, 'href', fakeAnchorElement(url));
+  return result == null ? '' : String(result);
 }
 
 export function* extractContributions(
@@ -40,6 +85,7 @@ export function* extractContributions(
   options: ExtractContributionsOptions = {}
 ): Generator<Contribution> {
   const phantomFn = options.phantomFootnoteLabels;
+  const urlTransform = options.urlTransform;
   const out: Contribution[] = [];
   visit(mdast, (n) => {
     if (n.type === 'footnoteReference') {
@@ -87,7 +133,12 @@ export function* extractContributions(
     } else if (n.type === 'definition') {
       const d = n as { identifier: string; url: string; title?: string };
       if (d.url === SENTINEL_LINK_URL) return;
-      out.push({ kind: 'linkDef', label: normalizeId(d.identifier), url: d.url, title: d.title });
+      out.push({
+        kind: 'linkDef',
+        label: normalizeId(d.identifier),
+        url: sanitizeDefUrl(d.url, urlTransform),
+        title: d.title,
+      });
     }
   });
   for (const c of out) yield c;

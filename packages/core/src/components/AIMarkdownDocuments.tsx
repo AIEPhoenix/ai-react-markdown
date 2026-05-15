@@ -11,10 +11,16 @@
  * @module components/AIMarkdownDocuments
  */
 import { createContext, useContext, useMemo, useRef, type PropsWithChildren, type FC } from 'react';
-import { createRegistry, type Registry } from './documentRegistry';
+import { createRegistry, type Registry, type RegistryInternal } from './documentRegistry';
 
 interface AIMarkdownDocumentsContextValue {
-  getRegistry: (documentId: string) => Registry;
+  /** Returns the registry for a given documentId. Holds the internal
+   *  (mutator-bearing) shape; {@link useDocumentRegistry} narrows the
+   *  return type to the public read-only {@link Registry} surface so
+   *  external consumers can't drive the registry directly. Internal
+   *  callers (`MarkdownContent`, tests via `__internalGetContext`) keep
+   *  the wider view. */
+  getRegistry: (documentId: string) => RegistryInternal;
   preserveOrphanReferences: boolean;
 }
 
@@ -30,14 +36,24 @@ export interface AIMarkdownDocumentsProps extends PropsWithChildren {
   preserveOrphanReferences?: boolean;
 }
 
-export const AIMarkdownDocuments: FC<AIMarkdownDocumentsProps> = ({ preserveOrphanReferences = true, children }) => {
-  const parent = useContext(AIMarkdownDocumentsContext);
-  if (parent !== null) {
-    throw new Error(
-      '<AIMarkdownDocuments> must not be nested inside another <AIMarkdownDocuments>. Use a single top-level wrapper per coordinated scope.'
-    );
-  }
+/** Message body for the "nested wrapper" misuse error / warning. Centralised
+ *  so dev and prod paths emit the exact same text — easier to grep in user
+ *  bug reports. */
+const NESTED_WRAPPER_MESSAGE =
+  '<AIMarkdownDocuments> must not be nested inside another <AIMarkdownDocuments>. Use a single top-level wrapper per coordinated scope.';
 
+/**
+ * The "happy path" implementation: allocates a per-instance registries Map
+ * and Provider value. Split out from `AIMarkdownDocuments` so the parent
+ * component's pre-hook nesting gate (which may early-return) doesn't put
+ * the hooks below behind a conditional — rules-of-hooks is then trivially
+ * satisfied because every render of THIS inner component goes through all
+ * the hooks in the same order.
+ */
+const AIMarkdownDocumentsRoot: FC<Required<Pick<AIMarkdownDocumentsProps, 'preserveOrphanReferences'>> & PropsWithChildren> = ({
+  preserveOrphanReferences,
+  children,
+}) => {
   // Registries are persistent across renders. Map<documentId, Registry>.
   //
   // Eviction: each registry receives an `onEmpty` callback that the
@@ -63,7 +79,7 @@ export const AIMarkdownDocuments: FC<AIMarkdownDocumentsProps> = ({ preserveOrph
   // components are rare in practice. A proper fix would defer the Map
   // insert to chunk-subscription time, but that breaks the synchronous-
   // getter contract `useDocumentRegistry` relies on. Deferred.
-  const registriesRef = useRef<Map<string, Registry>>(new Map());
+  const registriesRef = useRef<Map<string, RegistryInternal>>(new Map());
 
   const value = useMemo<AIMarkdownDocumentsContextValue>(
     () => ({
@@ -90,6 +106,45 @@ export const AIMarkdownDocuments: FC<AIMarkdownDocumentsProps> = ({ preserveOrph
   );
 
   return <AIMarkdownDocumentsContext.Provider value={value}>{children}</AIMarkdownDocumentsContext.Provider>;
+};
+
+export const AIMarkdownDocuments: FC<AIMarkdownDocumentsProps> = ({ preserveOrphanReferences = true, children }) => {
+  const parent = useContext(AIMarkdownDocumentsContext);
+  if (parent !== null) {
+    // Dev: fail fast. The error makes the misuse obvious in any non-
+    // production environment and prevents subtle bugs (the inner wrapper's
+    // children would silently see the outer wrapper's registry / preserve-
+    // orphan policy, which is almost never what a nested wrapper was
+    // attempting to express).
+    //
+    // Prod: degrade gracefully. AI chat / document UIs that wire
+    // `<AIMarkdownDocuments>` deep inside dynamic composition (RSC, portals,
+    // third-party layout libs) can hit the nested-wrapper case via an
+    // upstream bug — crashing the entire conversation pane is worse user
+    // experience than silently rendering the inner subtree against the outer
+    // wrapper. Emit a `console.error` (visible to ops dashboards / Sentry)
+    // and render `children` as-is so the existing outer Provider continues
+    // to apply.
+    //
+    // Hooks-rules note: the outer component only calls `useContext` before
+    // the early return; the hooks that allocate state (`useRef`, `useMemo`)
+    // live in `AIMarkdownDocumentsRoot`, which is only mounted on the
+    // non-nested branch. Whichever branch this instance takes, it takes
+    // for its entire lifetime — React's per-instance hook order stays
+    // stable and ESLint's `react-hooks/rules-of-hooks` is happy.
+    //
+    // The dev/prod split mirrors React's own invariant-vs-warning pattern.
+    if (process.env.NODE_ENV !== 'production') {
+      throw new Error(NESTED_WRAPPER_MESSAGE);
+    }
+    console.error(`[ai-react-markdown] ${NESTED_WRAPPER_MESSAGE} Falling back to the outer wrapper; the inner wrapper is a no-op.`);
+    return <>{children}</>;
+  }
+  return (
+    <AIMarkdownDocumentsRoot preserveOrphanReferences={preserveOrphanReferences}>
+      {children}
+    </AIMarkdownDocumentsRoot>
+  );
 };
 
 /**

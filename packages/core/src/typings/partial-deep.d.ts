@@ -2,6 +2,16 @@
 // https://github.com/sindresorhus/type-fest
 // SPDX-License-Identifier: (MIT OR CC0-1.0)
 // Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
+//
+// Vendored verbatim from upstream. The `any[]` spellings in
+// `HasMultipleCallSignatures` and the function-fallback branch are
+// load-bearing for type-fest's variadic-arity matching — replacing them
+// with `unknown[]` would either narrow or widen the inference in a
+// non-equivalent way, and the test suite for those exact helpers lives in
+// type-fest's own repo. Disable the rule at the file scope to mirror
+// upstream while keeping the rest of the package's `no-explicit-any`
+// contract strict.
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import type { IsNever } from './is-never.d.ts';
 

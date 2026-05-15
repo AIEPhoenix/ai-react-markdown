@@ -1,4 +1,4 @@
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect, vi } from 'vitest';
 import { renderToString } from 'react-dom/server';
 import { AIMarkdownDocuments, useDocumentRegistry, __internalGetContext } from './AIMarkdownDocuments';
 import type { Registry } from './documentRegistry';
@@ -41,7 +41,10 @@ describe('<AIMarkdownDocuments>', () => {
     expect(captured!.chunkOrder).toEqual([]);
   });
 
-  test('nested <AIMarkdownDocuments> throws', () => {
+  test('nested <AIMarkdownDocuments> throws in dev', () => {
+    // Default vitest env is `NODE_ENV=test`, which our `!= production` check
+    // treats the same as `development` — fail fast so the misuse surfaces in
+    // local + CI builds.
     expect(() =>
       renderToString(
         <AIMarkdownDocuments>
@@ -51,6 +54,37 @@ describe('<AIMarkdownDocuments>', () => {
         </AIMarkdownDocuments>
       )
     ).toThrow(/nested/i);
+  });
+
+  test('nested <AIMarkdownDocuments> in prod logs and renders the inner subtree', () => {
+    // Production builds degrade gracefully — an upstream composition bug
+    // (RSC, portal, third-party layout) that nests the wrapper would
+    // otherwise crash an entire conversation pane. Verify:
+    //   1. No throw.
+    //   2. `console.error` is called with the canonical message.
+    //   3. The inner subtree still renders (the outer Provider remains in
+    //      effect, so `children` are spread as-is).
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.stubEnv('NODE_ENV', 'production');
+    try {
+      const html = renderToString(
+        <AIMarkdownDocuments>
+          <AIMarkdownDocuments>
+            <div data-testid="inner">survived</div>
+          </AIMarkdownDocuments>
+        </AIMarkdownDocuments>
+      );
+      // Inner subtree rendered.
+      expect(html).toContain('data-testid="inner"');
+      expect(html).toContain('survived');
+      // Error logged exactly once with the canonical text.
+      expect(errSpy).toHaveBeenCalledTimes(1);
+      expect(errSpy.mock.calls[0][0]).toMatch(/must not be nested/i);
+      expect(errSpy.mock.calls[0][0]).toMatch(/\[ai-react-markdown\]/);
+    } finally {
+      vi.unstubAllEnvs();
+      errSpy.mockRestore();
+    }
   });
 
   test('useDocumentRegistry returns null if documentId is undefined', () => {

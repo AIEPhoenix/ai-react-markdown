@@ -139,7 +139,7 @@ describe('sanitizeSchema integration', () => {
 
 describe('sanitizeSchema cross-chunk extension', () => {
   test('allows <cross-chunk-link> with label/referenceType/documentId', () => {
-    const tree = {
+    const tree: Root = {
       type: 'root',
       children: [
         {
@@ -150,23 +150,28 @@ describe('sanitizeSchema cross-chunk extension', () => {
         },
       ],
     };
-    const out = sanitize(tree as any, sanitizeSchema as any) as any;
-    const node = out.children[0];
+    const out = sanitize(tree, sanitizeSchema) as Root;
+    const node = firstChildElement(out);
     expect(node.tagName).toBe('cross-chunk-link');
-    expect(node.properties.label).toBe('X');
+    expect(node.properties?.label).toBe('X');
   });
 
   test('allows <cross-chunk-image> + <footnote-sup>', () => {
-    const tree = {
+    const tree: Root = {
       type: 'root',
       children: [
         { type: 'element', tagName: 'cross-chunk-image', properties: { label: 'X', alt: 'a' }, children: [] },
         { type: 'element', tagName: 'footnote-sup', properties: { label: 'Y', documentId: 'd' }, children: [] },
       ],
     };
-    const out = sanitize(tree as any, sanitizeSchema as any) as any;
-    expect(out.children[0].tagName).toBe('cross-chunk-image');
-    expect(out.children[1].tagName).toBe('footnote-sup');
+    const out = sanitize(tree, sanitizeSchema) as Root;
+    const first = out.children[0];
+    const second = out.children[1];
+    if (first.type !== 'element' || second.type !== 'element') {
+      throw new Error('expected element children');
+    }
+    expect(first.tagName).toBe('cross-chunk-image');
+    expect(second.tagName).toBe('footnote-sup');
   });
 
   test('preserves numeric localOccurrence on <footnote-sup> through sanitize', () => {
@@ -176,7 +181,7 @@ describe('sanitizeSchema cross-chunk extension', () => {
     // strips numeric attributes, multi-ref disambiguation silently breaks
     // (the inline sup short-circuits to null when localOccurrence is set
     // but chunkSym/globalOcc lookup fails).
-    const tree = {
+    const tree: Root = {
       type: 'root',
       children: [
         {
@@ -187,8 +192,44 @@ describe('sanitizeSchema cross-chunk extension', () => {
         },
       ],
     };
-    const out = sanitize(tree as any, sanitizeSchema as any) as any;
-    expect(out.children[0].tagName).toBe('footnote-sup');
-    expect(out.children[0].properties.localOccurrence).toBe(2);
+    const out = sanitize(tree, sanitizeSchema) as Root;
+    const node = firstChildElement(out);
+    expect(node.tagName).toBe('footnote-sup');
+    expect(node.properties?.localOccurrence).toBe(2);
+  });
+});
+
+describe('sanitizeSchema cross-package isolation', () => {
+  // The exported `sanitizeSchema` used to be a shallow clone of
+  // `rehype-sanitize`'s `defaultSchema`, leaving its nested arrays (`attributes.*`,
+  // `protocols.*`, `ancestors.*`) aliased to the upstream singleton. A consumer
+  // mutating the library export would silently poison `defaultSchema` for every
+  // other consumer in the process. The current implementation deep-clones at
+  // module init; these tests pin that contract so a refactor can't regress it.
+
+  test('mutating attributes.a does not affect defaultSchema.attributes.a', () => {
+    const before = [...((defaultSchema.attributes?.a ?? []) as unknown[])];
+    const ours = sanitizeSchema.attributes?.a as unknown[] | undefined;
+    expect(ours).toBeDefined();
+    ours!.push('data-mutated' as never);
+    // Library export grew; upstream untouched.
+    expect(ours!.length).toBeGreaterThan(before.length);
+    expect(defaultSchema.attributes?.a).toEqual(before);
+    // Cleanup so subsequent tests aren't affected.
+    ours!.length = before.length;
+  });
+
+  test('mutating protocols.href does not affect defaultSchema.protocols.href', () => {
+    const before = [...((defaultSchema.protocols?.href ?? []) as unknown[])];
+    const ours = sanitizeSchema.protocols?.href as unknown[] | undefined;
+    expect(ours).toBeDefined();
+    ours!.push('myapp' as never);
+    expect(ours!.length).toBeGreaterThan(before.length);
+    expect(defaultSchema.protocols?.href).toEqual(before);
+    ours!.length = before.length;
+  });
+
+  test('tagNames identity is independent of defaultSchema.tagNames', () => {
+    expect(sanitizeSchema.tagNames).not.toBe(defaultSchema.tagNames);
   });
 });

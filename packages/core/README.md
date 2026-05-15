@@ -49,6 +49,14 @@ For LaTeX math rendering, include the KaTeX stylesheet:
 import 'katex/dist/katex.min.css';
 ```
 
+`katex` is declared as an **optional peer dependency**. It ships transitively via `rehype-katex`, so hoisted installers (npm, yarn classic, default pnpm) resolve the import automatically. Strict-isolation installers (yarn PnP, `pnpm --node-linker=isolated`) need it installed explicitly:
+
+```bash
+npm install katex
+```
+
+Skip the install only if you have no `import 'katex/…'` calls in your app and don't render math.
+
 For the built-in default typography, include the typography CSS:
 
 ```tsx
@@ -202,10 +210,12 @@ By default `<AIMarkdown>` only renders links and images whose URLs use the stand
 
 Sanitization runs in **two independent gates** (defense in depth):
 
-1. **`urlTransform`** — runs first, on every URL-bearing attribute, and rewrites disallowed URLs to `''`.
-2. **`rehype-sanitize` schema** — runs second, and drops the entire `href`/`src`/`cite` attribute when the protocol is not in its own allowlist.
+1. **`urlTransform`** — runs first, on every URL-bearing attribute, and rewrites disallowed URLs to `''`. Called per-attribute with the attribute name (`'href'` / `'src'` / …) so key-aware transforms can discriminate (e.g. allow a scheme on `href` but not on `src` to block tracker pixels).
+2. **`rehype-sanitize` schema** — runs second, and drops the URL when the protocol is not in the schema's per-attribute allowlist (`protocols.href`, `protocols.src`, `protocols.cite`).
 
 For a private scheme to render, **both gates must permit it**. Allowing only one is the most common pitfall.
+
+**Cross-chunk symmetry.** When `<AIMarkdown>` instances are wrapped in `<AIMarkdownDocuments>`, link/image references resolved across chunks (chunk A defines `[evil]: …`, chunk B writes `[click][evil]`) go through both gates as well — the same `urlTransform` and `sanitizeSchema` you pass to `<AIMarkdown>` apply at render time. The per-attribute key (`'href'` vs `'src'`) is honored: a key-aware policy that permits a scheme on `<a>` but not `<img>` will produce identical behavior whether the reference is in-chunk or cross-chunk.
 
 ### Allowing a Custom Scheme
 
@@ -260,36 +270,45 @@ const SCHEMA = extendSanitizeSchema((s) => {
 
 ### Reference Stability and the Cache
 
-Both `urlTransform` and `sanitizeSchema` are tracked by the per-block memo cache. Defining them inline:
+Both `urlTransform` and `sanitizeSchema` participate in the per-block memo cache, but they are stabilized **asymmetrically**:
+
+- **`urlTransform`** is tracked by identity only. A new function reference every render flushes the cache. Callers MUST supply a stable reference (module scope or `useMemo`).
+- **`sanitizeSchema`** is tracked by identity AND additionally stabilized internally via a deep-equal safety net (`useStableValue`). An inline-but-deep-equal schema still works, just with a one-time deep compare on each render — cheaper than a cache flush but not free.
+
+Why the asymmetry: function identity can't be deep-compared (two closures with identical bodies are always non-equal), so for `urlTransform` only the call-site can produce a stable reference. `sanitizeSchema` is plain data, so a deep compare is meaningful and serves as a guardrail for callers who forget the module-scope rule.
 
 ```tsx
-// 🚫 Anti-pattern — discards the entire markdown cache on every parent re-render.
+// 🚫 Anti-pattern — `urlTransform` is recreated every render and discards
+//    the entire markdown cache. `sanitizeSchema` would too without the
+//    internal deep-equal safety net, but you still pay the deep-compare cost.
 <AIMarkdown
   urlTransform={(url, k, n) => /* … */}
   sanitizeSchema={extendSanitizeSchema((s) => /* … */)}
 />
+
+// ✅ Stable — both refs are minted once at module scope.
+const URL_TRANSFORM = (url, k, n) => /* … */;
+const SCHEMA = extendSanitizeSchema((s) => /* … */);
+<AIMarkdown urlTransform={URL_TRANSFORM} sanitizeSchema={SCHEMA} />
 ```
 
-… creates fresh references every render, invalidates the cache, and undermines streaming performance. In development the library will `console.warn` after detecting 3+ identity flips on either prop. The warning is dead-code-eliminated in production builds. Define both values at module scope, or memoize with `useMemo` if they depend on state.
+In development the library will `console.warn` after detecting 3+ identity flips on either prop. The warning is dead-code-eliminated in production builds. Define both values at module scope, or memoize with `useMemo` if they depend on state.
 
 ### Regex Escaping for `+` / `-` / `.` in Scheme Names
 
 Per RFC 3986 scheme names may contain `+`, `-`, and `.` — all regex metacharacters. Write `/^web\+app:/i`, **not** `/^web+app:/i` (the latter would match `we`, `wee`, `weee`, …, silently broadening the allowlist).
 
-### Escape Hatch: Hand-rolled Schema
+### Inspecting the Default Schema
 
-If you need full control, the library's default schema is also exported as `sanitizeSchema`. **Spread it** so cross-chunk and KaTeX additions survive:
+`extendSanitizeSchema` hands the modifier a deep clone of the library default. That makes the helper itself the cleanest introspection path — no separate export of the singleton is needed:
 
 ```tsx
-import AIMarkdown, { sanitizeSchema } from '@ai-react-markdown/core';
-
-const fullCustom = {
-  ...sanitizeSchema, // ← required to keep cross-chunk + math invariants
-  // your overrides here
-};
+extendSanitizeSchema((s) => {
+  console.log('default sanitize schema:', s);
+});
 ```
 
-The `extendSanitizeSchema` helper exists precisely because consumers tend to forget that spread. Prefer the helper unless you have a specific reason.
+Why no direct `sanitizeSchema` export? Because the obvious extension pattern — `{ ...sanitizeSchema, … }` — is a shallow spread. Nested arrays (`protocols.href`, `attributes.a`, `ancestors.*`, …) stay aliased to the singleton; a subsequent `.protocols.href.push(...)` mutates it, and the change leaks into every other `<AIMarkdown>` in your app that doesn't override `sanitizeSchema`. `extendSanitizeSchema` always works on a deep clone, so this class of bug is impossible by construction.
 
 ### API Stability of `UrlTransform` and `SanitizeSchema`
 
@@ -575,7 +594,6 @@ The metadata and render state providers are deliberately separated so that metad
 - `AIMarkdownRenderDisplayOptimizeAbility`
 - `defaultAIMarkdownRenderConfig`
 - `defaultUrlTransform` -- the library's built-in URL-allowlist transform; compose with this when supplying a custom `urlTransform`
-- `sanitizeSchema` -- the library's built-in `rehype-sanitize` schema; spread this when hand-rolling a custom schema (or use `extendSanitizeSchema` instead)
 
 ### Helpers
 

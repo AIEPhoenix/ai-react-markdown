@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { createRegistry, type Registry } from './documentRegistry';
+import { createRegistry } from './documentRegistry';
 import { AggregateFootnotesIfLast } from './aggregateFootnotesIfLast';
 import type { PostOptions } from './blockMemo';
 import type { ElementContent as HastElementContent } from 'hast';
@@ -15,7 +15,7 @@ function pHast(text: string): HastElementContent {
 }
 
 function seedRegistry() {
-  const reg: Registry = createRegistry();
+  const reg = createRegistry();
   const a = reg.allocateSymbol('A');
   const b = reg.allocateSymbol('B');
   // chunk A: ref to X; chunk B: def for X, no ref
@@ -97,7 +97,7 @@ describe('AggregateFootnotesIfLast', () => {
   });
 
   test('appends orphan defs when orphan preservation is enabled', () => {
-    const reg: Registry = createRegistry();
+    const reg = createRegistry();
     const a = reg.allocateSymbol('A');
     reg.contributeChunkData(a, {
       refs: [],
@@ -132,7 +132,7 @@ describe('AggregateFootnotesIfLast', () => {
   });
 
   test('emits N backrefs when label has N footnote refs', () => {
-    const reg: Registry = createRegistry();
+    const reg = createRegistry();
     const a = reg.allocateSymbol('A');
     const b = reg.allocateSymbol('B');
     // chunk A: 2 refs to X; chunk B: def for X + 1 more ref to X (3 total)
@@ -188,7 +188,7 @@ describe('AggregateFootnotesIfLast', () => {
   });
 
   test('numbers reflect first-occurrence order across chunks', () => {
-    const reg: Registry = createRegistry();
+    const reg = createRegistry();
     const a = reg.allocateSymbol('A');
     const b = reg.allocateSymbol('B');
     // refs occur in order [Y, X] in chunk A; defs both in chunk B
@@ -231,7 +231,7 @@ describe('AggregateFootnotesIfLast', () => {
     // and backref href must use 'foo' (matching mdast-util-to-hast's
     // convention and the inline sup's anchor href), NOT the
     // uppercase-normalized registry key 'FOO'.
-    const reg: Registry = createRegistry();
+    const reg = createRegistry();
     const a = reg.allocateSymbol('A');
     reg.contributeChunkData(a, {
       refs: [{ label: 'FOO', kind: 'footnote' }],
@@ -267,7 +267,7 @@ describe('AggregateFootnotesIfLast', () => {
     // up with the inline sup's anchor href across chunk boundaries. This
     // pins down the round-trip via the multi-chunk path; the single-chunk
     // case is covered by the test above.
-    const reg: Registry = createRegistry();
+    const reg = createRegistry();
     const a = reg.allocateSymbol('A');
     const b = reg.allocateSymbol('B');
     reg.contributeChunkData(a, {
@@ -314,7 +314,7 @@ describe('AggregateFootnotesIfLast', () => {
     // push into <li> directly. The previous findLastParagraphIdx scanned
     // for the LAST <p> anywhere in the body, putting the backref before
     // the trailing <pre> for `[<p>text</p>, <pre>code</pre>]` shapes.
-    const reg: Registry = createRegistry();
+    const reg = createRegistry();
     const a = reg.allocateSymbol('A');
     const codeBlock: HastElementContent = {
       type: 'element',
@@ -358,7 +358,7 @@ describe('AggregateFootnotesIfLast', () => {
     // Sanity check: when the body's meaningful tail IS a <p> — even when
     // wrap-emitted `\n` text nodes surround it — the backref still goes
     // INSIDE the <p>, matching mdast-util-to-hast's contract.
-    const reg: Registry = createRegistry();
+    const reg = createRegistry();
     const a = reg.allocateSymbol('A');
     const wrappedBody: HastElementContent[] = [
       { type: 'text', value: '\n' },
@@ -390,7 +390,7 @@ describe('AggregateFootnotesIfLast', () => {
   });
 
   test('falls back to empty bodyHast when def.bodyHast is missing (defensive)', () => {
-    const reg: Registry = createRegistry();
+    const reg = createRegistry();
     const a = reg.allocateSymbol('A');
     reg.contributeChunkData(a, {
       refs: [{ label: 'X', kind: 'footnote' }],
