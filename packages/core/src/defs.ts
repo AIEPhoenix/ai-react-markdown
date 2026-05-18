@@ -162,6 +162,10 @@ export interface AIMarkdownTypographyProps extends PropsWithChildren {
    * `font-size: var(--aim-font-size-root)` to opt out of `em` compounding
    * when a stable size is needed.
    *
+   * The built-in `default` variant consumes this variable: its spacing,
+   * font-size, and heading tokens are defined as `calc(var(--aim-font-size-root) * k)`,
+   * so the `fontSize` prop proportionally scales every rendered dimension.
+   *
    * @example
    * ```tsx
    * const MyTypography: AIMarkdownTypographyComponent = ({ children, fontSize, style }) => (

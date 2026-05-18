@@ -1,18 +1,18 @@
 /* --- Variant: default --- */
 .aim-typography-root.default {
-  /* Spacing */
-  --aim-spacing-xs: 0.625rem;
-  --aim-spacing-sm: 0.75rem;
-  --aim-spacing-md: 1rem;
-  --aim-spacing-lg: 1.25rem;
-  --aim-spacing-xl: 1.5rem;
+  /* Spacing — multipliers track the original rem values (1 == 1rem-equivalent). */
+  --aim-spacing-xs: calc(var(--aim-font-size-root) * 0.625);
+  --aim-spacing-sm: calc(var(--aim-font-size-root) * 0.75);
+  --aim-spacing-md: calc(var(--aim-font-size-root) * 1);
+  --aim-spacing-lg: calc(var(--aim-font-size-root) * 1.25);
+  --aim-spacing-xl: calc(var(--aim-font-size-root) * 1.5);
 
-  /* Font size */
-  --aim-font-size-xs: 0.75rem;
-  --aim-font-size-sm: 0.875rem;
-  --aim-font-size-md: 1rem;
-  --aim-font-size-lg: 1.125rem;
-  --aim-font-size-xl: 1.25rem;
+  /* Font size — anchored to --aim-font-size-root so the fontSize prop scales everything. */
+  --aim-font-size-xs: calc(var(--aim-font-size-root) * 0.75);
+  --aim-font-size-sm: calc(var(--aim-font-size-root) * 0.875);
+  --aim-font-size-md: var(--aim-font-size-root);
+  --aim-font-size-lg: calc(var(--aim-font-size-root) * 1.125);
+  --aim-font-size-xl: calc(var(--aim-font-size-root) * 1.25);
 
   /* Line height */
   --aim-line-height: 1.55;
@@ -20,30 +20,36 @@
   /* Radius */
   --aim-radius-sm: 0.25rem;
 
+  /* Font weight — shared by headings and table headers. */
+  --aim-font-weight-strong: 700;
+
+  /* KaTeX — anchored to root so formula size stays absolute regardless of parent context. */
+  --aim-katex-font-size: var(--aim-font-size-root);
+
   /* Font family */
   --aim-font-family-monospace:
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
   --aim-font-family-headings: inherit;
 
-  /* Heading sizes */
-  --aim-h1-font-size: 2.125rem;
+  /* Heading sizes — multipliers mirror Mantine's heading scale (h1=2.125, h2=1.625…). */
+  --aim-h1-font-size: calc(var(--aim-font-size-root) * 2.125);
   --aim-h1-line-height: 1.3;
-  --aim-h1-font-weight: 700;
-  --aim-h2-font-size: 1.625rem;
+  --aim-h1-font-weight: var(--aim-font-weight-strong);
+  --aim-h2-font-size: calc(var(--aim-font-size-root) * 1.625);
   --aim-h2-line-height: 1.35;
-  --aim-h2-font-weight: 700;
-  --aim-h3-font-size: 1.375rem;
+  --aim-h2-font-weight: var(--aim-font-weight-strong);
+  --aim-h3-font-size: calc(var(--aim-font-size-root) * 1.375);
   --aim-h3-line-height: 1.4;
-  --aim-h3-font-weight: 700;
-  --aim-h4-font-size: 1.125rem;
+  --aim-h3-font-weight: var(--aim-font-weight-strong);
+  --aim-h4-font-size: calc(var(--aim-font-size-root) * 1.125);
   --aim-h4-line-height: 1.45;
-  --aim-h4-font-weight: 700;
-  --aim-h5-font-size: 1rem;
+  --aim-h4-font-weight: var(--aim-font-weight-strong);
+  --aim-h5-font-size: var(--aim-font-size-root);
   --aim-h5-line-height: 1.5;
-  --aim-h5-font-weight: 700;
-  --aim-h6-font-size: 0.875rem;
+  --aim-h5-font-weight: var(--aim-font-weight-strong);
+  --aim-h6-font-size: calc(var(--aim-font-size-root) * 0.875);
   --aim-h6-line-height: 1.5;
-  --aim-h6-font-weight: 700;
+  --aim-h6-font-weight: var(--aim-font-weight-strong);
 }
 
 /* --- Color Scheme: light --- */
@@ -224,7 +230,7 @@
 
     :where(th) {
       text-align: left;
-      font-weight: bold;
+      font-weight: var(--aim-font-weight-strong);
       font-size: var(--aim-font-size-sm);
       padding: var(--aim-spacing-xs) var(--aim-spacing-sm);
     }
@@ -258,9 +264,9 @@
     background-color: var(--aim-color-blockquote-bg);
   }
 
-  /* KaTeX -- override the default 1.21em to match surrounding text */
+  /* KaTeX -- override the default 1.21em with the root-anchored token */
   :where(.katex) {
-    font-size: 1em;
+    font-size: var(--aim-katex-font-size);
   }
 
   /* Keyboard */
@@ -269,7 +275,7 @@
     line-height: var(--aim-line-height);
     font-weight: 700;
     padding: 3px 5px;
-    font-size: 0.75rem;
+    font-size: var(--aim-font-size-xs);
     border-radius: var(--aim-radius-sm);
     border: 1px solid var(--aim-color-border);
     border-bottom-width: 3px;

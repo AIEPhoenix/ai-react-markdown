@@ -391,6 +391,32 @@ Import the corresponding CSS to activate styles:
 import '@ai-react-markdown/core/typography/default.css';
 ```
 
+#### Customization tokens
+
+All `default`-variant styles are driven by CSS custom properties declared on `.aim-typography-root.default`. Spacing, font-size, and heading tokens are **anchored to `--aim-font-size-root`** (injected by the renderer from the `fontSize` prop), so changing `fontSize` proportionally scales every dimension. To customize, override any token in your own stylesheet:
+
+```css
+.aim-typography-root.default {
+  --aim-spacing-md: calc(var(--aim-font-size-root) * 1.2); /* roomier paragraphs */
+  --aim-h1-font-size: calc(var(--aim-font-size-root) * 2.5); /* bigger H1 */
+  --aim-font-weight-strong: 600; /* lighter headings + th */
+  --aim-color-anchor: #ff6b6b; /* red links */
+}
+```
+
+| Group         | Tokens                                                                                      | Notes                                                                                                                                                                                   |
+| ------------- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Spacing       | `--aim-spacing-{xs,sm,md,lg,xl}`                                                            | `calc(var(--aim-font-size-root) * k)` where `k ∈ {0.625, 0.75, 1, 1.25, 1.5}`                                                                                                           |
+| Font size     | `--aim-font-size-{xs,sm,md,lg,xl}`                                                          | `k ∈ {0.75, 0.875, 1, 1.125, 1.25}`                                                                                                                                                     |
+| Heading sizes | `--aim-h{1..6}-font-size`                                                                   | Multipliers mirror Mantine's heading scale (`{2.125, 1.625, 1.375, 1.125, 1, 0.875}`)                                                                                                   |
+| Heading meta  | `--aim-h{1..6}-line-height`, `--aim-h{1..6}-font-weight`                                    | line-heights are unitless; weights default to `var(--aim-font-weight-strong)`                                                                                                           |
+| Weight        | `--aim-font-weight-strong`                                                                  | Shared by all headings and `<th>`. Default `700`.                                                                                                                                       |
+| KaTeX         | `--aim-katex-font-size`                                                                     | Defaults to `var(--aim-font-size-root)`, so formulas stay at the component-root size regardless of parent context (blockquote, heading). Override to `1em` if you want parent-relative. |
+| Misc          | `--aim-line-height`, `--aim-radius-sm`, `--aim-font-family-{monospace,headings}`            | Unitless / rem / font-stack constants.                                                                                                                                                  |
+| Color (light) | `--aim-color-{text,dimmed,anchor,border,code-bg,code-text,blockquote-bg,mark-bg,mark-text}` | Declared on `.aim-typography-root.light`; dark variants on `.aim-typography-root.dark`.                                                                                                 |
+
+> **Stability contract:** the _names_ and _roles_ of these tokens follow semver. The exact default _values_ (multipliers, colors) may shift under minor bumps as the visual design evolves — override the token if you need a specific value to be locked.
+
 ### Custom Typography Component
 
 Replace the typography wrapper by passing a custom component. The `style` prop carries CSS custom properties injected by the core renderer — **merge it onto your root element** so that descendant CSS can reference these variables:
@@ -418,6 +444,8 @@ The core renderer injects the following CSS custom properties via the Typography
 | `--aim-font-size-root` | `fontSize` prop | Absolute font-size anchor for the component instance. Inner CSS can use `var(--aim-font-size-root)` to bypass `em` compounding in deeply nested markdown structures (e.g. code inside blockquotes). |
 
 **Why `--aim-font-size-root`?** Markdown content frequently nests elements that use relative `em` units — blockquotes, lists, code blocks. Each nesting level compounds the effective size: a `0.875em` code span inside a `1.125em` blockquote resolves to `0.984em` of the parent, not `0.875em` of the root. This variable provides a stable, absolute reference that inner CSS rules can use to opt out of compounding when a fixed size is needed.
+
+The built-in `default` variant already consumes this variable — all of its spacing, font-size, and heading tokens are defined as `calc(var(--aim-font-size-root) * k)`, so changing the `fontSize` prop on `<AIMarkdown>` proportionally scales every rendered dimension. See [Customization tokens](#customization-tokens) above for the full surface.
 
 ### Extra Styles Wrapper
 
