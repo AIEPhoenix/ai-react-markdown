@@ -99,7 +99,7 @@
     "@types/react-dom": "^19.2.3",
     "hast-util-sanitize": "^5.0.2",
     "hastscript": "^9.0.1",
-    "lodash-es": "^4.17.23",
+    "lodash-es": "^4.18.0",
     "react": "^19",
     "react-dom": "^19",
     "remark-toc": "^9.0.0"
