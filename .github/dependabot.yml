@@ -24,6 +24,14 @@ updates:
       time: '09:00'
       timezone: Asia/Shanghai
     open-pull-requests-limit: 5
+    cooldown:
+      # Supply-chain defense: don't auto-PR versions that haven't existed
+      # on the registry for at least this many days. Gives the community
+      # time to discover and yank compromised releases before we ingest
+      # them. Security updates BYPASS cooldown (so CVE fixes stay fast).
+      default-days: 7
+      semver-minor-days: 7
+      semver-patch-days: 3
     labels:
       - dependencies
     ignore:
@@ -61,6 +69,10 @@ updates:
       time: '09:00'
       timezone: Asia/Shanghai
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+      semver-minor-days: 7
+      semver-patch-days: 3
     labels:
       - dependencies
       - 'scope:core'
@@ -99,6 +111,10 @@ updates:
       time: '09:00'
       timezone: Asia/Shanghai
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+      semver-minor-days: 7
+      semver-patch-days: 3
     labels:
       - dependencies
       - 'scope:mantine'
