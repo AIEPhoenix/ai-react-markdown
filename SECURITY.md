@@ -31,17 +31,17 @@ In scope:
 
 Out of scope:
 
-- Issues that require the consumer to explicitly disable sanitization or pass `urlTransform={null}` *without* a tightened `sanitizeSchema` (documented escape hatches; if you do that, you own the safety).
+- Issues that require the consumer to explicitly disable sanitization or pass `urlTransform={null}` _without_ a tightened `sanitizeSchema` (documented escape hatches; if you do that, you own the safety).
 - Vulnerabilities in upstream packages (`react-markdown`, `rehype-sanitize`, `katex`, `mermaid`) that aren't amplified by anything `ai-react-markdown` does.
 - Social engineering, supply-chain attacks against your own dev environment, etc.
 
 ## Supported versions
 
-| Version | Supported |
-|---|---|
-| 1.4.x | ✅ Latest |
-| 1.3.x | ⚠️ Best-effort backport for critical issues |
-| < 1.3 | ❌ Upgrade |
+| Version | Supported                                   |
+| ------- | ------------------------------------------- |
+| 1.4.x   | ✅ Latest                                   |
+| 1.3.x   | ⚠️ Best-effort backport for critical issues |
+| < 1.3   | ❌ Upgrade                                  |
 
 ## Public disclosure
 

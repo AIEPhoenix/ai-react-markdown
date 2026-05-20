@@ -13,10 +13,10 @@ A typography component receives four props and must wrap `children` in its root 
 ```ts
 interface AIMarkdownTypographyProps {
   children: React.ReactNode;
-  fontSize: string;                  // resolved (e.g. '0.9375rem')
-  variant?: AIMarkdownVariant;       // 'default' | string
+  fontSize: string; // resolved (e.g. '0.9375rem')
+  variant?: AIMarkdownVariant; // 'default' | string
   colorScheme?: AIMarkdownColorScheme; // 'light' | 'dark' | string
-  style?: React.CSSProperties;       // CSS custom properties injected by the core renderer
+  style?: React.CSSProperties; // CSS custom properties injected by the core renderer
 }
 ```
 
@@ -34,7 +34,7 @@ const MyTypography: AIMarkdownTypographyComponent = ({ children, fontSize, color
   </div>
 );
 
-<AIMarkdown content={markdown} Typography={MyTypography} />
+<AIMarkdown content={markdown} Typography={MyTypography} />;
 ```
 
 `fontSize` is provided as a separate prop (in addition to being inside `style` as `--aim-font-size-root`) because most consumers want to set `font-size` on the root element directly — and a flat prop is more ergonomic than reading from CSS custom properties at the React level.
@@ -82,11 +82,7 @@ Any custom component rendered inside `<AIMarkdown>` can read `ChatToolbarContext
 
 ```tsx
 const A11yTypography: AIMarkdownTypographyComponent = ({ children, fontSize, style }) => (
-  <article
-    role="article"
-    aria-label="Assistant message"
-    style={{ fontSize, ...style }}
-  >
+  <article role="article" aria-label="Assistant message" style={{ fontSize, ...style }}>
     {children}
   </article>
 );
@@ -119,23 +115,26 @@ The built-in `DefaultTypography` exposes `variant` and `colorScheme` as class na
 You can ship multiple typography variants by writing one component that emits class names and shipping CSS that targets each:
 
 ```tsx
-const MultiVariantTypography: AIMarkdownTypographyComponent = ({
-  children, fontSize, variant, colorScheme, style,
-}) => (
-  <div
-    className={`my-typo my-typo--${variant} my-typo--${colorScheme}`}
-    style={{ fontSize, ...style }}
-  >
+const MultiVariantTypography: AIMarkdownTypographyComponent = ({ children, fontSize, variant, colorScheme, style }) => (
+  <div className={`my-typo my-typo--${variant} my-typo--${colorScheme}`} style={{ fontSize, ...style }}>
     {children}
   </div>
 );
 ```
 
 ```css
-.my-typo--compact { line-height: 1.4; }
-.my-typo--compact h1 { margin-block: 0.5em; }
-.my-typo--prose { line-height: 1.7; }
-.my-typo--prose h1 { margin-block: 1.2em; }
+.my-typo--compact {
+  line-height: 1.4;
+}
+.my-typo--compact h1 {
+  margin-block: 0.5em;
+}
+.my-typo--prose {
+  line-height: 1.7;
+}
+.my-typo--prose h1 {
+  margin-block: 1.2em;
+}
 ```
 
 ```tsx
@@ -149,7 +148,7 @@ The `variant` prop is typed as `'default' | (string & {})` — literal `'default
 
 ## The `ExtraStyles` slot
 
-`ExtraStyles` is a second, optional wrapper rendered *inside* the typography wrapper but *outside* the rendered markdown:
+`ExtraStyles` is a second, optional wrapper rendered _inside_ the typography wrapper but _outside_ the rendered markdown:
 
 ```text
 <Typography>
@@ -168,7 +167,7 @@ const MyExtraStyles: AIMarkdownExtraStylesComponent = ({ children }) => (
   <div className="my-markdown-extra-scope">{children}</div>
 );
 
-<AIMarkdown content={c} ExtraStyles={MyExtraStyles} />
+<AIMarkdown content={c} ExtraStyles={MyExtraStyles} />;
 ```
 
 ---
@@ -183,10 +182,7 @@ const MyExtraStyles: AIMarkdownExtraStylesComponent = ({ children }) => (
 Both are exported. You can re-use them, wrap them, or replace them:
 
 ```tsx
-import {
-  MantineAIMarkdownTypography,
-  MantineAIMDefaultExtraStyles,
-} from '@ai-react-markdown/mantine';
+import { MantineAIMarkdownTypography, MantineAIMDefaultExtraStyles } from '@ai-react-markdown/mantine';
 
 // Wrap Mantine's typography (e.g. to add an outer container)
 const WrappedTypography: AIMarkdownTypographyComponent = (props) => (
@@ -195,7 +191,7 @@ const WrappedTypography: AIMarkdownTypographyComponent = (props) => (
   </div>
 );
 
-<MantineAIMarkdown content={c} Typography={WrappedTypography} />
+<MantineAIMarkdown content={c} Typography={WrappedTypography} />;
 ```
 
 ---
@@ -208,9 +204,7 @@ This is the single most common Typography bug. The rendered markdown looks right
 
 ```tsx
 // ⚠️ Missing the style spread — descendant CSS variables won't apply.
-const Broken: AIMarkdownTypographyComponent = ({ children, fontSize }) => (
-  <div style={{ fontSize }}>{children}</div>
-);
+const Broken: AIMarkdownTypographyComponent = ({ children, fontSize }) => <div style={{ fontSize }}>{children}</div>;
 
 // ✅ Spread style after your own properties (or before — order doesn't matter here).
 const Fixed: AIMarkdownTypographyComponent = ({ children, fontSize, style }) => (
@@ -242,9 +236,7 @@ function App() {
 
 ```tsx
 // ⚠️ `children` is spread twice — the second one wins and your wrapper is invisible.
-const Broken: AIMarkdownTypographyComponent = (props) => (
-  <div {...props}>{props.children}</div>
-);
+const Broken: AIMarkdownTypographyComponent = (props) => <div {...props}>{props.children}</div>;
 ```
 
 The safer pattern is to destructure explicitly:

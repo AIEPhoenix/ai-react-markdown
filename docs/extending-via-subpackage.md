@@ -146,9 +146,7 @@ export default YourAIMarkdown as typeof YourAIMarkdownComponent;
 import type { AIMarkdownTypographyComponent } from '@ai-react-markdown/core';
 import { Box, useTheme } from 'your-design-system';
 
-const YourTypography: AIMarkdownTypographyComponent = ({
-  children, fontSize, variant, colorScheme, style,
-}) => {
+const YourTypography: AIMarkdownTypographyComponent = ({ children, fontSize, variant, colorScheme, style }) => {
   const theme = useTheme();
   return (
     <Box
@@ -246,8 +244,7 @@ export default YourPreCode;
 import { useAIMarkdownRenderState } from '@ai-react-markdown/core';
 import type { YourAIMarkdownRenderConfig } from '../defs';
 
-export const useYourRenderState = () =>
-  useAIMarkdownRenderState<YourAIMarkdownRenderConfig>();
+export const useYourRenderState = () => useAIMarkdownRenderState<YourAIMarkdownRenderConfig>();
 ```
 
 ```ts
@@ -255,8 +252,7 @@ export const useYourRenderState = () =>
 import { useAIMarkdownMetadata } from '@ai-react-markdown/core';
 import type { YourAIMarkdownMetadata } from '../defs';
 
-export const useYourMetadata = () =>
-  useAIMarkdownMetadata<YourAIMarkdownMetadata>();
+export const useYourMetadata = () => useAIMarkdownMetadata<YourAIMarkdownMetadata>();
 ```
 
 These are one-liners but worth the indirection — they let consumers of your package use `useYourRenderState()` without thinking about generics, and **your** package is the single source of the caller-asserted type.
@@ -290,11 +286,11 @@ Match the shape of `@ai-react-markdown/mantine`'s barrel for consistency. Re-exp
     "@ai-react-markdown/core": "^1.4.0",
     "react": ">=19",
     "react-dom": ">=19",
-    "your-design-system": "^1.0.0"
+    "your-design-system": "^1.0.0",
   },
   "dependencies": {
     // Direct deps your integration needs (e.g. a mermaid library, a syntax highlighter)
-  }
+  },
 }
 ```
 
@@ -323,13 +319,13 @@ Consumers don't need to know about core — they install your package and the Ma
 
 ## Tips from the Mantine integration
 
-| Practice | Why |
-|---|---|
-| Use `useStableValue` on caller-passed `customComponents` before merging | A new merged object every render flushes the block-memo cache |
-| Auto-detect color scheme from your design system if not overridden | Match the surrounding UI without explicit prop |
-| Ship a CSS file that overrides design-system spacing/font tokens to em-based units inside `ExtraStyles` | Markdown should scale with `fontSize` regardless of the design system's absolute tokens |
-| Keep `mermaid` (or whichever heavy lib) as a **direct** dep, not peer | Consumers shouldn't have to install it separately for a feature they enabled via your package |
-| Memo the wrapper at the top level | Standard React perf hygiene |
+| Practice                                                                                                | Why                                                                                           |
+| ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Use `useStableValue` on caller-passed `customComponents` before merging                                 | A new merged object every render flushes the block-memo cache                                 |
+| Auto-detect color scheme from your design system if not overridden                                      | Match the surrounding UI without explicit prop                                                |
+| Ship a CSS file that overrides design-system spacing/font tokens to em-based units inside `ExtraStyles` | Markdown should scale with `fontSize` regardless of the design system's absolute tokens       |
+| Keep `mermaid` (or whichever heavy lib) as a **direct** dep, not peer                                   | Consumers shouldn't have to install it separately for a feature they enabled via your package |
+| Memo the wrapper at the top level                                                                       | Standard React perf hygiene                                                                   |
 
 ---
 

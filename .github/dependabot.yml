@@ -6,7 +6,7 @@ updates:
     schedule:
       interval: weekly
       day: monday
-      time: "09:00"
+      time: '09:00'
       timezone: Asia/Shanghai
     open-pull-requests-limit: 5
     labels:
@@ -25,12 +25,12 @@ updates:
     schedule:
       interval: weekly
       day: monday
-      time: "09:00"
+      time: '09:00'
       timezone: Asia/Shanghai
     open-pull-requests-limit: 5
     labels:
       - dependencies
-      - "scope:core"
+      - 'scope:core'
     groups:
       runtime-deps:
         dependency-type: production
@@ -44,12 +44,12 @@ updates:
     schedule:
       interval: weekly
       day: monday
-      time: "09:00"
+      time: '09:00'
       timezone: Asia/Shanghai
     open-pull-requests-limit: 5
     labels:
       - dependencies
-      - "scope:mantine"
+      - 'scope:mantine'
     groups:
       runtime-deps:
         dependency-type: production
@@ -64,4 +64,4 @@ updates:
       interval: monthly
     labels:
       - dependencies
-      - "scope:ci"
+      - 'scope:ci'

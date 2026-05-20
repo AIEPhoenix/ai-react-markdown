@@ -12,8 +12,8 @@ When a single logical markdown document is rendered by **multiple** `<AIMarkdown
 import AIMarkdown, { AIMarkdownDocuments } from '@ai-react-markdown/core';
 
 interface Message {
-  id: string;          // stable per logical message
-  chunks: string[];    // markdown chunks as they arrived from the LLM
+  id: string; // stable per logical message
+  chunks: string[]; // markdown chunks as they arrived from the LLM
 }
 
 function StreamedMessage({ message }: { message: Message }) {
@@ -35,13 +35,13 @@ Without the wrapper, each `<AIMarkdown>` is independent — its references resol
 
 ## When to use
 
-| Scenario | Use `<AIMarkdownDocuments>`? |
-|---|---|
-| Single `<AIMarkdown>` per logical document (most non-streaming apps) | **No** — overhead with no benefit |
-| One `<AIMarkdown>` per chat message, references stay within the message | **No** |
-| Streamed message split into multiple `<AIMarkdown>` instances (e.g. one per network chunk) | **Yes** — same `documentId` across chunks |
-| Multiple distinct messages on the same page, each with its own internal references | **No** — but auto-generated `documentId` namespaces still prevent cross-message id collisions |
-| One conceptual document split visually (collapsible sections, virtualized list rows) | **Yes** if references span the splits |
+| Scenario                                                                                   | Use `<AIMarkdownDocuments>`?                                                                  |
+| ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| Single `<AIMarkdown>` per logical document (most non-streaming apps)                       | **No** — overhead with no benefit                                                             |
+| One `<AIMarkdown>` per chat message, references stay within the message                    | **No**                                                                                        |
+| Streamed message split into multiple `<AIMarkdown>` instances (e.g. one per network chunk) | **Yes** — same `documentId` across chunks                                                     |
+| Multiple distinct messages on the same page, each with its own internal references         | **No** — but auto-generated `documentId` namespaces still prevent cross-message id collisions |
+| One conceptual document split visually (collapsible sections, virtualized list rows)       | **Yes** if references span the splits                                                         |
 
 ---
 
@@ -79,11 +79,11 @@ Omit `documentId` and the library calls `useId()` to generate one. SSR-safe, sta
 
 Three independent reference kinds, each in its own namespace:
 
-| Kind | Markdown syntax | Coordinated across chunks? |
-|---|---|---|
-| Footnote | `[^label]` + `[^label]: text` | ✅ Numbering, anchor href, backref href, aggregate footer |
-| Link ref | `[click][label]` + `[label]: url "title"` | ✅ URL + title resolution |
-| Image ref | `![alt][label]` + `[label]: url "title"` | ✅ URL + title resolution |
+| Kind      | Markdown syntax                           | Coordinated across chunks?                                |
+| --------- | ----------------------------------------- | --------------------------------------------------------- |
+| Footnote  | `[^label]` + `[^label]: text`             | ✅ Numbering, anchor href, backref href, aggregate footer |
+| Link ref  | `[click][label]` + `[label]: url "title"` | ✅ URL + title resolution                                 |
+| Image ref | `![alt][label]` + `[label]: url "title"`  | ✅ URL + title resolution                                 |
 
 **Inline links** (`[click](https://…)`) and **inline images** (`![alt](https://…)`) need no coordination — they carry their URL inline. The registry only matters for reference-style markup.
 
@@ -93,10 +93,10 @@ The footnote section is rendered **once** at the end of the document's last chun
 
 ## `<AIMarkdownDocuments>` props
 
-| Prop | Type | Default | Purpose |
-|---|---|---|---|
-| `preserveOrphanReferences` | `boolean` | `true` | **Unconditionally** overrides each chunk's `config.preserveOrphanReferences`. When `true`, orphan `[^label]: …` definitions (no matching `[^label]`) are protected from being silently dropped by `mdast-util-to-hast`. Crucial for streaming — references may arrive in a later chunk. |
-| `children` | `ReactNode` | — | The `<AIMarkdown>` instances to coordinate |
+| Prop                       | Type        | Default | Purpose                                                                                                                                                                                                                                                                                 |
+| -------------------------- | ----------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `preserveOrphanReferences` | `boolean`   | `true`  | **Unconditionally** overrides each chunk's `config.preserveOrphanReferences`. When `true`, orphan `[^label]: …` definitions (no matching `[^label]`) are protected from being silently dropped by `mdast-util-to-hast`. Crucial for streaming — references may arrive in a later chunk. |
+| `children`                 | `ReactNode` | —       | The `<AIMarkdown>` instances to coordinate                                                                                                                                                                                                                                              |
 
 ```tsx
 <AIMarkdownDocuments preserveOrphanReferences={true}>{children}</AIMarkdownDocuments>
@@ -121,10 +121,11 @@ The split is intentional — surfacing the bug in dev, surviving in prod. Don't 
 ## Reading the registry: `useDocumentRegistry`
 
 ```ts
-function useDocumentRegistry(documentId: string | undefined): Registry | null
+function useDocumentRegistry(documentId: string | undefined): Registry | null;
 ```
 
 Returns:
+
 - The shared `Registry` if both (a) called inside `<AIMarkdownDocuments>` and (b) `documentId` is non-empty.
 - `null` otherwise — treat as "run the standalone path; no coordination."
 
@@ -150,19 +151,19 @@ function BacklinkPanel({ documentId, label }: { documentId: string; label: strin
 
 ### `Registry` surface (read-only)
 
-| Field/Method | Returns | Purpose |
-|---|---|---|
-| `chunkOrder` | `readonly symbol[]` | Mount-order chunk identifiers |
-| `chunkData` | `ReadonlyMap<symbol, ChunkData>` | Per-chunk refs/defs/linkDefs |
-| `labelSet` | `{ footnoteLabels, linkLabels }` (ReadonlySet) | Union of own-def labels across chunks |
-| `version` | `number` | Monotonic counter; bumped on every mutation |
-| `subscribe(cb)` | unsubscribe function | Wake-up on registry mutations |
-| `canonicalFootnoteFor(label)` | `symbol \| null` | Which chunk owns the canonical def for this footnote |
-| `canonicalLinkFor(label)` | `symbol \| null` | Same, for link defs |
-| `globalNumber(label)` | `number \| null` | Document-wide footnote number for a label |
-| `resolveLinkDef(label)` | `LinkDef \| null` | Cross-chunk link definition lookup |
-| `getRefsForLabel(label)` | `number` | Count of **footnote** refs pointing at this label. Link/image refs aren't counted — there's no equivalent counter API for them |
-| `globalOccurrenceForRef(chunkSym, label, localIdx)` | `number \| null` | Map a chunk-local ref occurrence to its document-wide index |
+| Field/Method                                        | Returns                                        | Purpose                                                                                                                        |
+| --------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `chunkOrder`                                        | `readonly symbol[]`                            | Mount-order chunk identifiers                                                                                                  |
+| `chunkData`                                         | `ReadonlyMap<symbol, ChunkData>`               | Per-chunk refs/defs/linkDefs                                                                                                   |
+| `labelSet`                                          | `{ footnoteLabels, linkLabels }` (ReadonlySet) | Union of own-def labels across chunks                                                                                          |
+| `version`                                           | `number`                                       | Monotonic counter; bumped on every mutation                                                                                    |
+| `subscribe(cb)`                                     | unsubscribe function                           | Wake-up on registry mutations                                                                                                  |
+| `canonicalFootnoteFor(label)`                       | `symbol \| null`                               | Which chunk owns the canonical def for this footnote                                                                           |
+| `canonicalLinkFor(label)`                           | `symbol \| null`                               | Same, for link defs                                                                                                            |
+| `globalNumber(label)`                               | `number \| null`                               | Document-wide footnote number for a label                                                                                      |
+| `resolveLinkDef(label)`                             | `LinkDef \| null`                              | Cross-chunk link definition lookup                                                                                             |
+| `getRefsForLabel(label)`                            | `number`                                       | Count of **footnote** refs pointing at this label. Link/image refs aren't counted — there's no equivalent counter API for them |
+| `globalOccurrenceForRef(chunkSym, label, localIdx)` | `number \| null`                               | Map a chunk-local ref occurrence to its document-wide index                                                                    |
 
 Mutator methods (`registerChunk`, `allocateSymbol`, etc.) are intentionally **not** on the public `Registry` type. The renderer drives those internally; exposing them would let consumer code corrupt refcounts, version bumps, or numbering invariants.
 
@@ -225,7 +226,9 @@ function BacklinkPanel({ documentId, labels }: { documentId: string; labels: str
           // your own policy with the correct key — see url-sanitization docs.
           return (
             <li key={label}>
-              <a href={def.url} title={def.title}>{label}</a>
+              <a href={def.url} title={def.title}>
+                {label}
+              </a>
             </li>
           );
         })}
@@ -278,12 +281,7 @@ function StreamedMessage({ chunks, id, done }: { chunks: string[]; id: string; d
   return (
     <AIMarkdownDocuments>
       {chunks.map((chunk, i) => (
-        <AIMarkdown
-          key={i}
-          content={chunk}
-          documentId={id}
-          streaming={!done && i === chunks.length - 1}
-        />
+        <AIMarkdown key={i} content={chunk} documentId={id} streaming={!done && i === chunks.length - 1} />
       ))}
     </AIMarkdownDocuments>
   );
@@ -365,11 +363,13 @@ The microtask deferral is **the** subtle part. React 19's Strict Mode mounts eac
 </AIMarkdownDocuments>
 ```
 
-### Sharing `documentId` *without* the wrapper
+### Sharing `documentId` _without_ the wrapper
 
 ```tsx
 // ⚠️ Same documentId across instances, but no <AIMarkdownDocuments> → references still don't coordinate.
-{chunks.map((c, i) => <AIMarkdown key={i} content={c} documentId={messageId} />)}
+{
+  chunks.map((c, i) => <AIMarkdown key={i} content={c} documentId={messageId} />);
+}
 ```
 
 The wrapper is what binds chunks together. The id alone only aligns ids — it doesn't share a registry.
@@ -388,7 +388,7 @@ const myUrl = def?.url; // read only
 
 The TypeScript types are `readonly` where it matters, but JavaScript doesn't enforce that at runtime.
 
-### Expecting `Registry` to update *during* a render
+### Expecting `Registry` to update _during_ a render
 
 The registry is mutated by chunk mount/render effects, which happen **after** the render that triggered them commits. A component that reads `registry.canonicalFootnoteFor(label)` during its first render may see `null` even though the def exists — because the def-contributing chunk's effect hasn't fired yet. Subscribe via `useSyncExternalStore` (as shown above) to re-render when the registry settles.
 

@@ -6,7 +6,7 @@
 function AIMarkdown<
   TConfig extends AIMarkdownRenderConfig = AIMarkdownRenderConfig,
   TRenderData extends AIMarkdownMetadata = AIMarkdownMetadata,
->(props: AIMarkdownProps<TConfig, TRenderData>): ReactElement
+>(props: AIMarkdownProps<TConfig, TRenderData>): ReactElement;
 ```
 
 - **`TConfig`** — your extended render config, which must include all fields of `AIMarkdownRenderConfig`.
@@ -19,10 +19,7 @@ Both default to the base library types, so you only opt into generics when you n
 ## Extending the config
 
 ```tsx
-import AIMarkdown, {
-  type AIMarkdownRenderConfig,
-  defaultAIMarkdownRenderConfig,
-} from '@ai-react-markdown/core';
+import AIMarkdown, { type AIMarkdownRenderConfig, defaultAIMarkdownRenderConfig } from '@ai-react-markdown/core';
 
 // Step 1: extend the config interface with your new fields.
 interface MyConfig extends AIMarkdownRenderConfig {
@@ -199,8 +196,8 @@ import type {
   AIMDContentPreprocessor,
 
   // Sanitization
-  UrlTransform,     // tracks react-markdown
-  SanitizeSchema,   // tracks rehype-sanitize
+  UrlTransform, // tracks react-markdown
+  SanitizeSchema, // tracks rehype-sanitize
 
   // Cross-chunk registry (read-only)
   Registry,
@@ -246,7 +243,7 @@ Build your sanitize schema via [`extendSanitizeSchema`](./url-sanitization.md#ga
 
 ```tsx
 // Provider:
-<AIMarkdown defaultConfig={defaultAIMarkdownRenderConfig} /> // ← base config
+<AIMarkdown defaultConfig={defaultAIMarkdownRenderConfig} />; // ← base config
 
 // Consumer:
 const { config } = useAIMarkdownRenderState<MyConfig>();
@@ -279,6 +276,6 @@ The wrapper-hook pattern paired with a wrapper component (see [Extending via a S
 
 ### Putting non-serializable fields in config
 
-`config` is deep-merged with lodash `mergeWith`. Functions, class instances, and other non-plain values *can* travel through, but the merge isn't designed for them — and the library does `useStableValue` deep-equal on the result, which for functions always returns `false` (cache flush).
+`config` is deep-merged with lodash `mergeWith`. Functions, class instances, and other non-plain values _can_ travel through, but the merge isn't designed for them — and the library does `useStableValue` deep-equal on the result, which for functions always returns `false` (cache flush).
 
 For non-data extension points (callbacks, factories), use `metadata` — that's exactly what it's for. Keep `config` for primitives, plain objects, and arrays.

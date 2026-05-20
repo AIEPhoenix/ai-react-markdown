@@ -13,7 +13,7 @@ const components: AIMarkdownCustomComponents = {
   ),
 };
 
-<AIMarkdown content={markdown} customComponents={components} />
+<AIMarkdown content={markdown} customComponents={components} />;
 ```
 
 `AIMarkdownCustomComponents` is a re-exported alias of the local Markdown-wrapper `Components` type (a vendored fork of `react-markdown`'s). The available element keys mirror the HTML element names markdown emits: `a`, `blockquote`, `br`, `code`, `em`, `h1`–`h6`, `hr`, `img`, `li`, `ol`, `p`, `pre`, `strong`, `table`, `td`, `th`, `tr`, `ul`, plus GFM (`del`, `input` for task lists), KaTeX wrapper spans, definition lists (`dl`, `dt`, `dd`), and the `mark` element from `==highlight==` syntax.
@@ -26,9 +26,7 @@ const components: AIMarkdownCustomComponents = {
 
 ```tsx
 const components: AIMarkdownCustomComponents = {
-  img: ({ src, alt, title }) => (
-    <img src={src} alt={alt ?? ''} title={title} loading="lazy" decoding="async" />
-  ),
+  img: ({ src, alt, title }) => <img src={src} alt={alt ?? ''} title={title} loading="lazy" decoding="async" />,
 };
 ```
 
@@ -41,11 +39,7 @@ const components: AIMarkdownCustomComponents = {
   a: ({ href, children, ...rest }) => {
     const isExternal = href?.startsWith('http://') || href?.startsWith('https://');
     return (
-      <a
-        {...rest}
-        href={href}
-        {...(isExternal ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
-      >
+      <a {...rest} href={href} {...(isExternal ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>
         {children}
       </a>
     );
@@ -90,9 +84,7 @@ function CopyableCode({ children, className }: { children: React.ReactNode; clas
   const text = String(children).replace(/\n$/, '');
   return (
     <pre className={className}>
-      {!streaming && (
-        <button onClick={() => navigator.clipboard.writeText(text)}>Copy</button>
-      )}
+      {!streaming && <button onClick={() => navigator.clipboard.writeText(text)}>Copy</button>}
       <code>{children}</code>
     </pre>
   );
@@ -114,7 +106,11 @@ Hiding the copy button while `streaming === true` is a common touch — copying 
 const components: AIMarkdownCustomComponents = {
   h2: ({ children, id }) => (
     <h2 id={id}>
-      {id && <a href={`#${id}`} className="heading-anchor">#</a>}
+      {id && (
+        <a href={`#${id}`} className="heading-anchor">
+          #
+        </a>
+      )}
       {children}
     </h2>
   ),
@@ -131,11 +127,11 @@ The `id` is auto-prefixed by the library's `documentId` namespace — see [Archi
 
 ```tsx
 // ⚠️ Re-created every render — internal deep-equal catches it, but pays a deep-compare cost.
-<AIMarkdown content={c} customComponents={{ a: MyLink }} />
+<AIMarkdown content={c} customComponents={{ a: MyLink }} />;
 
 // ✅ Stable identity, zero overhead.
 const COMPONENTS = { a: MyLink } satisfies AIMarkdownCustomComponents;
-<AIMarkdown content={c} customComponents={COMPONENTS} />
+<AIMarkdown content={c} customComponents={COMPONENTS} />;
 ```
 
 The component functions themselves should also be stable. A `function MyLink() {…}` declaration or a `const MyLink = (props) => …` at module scope is fine. Defining the function inside the parent's render body recreates it every frame:
@@ -197,7 +193,10 @@ The library namespaces every clobberable attribute (`id="…"` / `href="#…"`) 
 import { useAIMarkdownRenderState } from '@ai-react-markdown/core';
 
 function slugify(s: string) {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
 }
 
 const components: AIMarkdownCustomComponents = {
@@ -207,7 +206,9 @@ const components: AIMarkdownCustomComponents = {
     const id = `${clobberPrefix}heading-${slugify(text)}`;
     return (
       <h2 id={id}>
-        <a href={`#${id}`} className="heading-anchor">#</a>
+        <a href={`#${id}`} className="heading-anchor">
+          #
+        </a>
         {children}
       </h2>
     );
@@ -265,4 +266,4 @@ const components: AIMarkdownCustomComponents = {
 };
 ```
 
-Note: block-level memoization already caches the **React subtree** of unchanged blocks by source identity, so a block that doesn't change between renders won't re-invoke its custom component at all. Per-component `useMemo` matters mainly when the block *does* change but the expensive sub-computation should be reused (e.g. content changed but the code language didn't).
+Note: block-level memoization already caches the **React subtree** of unchanged blocks by source identity, so a block that doesn't change between renders won't re-invoke its custom component at all. Per-component `useMemo` matters mainly when the block _does_ change but the expensive sub-computation should be reused (e.g. content changed but the code language didn't).
