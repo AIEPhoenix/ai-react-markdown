@@ -111,7 +111,7 @@ The 1.2 line was about making the renderer robust to mid-stream input (partial L
 
 ### 1. Streaming robustness has been a continuous priority
 
-Every release line includes at least one streaming-safety fix. The block-memo introduction (1.3) was the largest *positive* streaming improvement; the LaTeX/Mermaid hardening (1.2 patches) was the largest *defensive* one. As of 1.4.5, the rendering pipeline is designed to be safe under arbitrary mid-token input — there is no input shape that causes a crash or runaway render.
+Every release line includes at least one streaming-safety fix. The block-memo introduction (1.3) was the largest _positive_ streaming improvement; the LaTeX/Mermaid hardening (1.2 patches) was the largest _defensive_ one. As of 1.4.5, the rendering pipeline is designed to be safe under arbitrary mid-token input — there is no input shape that causes a crash or runaway render.
 
 ### 2. Customization is opt-in, but escape hatches are first-class
 
@@ -124,7 +124,7 @@ Sub-package integration uses only the public extension points (`Typography`, `Ex
 ### 4. Stability boundary explicitly drawn
 
 - Public surfaces (props, hook signatures, config field names) are stable across minor versions.
-- Default token *values*, exact byte output, and registry internals are explicitly **not** part of the stability contract.
+- Default token _values_, exact byte output, and registry internals are explicitly **not** part of the stability contract.
 - This is documented in [`docs/README.md`](./README.md#a-note-on-stability) and in JSDoc per export, so consumers know which surface to depend on vs override.
 
 ---

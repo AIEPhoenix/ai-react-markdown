@@ -49,7 +49,7 @@ Using `indexOf` is friendlier than regex on large inputs — frontmatter only li
 
 ### Normalize curly quotes back to straight
 
-The library enables SmartyPants by default, which converts straight quotes to curly. If your downstream tooling (e.g. an `<input>` autocomplete) expects straight quotes, undo it *before* the pipeline sees them by disabling SmartyPants in [config](../README.md#displayoptimizeabilities) — preprocessors run too early to undo decisions the remark plugins haven't made yet.
+The library enables SmartyPants by default, which converts straight quotes to curly. If your downstream tooling (e.g. an `<input>` autocomplete) expects straight quotes, undo it _before_ the pipeline sees them by disabling SmartyPants in [config](../README.md#displayoptimizeabilities) — preprocessors run too early to undo decisions the remark plugins haven't made yet.
 
 ### Auto-link bare URLs that the model emitted without `<…>`
 
@@ -57,17 +57,13 @@ GFM already auto-links `https://…` in paragraph text. But some model outputs i
 
 ```ts
 const explicitAutolinks: AIMDContentPreprocessor = (content) =>
-  content.replace(
-    /(?<![<\(\[\w])(https?:\/\/[^\s<>"]+?)(?=[.,;:?!]?(?:\s|$))/g,
-    '<$1>'
-  );
+  content.replace(/(?<![<\(\[\w])(https?:\/\/[^\s<>"]+?)(?=[.,;:?!]?(?:\s|$))/g, '<$1>');
 ```
 
 ### Convert `\n\n\n+` (too many blank lines) to standard paragraph breaks
 
 ```ts
-const normalizeBlankLines: AIMDContentPreprocessor = (content) =>
-  content.replace(/\n{3,}/g, '\n\n');
+const normalizeBlankLines: AIMDContentPreprocessor = (content) => content.replace(/\n{3,}/g, '\n\n');
 ```
 
 Some models over-produce blank lines as they stream. CommonMark already treats 2+ blank lines as a single break, but stripping the noise upfront makes block-level memoization more effective (fewer position shifts).
@@ -85,9 +81,7 @@ A common request for assistants that produce Obsidian-style output. The preproce
 
 ```ts
 const stripStreamMarkers: AIMDContentPreprocessor = (content) =>
-  content
-    .replace(/\[end of stream\]\s*$/i, '')
-    .replace(/<\/citation>/g, '');
+  content.replace(/\[end of stream\]\s*$/i, '').replace(/<\/citation>/g, '');
 ```
 
 Useful when an upstream LLM emits sentinels you don't want surfaced.
@@ -172,10 +166,7 @@ If your transformation differs based on `streaming === true/false`, encoding tha
 
 ```tsx
 function StreamingDoc({ rawContent, isStreaming }) {
-  const content = useMemo(
-    () => (isStreaming ? rawContent : finalCleanup(rawContent)),
-    [rawContent, isStreaming]
-  );
+  const content = useMemo(() => (isStreaming ? rawContent : finalCleanup(rawContent)), [rawContent, isStreaming]);
   return <AIMarkdown content={content} streaming={isStreaming} />;
 }
 ```

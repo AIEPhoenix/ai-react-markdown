@@ -34,82 +34,82 @@ All tokens are scoped to `.aim-typography-root.default`. Override at that select
 
 ### Spacing scale
 
-| Token | Default formula | Used by |
-|---|---|---|
-| `--aim-spacing-xs` | `calc(var(--aim-font-size-root) * 0.625)` | Tight inline gaps |
-| `--aim-spacing-sm` | `calc(var(--aim-font-size-root) * 0.75)` | List item margins |
-| `--aim-spacing-md` | `calc(var(--aim-font-size-root) * 1)` | Paragraph block margin |
-| `--aim-spacing-lg` | `calc(var(--aim-font-size-root) * 1.25)` | Section spacing |
-| `--aim-spacing-xl` | `calc(var(--aim-font-size-root) * 1.5)` | Major section spacing |
+| Token              | Default formula                           | Used by                |
+| ------------------ | ----------------------------------------- | ---------------------- |
+| `--aim-spacing-xs` | `calc(var(--aim-font-size-root) * 0.625)` | Tight inline gaps      |
+| `--aim-spacing-sm` | `calc(var(--aim-font-size-root) * 0.75)`  | List item margins      |
+| `--aim-spacing-md` | `calc(var(--aim-font-size-root) * 1)`     | Paragraph block margin |
+| `--aim-spacing-lg` | `calc(var(--aim-font-size-root) * 1.25)`  | Section spacing        |
+| `--aim-spacing-xl` | `calc(var(--aim-font-size-root) * 1.5)`   | Major section spacing  |
 
 ### Font sizes (inline scale)
 
-| Token | Default formula | Used by |
-|---|---|---|
-| `--aim-font-size-xs` | `calc(var(--aim-font-size-root) * 0.75)` | Footnotes, attribution |
+| Token                | Default formula                           | Used by                |
+| -------------------- | ----------------------------------------- | ---------------------- |
+| `--aim-font-size-xs` | `calc(var(--aim-font-size-root) * 0.75)`  | Footnotes, attribution |
 | `--aim-font-size-sm` | `calc(var(--aim-font-size-root) * 0.875)` | Captions, small labels |
-| `--aim-font-size-md` | `calc(var(--aim-font-size-root) * 1)` | Body |
+| `--aim-font-size-md` | `calc(var(--aim-font-size-root) * 1)`     | Body                   |
 | `--aim-font-size-lg` | `calc(var(--aim-font-size-root) * 1.125)` | Larger inline emphasis |
-| `--aim-font-size-xl` | `calc(var(--aim-font-size-root) * 1.25)` | Lead paragraphs |
+| `--aim-font-size-xl` | `calc(var(--aim-font-size-root) * 1.25)`  | Lead paragraphs        |
 
 ### Heading sizes
 
-| Token | Default formula |
-|---|---|
+| Token                | Default formula                           |
+| -------------------- | ----------------------------------------- |
 | `--aim-h1-font-size` | `calc(var(--aim-font-size-root) * 2.125)` |
 | `--aim-h2-font-size` | `calc(var(--aim-font-size-root) * 1.625)` |
 | `--aim-h3-font-size` | `calc(var(--aim-font-size-root) * 1.375)` |
 | `--aim-h4-font-size` | `calc(var(--aim-font-size-root) * 1.125)` |
-| `--aim-h5-font-size` | `calc(var(--aim-font-size-root) * 1)` |
+| `--aim-h5-font-size` | `calc(var(--aim-font-size-root) * 1)`     |
 | `--aim-h6-font-size` | `calc(var(--aim-font-size-root) * 0.875)` |
 
 The multipliers (`2.125`, `1.625`, …) mirror Mantine's heading scale. Override individually for non-uniform changes.
 
 ### Heading metadata
 
-| Token | Default | Notes |
-|---|---|---|
-| `--aim-h{1..6}-line-height` | varies | Unitless; multiplied by element font-size |
-| `--aim-h{1..6}-font-weight` | `var(--aim-font-weight-strong)` | All headings share this by default |
+| Token                       | Default                         | Notes                                     |
+| --------------------------- | ------------------------------- | ----------------------------------------- |
+| `--aim-h{1..6}-line-height` | varies                          | Unitless; multiplied by element font-size |
+| `--aim-h{1..6}-font-weight` | `var(--aim-font-weight-strong)` | All headings share this by default        |
 
 ### Shared weight
 
-| Token | Default | Used by |
-|---|---|---|
-| `--aim-font-weight-strong` | `700` | All headings, `<th>`, `<strong>` |
+| Token                      | Default | Used by                          |
+| -------------------------- | ------- | -------------------------------- |
+| `--aim-font-weight-strong` | `700`   | All headings, `<th>`, `<strong>` |
 
 Lower to `500` or `600` for lighter visual hierarchy. This single token is usually the highest-impact override.
 
 ### KaTeX
 
-| Token | Default | Purpose |
-|---|---|---|
+| Token                   | Default                     | Purpose                                                                                                                                |
+| ----------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `--aim-katex-font-size` | `var(--aim-font-size-root)` | Math formula size — stays at component-root size regardless of parent (blockquote, heading). Set to `1em` for parent-relative scaling. |
 
 ### Misc
 
-| Token | Default | Used by |
-|---|---|---|
-| `--aim-line-height` | unitless | Body line height |
-| `--aim-radius-sm` | rem | Code block / image corner radius |
-| `--aim-font-family-monospace` | system mono stack | `<code>`, `<pre>` |
-| `--aim-font-family-headings` | system body stack | All headings (override to differentiate from body) |
+| Token                         | Default           | Used by                                            |
+| ----------------------------- | ----------------- | -------------------------------------------------- |
+| `--aim-line-height`           | unitless          | Body line height                                   |
+| `--aim-radius-sm`             | rem               | Code block / image corner radius                   |
+| `--aim-font-family-monospace` | system mono stack | `<code>`, `<pre>`                                  |
+| `--aim-font-family-headings`  | system body stack | All headings (override to differentiate from body) |
 
 ### Colors (light)
 
 Declared on `.aim-typography-root.light`:
 
-| Token | Role |
-|---|---|
-| `--aim-color-text` | Main body color |
-| `--aim-color-dimmed` | Captions, secondary text |
-| `--aim-color-anchor` | Link color |
-| `--aim-color-border` | Table borders, blockquote left border |
-| `--aim-color-code-bg` | Inline code background |
-| `--aim-color-code-text` | Inline code foreground |
-| `--aim-color-blockquote-bg` | Blockquote background |
-| `--aim-color-mark-bg` | `<mark>` (highlight) background |
-| `--aim-color-mark-text` | `<mark>` foreground |
+| Token                       | Role                                  |
+| --------------------------- | ------------------------------------- |
+| `--aim-color-text`          | Main body color                       |
+| `--aim-color-dimmed`        | Captions, secondary text              |
+| `--aim-color-anchor`        | Link color                            |
+| `--aim-color-border`        | Table borders, blockquote left border |
+| `--aim-color-code-bg`       | Inline code background                |
+| `--aim-color-code-text`     | Inline code foreground                |
+| `--aim-color-blockquote-bg` | Blockquote background                 |
+| `--aim-color-mark-bg`       | `<mark>` (highlight) background       |
+| `--aim-color-mark-text`     | `<mark>` foreground                   |
 
 ### Colors (dark)
 
@@ -164,8 +164,12 @@ Per-heading weight tokens fall back to `--aim-font-weight-strong`, so overriding
 ### Brand-accent link color
 
 ```css
-.aim-typography-root.light { --aim-color-anchor: #6366f1; }
-.aim-typography-root.dark  { --aim-color-anchor: #a5b4fc; }
+.aim-typography-root.light {
+  --aim-color-anchor: #6366f1;
+}
+.aim-typography-root.dark {
+  --aim-color-anchor: #a5b4fc;
+}
 ```
 
 ### Different font for headings
@@ -192,17 +196,19 @@ The wrapper `<div className="chat-message">` could come from your own layout or 
 
 ## Stability contract
 
-| Surface | Stability under minor versions |
-|---|---|
-| Token **names** (e.g. `--aim-spacing-md`) | Stable. Removal/rename requires a major bump |
-| Token **roles** (which CSS property a token feeds) | Stable |
-| Default **values** (multipliers, colors) | May shift under minor bumps as the visual design evolves |
+| Surface                                            | Stability under minor versions                           |
+| -------------------------------------------------- | -------------------------------------------------------- |
+| Token **names** (e.g. `--aim-spacing-md`)          | Stable. Removal/rename requires a major bump             |
+| Token **roles** (which CSS property a token feeds) | Stable                                                   |
+| Default **values** (multipliers, colors)           | May shift under minor bumps as the visual design evolves |
 
 If you depend on a specific computed value, **override the token explicitly** rather than relying on the default. The override locks the value to your specification regardless of future default changes.
 
 ```css
 /* ⚠️ Trusting the default — may drift under minor bumps. */
-.my-app h1 { /* assumes default --aim-h1-font-size is 2.125rem */ }
+.my-app h1 {
+  /* assumes default --aim-h1-font-size is 2.125rem */
+}
 
 /* ✅ Locked explicitly — survives any default shift. */
 .aim-typography-root.default {
@@ -252,13 +258,19 @@ If you write a [custom typography component](./custom-typography.md), you can al
 CSS frameworks (Tailwind reset, Bootstrap, etc.) often emit rules like `h1 { font-size: 2rem; font-weight: 600; }` with the same specificity as `.aim-typography-root.default h1`. Whichever is loaded **later** wins. If your H1 looks wrong, check load order — and if needed, increase specificity:
 
 ```css
-.aim-typography-root.default h1.aim-typography-root.default h1 { /* won't help */ }
+.aim-typography-root.default h1.aim-typography-root.default h1 {
+  /* won't help */
+}
 
 /* Either: */
-:where(.aim-typography-root.default) h1 { font-size: var(--aim-h1-font-size); }
+:where(.aim-typography-root.default) h1 {
+  font-size: var(--aim-h1-font-size);
+}
 
 /* Or: */
-.aim-typography-root.default :is(h1) { font-size: var(--aim-h1-font-size) !important; }
+.aim-typography-root.default :is(h1) {
+  font-size: var(--aim-h1-font-size) !important;
+}
 ```
 
 The library's own CSS is written without `!important` to play well with consumer overrides — but that cuts both ways when third-party CSS has the same shape.

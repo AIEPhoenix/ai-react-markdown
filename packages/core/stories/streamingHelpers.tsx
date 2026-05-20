@@ -25,6 +25,12 @@ export const useStreamedContent = (
   const [generation, restart] = useReducer((n: number) => n + 1, 0);
 
   useEffect(() => {
+    // Reset streaming position when the source text or generation counter changes.
+    // This is a deliberate state-reset effect; eslint-plugin-react-hooks@7 flags
+    // synchronous setState-in-effect as a cascade-render hazard, but here it's
+    // the only correct way to reset *this* hook's local state when one of its
+    // inputs changes from the outside. Storybook-demo code only.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPosition(0);
   }, [fullText, generation]);
 

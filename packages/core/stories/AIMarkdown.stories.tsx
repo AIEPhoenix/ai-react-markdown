@@ -61,6 +61,11 @@ export const Streaming: Story = {
   render: (args, context) => {
     const currentTheme = context.globals.theme === 'dark' ? 'dark' : 'light';
     const theme = getStreamingTheme(currentTheme);
+    // Storybook `render` is a function-typed slot, not a React component named
+    // with an uppercase or `use*` identifier — but Storybook calls it inside a
+    // component context, so Hook usage is legitimate. Suppress the false
+    // positive from rules-of-hooks for this pattern.
+    // eslint-disable-next-line react-hooks/rules-of-hooks
     const { content, streaming, restart } = useStreamedContent(args.content ?? '', {
       chunkSizeMin: 2,
       chunkSizeMax: 8,

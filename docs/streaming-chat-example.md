@@ -2,7 +2,7 @@
 
 A complete, copy-runnable example of an AI chat UI built on `<AIMarkdown>` — from a streaming HTTP endpoint to a React state machine to the rendered markdown. The pieces here are intentionally minimal so you can see the seams; substitute your own LLM client, state library, or styling at every layer.
 
-> Pre-reading: [Streaming & performance](./streaming-and-performance.md) explains *why* the patterns below work. This document shows *how* to wire them together.
+> Pre-reading: [Streaming & performance](./streaming-and-performance.md) explains _why_ the patterns below work. This document shows _how_ to wire them together.
 
 ---
 
@@ -97,11 +97,7 @@ export function ChatMessage({ id, prompt }: ChatMessageProps) {
 
   return (
     <div className="chat-message">
-      <AIMarkdown
-        content={content}
-        documentId={id}
-        streaming={status === 'streaming'}
-      />
+      <AIMarkdown content={content} documentId={id} streaming={status === 'streaming'} />
       {status === 'error' && <div className="chat-error">Failed to load</div>}
     </div>
   );
@@ -111,7 +107,7 @@ export function ChatMessage({ id, prompt }: ChatMessageProps) {
 ### Why this works
 
 - **Single `<AIMarkdown>` instance**, growing `content` string. No `<AIMarkdownDocuments>` wrapper needed — there's only one renderer instance per message.
-- **Block-level memoization** keeps re-render cost proportional to the *delta* between renders. Adding a token to the tail of a 100-block document doesn't re-render the first 99 blocks.
+- **Block-level memoization** keeps re-render cost proportional to the _delta_ between renders. Adding a token to the tail of a 100-block document doesn't re-render the first 99 blocks.
 - **`streaming` prop** is the signal for downstream renderers — a custom `pre` can show a streaming cursor, a custom `a` can defer prefetching, etc. See [Custom components](./custom-components.md) for adapting components to the streaming flag.
 - **`documentId={id}`** keeps the per-document namespace for `id="…"` / `href="#…"` attributes stable across the message lifetime; if the user scrolls away and back, footnote anchors still resolve.
 
@@ -119,7 +115,7 @@ export function ChatMessage({ id, prompt }: ChatMessageProps) {
 
 ## Approach B: chunked rendering with `<AIMarkdownDocuments>`
 
-Use this when the server returns content in *logical* chunks that you want to render as separate `<AIMarkdown>` instances — e.g. for virtualization, for incremental commit (one chunk per turn boundary), or because each chunk has its own metadata (token count, latency, …).
+Use this when the server returns content in _logical_ chunks that you want to render as separate `<AIMarkdown>` instances — e.g. for virtualization, for incremental commit (one chunk per turn boundary), or because each chunk has its own metadata (token count, latency, …).
 
 ```tsx
 // ChunkedChatMessage.tsx
@@ -160,7 +156,10 @@ export function ChunkedChatMessage({ id, prompt }: { id: string; prompt: string 
         const events = buffer.split('\n\n');
         buffer = events.pop() ?? '';
         for (const e of events) {
-          const data = e.split('\n').find((l) => l.startsWith('data: '))?.slice(6);
+          const data = e
+            .split('\n')
+            .find((l) => l.startsWith('data: '))
+            ?.slice(6);
           if (!data) continue;
           const parsed: { chunkIndex: number; text: string; done: boolean } = JSON.parse(data);
           setChunks((prev) => {
@@ -180,12 +179,7 @@ export function ChunkedChatMessage({ id, prompt }: { id: string; prompt: string 
     <div className="chat-message">
       <AIMarkdownDocuments>
         {chunks.map((chunk, i) => (
-          <AIMarkdown
-            key={i}
-            content={chunk.text}
-            documentId={id}
-            streaming={!chunk.done}
-          />
+          <AIMarkdown key={i} content={chunk.text} documentId={id} streaming={!chunk.done} />
         ))}
       </AIMarkdownDocuments>
     </div>
@@ -294,14 +288,14 @@ export async function POST(req: NextRequest) {
 
 ## Choosing between A and B
 
-| Question | Approach A (growing content) | Approach B (chunked) |
-|---|---|---|
-| Simplest case | ✅ | |
+| Question                                                         | Approach A (growing content)           | Approach B (chunked)                            |
+| ---------------------------------------------------------------- | -------------------------------------- | ----------------------------------------------- |
+| Simplest case                                                    | ✅                                     |                                                 |
 | Cross-chunk references (`[^1]` in one chunk, `[^1]:` in another) | ✅ but only within the single instance | ✅ across instances via `<AIMarkdownDocuments>` |
-| Virtualize a very long message | | ✅ |
-| Per-chunk metadata (token timestamps, retry, …) | | ✅ (each chunk has its own React boundary) |
-| Lowest memory footprint | ✅ | |
-| Best block-memo behavior | ✅ (one cache per message) | ✅ (one cache per chunk; finer-grained) |
+| Virtualize a very long message                                   |                                        | ✅                                              |
+| Per-chunk metadata (token timestamps, retry, …)                  |                                        | ✅ (each chunk has its own React boundary)      |
+| Lowest memory footprint                                          | ✅                                     |                                                 |
+| Best block-memo behavior                                         | ✅ (one cache per message)             | ✅ (one cache per chunk; finer-grained)         |
 
 Start with A. Move to B only when you have a concrete reason (virtualization, per-chunk UI affordances, etc.).
 

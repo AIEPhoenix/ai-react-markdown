@@ -72,7 +72,7 @@ CI runs lint + format:check + typecheck + test + build on every PR.
 
 For anything that touches the rendering pipeline, sanitization model, or cross-chunk registry: **open a Discussion or Issue first**. These areas have walked-through design constraints (documented at the top of each implementation file); a quick design sync saves a lot of rework.
 
-The `docs/architecture.md` overview is the orientation; the file-level JSDoc explains *why* each constraint exists.
+The `docs/architecture.md` overview is the orientation; the file-level JSDoc explains _why_ each constraint exists.
 
 ## Code of Conduct
 

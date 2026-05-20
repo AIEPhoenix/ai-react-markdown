@@ -29,7 +29,7 @@ function MyCodeBlock({ children }: { children: React.ReactNode }) {
     onCitationClick: handleCitation,
   }}
   customComponents={{ pre: MyCodeBlock }}
-/>
+/>;
 ```
 
 The hook returns `TMetadata | undefined`. Always handle the `undefined` case — it's exactly what you get when no `metadata` was supplied.
@@ -59,7 +59,7 @@ parent render → new `metadata` object
 
 What this guarantees in practice is the cache. `AIMarkdownContent` and its block-memoized output don't re-execute when `metadata` shifts. Some outer layers (the `<Typography>` wrapper, the two context providers themselves) do re-run once because their `children` JSX is a new element each render — that's a couple of cheap re-renders, not a re-pass of the markdown pipeline. The phrase "metadata changes don't re-render the markdown body" is shorthand for "they don't invalidate the block cache" — the actual performance guarantee.
 
-This is also why `metadata` is **intentionally not stabilized** by the library. The library doesn't `useStableValue(metadata)` — that would require deep-comparing an arbitrary, possibly-huge object on every render (e.g. a chat session containing full message history). Stabilizing metadata is the consumer's responsibility *only* if their custom components do reference-equal work on it.
+This is also why `metadata` is **intentionally not stabilized** by the library. The library doesn't `useStableValue(metadata)` — that would require deep-comparing an arbitrary, possibly-huge object on every render (e.g. a chat session containing full message history). Stabilizing metadata is the consumer's responsibility _only_ if their custom components do reference-equal work on it.
 
 ---
 
@@ -102,7 +102,12 @@ function CitedLink({ href, children }: { href?: string; children: React.ReactNod
   if (href?.startsWith('cite://')) {
     const id = href.slice('cite://'.length);
     const c = meta?.citations.get(id);
-    if (c) return <a href={c.url} title={c.title}>{children}</a>;
+    if (c)
+      return (
+        <a href={c.url} title={c.title}>
+          {children}
+        </a>
+      );
   }
   return <a href={href}>{children}</a>;
 }
@@ -124,11 +129,13 @@ function TrackedLink({ href, children }: { href?: string; children: React.ReactN
   return (
     <a
       href={href}
-      onClick={() => meta?.trackEvent('link_click', {
-        href,
-        messageId: meta.messageId,
-        conversationId: meta.conversationId,
-      })}
+      onClick={() =>
+        meta?.trackEvent('link_click', {
+          href,
+          messageId: meta.messageId,
+          conversationId: meta.conversationId,
+        })
+      }
     >
       {children}
     </a>
@@ -150,9 +157,7 @@ function CodeWithSpinner({ children }: { children: React.ReactNode }) {
   const { streaming } = useAIMarkdownRenderState();
   return (
     <pre>
-      {streaming && meta?.thinkingStartedAt && (
-        <Spinner since={meta.thinkingStartedAt} />
-      )}
+      {streaming && meta?.thinkingStartedAt && <Spinner since={meta.thinkingStartedAt} />}
       {children}
     </pre>
   );
@@ -195,14 +200,14 @@ This mirrors the pattern `@ai-react-markdown/mantine` uses for `useMantineAIMark
 
 ## Metadata vs render state vs prop drilling
 
-| When you have… | Use… |
-|---|---|
-| Data that's part of how markdown should *render* (color scheme, font size, streaming flag, document id) | Render state (props on `<AIMarkdown>`, read via `useAIMarkdownRenderState`) |
-| App-level callbacks, ids, or data that custom components need (rarely affects render of standard markdown) | Metadata (`metadata` prop, read via `useAIMarkdownMetadata`) |
-| One-off data passed to a single direct child | Plain prop on the custom component |
-| Data already in a project-wide Context | Just use that Context inside your custom components — no need to route through `metadata` |
+| When you have…                                                                                             | Use…                                                                                      |
+| ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Data that's part of how markdown should _render_ (color scheme, font size, streaming flag, document id)    | Render state (props on `<AIMarkdown>`, read via `useAIMarkdownRenderState`)               |
+| App-level callbacks, ids, or data that custom components need (rarely affects render of standard markdown) | Metadata (`metadata` prop, read via `useAIMarkdownMetadata`)                              |
+| One-off data passed to a single direct child                                                               | Plain prop on the custom component                                                        |
+| Data already in a project-wide Context                                                                     | Just use that Context inside your custom components — no need to route through `metadata` |
 
-The library doesn't *force* you to use `metadata`. If you already have a Redux/Zustand/Context for chat state, custom components can read from it directly. `metadata` is the path of least resistance when you don't have one — and it gives you the re-render isolation guarantee automatically.
+The library doesn't _force_ you to use `metadata`. If you already have a Redux/Zustand/Context for chat state, custom components can read from it directly. `metadata` is the path of least resistance when you don't have one — and it gives you the re-render isolation guarantee automatically.
 
 ---
 
@@ -235,7 +240,7 @@ const stableMeta = useMemo(() => ({ onCopy, messageId }), [onCopy, messageId]);
 <AIMarkdown metadata={{ onCopy, messageId }} ... />
 ```
 
-Only stabilize if your *custom components* do work that depends on `metadata` reference equality (e.g. inside their own `useMemo`/`useEffect`).
+Only stabilize if your _custom components_ do work that depends on `metadata` reference equality (e.g. inside their own `useMemo`/`useEffect`).
 
 ### Storing huge state trees in `metadata`
 
