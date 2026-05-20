@@ -1,4 +1,19 @@
 version: 2
+
+# Shared ignore policy (copied verbatim across the three npm ecosystems
+# because dependabot.yml does not support YAML anchors at the top level).
+#
+# - Major bumps across the dependency graph: blocked. Breaking changes,
+#   peer-dep ripples, and migration cost need hands-on evaluation; we
+#   bump majors manually.
+# - Lint / typecheck plugins (eslint, eslint-plugin-*, @typescript-eslint,
+#   typescript itself): minors blocked. These tools routinely add new
+#   rules on minor bumps that flag previously-passing code; locking to
+#   patch keeps CI green. We'll bump minors manually when we have time
+#   to address new violations. (See eslint-plugin-react-hooks 7.0→7.1,
+#   April 2026, which broke MarkdownContent.tsx with 20+ new ref/effect
+#   diagnostics — none of which were API changes.)
+
 updates:
   # npm dependencies in the monorepo root (devDeps: storybook, vitest, eslint, etc.)
   - package-ecosystem: npm
@@ -11,8 +26,26 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - dependencies
+    ignore:
+      - dependency-name: '*'
+        update-types:
+          - version-update:semver-major
+      - dependency-name: 'eslint'
+        update-types:
+          - version-update:semver-minor
+      - dependency-name: 'eslint-plugin-*'
+        update-types:
+          - version-update:semver-minor
+      - dependency-name: '@typescript-eslint/*'
+        update-types:
+          - version-update:semver-minor
+      - dependency-name: 'typescript-eslint'
+        update-types:
+          - version-update:semver-minor
+      - dependency-name: 'typescript'
+        update-types:
+          - version-update:semver-minor
     groups:
-      # Group all minor / patch dev-deps into one PR per week
       dev-deps:
         dependency-type: development
         update-types:
@@ -31,6 +64,25 @@ updates:
     labels:
       - dependencies
       - 'scope:core'
+    ignore:
+      - dependency-name: '*'
+        update-types:
+          - version-update:semver-major
+      - dependency-name: 'eslint'
+        update-types:
+          - version-update:semver-minor
+      - dependency-name: 'eslint-plugin-*'
+        update-types:
+          - version-update:semver-minor
+      - dependency-name: '@typescript-eslint/*'
+        update-types:
+          - version-update:semver-minor
+      - dependency-name: 'typescript-eslint'
+        update-types:
+          - version-update:semver-minor
+      - dependency-name: 'typescript'
+        update-types:
+          - version-update:semver-minor
     groups:
       runtime-deps:
         dependency-type: production
@@ -50,6 +102,25 @@ updates:
     labels:
       - dependencies
       - 'scope:mantine'
+    ignore:
+      - dependency-name: '*'
+        update-types:
+          - version-update:semver-major
+      - dependency-name: 'eslint'
+        update-types:
+          - version-update:semver-minor
+      - dependency-name: 'eslint-plugin-*'
+        update-types:
+          - version-update:semver-minor
+      - dependency-name: '@typescript-eslint/*'
+        update-types:
+          - version-update:semver-minor
+      - dependency-name: 'typescript-eslint'
+        update-types:
+          - version-update:semver-minor
+      - dependency-name: 'typescript'
+        update-types:
+          - version-update:semver-minor
     groups:
       runtime-deps:
         dependency-type: production
@@ -57,7 +128,7 @@ updates:
           - minor
           - patch
 
-  # GitHub Actions used in workflows
+  # GitHub Actions used in workflows — major-block only; no lint-plugin lock needed.
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -65,3 +136,7 @@ updates:
     labels:
       - dependencies
       - 'scope:ci'
+    ignore:
+      - dependency-name: '*'
+        update-types:
+          - version-update:semver-major
