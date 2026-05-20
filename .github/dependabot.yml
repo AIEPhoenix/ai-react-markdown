@@ -1,0 +1,67 @@
+version: 2
+updates:
+  # npm dependencies in the monorepo root (devDeps: storybook, vitest, eslint, etc.)
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+    groups:
+      # Group all minor / patch dev-deps into one PR per week
+      dev-deps:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+
+  # @ai-react-markdown/core
+  - package-ecosystem: npm
+    directory: /packages/core
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - "scope:core"
+    groups:
+      runtime-deps:
+        dependency-type: production
+        update-types:
+          - minor
+          - patch
+
+  # @ai-react-markdown/mantine
+  - package-ecosystem: npm
+    directory: /packages/mantine
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - "scope:mantine"
+    groups:
+      runtime-deps:
+        dependency-type: production
+        update-types:
+          - minor
+          - patch
+
+  # GitHub Actions used in workflows
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    labels:
+      - dependencies
+      - "scope:ci"

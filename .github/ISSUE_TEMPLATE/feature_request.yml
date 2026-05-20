@@ -1,0 +1,42 @@
+name: Feature request
+description: Propose a new capability or surface change.
+title: "[feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For non-trivial proposals please open the discussion first — it saves churn on both sides.
+        - Open-ended ideas → [Discussions / Ideas](../../discussions/categories/ideas)
+        - Concrete API addition with a known shape → file here.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem this would solve
+      description: What can't you do today? What workaround are you using?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed API / behavior
+      description: Sketch the shape. Props, hooks, types — whatever's relevant.
+      render: tsx
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you thought about and why this one is better.
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope check
+      description: |
+        Which package(s) does this touch?
+        Does it require breaking changes? If so, what would the migration path look like?
