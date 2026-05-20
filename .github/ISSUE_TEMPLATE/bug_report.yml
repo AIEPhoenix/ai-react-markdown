@@ -1,0 +1,82 @@
+name: Bug report
+description: Something doesn't behave the way the docs / README say it should.
+title: "[bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug! A few notes before you start:
+        - For **security vulnerabilities** (XSS via crafted markdown, sanitization bypass, etc.), please use [the private security policy](../SECURITY.md) instead — don't post the reproduction publicly.
+        - For **questions / how-do-I** topics, prefer [Discussions](../../discussions) — Issues are for confirmed bugs / regressions.
+
+  - type: input
+    id: version
+    attributes:
+      label: Package + version
+      description: Run `pnpm list @ai-react-markdown/core @ai-react-markdown/mantine` and paste the relevant lines.
+      placeholder: "@ai-react-markdown/core@1.4.5 / @ai-react-markdown/mantine@1.4.5"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: package
+    attributes:
+      label: Which package is affected?
+      multiple: true
+      options:
+        - "@ai-react-markdown/core"
+        - "@ai-react-markdown/mantine"
+        - "Not sure / both"
+    validations:
+      required: true
+
+  - type: textarea
+    id: markdown
+    attributes:
+      label: Minimal markdown that reproduces the bug
+      description: The smallest possible markdown string that triggers the issue. For streaming bugs, give the chunk sequence (one string per chunk).
+      render: markdown
+      placeholder: |
+        Hello **world**
+        $E = mc^2$
+    validations:
+      required: true
+
+  - type: textarea
+    id: props
+    attributes:
+      label: Relevant `<AIMarkdown>` / `<MantineAIMarkdown>` props
+      description: Paste only the props that matter (config, customComponents, urlTransform, sanitizeSchema, streaming flag, …). Module-scoped or inline?
+      render: tsx
+    validations:
+      required: false
+
+  - type: textarea
+    id: observed
+    attributes:
+      label: What happens
+      placeholder: "The footnote `[^1]` in chunk B doesn't render the backlink."
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should happen
+      placeholder: "Backlink should resolve to chunk D's `[^1]: …` definition (per docs/cross-chunk-coordination.md)."
+    validations:
+      required: true
+
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: React version, framework (Next.js App Router / Vite / …), Node version, package manager.
+      placeholder: "React 19.0.0 / Next.js 15 App Router / Node 22 / pnpm 10"
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional context
+      description: Stack trace, screenshot, link to a reproduction sandbox (StackBlitz / CodeSandbox), anything else.

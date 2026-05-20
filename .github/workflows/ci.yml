@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel any in-progress run on the same ref when a new commit arrives.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: ${{ matrix.task }} (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # One Node version is enough for now — bump or expand the matrix when
+        # we need to verify across LTS lines.
+        node: ["22"]
+        task:
+          - lint
+          - format-check
+          - typecheck
+          - test
+          - build
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        # Version is pinned via `packageManager` in package.json — pnpm/action-setup
+        # picks it up automatically.
+
+      - name: Setup Node ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        if: matrix.task == 'lint'
+        run: pnpm lint
+
+      - name: Format check
+        if: matrix.task == 'format-check'
+        run: pnpm format:check
+
+      - name: Typecheck (core)
+        if: matrix.task == 'typecheck'
+        run: pnpm --filter @ai-react-markdown/core typecheck
+
+      - name: Test (core)
+        if: matrix.task == 'test'
+        run: pnpm --filter @ai-react-markdown/core test
+
+      - name: Build (all packages)
+        if: matrix.task == 'build'
+        run: pnpm build

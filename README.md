@@ -4,7 +4,10 @@
 
 [![@ai-react-markdown/core npm](https://img.shields.io/npm/v/@ai-react-markdown/core?label=%40ai-react-markdown%2Fcore&logo=npm&color=cb3837)](https://www.npmjs.com/package/@ai-react-markdown/core)
 [![@ai-react-markdown/mantine npm](https://img.shields.io/npm/v/@ai-react-markdown/mantine?label=%40ai-react-markdown%2Fmantine&logo=npm&color=cb3837)](https://www.npmjs.com/package/@ai-react-markdown/mantine)
-[![npm downloads](https://img.shields.io/npm/dm/@ai-react-markdown/core?label=core%20downloads&color=blue)](https://www.npmjs.com/package/@ai-react-markdown/core)
+
+[![core downloads](https://img.shields.io/npm/dm/@ai-react-markdown/core?label=%40ai-react-markdown%2Fcore%20downloads&color=blue)](https://www.npmjs.com/package/@ai-react-markdown/core)
+[![mantine downloads](https://img.shields.io/npm/dm/@ai-react-markdown/mantine?label=%40ai-react-markdown%2Fmantine%20downloads&color=blue)](https://www.npmjs.com/package/@ai-react-markdown/mantine)
+
 [![types: TypeScript](https://img.shields.io/npm/types/@ai-react-markdown/core?label=types&logo=typescript&logoColor=white&color=3178c6)](https://www.typescriptlang.org/)
 [![React 19+](https://img.shields.io/badge/React-%E2%89%A519-149eca?logo=react&logoColor=white)](https://react.dev/)
 [![code style: prettier](https://img.shields.io/badge/code_style-prettier-ff69b4?logo=prettier&logoColor=white)](https://prettier.io/)
