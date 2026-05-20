@@ -66,8 +66,10 @@ export type SanitizeSchema = typeof defaultSchema;
  * });
  * ```
  *
- * @remarks Allowing a protocol on `protocols.href` lets the URL through the
- * SECOND sanitize gate. The FIRST gate (`urlTransform`) must permit the
+ * @remarks Allowing a protocol on `protocols.href` lets the URL through
+ * Gate 1 (the schema-level per-protocol allowlist, which runs inside the
+ * rehype plugin chain). Gate 2 (`urlTransform`, the per-attribute rewriter
+ * that runs later at render time in `renderHastSubtree`) must permit the
  * same protocol independently — see the `urlTransform` prop on
  * `<AIMarkdown>` and the exported {@link defaultUrlTransform} for
  * composition. Keep the two protocol lists in sync.
