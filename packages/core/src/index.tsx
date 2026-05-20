@@ -122,10 +122,14 @@ export interface AIMarkdownProps<
    */
   documentId?: string;
   /**
-   * Override the function that decides which URL protocols are allowed
-   * through the FIRST sanitization gate. The default allowlist mirrors
-   * `react-markdown` / GitHub: `http`, `https`, `irc`, `ircs`, `mailto`,
-   * `xmpp`. Anything else is rewritten to `''`.
+   * Override the per-attribute URL rewriter (Gate 2 of the two-gate model).
+   * Runs at render time during the hast traversal in `renderHastSubtree`,
+   * after Gate 1 (`rehype-sanitize` schema) has already filtered URLs by
+   * protocol allowlist in the rehype plugin chain.
+   *
+   * The default allowlist mirrors `react-markdown` / GitHub: `http`,
+   * `https`, `irc`, `ircs`, `mailto`, `xmpp`. Anything else is rewritten
+   * to `''`.
    *
    * **Recommended pattern**: compose with the exported
    * {@link defaultUrlTransform} so the built-in XSS protections survive,
@@ -154,13 +158,13 @@ export interface AIMarkdownProps<
    * as a dependency. Defining the function inline (`urlTransform={(url) =>
    * …}`) creates a new closure on every parent render, discards the cache
    * for the entire markdown document on each render, and effectively
-   * disables Phase 5 memoization. In development the library will
+   * disables block-level memoization. In development the library will
    * `console.warn` if it detects this pattern.
    *
    * Allowing a protocol here is necessary but **not sufficient** to render
-   * a link — the second gate (`rehype-sanitize`) also enforces its own
-   * protocol allowlist. See the `sanitizeSchema` prop on this component
-   * and the {@link extendSanitizeSchema} helper for the second gate.
+   * a link — Gate 1 (`rehype-sanitize` schema) also enforces its own
+   * protocol allowlist and runs first. See the `sanitizeSchema` prop on
+   * this component and the {@link extendSanitizeSchema} helper for Gate 1.
    *
    * **API stability**: the `UrlTransform` type tracks the upstream
    * `react-markdown` shape and may change with its major versions.
@@ -169,10 +173,13 @@ export interface AIMarkdownProps<
   /**
    * Override the `rehype-sanitize` schema applied to the rendered output.
    * The library default extends `rehype-sanitize`'s own `defaultSchema`
-   * with the `<mark>` tag, KaTeX class names, and the cross-chunk
-   * coordination tags (`cross-chunk-link`, `cross-chunk-image`,
-   * `footnote-sup`). The default is not exported as a value — see
-   * {@link extendSanitizeSchema} for how to inspect or extend it safely.
+   * with the `<mark>` tag, the `math-inline` / `math-display` className
+   * markers `remark-math` emits on `<code>` (KaTeX's own output classes
+   * survive separately because `rehype-katex` runs after `rehype-sanitize`),
+   * and the cross-chunk coordination tags (`cross-chunk-link`,
+   * `cross-chunk-image`, `footnote-sup`). The default is not exported as a
+   * value — see {@link extendSanitizeSchema} for how to inspect or extend
+   * it safely.
    *
    * **Recommended pattern**: build the schema with {@link extendSanitizeSchema}
    * (mutate-and-return form) so those library additions stay intact, and
