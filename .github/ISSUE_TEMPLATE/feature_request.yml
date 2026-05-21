@@ -1,7 +1,7 @@
 name: Feature request
 description: Propose a new capability or surface change.
-title: "[feature]: "
-labels: ["enhancement"]
+title: '[feature]: '
+labels: ['enhancement']
 body:
   - type: markdown
     attributes:

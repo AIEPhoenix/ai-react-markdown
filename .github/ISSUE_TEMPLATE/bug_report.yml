@@ -1,7 +1,7 @@
 name: Bug report
 description: Something doesn't behave the way the docs / README say it should.
-title: "[bug]: "
-labels: ["bug", "triage"]
+title: '[bug]: '
+labels: ['bug', 'triage']
 body:
   - type: markdown
     attributes:
@@ -15,7 +15,7 @@ body:
     attributes:
       label: Package + version
       description: Run `pnpm list @ai-react-markdown/core @ai-react-markdown/mantine` and paste the relevant lines.
-      placeholder: "@ai-react-markdown/core@1.4.5 / @ai-react-markdown/mantine@1.4.5"
+      placeholder: '@ai-react-markdown/core@1.4.5 / @ai-react-markdown/mantine@1.4.5'
     validations:
       required: true
 
@@ -25,9 +25,9 @@ body:
       label: Which package is affected?
       multiple: true
       options:
-        - "@ai-react-markdown/core"
-        - "@ai-react-markdown/mantine"
-        - "Not sure / both"
+        - '@ai-react-markdown/core'
+        - '@ai-react-markdown/mantine'
+        - 'Not sure / both'
     validations:
       required: true
 
@@ -73,7 +73,7 @@ body:
     attributes:
       label: Environment
       description: React version, framework (Next.js App Router / Vite / …), Node version, package manager.
-      placeholder: "React 19.0.0 / Next.js 15 App Router / Node 22 / pnpm 10"
+      placeholder: 'React 19.0.0 / Next.js 15 App Router / Node 22 / pnpm 10'
 
   - type: textarea
     id: notes

@@ -56,10 +56,7 @@ Anything else — `javascript:`, `data:`, `vbscript:`, `file:`, your own scheme 
 The recommended pattern is **both gates extended at module scope** so identity is stable across renders (the block-memo cache depends on this).
 
 ```tsx
-import AIMarkdown, {
-  defaultUrlTransform,
-  extendSanitizeSchema,
-} from '@ai-react-markdown/core';
+import AIMarkdown, { defaultUrlTransform, extendSanitizeSchema } from '@ai-react-markdown/core';
 
 // Gate 1: extend the library schema so it permits the scheme on href + src.
 // This is the per-protocol allowlist that runs in the rehype chain.
@@ -93,11 +90,11 @@ import type { Element } from 'hast';
 type UrlTransform = (url: string, key: string, node: Readonly<Element>) => string | null | undefined;
 ```
 
-| Parameter | Meaning |
-|---|---|
-| `url` | The raw URL string as it appears in the markdown |
-| `key` | Attribute name — `'href'`, `'src'`, `'cite'`, etc. |
-| `node` | The hast `Element` carrying the attribute, frozen as `Readonly` — useful when policy depends on tag name or sibling attributes |
+| Parameter | Meaning                                                                                                                        |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `url`     | The raw URL string as it appears in the markdown                                                                               |
+| `key`     | Attribute name — `'href'`, `'src'`, `'cite'`, etc.                                                                             |
+| `node`    | The hast `Element` carrying the attribute, frozen as `Readonly` — useful when policy depends on tag name or sibling attributes |
 
 The return value can be:
 
@@ -124,8 +121,7 @@ const URL_TRANSFORM = (url, key, node) => {
 
 ```ts
 // ✅ Whitelist your scheme; defer everything else to the default.
-const URL_TRANSFORM = (url, key, node) =>
-  /^myapp:/i.test(url) ? url : defaultUrlTransform(url, key, node);
+const URL_TRANSFORM = (url, key, node) => (/^myapp:/i.test(url) ? url : defaultUrlTransform(url, key, node));
 
 // ⚠️ Reimplementing the safe set yourself — easy to miss a scheme.
 const URL_TRANSFORM = (url) => {
@@ -168,11 +164,11 @@ const SCHEMA = extendSanitizeSchema((s) => ({
 
 The library default extends `rehype-sanitize`'s `defaultSchema` with three additions that the renderer relies on:
 
-| Addition | Why it's needed |
-|---|---|
-| `<mark>` tag + class allowlist | For `==highlight==` syntax to render |
-| Math className allowlist on `<code>` (`math-inline`, `math-display`) | For `remark-math` to mark code spans as math before `rehype-katex` consumes them. KaTeX's own output classes (`katex`, `katex-html`, …) are not in this allowlist — they survive because `rehype-katex` runs *after* `rehype-sanitize`, so those classes aren't yet present at sanitize time |
-| Cross-chunk coordination tags (`cross-chunk-link`, `cross-chunk-image`, `footnote-sup`) | For [cross-chunk references](./cross-chunk-coordination.md) to resolve correctly |
+| Addition                                                                                | Why it's needed                                                                                                                                                                                                                                                                              |
+| --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<mark>` tag + class allowlist                                                          | For `==highlight==` syntax to render                                                                                                                                                                                                                                                         |
+| Math className allowlist on `<code>` (`math-inline`, `math-display`)                    | For `remark-math` to mark code spans as math before `rehype-katex` consumes them. KaTeX's own output classes (`katex`, `katex-html`, …) are not in this allowlist — they survive because `rehype-katex` runs _after_ `rehype-sanitize`, so those classes aren't yet present at sanitize time |
+| Cross-chunk coordination tags (`cross-chunk-link`, `cross-chunk-image`, `footnote-sup`) | For [cross-chunk references](./cross-chunk-coordination.md) to resolve correctly                                                                                                                                                                                                             |
 
 Hand-rolling a schema (`{ ...defaultSchema, … }`) **silently drops these** — `==highlight==` becomes plain text, math disappears, cross-chunk footnotes fail. `extendSanitizeSchema` always works on a clone of the **library**'s default (not `rehype-sanitize`'s), so these survive.
 
@@ -198,14 +194,14 @@ Because the obvious extension pattern — `{ ...sanitizeSchema, protocols: { ...
 
 Both props participate in the block-memo cache, but they are stabilized **differently**:
 
-| Prop | Tracked by | Library safety net |
-|---|---|---|
-| `urlTransform` | Identity only | None — a new function reference flushes the entire markdown cache |
-| `sanitizeSchema` | Identity AND deep-equal (`useStableValue`) | A new-but-deep-equal schema collapses to the previous reference |
+| Prop             | Tracked by                                 | Library safety net                                                |
+| ---------------- | ------------------------------------------ | ----------------------------------------------------------------- |
+| `urlTransform`   | Identity only                              | None — a new function reference flushes the entire markdown cache |
+| `sanitizeSchema` | Identity AND deep-equal (`useStableValue`) | A new-but-deep-equal schema collapses to the previous reference   |
 
-Why asymmetric: function identity can't be deep-compared (two closures with identical bodies are always non-equal), so `urlTransform` *cannot* have a safety net. Schemas are plain data, so deep-equal is meaningful.
+Why asymmetric: function identity can't be deep-compared (two closures with identical bodies are always non-equal), so `urlTransform` _cannot_ have a safety net. Schemas are plain data, so deep-equal is meaningful.
 
-**Implication**: defining `urlTransform` inline `urlTransform={(url) => …}` discards the block-memo cache on every render. Defining `sanitizeSchema` inline doesn't flush the cache, but pays a per-render cost: each `extendSanitizeSchema((s) => …)` call does a `cloneDeep` of the library default schema *plus* the subsequent `useStableValue` runs a deep-equal against the prior value. Both passes walk the entire schema (protocols / attributes / ancestors / tagNames). Module-scope avoids both.
+**Implication**: defining `urlTransform` inline `urlTransform={(url) => …}` discards the block-memo cache on every render. Defining `sanitizeSchema` inline doesn't flush the cache, but pays a per-render cost: each `extendSanitizeSchema((s) => …)` call does a `cloneDeep` of the library default schema _plus_ the subsequent `useStableValue` runs a deep-equal against the prior value. Both passes walk the entire schema (protocols / attributes / ancestors / tagNames). Module-scope avoids both.
 
 ```tsx
 // ⚠️ Anti-pattern — discards the entire markdown cache every render.
@@ -263,7 +259,9 @@ Symptom: the link/image is in your markdown, the consumer's URL transform clearl
 
 ```ts
 // ⚠️ Gate 1 (sanitize schema) permits 'myapp', but Gate 2 (urlTransform) still rewrites to ''.
-const SCHEMA = extendSanitizeSchema((s) => { s.protocols!.href!.push('myapp'); });
+const SCHEMA = extendSanitizeSchema((s) => {
+  s.protocols!.href!.push('myapp');
+});
 // No urlTransform override → defaultUrlTransform rewrites 'myapp:…' to ''.
 ```
 

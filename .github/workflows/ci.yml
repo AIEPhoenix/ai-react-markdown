@@ -21,7 +21,7 @@ jobs:
       matrix:
         # One Node version is enough for now — bump or expand the matrix when
         # we need to verify across LTS lines.
-        node: ["22"]
+        node: ['22']
         task:
           - lint
           - format-check

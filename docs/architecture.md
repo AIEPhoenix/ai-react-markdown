@@ -30,14 +30,14 @@ A mental model of how `<AIMarkdown>` turns a markdown string into rendered React
 
 Each layer has a single, documented responsibility:
 
-| Layer | Responsibility |
-|---|---|
-| `<AIMarkdown>` | Top-level prop normalization (font size, document id), preprocessing pipeline orchestration, prop-stability tracking |
-| `<AIMarkdownMetadataProvider>` | Isolate opaque user data from render state |
-| `<AIMarkdownRenderStateProvider>` | Hold immutable render state, deep-merge config with defaults |
-| `<Typography>` | Apply font-family, base font-size, theme class names; inject CSS custom properties via `style` |
-| `<ExtraStyles>` | Optional CSS-scope wrapper (used by Mantine integration for em-based token overrides) |
-| `<AIMarkdownContent>` | Vendor-forked react-markdown pipeline + block memoization + cross-chunk resolution |
+| Layer                             | Responsibility                                                                                                       |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `<AIMarkdown>`                    | Top-level prop normalization (font size, document id), preprocessing pipeline orchestration, prop-stability tracking |
+| `<AIMarkdownMetadataProvider>`    | Isolate opaque user data from render state                                                                           |
+| `<AIMarkdownRenderStateProvider>` | Hold immutable render state, deep-merge config with defaults                                                         |
+| `<Typography>`                    | Apply font-family, base font-size, theme class names; inject CSS custom properties via `style`                       |
+| `<ExtraStyles>`                   | Optional CSS-scope wrapper (used by Mantine integration for em-based token overrides)                                |
+| `<AIMarkdownContent>`             | Vendor-forked react-markdown pipeline + block memoization + cross-chunk resolution                                   |
 
 ---
 
@@ -116,7 +116,7 @@ User preprocessors run next, in order. They receive the LaTeX-normalized string.
 - Inject phantom footnote definitions (when `preserveOrphanReferences` is on and no matching `[^x]` exists, so `mdast-util-to-hast` doesn't silently drop the def).
 - Emit cross-chunk placeholder elements (`<cross-chunk-link>`, `<cross-chunk-image>`, `<footnote-sup>`) when wrapped in `<AIMarkdownDocuments>`.
 
-The rehype plugin chain then runs on hast — including `rehype-raw` (for raw HTML survival), `rehype-katex` (for math rendering), and **`rehype-sanitize`** (Gate 1 of URL sanitization: per-protocol allowlist applied to `href`/`src`/`cite`). Per-attribute URL rewriting (`urlTransform`, Gate 2) is *not* part of this chain — it runs later at render time (see Stage F).
+The rehype plugin chain then runs on hast — including `rehype-raw` (for raw HTML survival), `rehype-katex` (for math rendering), and **`rehype-sanitize`** (Gate 1 of URL sanitization: per-protocol allowlist applied to `href`/`src`/`cite`). Per-attribute URL rewriting (`urlTransform`, Gate 2) is _not_ part of this chain — it runs later at render time (see Stage F).
 
 ### Stage C: Cross-chunk contributions
 
@@ -158,7 +158,8 @@ Markdown footnotes and hash links emit `<li id="…">` and `<a href="#…">` wit
 <li id="user-content-fn-1">…definition A…</li>
 
 <!-- Message 2 -->
-<a href="#user-content-fn-1">[1]</a>  <!-- ← scrolls to message 1's footnote! -->
+<a href="#user-content-fn-1">[1]</a>
+<!-- ← scrolls to message 1's footnote! -->
 <li id="user-content-fn-1">…definition B…</li>
 ```
 
@@ -215,7 +216,7 @@ The library default schema starts from `rehype-sanitize`'s `defaultSchema` and e
 
 Hand-rolling a schema via `{ ...defaultSchema, … }` silently drops these. `extendSanitizeSchema` always works on a deep clone of the **library**'s default (not `rehype-sanitize`'s), so the additions survive.
 
-The library default is **not** exported as a value — only the helper. This prevents the shallow-spread footgun by construction: there's no `sanitizeSchema` constant in the public API to shallow-spread *from*.
+The library default is **not** exported as a value — only the helper. This prevents the shallow-spread footgun by construction: there's no `sanitizeSchema` constant in the public API to shallow-spread _from_.
 
 See [URL Sanitization & Custom Schemes](./url-sanitization.md) for the two-gate model.
 
@@ -245,7 +246,7 @@ Every one of these uses **public** extension points from core. No internal acces
 
 ## Why a vendored `react-markdown`?
 
-The library imports `react-markdown` as an internal module (`packages/core/src/components/markdown/`). This is a *vendor fork*, not a redistribution — the source is bundled and adapted for the library's needs:
+The library imports `react-markdown` as an internal module (`packages/core/src/components/markdown/`). This is a _vendor fork_, not a redistribution — the source is bundled and adapted for the library's needs:
 
 - Block-level memoization needs control over the conversion stage (`toJsxRuntime`) that the upstream component encapsulates.
 - The pipeline is exposed as **three independent stages** (parse, plan, render) so block memoization can intercept between stages.

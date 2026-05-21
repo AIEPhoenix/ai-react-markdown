@@ -60,15 +60,15 @@ Cached blocks skip `hast-util-to-jsx-runtime` and React reconcile work entirely 
 
 ### What invalidates a block
 
-| Change | Affects |
-|---|---|
-| Block's raw text changes | Just that block |
+| Change                                                                   | Affects                                               |
+| ------------------------------------------------------------------------ | ----------------------------------------------------- |
+| Block's raw text changes                                                 | Just that block                                       |
 | Block's position changes (lines/offset shift due to insertion before it) | Each repositioned block (position is part of the key) |
-| `customComponents` reference changes | All blocks |
-| `urlTransform` reference changes | All blocks |
-| `sanitizeSchema` deep-equal changes | All blocks |
-| Footnote/link/image definition or reference added/removed anywhere | All blocks containing refs/defs (via `ctx` digest) |
-| Standard prose block (no refs/defs) | Unaffected by ref/def changes elsewhere |
+| `customComponents` reference changes                                     | All blocks                                            |
+| `urlTransform` reference changes                                         | All blocks                                            |
+| `sanitizeSchema` deep-equal changes                                      | All blocks                                            |
+| Footnote/link/image definition or reference added/removed anywhere       | All blocks containing refs/defs (via `ctx` digest)    |
+| Standard prose block (no refs/defs)                                      | Unaffected by ref/def changes elsewhere               |
 
 The last point is the key win: in a chat document with a footnote at the end, typing into the body **doesn't** invalidate the footnote block's cache, and adding the footnote at the end **doesn't** invalidate prose blocks that don't reference it.
 
@@ -96,15 +96,15 @@ In production for streaming workloads: **leave it on**.
 
 Block-memoization treats several props as cache dependencies. A new identity on any of them invalidates the entire document cache:
 
-| Prop | Internal stabilization | Best practice |
-|---|---|---|
-| `content` | None — strings deep-equal by value | Plain string, no special handling |
-| `customComponents` | `useStableValue` (deep-equal) | Module scope or `useMemo` for zero-overhead |
-| `contentPreprocessors` | `useStableValue` (deep-equal) | Module scope |
-| `urlTransform` | None — functions can't be deep-compared | Module scope **required** |
-| `sanitizeSchema` | `useStableValue` (deep-equal) | Module scope **recommended** |
-| `config` / `defaultConfig` | `useStableValue` (deep-equal) | Module scope |
-| `metadata` | None — opaque to library | Doesn't affect block-memo (lives in separate context) |
+| Prop                       | Internal stabilization                  | Best practice                                         |
+| -------------------------- | --------------------------------------- | ----------------------------------------------------- |
+| `content`                  | None — strings deep-equal by value      | Plain string, no special handling                     |
+| `customComponents`         | `useStableValue` (deep-equal)           | Module scope or `useMemo` for zero-overhead           |
+| `contentPreprocessors`     | `useStableValue` (deep-equal)           | Module scope                                          |
+| `urlTransform`             | None — functions can't be deep-compared | Module scope **required**                             |
+| `sanitizeSchema`           | `useStableValue` (deep-equal)           | Module scope **recommended**                          |
+| `config` / `defaultConfig` | `useStableValue` (deep-equal)           | Module scope                                          |
+| `metadata`                 | None — opaque to library                | Doesn't affect block-memo (lives in separate context) |
 
 ### The `urlTransform` exception
 
@@ -113,16 +113,11 @@ Block-memoization treats several props as cache dependencies. A new identity on 
 ```tsx
 // ⚠️ Effectively disables block memoization for the whole document.
 function MyApp() {
-  return (
-    <AIMarkdown
-      content={c}
-      urlTransform={(url) => /^myapp:/.test(url) ? url : ''}
-    />
-  );
+  return <AIMarkdown content={c} urlTransform={(url) => (/^myapp:/.test(url) ? url : '')} />;
 }
 
 // ✅ Module scope — stable, cache stays warm.
-const URL_TRANSFORM = (url) => /^myapp:/.test(url) ? url : '';
+const URL_TRANSFORM = (url) => (/^myapp:/.test(url) ? url : '');
 function MyApp() {
   return <AIMarkdown content={c} urlTransform={URL_TRANSFORM} />;
 }
@@ -135,7 +130,7 @@ Development builds emit a `console.warn` after 3+ identity flips on `urlTransfor
 ## The `useStableValue` hook
 
 ```ts
-function useStableValue<T>(value: T): T
+function useStableValue<T>(value: T): T;
 ```
 
 Returns a referentially stable version of `value` by deep-comparing (via lodash `isEqual`) against the previous render's value. If equal, the previous reference is returned; otherwise the new value is captured.
@@ -175,12 +170,7 @@ Simpler and usually faster — one instance, one cache, no wrapper. Use this whe
 ```tsx
 <AIMarkdownDocuments>
   {chunks.map((chunk, i) => (
-    <AIMarkdown
-      key={i}
-      content={chunk}
-      documentId={messageId}
-      streaming={!done && i === chunks.length - 1}
-    />
+    <AIMarkdown key={i} content={chunk} documentId={messageId} streaming={!done && i === chunks.length - 1} />
   ))}
 </AIMarkdownDocuments>
 ```
@@ -191,12 +181,7 @@ Each chunk has its own block-memo cache. Cross-chunk references coordinate via [
 
 ```tsx
 function StreamingMessage({ content, done }: { content: string; done: boolean }) {
-  return (
-    <AIMarkdown
-      content={done ? content : content + '▍'}
-      streaming={!done}
-    />
-  );
+  return <AIMarkdown content={done ? content : content + '▍'} streaming={!done} />;
 }
 ```
 
@@ -244,7 +229,13 @@ function Bad({ content }: { content: string }) {
   return (
     <AIMarkdown
       content={content}
-      customComponents={{ a: ({ href, children }) => <a href={href} className="link">{children}</a> }}
+      customComponents={{
+        a: ({ href, children }) => (
+          <a href={href} className="link">
+            {children}
+          </a>
+        ),
+      }}
       contentPreprocessors={[(c) => c.trim()]}
       config={{ blockMemoEnabled: true }}
     />
@@ -253,7 +244,9 @@ function Bad({ content }: { content: string }) {
 
 // ✅ Hoist — define once at module scope.
 const Link = ({ href, children }: { href?: string; children: React.ReactNode }) => (
-  <a href={href} className="link">{children}</a>
+  <a href={href} className="link">
+    {children}
+  </a>
 );
 const trim: AIMDContentPreprocessor = (c) => c.trim();
 
@@ -263,12 +256,7 @@ const CONFIG: Partial<AIMarkdownRenderConfig> = { blockMemoEnabled: true };
 
 function Good({ content }: { content: string }) {
   return (
-    <AIMarkdown
-      content={content}
-      customComponents={COMPONENTS}
-      contentPreprocessors={PREPROCESSORS}
-      config={CONFIG}
-    />
+    <AIMarkdown content={content} customComponents={COMPONENTS} contentPreprocessors={PREPROCESSORS} config={CONFIG} />
   );
 }
 ```
@@ -289,4 +277,4 @@ Block memoization wins by dividing work into many small caches. If your content 
 
 ### Mistaking `streaming` for an in-progress signal that pauses rendering
 
-`streaming === true` does not delay rendering. Content is rendered immediately as it arrives. The flag is purely a *signal* to your custom components that more content is coming. If you need a paused/buffered render (e.g. only update every 100ms), implement that in **your** component upstream of `<AIMarkdown>` — debounce the `content` you pass.
+`streaming === true` does not delay rendering. Content is rendered immediately as it arrives. The flag is purely a _signal_ to your custom components that more content is coming. If you need a paused/buffered render (e.g. only update every 100ms), implement that in **your** component upstream of `<AIMarkdown>` — debounce the `content` you pass.
