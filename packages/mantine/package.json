@@ -67,7 +67,7 @@
   },
   "devDependencies": {
     "@ai-react-markdown/core": "workspace:*",
-    "@mantine/code-highlight": "^8.3.18",
+    "@mantine/code-highlight": "^9.2.1",
     "@mantine/core": "^8.3.18",
     "@types/lodash-es": "^4.17.12",
     "@types/node": "^25.5.0",
