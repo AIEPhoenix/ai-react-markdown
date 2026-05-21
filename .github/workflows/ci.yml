@@ -39,7 +39,7 @@ jobs:
         # picks it up automatically.
 
       - name: Setup Node ${{ matrix.node }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node }}
           cache: pnpm
