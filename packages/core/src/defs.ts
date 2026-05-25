@@ -221,6 +221,27 @@ export interface AIMarkdownRenderState<TConfig extends AIMarkdownRenderConfig = 
    */
   documentId: string;
   /**
+   * Whether {@link documentId} was EXPLICITLY supplied by the consumer (vs.
+   * auto-generated via `useId()`). This is the coordination signal — NOT
+   * `documentId` truthiness, which is always `true` because the provider
+   * auto-fills a fallback id for HTML/`clobberPrefix` purposes.
+   *
+   * `useDocumentRegistry` gates on this: an auto-generated id is unique by
+   * construction, so a chunk that didn't receive a `documentId` has nothing
+   * to coordinate with even when it sits inside `<AIMarkdownDocuments>`. It
+   * must take the standalone (registry === null) path, and this flag is the
+   * only thing that lets the registry hook tell "consumer wants coordination"
+   * apart from "we fabricated an id so the markup stays valid".
+   *
+   * Optional in the type ONLY so external callers that construct an
+   * `AIMarkdownRenderState` literal directly (mocks, fixtures) aren't broken
+   * by this internally-added field — the provider ALWAYS sets a concrete
+   * boolean, and internal consumers coerce a missing value to `false`
+   * (safe default: no coordination). Keeping it `?:` preserves source-level
+   * backward compatibility for the publicly-exported state type.
+   */
+  documentIdExplicit?: boolean;
+  /**
    * Per-document URI-safe id prefix used by all clobberable attributes
    * (`id="…"` / `href="#…"`). Derived once by the provider and exposed here
    * so downstream consumers (placeholder components, cross-chunk anchor

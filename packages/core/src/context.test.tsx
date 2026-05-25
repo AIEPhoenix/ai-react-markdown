@@ -293,3 +293,63 @@ describe('AIMarkdownRenderStateProvider documentId shortening', () => {
     expect(html).toContain('data-testid="clobberPrefix">msg-7-user-content-</span>');
   });
 });
+
+function ExplicitProbe() {
+  const { documentId, documentIdExplicit } = useAIMarkdownRenderState();
+  return (
+    <>
+      <span data-testid="explicit">{String(documentIdExplicit)}</span>
+      <span data-testid="docId">{documentId}</span>
+    </>
+  );
+}
+
+describe('AIMarkdownRenderStateProvider documentIdExplicit', () => {
+  // `documentIdExplicit` records whether the consumer SUPPLIED a documentId,
+  // distinct from whether `state.documentId` is non-empty (it always is — the
+  // provider auto-fills via useId). This boolean is what `useDocumentRegistry`
+  // gates on so an auto-generated id does NOT opt a standalone chunk into
+  // cross-chunk coordination just because it sits inside <AIMarkdownDocuments>.
+  test('is true when a non-empty documentId is supplied', () => {
+    const html = renderToString(
+      <AIMarkdownRenderStateProvider
+        streaming={false}
+        fontSize="14px"
+        variant="default"
+        colorScheme="light"
+        documentId="msg-7"
+      >
+        <ExplicitProbe />
+      </AIMarkdownRenderStateProvider>
+    );
+    expect(html).toContain('data-testid="explicit">true<');
+    expect(html).toContain('data-testid="docId">msg-7<');
+  });
+
+  test('is false when documentId is omitted (still gets a non-empty fallback id)', () => {
+    const html = renderToString(
+      <AIMarkdownRenderStateProvider streaming={false} fontSize="14px" variant="default" colorScheme="light">
+        <ExplicitProbe />
+      </AIMarkdownRenderStateProvider>
+    );
+    expect(html).toContain('data-testid="explicit">false<');
+    // The fallback id is still surfaced (non-empty) so clobberPrefix / id
+    // attributes stay valid — only the coordination signal is false.
+    expect(html).toMatch(/data-testid="docId">[^<]+<\/span>/);
+  });
+
+  test('is false when documentId is an empty string', () => {
+    const html = renderToString(
+      <AIMarkdownRenderStateProvider
+        streaming={false}
+        fontSize="14px"
+        variant="default"
+        colorScheme="light"
+        documentId=""
+      >
+        <ExplicitProbe />
+      </AIMarkdownRenderStateProvider>
+    );
+    expect(html).toContain('data-testid="explicit">false<');
+  });
+});

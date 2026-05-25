@@ -21,7 +21,7 @@
 
 'use client';
 
-import { useMemo, memo, useId, type CSSProperties } from 'react';
+import { useMemo, memo, type CSSProperties } from 'react';
 import AIMarkdownRenderStateProvider, {
   AIMarkdownMetadataProvider,
   AIMarkdownRenderStateProviderProps,
@@ -244,13 +244,13 @@ const AIMarkdownComponent = <
   // Branch on `undefined` (not truthiness) so `fontSize={0}` resolves to `'0px'`.
   const usedFontSize = fontSize === undefined ? '0.9375rem' : typeof fontSize === 'number' ? `${fontSize}px` : fontSize;
 
-  // Auto-generate a stable id when the consumer didn't supply one. We hand
-  // back React's native `useId()` value verbatim — any URI/HTML-attribute
-  // safety transformation happens downstream at the prefix construction site
-  // (see `MarkdownContent.tsx`), so the value exposed via context retains its
-  // React identity (useful for debugging and DevTools association).
-  const generatedId = useId();
-  const usedDocumentId = documentId && documentId.length > 0 ? documentId : generatedId;
+  // documentId is forwarded RAW (possibly undefined) to the render-state
+  // provider, which is the single point that resolves the useId() fallback
+  // and derives `documentIdExplicit`. Defaulting here too would (a) duplicate
+  // the fallback the provider already performs and (b) erase the "consumer
+  // supplied an id?" signal before it reaches `useDocumentRegistry` — an
+  // auto-generated id would then wrongly opt a standalone chunk into
+  // cross-chunk coordination when nested under `<AIMarkdownDocuments>`.
 
   // Dev-mode flip-rate warnings on the two cache-sensitive props. These
   // MUST run BEFORE `useStableValue` below, otherwise a deep-equal collapse
@@ -303,7 +303,7 @@ const AIMarkdownComponent = <
         fontSize={usedFontSize}
         variant={variant}
         colorScheme={colorScheme}
-        documentId={usedDocumentId}
+        documentId={documentId}
         defaultConfig={stableDefaultConfig}
         config={stableConfig}
       >
