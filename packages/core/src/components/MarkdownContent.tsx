@@ -172,7 +172,7 @@ const BlockMemoizedRenderer = memo(
     // ─── Cross-chunk coordination wiring (Phase 11) ──────────────────────────
     // All effects below are NO-OP when `registry === null` (standalone mode
     // without `<AIMarkdownDocuments>`): the gating is on `registry` truthiness.
-    const { documentId, clobberPrefix, config } = useAIMarkdownRenderState();
+    const { documentId, documentIdExplicit, clobberPrefix, config } = useAIMarkdownRenderState();
     const reactId = useId();
     // The runtime value behind `useDocumentRegistry` is always a
     // `RegistryInternal` (see `createRegistry`); the public hook narrows
@@ -181,7 +181,7 @@ const BlockMemoizedRenderer = memo(
     // widen back to `RegistryInternal` once at the top so subsequent
     // mutator calls (`registerChunk`, `releaseSymbol`, `contributeChunkData`)
     // type-check without scattered `as` casts.
-    const registry = useDocumentRegistry(documentId) as RegistryInternal | null;
+    const registry = useDocumentRegistry(documentId, documentIdExplicit ?? false) as RegistryInternal | null;
     // Allocate-and-publish state: the Symbol for THIS chunk PAIRED with the
     // registry it was allocated from. Modelling as state — instead of a
     // ref — makes both fields real deps for downstream effects, so React's

@@ -2,6 +2,9 @@ import { describe, test, expect, vi } from 'vitest';
 import { renderToString } from 'react-dom/server';
 import { AIMarkdownDocuments, useDocumentRegistry, __internalGetContext } from './AIMarkdownDocuments';
 import type { Registry } from './documentRegistry';
+import * as registryModule from './documentRegistry';
+import { FootnoteSupNumber } from './crossChunkPlaceholders';
+import AIMarkdownRenderStateProvider from '../context';
 
 describe('<AIMarkdownDocuments>', () => {
   test('renders children', () => {
@@ -102,6 +105,43 @@ describe('<AIMarkdownDocuments>', () => {
     expect(captured).toBeNull();
   });
 
+  test('useDocumentRegistry returns null for a non-explicit (auto-generated) id inside wrapper', () => {
+    // The crux of the standalone-vs-coordinated split: a chunk that did NOT
+    // receive a documentId gets an auto-generated useId fallback. Even though
+    // that fallback is a perfectly good non-empty string AND the chunk sits
+    // inside <AIMarkdownDocuments>, it must NOT register into a registry —
+    // its id is unique by construction, so coordination is meaningless and the
+    // standalone (registry === null) path should be taken.
+    let captured: Registry | null | undefined;
+    function Probe() {
+      // eslint-disable-next-line react-hooks/globals -- test-probe pattern; see above.
+      captured = useDocumentRegistry('_r_auto_0_', /* documentIdExplicit */ false);
+      return null;
+    }
+    renderToString(
+      <AIMarkdownDocuments>
+        <Probe />
+      </AIMarkdownDocuments>
+    );
+    expect(captured).toBeNull();
+  });
+
+  test('useDocumentRegistry returns a registry for an explicit id inside wrapper', () => {
+    // The mirror case: an explicitly-supplied id opts into coordination.
+    let captured: Registry | null | undefined;
+    function Probe() {
+      // eslint-disable-next-line react-hooks/globals -- test-probe pattern; see above.
+      captured = useDocumentRegistry('docX', /* documentIdExplicit */ true);
+      return null;
+    }
+    renderToString(
+      <AIMarkdownDocuments>
+        <Probe />
+      </AIMarkdownDocuments>
+    );
+    expect(captured).not.toBeNull();
+  });
+
   test('registry is evicted from the wrapper map after its last chunk releases', async () => {
     // Long-lived SPAs that cycle through many distinct documentIds would
     // accumulate empty registry shells without eviction. The wrapper hands
@@ -155,6 +195,54 @@ describe('<AIMarkdownDocuments>', () => {
     // docA evicted; docB still alive.
     expect(ctx!.getRegistry('docA')).not.toBe(regA);
     expect(ctx!.getRegistry('docB')).toBe(regB);
+  });
+
+  // ── End-to-end: the original bug's real scenario ────────────────────────
+  // A genuine placeholder component (not a synthetic probe) rendered under the
+  // real render-state provider inside <AIMarkdownDocuments>. The observable
+  // side effect of "did this chunk join the registry?" is whether the wrapper
+  // had to CREATE a registry — getRegistry is lazy, so `createRegistry` firing
+  // is a faithful, output-independent witness (the bug has no visible output
+  // difference; only the registry-shell side effect distinguishes the paths).
+  test('placeholder under wrapper takes standalone (never creates a registry) for an auto-generated id', () => {
+    const spy = vi.spyOn(registryModule, 'createRegistry');
+    try {
+      renderToString(
+        <AIMarkdownDocuments>
+          {/* documentId omitted ⇒ documentIdExplicit=false ⇒ standalone */}
+          <AIMarkdownRenderStateProvider streaming={false} fontSize="14px" variant="default" colorScheme="light">
+            <FootnoteSupNumber label="x" />
+          </AIMarkdownRenderStateProvider>
+        </AIMarkdownDocuments>
+      );
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      // Restore in `finally` so a failed assertion doesn't leak the spy into
+      // later tests (matches the try/finally hygiene of the prod-nesting test).
+      spy.mockRestore();
+    }
+  });
+
+  test('placeholder under wrapper DOES open a registry for an explicit id (positive control)', () => {
+    const spy = vi.spyOn(registryModule, 'createRegistry');
+    try {
+      renderToString(
+        <AIMarkdownDocuments>
+          <AIMarkdownRenderStateProvider
+            streaming={false}
+            fontSize="14px"
+            variant="default"
+            colorScheme="light"
+            documentId="msg-1"
+          >
+            <FootnoteSupNumber label="x" />
+          </AIMarkdownRenderStateProvider>
+        </AIMarkdownDocuments>
+      );
+      expect(spy).toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   test('preserveOrphanReferences prop default is true', () => {

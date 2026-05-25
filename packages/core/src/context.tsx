@@ -222,8 +222,17 @@ const AIMarkdownRenderStateProvider = <RCT extends AIMarkdownRenderConfig = AIMa
   // Fallback id when the caller did not supply one. `useId()` is SSR-safe
   // and stable per component instance. We expose its raw value; HTML/URI
   // safety is applied at the `clobberPrefix` derivation below.
+  //
+  // This provider is the SINGLE descent point for documentId resolution:
+  // `<AIMarkdown>` forwards the raw (possibly undefined) prop straight here
+  // rather than pre-defaulting it, so the "did the consumer supply an id?"
+  // signal survives all the way to where it's consumed. Any deeper consumer
+  // that composes this provider directly (e.g. an extension package that
+  // bypasses `<AIMarkdown>`) therefore gets identical resolution + the
+  // correct `documentIdExplicit` for free.
   const fallbackId = useId();
-  const resolvedDocumentId = documentId && documentId.length > 0 ? documentId : fallbackId;
+  const documentIdExplicit = !!(documentId && documentId.length > 0);
+  const resolvedDocumentId = documentIdExplicit ? documentId! : fallbackId;
 
   // Freeze the state object to enforce immutability downstream.
   const state = useMemo(
@@ -234,6 +243,7 @@ const AIMarkdownRenderStateProvider = <RCT extends AIMarkdownRenderConfig = AIMa
         variant,
         colorScheme,
         documentId: resolvedDocumentId,
+        documentIdExplicit,
         // URI-fragment safe per-document prefix derived once here so downstream
         // consumers (MarkdownContent, cross-chunk placeholder components) read
         // from one canonical source. `encodeURIComponent` runs at the prefix
@@ -251,7 +261,7 @@ const AIMarkdownRenderStateProvider = <RCT extends AIMarkdownRenderConfig = AIMa
         clobberPrefix: `${encodeURIComponent(shortenDocumentId(resolvedDocumentId))}-user-content-`,
         config: mergedConfig,
       }),
-    [streaming, fontSize, variant, colorScheme, resolvedDocumentId, mergedConfig]
+    [streaming, fontSize, variant, colorScheme, resolvedDocumentId, documentIdExplicit, mergedConfig]
   );
 
   return <AIMarkdownRenderStateContext.Provider value={state}>{children}</AIMarkdownRenderStateContext.Provider>;

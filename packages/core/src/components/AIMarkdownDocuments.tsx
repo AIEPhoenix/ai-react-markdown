@@ -149,13 +149,25 @@ export const AIMarkdownDocuments: FC<AIMarkdownDocumentsProps> = ({ preserveOrph
 /**
  * Returns the registry for the given `documentId`, or `null` if:
  *  - `<AIMarkdown>` is not inside an `<AIMarkdownDocuments>` wrapper, OR
- *  - `documentId` is undefined / empty string.
+ *  - `documentId` is undefined / empty string, OR
+ *  - `documentIdExplicit` is `false` — i.e. the id was auto-generated rather
+ *    than supplied by the consumer.
+ *
+ * The `documentIdExplicit` gate is the crux of the standalone-vs-coordinated
+ * decision. An auto-generated id (`useId()` fallback) is non-empty and unique
+ * by construction, so a chunk carrying one has nothing to coordinate with even
+ * inside the wrapper — it must run standalone. Without this gate, the mere
+ * presence of `<AIMarkdownDocuments>` would drag every uncoordinated chunk
+ * onto the cross-chunk registry path (subscribe / allocate / evict overhead)
+ * for no behavioral gain. The flag defaults to `true` so external callers who
+ * pass an id directly are treated as explicit (passing an id IS the intent to
+ * coordinate); the internal renderer threads through `state.documentIdExplicit`.
  *
  * Callers should treat `null` as "no coordination; run standalone path."
  */
-export function useDocumentRegistry(documentId: string | undefined): Registry | null {
+export function useDocumentRegistry(documentId: string | undefined, documentIdExplicit = true): Registry | null {
   const ctx = useContext(AIMarkdownDocumentsContext);
-  if (!ctx || !documentId) return null;
+  if (!ctx || !documentId || !documentIdExplicit) return null;
   return ctx.getRegistry(documentId);
 }
 
