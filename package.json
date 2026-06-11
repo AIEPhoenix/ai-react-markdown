@@ -11,7 +11,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "version-packages": "node scripts/version-packages.mjs",
-    "release": "pnpm build && pnpm publish -r --access public",
+    "release": "pnpm lint && pnpm format:check && pnpm -r typecheck && pnpm vitest run && pnpm build && pnpm publish -r --access public",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build"
   },
