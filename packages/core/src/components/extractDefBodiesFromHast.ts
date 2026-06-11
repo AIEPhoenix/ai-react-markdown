@@ -56,7 +56,15 @@ function sourceIdFromFootnoteLiId(idProp: string, clobberPrefix?: string): strin
   } catch {
     // Malformed percent-encoding (extremely rare — would require user-
     // supplied raw HTML in the def's id). Fall back to the raw form rather
-    // than crashing the harvest.
+    // than crashing the harvest. The raw form will key-mismatch the registry
+    // def, so the aggregate footer's `<li>` renders empty for this label —
+    // surface that in development instead of failing silently.
+    if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
+      console.warn(
+        `[ai-react-markdown] Malformed percent-encoding in footnote id "${raw}"; ` +
+          'its body may be missing from the aggregated footnote footer.'
+      );
+    }
     return raw;
   }
 }
