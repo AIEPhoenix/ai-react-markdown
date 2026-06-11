@@ -10,6 +10,11 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 The 1.4 line opened up the customization surface (URL sanitization, document namespacing, design tokens) and put guardrails around it so consumers can extend safely.
 
+### 1.4.6 — Cross-chunk registry gated on explicit `documentId`
+
+- Cross-chunk coordination now activates only when the consumer passes `documentId` explicitly. Previously an omitted `documentId` was defaulted to `useId()` before reaching `useDocumentRegistry`, so a standalone chunk wrapped in `<AIMarkdownDocuments>` wrongly took the coordination path — and a stray raw placeholder tag in such a chunk could open an orphan registry shell that was never evicted (no paired `registerChunk`).
+- `documentId` is now resolved at a single point (the render-state provider), which threads a `documentIdExplicit` flag through state to `useDocumentRegistry` and the placeholder components. `AIMarkdownRenderState.documentIdExplicit` is optional for 1.x compatibility.
+
 ### 1.4.5 — Token surface for `default` variant
 
 - Spacing, font-size, and heading tokens in the default variant now consume `--aim-font-size-root`. Changing the `fontSize` prop proportionally scales every dimension — no per-token override needed for size-coherent themes.
