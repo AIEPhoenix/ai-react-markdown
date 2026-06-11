@@ -13,6 +13,7 @@
 [![code style: prettier](https://img.shields.io/badge/code_style-prettier-ff69b4?logo=prettier&logoColor=white)](https://prettier.io/)
 [![license](https://img.shields.io/npm/l/@ai-react-markdown/core?color=green)](./LICENSE)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](#contributing)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/AIEPhoenix/ai-react-markdown)
 
 ---
 
