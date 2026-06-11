@@ -7,8 +7,9 @@
 //
 // - Updates "version" in every packages/*/package.json
 // - For non-core packages, updates peerDependencies["@ai-react-markdown/core"] to ^<new-version>
+// - Rewrites core version references in README files (install snippets, examples)
 
-import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 const newVersion = process.argv[2];
@@ -53,6 +54,28 @@ for (const dir of packageDirs) {
 
   writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
   console.log(`${pkg.name}: ${oldVersion} → ${newVersion}`);
+}
+
+// Sync core version references in READMEs (peer-dep install snippets like
+// `"@ai-react-markdown/core": "^1.4.5"` and inline examples like
+// `@ai-react-markdown/core@1.4.5`) so docs don't drift behind releases.
+const readmePaths = [join(ROOT, 'README.md'), ...packageDirs.map((dir) => join(PACKAGES_DIR, dir, 'README.md'))];
+const VERSION = String.raw`\d+\.\d+\.\d+(?:-[\w.]+)?`;
+const README_PATTERNS = [
+  [new RegExp(`("${CORE_PKG_NAME}":\\s*"\\^)${VERSION}(")`, 'g'), `$1${newVersion}$2`],
+  [new RegExp(`(${CORE_PKG_NAME}@)${VERSION}`, 'g'), `$1${newVersion}`],
+];
+for (const readmePath of readmePaths) {
+  if (!existsSync(readmePath)) continue;
+  const before = readFileSync(readmePath, 'utf-8');
+  let after = before;
+  for (const [pattern, replacement] of README_PATTERNS) {
+    after = after.replace(pattern, replacement);
+  }
+  if (after !== before) {
+    writeFileSync(readmePath, after);
+    console.log(`${readmePath.slice(ROOT.length + 1)}: core version refs → ${newVersion}`);
+  }
 }
 
 console.log('\nDone. Run `pnpm install` to update the lockfile.');
