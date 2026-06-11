@@ -4,7 +4,7 @@ import AIMarkdown from '../src/index';
 import 'katex/dist/katex.min.css';
 import '../src/components/typography/variants/all.scss';
 import { withThemedBackground } from './decorators';
-import { STREAMING_DEMO_CONTENT, useStreamedContent } from './streamingHelpers';
+import { useStreamedContent } from './streamingHelpers';
 import { StreamingPlayground } from './streaming/StreamingPlayground';
 import { BlockMemoComparison } from './streaming/BlockMemoComparison';
 import { DEFAULT_PAYLOAD } from './streaming/scenarios';
