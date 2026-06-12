@@ -1,0 +1,80 @@
+name: Release
+
+# Publishes both packages to npm with provenance attestation when a version
+# tag is pushed. Flow:
+#
+#   pnpm version-packages X.Y.Z && pnpm install
+#   git commit -am "chore(release): vX.Y.Z"
+#   git tag vX.Y.Z && git push origin main vX.Y.Z
+#
+# Requires the `NPM_TOKEN` repository secret (an npm automation token with
+# publish rights on the @ai-react-markdown scope). Provenance needs the
+# id-token permission below — it only works from CI, which is the point:
+# every published tarball is cryptographically linked to this workflow run
+# and the exact source commit.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  id-token: write # OIDC token for npm provenance attestation
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Verify & publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify tag matches package version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Tag v${TAG_VERSION} does not match package.json version ${PKG_VERSION}"
+            exit 1
+          fi
+
+      # Full quality gate — mirrors CI so a tag can't ship anything main
+      # wouldn't accept.
+      - name: Lint
+        run: pnpm lint
+
+      - name: Format check
+        run: pnpm format:check
+
+      - name: Typecheck
+        run: pnpm -r typecheck
+
+      - name: Test
+        run: pnpm vitest run
+
+      - name: Build
+        run: pnpm build
+
+      - name: Publish to npm (with provenance)
+        run: pnpm publish -r --access public --no-git-checks --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
