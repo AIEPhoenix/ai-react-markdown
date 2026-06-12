@@ -39,12 +39,14 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
+      # No registry-url: with trusted publishing there is no auth token, and
+      # registry-url would write an .npmrc with an unresolved ${NODE_AUTH_TOKEN}
+      # placeholder that interferes with the OIDC flow.
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: pnpm
-          registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -79,10 +81,11 @@ jobs:
       - name: Test
         run: pnpm -r test
 
-      # setup-node's registry-url writes an .npmrc with a ${NODE_AUTH_TOKEN}
-      # placeholder; export it empty so nothing trips on the unresolved var
-      # (pnpm ≥11.1.3 tolerates it, the empty env makes it explicit).
+      # pnpm delegates the actual upload to the npm CLI, and the OIDC token
+      # exchange happens there — npm 10.x (bundled with Node 22) predates
+      # trusted publishing and dies with ENEEDAUTH.
+      - name: Upgrade npm (OIDC exchange needs ≥ 11.5.1)
+        run: npm install -g npm@^11.5.1 && npm --version
+
       - name: Publish to npm (OIDC trusted publishing + provenance)
         run: npx -y pnpm@^11.1.3 publish -r --access public --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ''
