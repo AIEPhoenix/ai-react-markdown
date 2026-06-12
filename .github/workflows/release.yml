@@ -58,21 +58,22 @@ jobs:
           fi
 
       # Full quality gate — mirrors CI so a tag can't ship anything main
-      # wouldn't accept.
+      # wouldn't accept. Build runs first: mantine's typecheck/tests resolve
+      # @ai-react-markdown/core through its exports map, which points at dist/.
       - name: Lint
         run: pnpm lint
 
       - name: Format check
         run: pnpm format:check
 
+      - name: Build
+        run: pnpm build
+
       - name: Typecheck
         run: pnpm -r typecheck
 
       - name: Test
         run: pnpm vitest run
-
-      - name: Build
-        run: pnpm build
 
       - name: Publish to npm (with provenance)
         run: pnpm publish -r --access public --no-git-checks --provenance
