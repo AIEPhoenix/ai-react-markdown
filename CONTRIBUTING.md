@@ -80,7 +80,7 @@ By participating in this project you agree to abide by the [Contributor Covenant
 
 ## Releasing (maintainer-only)
 
-Releases publish from CI with [npm provenance](https://docs.npmjs.com/generating-provenance-statements) — pushing a `v*` tag triggers `.github/workflows/release.yml`, which re-runs the full quality gate (lint, format, typecheck, tests, build), verifies the tag matches `package.json`, and publishes both packages:
+Releases publish from CI via [npm trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC — no token secret anywhere) with provenance attached automatically. Pushing a `v*` tag triggers `.github/workflows/release.yml`, which re-runs the full quality gate (lint, format, typecheck, tests, build), verifies the tag matches `package.json`, and publishes both packages:
 
 ```bash
 # Sync versions across the monorepo (also rewrites README version refs)
@@ -91,7 +91,7 @@ git tag vX.Y.Z
 git push origin main vX.Y.Z
 ```
 
-The legacy local path (`pnpm release`) still works and runs the same gates, but cannot attach provenance — prefer the tag flow.
+The legacy local path (`pnpm release`) still runs the same gates but relies on your local `npm login` session and cannot attach provenance — prefer the tag flow.
 
 Tag pushes don't auto-create GitHub releases — they're created by hand from the npm version, with the changelog distilled from commits.
 
