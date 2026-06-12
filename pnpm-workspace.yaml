@@ -7,3 +7,8 @@ overrides:
   dompurify: ^3.4.0
   uuid: ^11.1.1
   picomatch: ^4.0.4
+  # Pin the TS major: workspace packages don't declare typescript themselves,
+  # so on lockfile re-resolution (e.g. dependabot) autoInstallPeers grabs the
+  # latest for tsup's optional peer — TS 6 breaks tsup's dts worker (TS5101,
+  # injected baseUrl). Mirrors the dependabot policy that locks typescript.
+  typescript: ^5.9.3
