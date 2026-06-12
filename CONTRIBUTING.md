@@ -80,13 +80,18 @@ By participating in this project you agree to abide by the [Contributor Covenant
 
 ## Releasing (maintainer-only)
 
-```bash
-# Version bumps live in scripts/version-packages.mjs
-pnpm version-packages
+Releases publish from CI with [npm provenance](https://docs.npmjs.com/generating-provenance-statements) — pushing a `v*` tag triggers `.github/workflows/release.yml`, which re-runs the full quality gate (lint, format, typecheck, tests, build), verifies the tag matches `package.json`, and publishes both packages:
 
-# Publish to npm + cut a GitHub release
-pnpm release
+```bash
+# Sync versions across the monorepo (also rewrites README version refs)
+pnpm version-packages X.Y.Z && pnpm install
+
+git commit -am "chore(release): vX.Y.Z"
+git tag vX.Y.Z
+git push origin main vX.Y.Z
 ```
+
+The legacy local path (`pnpm release`) still works and runs the same gates, but cannot attach provenance — prefer the tag flow.
 
 Tag pushes don't auto-create GitHub releases — they're created by hand from the npm version, with the changelog distilled from commits.
 
