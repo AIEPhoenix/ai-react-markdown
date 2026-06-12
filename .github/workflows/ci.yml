@@ -55,13 +55,13 @@ jobs:
         if: matrix.task == 'format-check'
         run: pnpm format:check
 
-      - name: Typecheck (core)
+      - name: Typecheck (all packages)
         if: matrix.task == 'typecheck'
-        run: pnpm --filter @ai-react-markdown/core typecheck
+        run: pnpm -r typecheck
 
-      - name: Test (core)
+      - name: Test (all packages)
         if: matrix.task == 'test'
-        run: pnpm --filter @ai-react-markdown/core test
+        run: pnpm -r test
 
       - name: Build (all packages)
         if: matrix.task == 'build'
