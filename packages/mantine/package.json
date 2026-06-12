@@ -51,7 +51,9 @@
     "./styles.css": "./dist/index.css"
   },
   "scripts": {
-    "build": "tsup"
+    "build": "tsup",
+    "test": "vitest --run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "peerDependencies": {
     "@ai-react-markdown/core": "^1.4.6",
