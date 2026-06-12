@@ -93,7 +93,7 @@ git push origin main vX.Y.Z
 
 The legacy local path (`pnpm release`) still runs the same gates but relies on your local `npm login` session and cannot attach provenance — prefer the tag flow.
 
-Tag pushes don't auto-create GitHub releases — they're created by hand from the npm version, with the changelog distilled from commits.
+The workflow also creates the GitHub release, with notes taken from the version's section in `docs/release-highlights.md` — write that section before tagging (it falls back to auto-generated notes otherwise).
 
 ## Questions?
 
