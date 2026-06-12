@@ -10,6 +10,12 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 The 1.4 line opened up the customization surface (URL sanitization, document namespacing, design tokens) and put guardrails around it so consumers can extend safely.
 
+### 1.4.7 — Dev-mode diagnostics; provenance-attested publishing
+
+- A footnote id with malformed percent-encoding now logs a development-mode warning instead of degrading silently (the aggregated footer renders an empty entry for that label — previously with no signal as to why).
+- First release published via npm trusted publishing (OIDC): both tarballs carry provenance attestation linking them to the exact source commit and CI run. No npm token exists anywhere in the pipeline.
+- `@ai-react-markdown/mantine` gained an SSR smoke-test suite and a typecheck gate in CI (no runtime changes).
+
 ### 1.4.6 — Cross-chunk registry gated on explicit `documentId`
 
 - Cross-chunk coordination now activates only when the consumer passes `documentId` explicitly. Previously an omitted `documentId` was defaulted to `useId()` before reaching `useDocumentRegistry`, so a standalone chunk wrapped in `<AIMarkdownDocuments>` wrongly took the coordination path — and a stray raw placeholder tag in such a chunk could open an orphan registry shell that was never evicted (no paired `registerChunk`).
