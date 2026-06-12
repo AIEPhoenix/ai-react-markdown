@@ -7,11 +7,12 @@ name: Release
 #   git commit -am "chore(release): vX.Y.Z"
 #   git tag vX.Y.Z && git push origin main vX.Y.Z
 #
-# Requires the `NPM_TOKEN` repository secret (an npm automation token with
-# publish rights on the @ai-react-markdown scope). Provenance needs the
-# id-token permission below — it only works from CI, which is the point:
-# every published tarball is cryptographically linked to this workflow run
-# and the exact source commit.
+# Auth is npm "trusted publishing" (OIDC): this repo+workflow is registered
+# as a trusted publisher for both packages on npmjs.com, so no token secret
+# exists at all — npm mints a short-lived credential from the id-token
+# permission below, and provenance is attached automatically. The publish
+# step runs under pnpm 11 (via npx) because native OIDC support landed in
+# pnpm 11.1.3; the rest of the workflow stays on the workspace-pinned pnpm.
 
 on:
   push:
@@ -72,10 +73,16 @@ jobs:
       - name: Typecheck
         run: pnpm -r typecheck
 
+      # Per-package unit suites, matching the CI gate. The root `vitest run`
+      # additionally spins up the storybook browser project, which needs
+      # playwright browsers the runner doesn't have.
       - name: Test
-        run: pnpm vitest run
+        run: pnpm -r test
 
-      - name: Publish to npm (with provenance)
-        run: pnpm publish -r --access public --no-git-checks --provenance
+      # setup-node's registry-url writes an .npmrc with a ${NODE_AUTH_TOKEN}
+      # placeholder; export it empty so nothing trips on the unresolved var
+      # (pnpm ≥11.1.3 tolerates it, the empty env makes it explicit).
+      - name: Publish to npm (OIDC trusted publishing + provenance)
+        run: npx -y pnpm@^11.1.3 publish -r --access public --no-git-checks
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ''
