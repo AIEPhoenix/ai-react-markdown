@@ -10,6 +10,10 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 The 1.4 line opened up the customization surface (URL sanitization, document namespacing, design tokens) and put guardrails around it so consumers can extend safely.
 
+### 1.4.8 — Automated GitHub releases
+
+- Pushing a `v*` tag now also publishes the matching GitHub release, with notes lifted from this file's section for that version (falling back to auto-generated notes). The npm publish and the GitHub release are a single CI step away from one tag push. No library runtime changes.
+
 ### 1.4.7 — Dev-mode diagnostics; provenance-attested publishing
 
 - A footnote id with malformed percent-encoding now logs a development-mode warning instead of degrading silently (the aggregated footer renders an empty entry for that label — previously with no signal as to why).
