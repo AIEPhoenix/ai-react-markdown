@@ -74,7 +74,7 @@
     "rehype-sanitize": "^6.0.0",
     "rehype-unwrap-images": "^1.0.0",
     "remark-breaks": "^4.0.0",
-    "remark-cjk-friendly": "^2.0.1",
+    "remark-cjk-friendly": "^2.1.0",
     "remark-cjk-friendly-gfm-strikethrough": "^2.0.1",
     "remark-definition-list": "^2.0.0",
     "remark-emoji": "^5.0.2",
