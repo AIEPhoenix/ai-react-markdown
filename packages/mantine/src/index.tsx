@@ -7,6 +7,8 @@
  * @packageDocumentation
  */
 
+'use client';
+
 // --- Components ---
 
 /** Props for the main {@link MantineAIMarkdown} component. */
@@ -20,6 +22,16 @@ export { default as MantineAIMarkdownTypography } from './components/typography/
 
 /** Default extra styles wrapper providing Mantine-compatible CSS scoping and overrides. */
 export { default as MantineAIMDefaultExtraStyles } from './components/extra-styles/DefaultExtraStyles';
+
+/**
+ * Built-in code block renderer (syntax highlighting, Mermaid, JSON pretty-print).
+ * Exported so a custom `pre` override can delegate back to the built-in
+ * abilities instead of reimplementing them.
+ */
+export { default as MantineAIMPreCode } from './components/customized/PreCode';
+
+/** Built-in interactive Mermaid diagram renderer used by {@link MantineAIMPreCode}. */
+export { default as MantineAIMMermaidCode } from './components/customized/MermaidCode';
 
 // --- Types, config, and hooks ---
 

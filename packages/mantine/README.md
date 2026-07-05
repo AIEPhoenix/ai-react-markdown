@@ -228,7 +228,7 @@ By default, code blocks without an explicit language annotation render as plaint
 <MantineAIMarkdown content={markdown} config={{ codeBlock: { autoDetectUnknownLanguage: true } }} />
 ```
 
-This uses `highlight.js`'s `highlightAuto` to guess the language. Results may vary for short or ambiguous snippets.
+This uses `highlight.js`'s `highlightAuto` to guess the language. Results may vary for short or ambiguous snippets. During streaming, detection re-runs over the full code text on every token append -- enable only when unlabelled code blocks are actually expected (see [Footguns](#footguns)).
 
 ## Mermaid Diagrams
 
@@ -295,7 +295,18 @@ const customComponents: AIMarkdownCustomComponents = {
 <MantineAIMarkdown content={markdown} customComponents={customComponents} />;
 ```
 
-To override the default `<pre>` handler (and lose built-in code highlighting, Mermaid, and JSON pretty-print support), include `pre` in your custom components.
+To override the default `<pre>` handler, include `pre` in your custom components. You don't have to give up the built-in abilities: the building blocks are exported, so a custom `pre` can delegate back to `MantineAIMPreCode` (code highlighting + Mermaid + JSON pretty-print) or render `MantineAIMMermaidCode` directly.
+
+```tsx
+import { MantineAIMPreCode } from '@ai-react-markdown/mantine';
+
+const customComponents: AIMarkdownCustomComponents = {
+  pre: ({ node, ...props }) => {
+    // ... your own handling for selected blocks ...
+    return <MantineAIMPreCode codeText={extractedText} existLanguage={detectedLanguage} />;
+  },
+};
+```
 
 ## Cross-Chunk Coordination
 
@@ -337,6 +348,8 @@ Caller-provided `Typography`, `ExtraStyles`, and `customComponents` props overri
 
 - `MantineAIMarkdownTypography` -- Mantine-themed typography wrapper
 - `MantineAIMDefaultExtraStyles` -- default extra styles wrapper with Mantine CSS scoping
+- `MantineAIMPreCode` -- built-in code block renderer (highlighting + Mermaid + JSON pretty-print), for composing inside a custom `pre` override
+- `MantineAIMMermaidCode` -- built-in interactive Mermaid diagram renderer
 
 ### Types
 
@@ -352,6 +365,12 @@ Caller-provided `Typography`, `ExtraStyles`, and `customComponents` props overri
 
 - `useMantineAIMarkdownRenderState<TConfig>()` -- typed render-state access
 - `useMantineAIMarkdownMetadata<TMetadata>()` -- typed metadata access
+
+## Footguns
+
+- **JSON blocks may not display the author's original text.** ` ```json ` blocks are run through `deep-parse-json` and re-serialized. That expands nested stringified JSON (usually what you want), but it also parses string _scalars_: `{"flag": "true"}` displays as `{"flag": true}`, and `"null"` becomes `null`. Numbers are protected from precision loss, but if byte-for-byte fidelity of JSON payloads matters, override `pre` for JSON blocks.
+- **`mermaid.initialize` is global.** Mermaid keeps a single global config; every Mermaid diagram render re-initializes it (theme tracks the active color scheme, `securityLevel: 'strict'`, `suppressErrorRendering: true`). If your app also uses the `mermaid` library directly, its own `mermaid.initialize` settings will be overwritten whenever a `<MantineAIMarkdown>` diagram renders (and vice versa).
+- **`codeBlock.autoDetectUnknownLanguage` is expensive during streaming.** `hljs.highlightAuto` re-runs over the full text of every unlabelled code block on each token append -- cost grows with block size × stream length. Keep it off (the default) unless unlabelled blocks are actually expected.
 
 ## Core Package
 

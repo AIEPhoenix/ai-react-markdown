@@ -30,6 +30,11 @@ export interface MantineAIMarkdownRenderConfig extends AIMarkdownRenderConfig {
      * When `true`, uses `highlight.js` auto-detection to determine the language
      * of code blocks that lack an explicit language annotation.
      *
+     * Performance note: during streaming, `hljs.highlightAuto` re-runs over the
+     * FULL code text on every token append — cost grows with block size times
+     * stream length. Enable only when unlabelled code blocks are actually
+     * expected in your content.
+     *
      * @default false
      */
     autoDetectUnknownLanguage: boolean;

@@ -20,9 +20,9 @@
 
     .chart-type-tag {
       padding: calc(0.2125rem * var(--mantine-scale)) calc(0.5625rem * var(--mantine-scale));
-      color: black;
+      color: var(--mantine-color-black);
       border: 1px solid var(--mantine-color-gray-3);
-      background: white;
+      background: var(--mantine-color-white);
       border-radius: var(--mantine-radius-default);
       font-size: var(--mantine-font-size-xs);
       font-weight: 700;

@@ -34,7 +34,10 @@ const SPECIAL_LANGUAGES = new Set<string>(Object.values(SpecialCodeLanguage));
  *   enabled, uses `highlight.js` auto-detection.
  * - Mermaid code blocks (`language-mermaid`) are rendered as interactive diagrams
  *   via {@link MantineAIMMermaidCode}.
- * - JSON code blocks are deep-parsed and pretty-printed before display.
+ * - JSON code blocks are deep-parsed and pretty-printed before display. Because
+ *   `deep-parse-json` also parses string scalars ("true"/"null" become booleans/null,
+ *   nested stringified JSON is expanded; numbers are protected), the displayed
+ *   content can differ from the author's original text.
  * - Unrecognized languages render as plaintext with an "unknown" label using
  *   {@link CodeHighlight} (no tabs).
  * - Recognized languages render with {@link CodeHighlightTabs} showing the

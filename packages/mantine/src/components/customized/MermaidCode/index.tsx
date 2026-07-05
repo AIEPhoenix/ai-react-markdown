@@ -38,11 +38,31 @@ const handleViewSVGInNewWindow = (svgElement: SVGElement | null | undefined, isD
   const text = new XMLSerializer().serializeToString(targetSvg);
   const blob = new Blob([text], { type: 'image/svg+xml' });
   const url = URL.createObjectURL(blob);
-  const win = window.open(url);
-  if (win) {
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
-  }
+  window.open(url);
+  // Revoke unconditionally: the delay covers the navigation race when the
+  // window opened, and prevents a blob URL leak when the popup was blocked.
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
 };
+
+/** Shared wrapper for the inline Tabler-style stroke icons in the header
+ *  controls. One place owns the 9 presentation attributes; call sites supply
+ *  only their `<path>` data (and optionally a size). */
+const TablerIcon = ({ size = 16, children }: { size?: number; children: React.ReactNode }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    strokeWidth="2"
+    stroke="currentColor"
+    fill="none"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    width={`${size}px`}
+    height={`${size}px`}
+  >
+    <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+    {children}
+  </svg>
+);
 
 /**
  * Interactive mermaid diagram renderer.
@@ -58,7 +78,15 @@ const handleViewSVGInNewWindow = (svgElement: SVGElement | null | undefined, isD
  * - Click on the rendered diagram to open the SVG in a new browser window
  * - Copy button for the raw mermaid source code
  * - Chart type label extracted from mermaid's parse result
- * - Preserves the last successful render across transient parse failures
+ * - Preserves the last successful render across transient PARSE failures
+ *   (the streaming common case: incomplete code). A DRAW-stage failure —
+ *   parse passed but `mermaid.render` threw — is a real error for the
+ *   current code and switches to the error view instead of silently showing
+ *   a stale diagram.
+ *
+ * Note: mermaid keeps a single GLOBAL config — the `mermaid.initialize` call
+ * here overwrites any configuration the host application set on the same
+ * mermaid instance (and vice versa).
  *
  * @param props.code - Raw mermaid diagram source code to render.
  */
@@ -82,12 +110,22 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
     let cancelled = false;
 
     const renderMermaid = async () => {
+      // Which stage failed decides the failure UX below: a parse failure on
+      // streaming-incomplete code is transient noise (keep the last good
+      // diagram — mermaid never touched the host), while a draw failure is a
+      // real error for the CURRENT code (parse passed; `mermaid.render`
+      // rejected it, often deterministically) and must not leave a stale
+      // diagram masquerading as the new content.
+      let drawStageReached = false;
       try {
         mermaid.initialize({
           startOnLoad: false,
           securityLevel: 'strict',
           theme: isDark ? 'dark' : 'base',
           darkMode: isDark,
+          // Mermaid draws an "error bomb" graphic into the container before
+          // throwing — suppress it; the catch below owns failure rendering.
+          suppressErrorRendering: true,
         });
         const parseResult = await mermaid.parse(props.code);
         if (!parseResult) {
@@ -99,6 +137,7 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
           return;
         }
 
+        drawStageReached = true;
         const { svg, bindFunctions, diagramType } = await mermaid.render(
           generateMermaidUUID(),
           props.code,
@@ -114,10 +153,24 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
         setChartType(diagramType);
         setRenderError(false);
       } catch {
-        if (!cancelled && renderVersion === renderVersionRef.current && !hasRenderedRef.current) {
-          setChartType('unknown');
-          setRenderError(true);
+        if (cancelled || renderVersion !== renderVersionRef.current) {
+          // A newer attempt owns the host (mermaid serializes render calls
+          // on a global queue, so it runs strictly after this one and
+          // clears/redraws the host itself).
+          return;
         }
+        if (!drawStageReached && hasRenderedRef.current) {
+          // Transient parse failure mid-stream: mermaid.render was never
+          // called, the host still shows the last good diagram — keep it.
+          return;
+        }
+        // First-render failure, or a draw-stage failure (mermaid cleared the
+        // host before throwing): show the error view with the CURRENT code.
+        // Sweep any temp `#d{id}` element a mid-render throw point outside
+        // mermaid's cleanup wrappers may have stranded.
+        ref.current?.querySelectorAll(':scope > [id^="dmermaid-"]').forEach((element) => element.remove());
+        setChartType('unknown');
+        setRenderError(true);
       }
     };
 
@@ -159,13 +212,19 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
               : [
                   <CodeHighlightControl
                     tooltipLabel="Render Mermaid"
-                    key="gpt"
+                    key="render-mermaid"
                     onClick={() => {
                       setShowOriginalCode(false);
                     }}
                   >
                     <Flex align="center" justify="center" w={18} h={18}>
-                      <span className="icon-[gravity-ui--logo-mermaid] relative bottom-[1px] text-[16px]"></span>
+                      <TablerIcon>
+                        <path d="M12 5m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"></path>
+                        <path d="M5 19m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"></path>
+                        <path d="M19 19m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"></path>
+                        <path d="M6.5 17.5l5.5 -4.5l5.5 4.5"></path>
+                        <path d="M12 7l0 6"></path>
+                      </TablerIcon>
                     </Flex>
                   </CodeHighlightControl>,
                 ]
@@ -197,7 +256,11 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
                 }}
               >
                 <Flex align="center" justify="center" w={18} h={18}>
-                  <span className="icon-[entypo--code] relative bottom-[0.25px] text-[16px]"></span>
+                  <TablerIcon>
+                    <path d="M7 8l-4 4l4 4"></path>
+                    <path d="M17 8l4 4l-4 4"></path>
+                    <path d="M14 4l-4 16"></path>
+                  </TablerIcon>
                 </Flex>
               </ActionIcon>
             </Tooltip>
@@ -206,23 +269,14 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
                 <Tooltip label={copied ? 'Copied' : 'Copy'} withArrow position="right">
                   <ActionIcon variant="transparent" size={28} className="action-icon" onClick={copy}>
                     {copied ? (
-                      <span className="icon-origin-[lucide--check] text-[18px]"></span>
+                      <TablerIcon size={18}>
+                        <path d="M5 12l5 5l10 -10"></path>
+                      </TablerIcon>
                     ) : (
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
-                        strokeWidth="2"
-                        stroke="currentColor"
-                        fill="none"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        width="18px"
-                        height="18px"
-                      >
-                        <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+                      <TablerIcon size={18}>
                         <path d="M8 8m0 2a2 2 0 0 1 2 -2h8a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-8a2 2 0 0 1 -2 -2z"></path>
                         <path d="M16 8v-2a2 2 0 0 0 -2 -2h-8a2 2 0 0 0 -2 2v8a2 2 0 0 0 2 2h2"></path>
-                      </svg>
+                      </TablerIcon>
                     )}
                   </ActionIcon>
                 </Tooltip>

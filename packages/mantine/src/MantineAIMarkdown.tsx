@@ -34,6 +34,28 @@ export interface MantineAIMarkdownProps<
   TRenderData extends MantineAIMarkdownMetadata = MantineAIMarkdownMetadata,
 > extends AIMarkdownProps<TConfig, TRenderData> {}
 
+/** Minimal hast node shape needed for code-text extraction. */
+interface CodeHastNode {
+  type: string;
+  tagName?: string;
+  position?: { start?: { offset?: number } };
+  properties?: Record<string, unknown>;
+  value?: string;
+  children?: CodeHastNode[];
+}
+
+/**
+ * Extract the plain text of a code element following `hast-util-to-string`
+ * semantics (concatenate text-node values), plus explicit `<br>` handling so
+ * raw-HTML blocks like `<pre><code>a<br>b</code></pre>` yield `"a\nb"`
+ * instead of gaining fabricated blank lines.
+ */
+const toCodeText = (node: CodeHastNode): string => {
+  if (node.type === 'text') return node.value ?? '';
+  if (node.type === 'element' && node.tagName === 'br') return '\n';
+  return (node.children ?? []).map(toCodeText).join('');
+};
+
 /**
  * Default custom component overrides applied by the Mantine integration.
  *
@@ -44,15 +66,7 @@ export interface MantineAIMarkdownProps<
  */
 const DefaultCustomComponents: AIMarkdownCustomComponents = {
   pre: ({ node, ...usefulProps }) => {
-    const code = node?.children[0] as
-      | {
-          type: string;
-          tagName?: string;
-          position?: { start?: { offset?: number } };
-          properties?: Record<string, unknown>;
-          children: { value?: string }[];
-        }
-      | undefined;
+    const code = node?.children[0] as CodeHastNode | undefined;
     if (!code || code.type !== 'element' || code.tagName !== 'code' || !code.position) {
       return <pre {...usefulProps} />;
     }
@@ -60,7 +74,7 @@ const DefaultCustomComponents: AIMarkdownCustomComponents = {
     const detectedLanguage = (code.properties?.className as string[])
       ?.find((className: string) => className.startsWith('language-'))
       ?.substring('language-'.length);
-    const codeText = code.children.map((child: { value?: string }) => child.value ?? '').join('\n');
+    const codeText = (code.children ?? []).map(toCodeText).join('');
     return <MantineAIMPreCode key={key} codeText={codeText} existLanguage={detectedLanguage} />;
   },
 };
@@ -71,6 +85,11 @@ const DefaultCustomComponents: AIMarkdownCustomComponents = {
  * Merges caller-provided `customComponents` with the Mantine defaults (the caller's
  * overrides take precedence). Automatically resolves the color scheme from Mantine's
  * `useComputedColorScheme` when no explicit `colorScheme` prop is provided.
+ *
+ * Note: the `defaultConfig` fallback casts {@link defaultMantineAIMarkdownRenderConfig}
+ * to `TConfig`. When your `TConfig` extends the Mantine config with additional
+ * REQUIRED fields, that cast cannot supply them — pass an explicit `defaultConfig`
+ * so every field is populated at runtime.
  *
  * @typeParam TConfig - Render configuration type.
  * @typeParam TRenderData - Metadata type.
@@ -95,7 +114,7 @@ const MantineAIMarkdownComponent = <
   const computedColorScheme = useComputedColorScheme('light');
 
   return (
-    <AIMarkdown<MantineAIMarkdownRenderConfig, MantineAIMarkdownMetadata>
+    <AIMarkdown<TConfig, TRenderData>
       Typography={Typography}
       ExtraStyles={ExtraStyles}
       defaultConfig={defaultConfig}
