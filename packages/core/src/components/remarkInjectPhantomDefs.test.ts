@@ -62,6 +62,37 @@ describe('augmentSourceWithPhantoms integration with remark-parse', () => {
     expect(found).toBe(true);
   });
 
+  test('escape-bearing label (the only real bracket form) round-trips identically', () => {
+    // micromark keeps source backslash escapes inside identifiers: a real
+    // definition `[foo\]bar]: /url` yields the identifier `foo\]bar`. Labels
+    // with a BARE `]` therefore cannot come out of a real parse — the only
+    // bracket-bearing labels the registry can ever hold carry the backslash.
+    // Injecting the identifier verbatim must reparse to the SAME identifier,
+    // so the phantom def actually matches the reference (escaping here would
+    // double the backslash and break the match).
+    const sourceLabel = String.raw`FOO\]BAR`;
+    const tree = parseAugmented(String.raw`[click][foo\]bar]`, new Set(), new Set([sourceLabel]));
+    const defIdentifiers: string[] = [];
+    visit(tree, 'definition', (n) => {
+      defIdentifiers.push(n.identifier);
+    });
+    let refIdentifier: string | undefined;
+    visit(tree, 'linkReference', (n) => {
+      refIdentifier = n.identifier;
+    });
+    // Phantom def parsed as a definition (not a leaked paragraph) …
+    expect(defIdentifiers).toHaveLength(1);
+    // … and its identifier matches the in-content reference case-insensitively
+    // (identifiers are case-folded; normalizeId uppercases the registry side).
+    expect(defIdentifiers[0].toUpperCase()).toBe(refIdentifier!.toUpperCase());
+    // Nothing from the injected suffix may surface as visible text.
+    let leaked = false;
+    visit(tree, 'text', (n) => {
+      if (n.value.includes(SENTINEL_LINK_URL) || n.value.includes(SENTINEL_FN_CONTENT)) leaked = true;
+    });
+    expect(leaked).toBe(false);
+  });
+
   test('without augmentation, orphan ref is dropped to literal text', () => {
     const tree = parseAugmented('See [^X].', new Set(), new Set());
     let found = false;

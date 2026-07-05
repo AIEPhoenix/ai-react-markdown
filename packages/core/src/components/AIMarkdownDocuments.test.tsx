@@ -90,11 +90,52 @@ describe('<AIMarkdownDocuments>', () => {
     }
   });
 
+  test('nested-wrapper prod warning is once-per-instance, not once-per-module', () => {
+    // The guard lives in a ref: re-renders of one mounted misuse (every
+    // streaming token) log once, while a second, separately mounted misuse
+    // still gets its own report. Two independent trees → two logs.
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.stubEnv('NODE_ENV', 'production');
+    try {
+      for (let i = 0; i < 2; i++) {
+        renderToString(
+          <AIMarkdownDocuments>
+            <AIMarkdownDocuments>
+              <div />
+            </AIMarkdownDocuments>
+          </AIMarkdownDocuments>
+        );
+      }
+      expect(errSpy).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllEnvs();
+      errSpy.mockRestore();
+    }
+  });
+
   test('useDocumentRegistry returns null if documentId is undefined', () => {
     let captured: Registry | null | undefined;
     function Probe() {
       // eslint-disable-next-line react-hooks/globals -- test-probe pattern; see above.
       captured = useDocumentRegistry(undefined);
+      return null;
+    }
+    renderToString(
+      <AIMarkdownDocuments>
+        <Probe />
+      </AIMarkdownDocuments>
+    );
+    expect(captured).toBeNull();
+  });
+
+  test('useDocumentRegistry returns null for an empty-string documentId', () => {
+    // Locks the falsy-string semantics of the shared `useWouldCoordinate`
+    // gate: `''` must behave like "no id" (a `documentId != null` refactor
+    // would silently regress this).
+    let captured: Registry | null | undefined;
+    function Probe() {
+      // eslint-disable-next-line react-hooks/globals -- test-probe pattern; see above.
+      captured = useDocumentRegistry('');
       return null;
     }
     renderToString(

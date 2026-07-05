@@ -22,7 +22,8 @@ import type { Element as HastElement, Root as HastRoot } from 'hast';
 import type { Root as MdastRoot } from 'mdast';
 import { sanitizeSchema } from './sanitizeSchema';
 import rehypeRebaseHashLinks from './rehypeRebaseHashLinks';
-import type { ReactNode } from 'react';
+import { createElement, Fragment, type ReactNode } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import {
   buildBlocks,
   computeBlockFingerprint,
@@ -515,6 +516,42 @@ describe('buildBlocks — synthesized hast nodes', () => {
     // The orphan div is in the plan as inline (preserves it in render output).
     expect(built.plan.some((p) => p.kind === 'inline' && p.el === hast.children[hast.children.length - 1])).toBe(true);
   });
+
+  test('mdast counterpart with partial position degrades to inline instead of dropping the element', () => {
+    // A remark plugin that rewrites `position` but drops `end.offset` —
+    // the exact-offset map still hits (start.offset is present), but a
+    // BlockInfo cannot be built. The hast element must survive as an inline
+    // plan item, never be silently dropped (drive buildBlocks directly:
+    // remark-parse itself always emits complete positions).
+    const source = 'Hi';
+    const mdast: MdastRoot = {
+      type: 'root',
+      children: [
+        {
+          type: 'paragraph',
+          children: [{ type: 'text', value: 'Hi' }],
+          position: { start: { line: 1, column: 1, offset: 0 }, end: { line: 1, column: 3 } },
+        },
+      ],
+    };
+    const hast: HastRoot = {
+      type: 'root',
+      children: [
+        {
+          type: 'element',
+          tagName: 'p',
+          properties: {},
+          children: [{ type: 'text', value: 'Hi' }],
+          position: { start: { line: 1, column: 1, offset: 0 }, end: { line: 1, column: 3, offset: 2 } },
+        },
+      ],
+    };
+    const built = buildBlocks(mdast, hast, source);
+    expect(built.blocks).toHaveLength(0);
+    const item = built.plan.find((p) => p.kind === 'inline' && p.el === hast.children[0]);
+    expect(item).toBeDefined();
+    expect(item?.reactKey).toBe('inline-0');
+  });
 });
 
 // ─── G3 flush contract (cacheRef external reset) ──────────────────────────
@@ -875,7 +912,7 @@ describe('computeBlockFingerprint (v6)', () => {
       sym,
       'doc-user-content-'
     );
-    expect(fp).toBe('doc-user-content-');
+    expect(fp).toBe(JSON.stringify(['doc-user-content-']));
   });
 
   test('footnote ref label encoded with globalNumber', () => {
@@ -894,7 +931,7 @@ describe('computeBlockFingerprint (v6)', () => {
       sym,
       'doc-user-content-'
     );
-    expect(fp).toBe('doc-user-content-|fn:X=1');
+    expect(fp).toBe(JSON.stringify(['doc-user-content-', ['fn', 'X', 1]]));
   });
 
   test('canonical change in registry → different fingerprint', () => {
@@ -911,10 +948,10 @@ describe('computeBlockFingerprint (v6)', () => {
     const taint = { footnoteRefLabels: [], linkRefLabels: [], imageRefLabels: [], footnoteDefLabels: ['X'] };
     const fpAFirst = computeBlockFingerprint(taint, reg, a, 'doc-');
     // A is canonical, fingerprint encodes 1
-    expect(fpAFirst).toContain('fd:X=1');
+    expect(fpAFirst).toContain('["fd","X",1');
     const fpBFirst = computeBlockFingerprint(taint, reg, b, 'doc-');
     // B is non-canonical, fingerprint encodes 0
-    expect(fpBFirst).toContain('fd:X=0');
+    expect(fpBFirst).toContain('["fd","X",0');
     expect(fpAFirst).not.toBe(fpBFirst);
   });
 
@@ -937,7 +974,7 @@ describe('computeBlockFingerprint (v6)', () => {
       a,
       'doc-'
     );
-    expect(fp).toContain('/2');
+    expect(fp).toContain('["fd","X",0,2]');
   });
 
   test('image title change invalidates fingerprint (v6.1 blocker 2 fix)', () => {
@@ -978,7 +1015,7 @@ describe('computeBlockFingerprint (v6)', () => {
     // Initial fingerprint for A's def block: refCount 0
     const taint = { footnoteRefLabels: [], linkRefLabels: [], imageRefLabels: [], footnoteDefLabels: ['X'] };
     const fpBefore = computeBlockFingerprint(taint, reg, a, 'doc-');
-    expect(fpBefore).toContain('fd:X=1/0');
+    expect(fpBefore).toContain('["fd","X",1,0]');
     // B contributes a ref to X (cross-chunk). registry.getRefsForLabel('X') should rise to 1.
     reg.contributeChunkData(b, {
       refs: [{ label: 'X', kind: 'footnote' }],
@@ -988,8 +1025,38 @@ describe('computeBlockFingerprint (v6)', () => {
       ownLinkLabels: new Set(),
     });
     const fpAfter = computeBlockFingerprint(taint, reg, a, 'doc-');
-    expect(fpAfter).toContain('fd:X=1/1');
+    expect(fpAfter).toContain('["fd","X",1,1]');
     expect(fpBefore).not.toBe(fpAfter); // A's def block must invalidate
+  });
+
+  test('collision regression: delimiter bytes in url/title cannot alias two registry states', () => {
+    // Under the old join('|') encoding both states below encoded the link
+    // part as the SAME byte sequence `lr:X=u|t|` — url `u|t` with empty
+    // title vs url `u` with title `t|` — producing identical fingerprints
+    // for distinct registry states: a false cache hit serving a stale
+    // block. JSON encoding keeps the value boundaries explicit.
+    const taint = { footnoteRefLabels: [], linkRefLabels: ['X'], imageRefLabels: [], footnoteDefLabels: [] };
+    const reg1 = createRegistry();
+    const a1 = reg1.allocateSymbol('A');
+    reg1.contributeChunkData(a1, {
+      refs: [],
+      defs: new Map(),
+      linkDefs: new Map([['X', { identifier: 'X', url: 'u|t', title: '' }]]),
+      ownFootnoteLabels: new Set(),
+      ownLinkLabels: new Set(['X']),
+    });
+    const reg2 = createRegistry();
+    const a2 = reg2.allocateSymbol('A');
+    reg2.contributeChunkData(a2, {
+      refs: [],
+      defs: new Map(),
+      linkDefs: new Map([['X', { identifier: 'X', url: 'u', title: 't|' }]]),
+      ownFootnoteLabels: new Set(),
+      ownLinkLabels: new Set(['X']),
+    });
+    const fp1 = computeBlockFingerprint(taint, reg1, a1, 'doc-');
+    const fp2 = computeBlockFingerprint(taint, reg2, a2, 'doc-');
+    expect(fp1).not.toBe(fp2);
   });
 });
 
@@ -1079,5 +1146,70 @@ describe('renderBlocksWithCache fingerprint cache (v6)', () => {
     renderBlocksWithCache(cacheRef, built.plan, built.globalCtx, opts);
     const e2 = cacheRef.current.blocks.get('See [^x].')?.[0];
     expect(e1?.node).toBe(e2?.node); // globalCtx unchanged → cache hit
+  });
+});
+
+// ─── renderHastSubtree input preservation (urlTransform re-entry) ──────────
+
+describe('renderBlocksWithCache — hast input preservation', () => {
+  // Renders without a re-parse (registry version bump, G3 cache flush,
+  // urlTransform prop swap) re-enter the SAME memoized hast elements. The
+  // visit transform must therefore never mutate the plan's hast in place:
+  // a non-idempotent urlTransform would otherwise be applied on top of its
+  // own previous output.
+  test('cache-miss re-render on the same hast applies urlTransform exactly once', () => {
+    const content = '[link](https://example.com/a)';
+    const { mdast, hast } = runPipeline(content);
+    const built = buildBlocks(mdast, hast, content);
+    const opts: PostOptions = { urlTransform: (u: string) => `https://proxy.test/?u=${encodeURIComponent(u)}` };
+
+    const cacheRef = { current: createCache() };
+    renderBlocksWithCache(cacheRef, built.plan, built.globalCtx, opts);
+    // Simulate a G3 flush: fresh cache, same plan/hast, same options.
+    cacheRef.current = createCache();
+    const r2 = renderBlocksWithCache(cacheRef, built.plan, built.globalCtx, opts);
+
+    const html = renderToStaticMarkup(
+      createElement(
+        Fragment,
+        null,
+        r2.map((r) => r.node)
+      )
+    );
+    expect(html).toContain('https://proxy.test/?u=https%3A%2F%2Fexample.com%2Fa');
+    expect(html).not.toContain('u%3Dhttps'); // double-wrapped proxy URL
+
+    // The plan's hast must stay pristine: the original href survives untouched.
+    const blockItem = built.plan.find((p) => p.kind === 'block');
+    const para = blockItem && 'el' in blockItem ? (blockItem.el as HastElement) : undefined;
+    const anchor = para?.children.find((c): c is HastElement => c.type === 'element' && c.tagName === 'a');
+    expect(anchor?.properties.href).toBe('https://example.com/a');
+  });
+
+  test('swapping urlTransform between renders applies only the new transform', () => {
+    const content = '[link](https://example.com/a)';
+    const { mdast, hast } = runPipeline(content);
+    const built = buildBlocks(mdast, hast, content);
+
+    const cacheRef = { current: createCache() };
+    renderBlocksWithCache(cacheRef, built.plan, built.globalCtx, {
+      urlTransform: (u: string) => `${u}?v=old`,
+    });
+    // urlTransform is a G3 dep: swapping it flushes the cache, then the same
+    // hast re-renders. Only the NEW transform may appear in the output.
+    cacheRef.current = createCache();
+    const r2 = renderBlocksWithCache(cacheRef, built.plan, built.globalCtx, {
+      urlTransform: (u: string) => `${u}?v=new`,
+    });
+
+    const html = renderToStaticMarkup(
+      createElement(
+        Fragment,
+        null,
+        r2.map((r) => r.node)
+      )
+    );
+    expect(html).toContain('https://example.com/a?v=new');
+    expect(html).not.toContain('v=old');
   });
 });

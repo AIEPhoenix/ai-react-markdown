@@ -33,9 +33,6 @@ export interface CrossChunkHandlerOptions {
   /** When true, footnoteDefinitionHandler proactively registers orphan defs
    *  to state.footnoteOrder (Direction A). */
   preserveOrphan: boolean;
-  /** Passed through to placeholder hast properties so React components can
-   *  partition by document. */
-  documentId: string;
 }
 
 // Type assertion helper for state shape (mdast-util-to-hast doesn't export it).
@@ -92,7 +89,6 @@ export function buildCrossChunkHandlers(): Handlers {
           // internally, so cross-chunk case-insensitive matching still works.
           label: node.label ?? node.identifier,
           referenceType: node.referenceType,
-          documentId: s.options.documentId,
         },
         children: s.all(node) as HastElement['children'],
       };
@@ -110,7 +106,6 @@ export function buildCrossChunkHandlers(): Handlers {
           label: node.label ?? node.identifier,
           referenceType: node.referenceType,
           alt: node.alt ?? '',
-          documentId: s.options.documentId,
         },
         children: [],
       };
@@ -134,7 +129,6 @@ export function buildCrossChunkHandlers(): Handlers {
           properties: {
             label: node.identifier,
             localOccurrence,
-            documentId: s.options.documentId,
           },
           children: [],
         };
@@ -148,7 +142,6 @@ export function buildCrossChunkHandlers(): Handlers {
         properties: {
           label: node.identifier,
           localOccurrence,
-          documentId: s.options.documentId,
         },
         children: [],
       };

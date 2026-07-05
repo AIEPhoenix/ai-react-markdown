@@ -176,6 +176,66 @@ export interface RegistryInternal extends Registry {
  * caller's eviction logic.
  */
 export function createRegistry(onEmpty?: () => void): RegistryInternal {
+  // Version-keyed selector tables. Fingerprint computation calls the
+  // selectors once per taint-label per tainted block per render; walking
+  // chunkOrder × refs on every call is O(blocks × refs) per frame. Every
+  // mutation bumps `version` synchronously (all mutators funnel through
+  // `_notify`), so a single O(chunks × refs + defs) pass per version serves
+  // all subsequent selector calls as map lookups. Closure-held so the cache
+  // never leaks onto the (public or internal) registry surface.
+  let selectorCacheVersion = -1;
+  let selectorCache: {
+    canonicalFootnote: Map<string, symbol>;
+    canonicalLink: Map<string, symbol>;
+    /** label → first-occurrence ordinal (footnote numbering). */
+    footnoteNumbers: Map<string, number>;
+    /** label → total footnote-ref count across all chunks. */
+    refCounts: Map<string, number>;
+    /** chunkSym → label → localOccurrence-1-indexed list of global indices. */
+    occurrences: Map<symbol, Map<string, number[]>>;
+  } | null = null;
+  const selectorTables = () => {
+    if (selectorCache && selectorCacheVersion === reg.version) return selectorCache;
+    const canonicalFootnote = new Map<string, symbol>();
+    const canonicalLink = new Map<string, symbol>();
+    const footnoteNumbers = new Map<string, number>();
+    const refCounts = new Map<string, number>();
+    const occurrences = new Map<symbol, Map<string, number[]>>();
+    let nextNumber = 0;
+    for (const sym of reg.chunkOrder) {
+      const data = reg.chunkData.get(sym);
+      if (!data) continue;
+      for (const id of data.defs.keys()) {
+        if (!canonicalFootnote.has(id)) canonicalFootnote.set(id, sym);
+      }
+      for (const id of data.linkDefs.keys()) {
+        if (!canonicalLink.has(id)) canonicalLink.set(id, sym);
+      }
+      for (const ref of data.refs) {
+        // Footnote numbering is a per-space ordinal; link/image refs share
+        // the `refs` array but occupy a disjoint namespace, so they must
+        // NOT advance the footnote counter.
+        if (ref.kind !== 'footnote') continue;
+        if (!footnoteNumbers.has(ref.label)) footnoteNumbers.set(ref.label, ++nextNumber);
+        const globalIndex = (refCounts.get(ref.label) ?? 0) + 1;
+        refCounts.set(ref.label, globalIndex);
+        let perChunk = occurrences.get(sym);
+        if (!perChunk) {
+          perChunk = new Map();
+          occurrences.set(sym, perChunk);
+        }
+        let list = perChunk.get(ref.label);
+        if (!list) {
+          list = [];
+          perChunk.set(ref.label, list);
+        }
+        list.push(globalIndex);
+      }
+    }
+    selectorCache = { canonicalFootnote, canonicalLink, footnoteNumbers, refCounts, occurrences };
+    selectorCacheVersion = reg.version;
+    return selectorCache;
+  };
   const reg = {
     chunkOrder: [] as symbol[],
     chunkData: new Map<symbol, ChunkData>(),
@@ -316,43 +376,15 @@ export function createRegistry(onEmpty?: () => void): RegistryInternal {
     },
 
     canonicalFootnoteFor(label: string): symbol | null {
-      const id = normalizeId(label);
-      for (const sym of this.chunkOrder) {
-        const data = this.chunkData.get(sym);
-        if (data?.defs.has(id)) return sym;
-      }
-      return null;
+      return selectorTables().canonicalFootnote.get(normalizeId(label)) ?? null;
     },
 
     canonicalLinkFor(label: string): symbol | null {
-      const id = normalizeId(label);
-      for (const sym of this.chunkOrder) {
-        const data = this.chunkData.get(sym);
-        if (data?.linkDefs.has(id)) return sym;
-      }
-      return null;
+      return selectorTables().canonicalLink.get(normalizeId(label)) ?? null;
     },
 
     globalNumber(label: string): number | null {
-      const id = normalizeId(label);
-      let n = 0;
-      const seen = new Set<string>();
-      for (const sym of this.chunkOrder) {
-        const data = this.chunkData.get(sym);
-        if (!data) continue;
-        for (const ref of data.refs) {
-          // Footnote numbering is a per-space ordinal; link/image refs share
-          // the `refs` array but occupy a disjoint namespace, so they must
-          // NOT advance the footnote counter.
-          if (ref.kind !== 'footnote') continue;
-          if (!seen.has(ref.label)) {
-            seen.add(ref.label);
-            n++;
-            if (ref.label === id) return n;
-          }
-        }
-      }
-      return null;
+      return selectorTables().footnoteNumbers.get(normalizeId(label)) ?? null;
     },
 
     resolveLinkDef(label: string): LinkDef | null {
@@ -362,37 +394,14 @@ export function createRegistry(onEmpty?: () => void): RegistryInternal {
     },
 
     getRefsForLabel(label: string): number {
-      const id = normalizeId(label);
-      let n = 0;
-      for (const sym of this.chunkOrder) {
-        const data = this.chunkData.get(sym);
-        if (!data) continue;
-        // Only count footnote refs: the consumers (backref-strip and
-        // backref-inject) decide based on whether a footnote `<li>` should
-        // exist, which depends on footnote refs alone.
-        for (const ref of data.refs) {
-          if (ref.kind === 'footnote' && ref.label === id) n++;
-        }
-      }
-      return n;
+      // Only counts footnote refs: the consumers (backref-strip and
+      // backref-inject) decide based on whether a footnote `<li>` should
+      // exist, which depends on footnote refs alone.
+      return selectorTables().refCounts.get(normalizeId(label)) ?? 0;
     },
 
     globalOccurrenceForRef(chunkSym: symbol, label: string, localOccurrence: number): number | null {
-      const id = normalizeId(label);
-      let global = 0;
-      for (const sym of this.chunkOrder) {
-        const data = this.chunkData.get(sym);
-        if (!data) continue;
-        let localCount = 0;
-        for (const ref of data.refs) {
-          if (ref.kind !== 'footnote') continue;
-          if (ref.label !== id) continue;
-          localCount++;
-          global++;
-          if (sym === chunkSym && localCount === localOccurrence) return global;
-        }
-      }
-      return null;
+      return selectorTables().occurrences.get(chunkSym)?.get(normalizeId(label))?.[localOccurrence - 1] ?? null;
     },
 
     _notify(): void {

@@ -41,8 +41,6 @@ interface FootnoteSupProps {
    *  `customMdastHandlers.test.ts`). The component accepts either form
    *  and coerces internally so the contract is robust to the pipeline. */
   localOccurrence?: number | string;
-  /** Optional — but normally the hast tag carries it. */
-  documentId?: string;
 }
 
 /** Coerce the on-the-wire `localOccurrence` (which may be a JS number from

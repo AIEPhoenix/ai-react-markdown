@@ -138,7 +138,7 @@ describe('sanitizeSchema integration', () => {
 });
 
 describe('sanitizeSchema cross-chunk extension', () => {
-  test('allows <cross-chunk-link> with label/referenceType/documentId', () => {
+  test('allows <cross-chunk-link> with label/referenceType; strips documentId', () => {
     const tree: Root = {
       type: 'root',
       children: [
@@ -154,6 +154,9 @@ describe('sanitizeSchema cross-chunk extension', () => {
     const node = firstChildElement(out);
     expect(node.tagName).toBe('cross-chunk-link');
     expect(node.properties?.label).toBe('X');
+    // documentId is no longer part of the placeholder wire format (the
+    // components read it from context) — the allowlist must not keep it.
+    expect(node.properties).not.toHaveProperty('documentId');
   });
 
   test('allows <cross-chunk-image> + <footnote-sup>', () => {
@@ -161,7 +164,7 @@ describe('sanitizeSchema cross-chunk extension', () => {
       type: 'root',
       children: [
         { type: 'element', tagName: 'cross-chunk-image', properties: { label: 'X', alt: 'a' }, children: [] },
-        { type: 'element', tagName: 'footnote-sup', properties: { label: 'Y', documentId: 'd' }, children: [] },
+        { type: 'element', tagName: 'footnote-sup', properties: { label: 'Y' }, children: [] },
       ],
     };
     const out = sanitize(tree, sanitizeSchema) as Root;
@@ -187,7 +190,7 @@ describe('sanitizeSchema cross-chunk extension', () => {
         {
           type: 'element',
           tagName: 'footnote-sup',
-          properties: { label: 'Y', localOccurrence: 2, documentId: 'd' },
+          properties: { label: 'Y', localOccurrence: 2 },
           children: [],
         },
       ],

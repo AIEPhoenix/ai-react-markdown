@@ -24,6 +24,7 @@ import { jsx, jsxs } from 'react/jsx-runtime';
 import type { Processor } from 'unified';
 import { visit } from 'unist-util-visit';
 import type { VFile } from 'vfile';
+import { cloneHastForRender } from '../cloneHastForRender';
 import { createFile, createProcessor } from './processor';
 import { buildTransform } from './transform';
 import type { Deprecation, Options } from './types';
@@ -135,13 +136,25 @@ export function transformStage(parsed: ParsedMarkdown): HastRoot {
  * splice-based filters (`unwrapDisallowed`) have a parent context to work
  * against.
  *
- * Note: the visit transform mutates the input tree in place. For the legacy
- * `<Markdown>` flow this is harmless (the tree is freshly produced). For the
- * block-memo flow, hast is also fresh per render, so callers do not need to
- * defensively clone.
+ * Note: the visit transform mutates the tree it walks in place (urlTransform
+ * results overwrite `properties.href/src`). The SAFE default is therefore to
+ * run the visit on a private structural clone (`preserveInput = true`): a
+ * caller rendering from a tree that outlives the call — the block-memo flow
+ * re-enters the same memoized hast whenever a render happens without a
+ * re-parse (registry version bump, G3 cache flush, urlTransform prop swap) —
+ * would otherwise apply a non-idempotent urlTransform on top of its own
+ * output. Only callers whose tree is single-use and consumed within the same
+ * call (the legacy `<Markdown>` flow, non-element inline plan items that the
+ * transform cannot mutate) should opt OUT with `preserveInput: false` to
+ * skip the clone cost.
  */
-export function renderHastSubtree(tree: HastRoot | RootContent, options: Readonly<Options>): ReactNode {
-  const root: HastRoot = tree.type === 'root' ? tree : { type: 'root', children: [tree] };
+export function renderHastSubtree(
+  tree: HastRoot | RootContent,
+  options: Readonly<Options>,
+  preserveInput = true
+): ReactNode {
+  const input: HastRoot | RootContent = preserveInput ? cloneHastForRender(tree) : tree;
+  const root: HastRoot = input.type === 'root' ? input : { type: 'root', children: [input] };
 
   visit(
     root,
@@ -177,7 +190,10 @@ export function renderHastSubtree(tree: HastRoot | RootContent, options: Readonl
 export function Markdown(options: Readonly<Options>): ReactElement {
   const parsed = parseStage(options);
   const tree = transformStage(parsed);
-  return renderHastSubtree(tree, options) as ReactElement;
+  // preserveInput: false — the tree is freshly produced above and consumed
+  // by this one call; in-place mutation is harmless and this is the hot
+  // full-document path, so skip the clone.
+  return renderHastSubtree(tree, options, false) as ReactElement;
 }
 
 export default Markdown;

@@ -109,6 +109,16 @@ const AIMarkdownDocumentsRoot: FC<
 
 export const AIMarkdownDocuments: FC<AIMarkdownDocumentsProps> = ({ preserveOrphanReferences = true, children }) => {
   const parent = useContext(AIMarkdownDocumentsContext);
+  // Once-per-instance guard for the prod nested-wrapper warning below. A
+  // nested wrapper inside a streaming chat re-renders on every token;
+  // without the guard the `console.error` would flood the console (and any
+  // wired-up error reporter) per token. Per-instance (ref) rather than
+  // module-level so a second, separately mounted misuse still gets reported.
+  // Warning must fire during render (not an effect) so SSR-only apps —
+  // where effects never run — still surface the misuse; the `== null`
+  // init-once shape is the ref-during-render pattern react-hooks/refs
+  // sanctions.
+  const warnedNestedRef = useRef<true | null>(null);
   if (parent !== null) {
     // Dev: fail fast. The error makes the misuse obvious in any non-
     // production environment and prevents subtle bugs (the inner wrapper's
@@ -125,10 +135,10 @@ export const AIMarkdownDocuments: FC<AIMarkdownDocumentsProps> = ({ preserveOrph
     // and render `children` as-is so the existing outer Provider continues
     // to apply.
     //
-    // Hooks-rules note: the outer component only calls `useContext` before
-    // the early return; the hooks that allocate state (`useRef`, `useMemo`)
-    // live in `AIMarkdownDocumentsRoot`, which is only mounted on the
-    // non-nested branch. Whichever branch this instance takes, it takes
+    // Hooks-rules note: the outer component only calls `useContext` and the
+    // warn-guard `useRef` before the early return; the hooks that allocate
+    // registry state (`useRef`, `useMemo`) live in `AIMarkdownDocumentsRoot`,
+    // which is only mounted on the non-nested branch. Whichever branch this instance takes, it takes
     // for its entire lifetime — React's per-instance hook order stays
     // stable and ESLint's `react-hooks/rules-of-hooks` is happy.
     //
@@ -136,9 +146,12 @@ export const AIMarkdownDocuments: FC<AIMarkdownDocumentsProps> = ({ preserveOrph
     if (process.env.NODE_ENV !== 'production') {
       throw new Error(NESTED_WRAPPER_MESSAGE);
     }
-    console.error(
-      `[ai-react-markdown] ${NESTED_WRAPPER_MESSAGE} Falling back to the outer wrapper; the inner wrapper is a no-op.`
-    );
+    if (warnedNestedRef.current == null) {
+      warnedNestedRef.current = true;
+      console.error(
+        `[ai-react-markdown] ${NESTED_WRAPPER_MESSAGE} Falling back to the outer wrapper; the inner wrapper is a no-op.`
+      );
+    }
     return <>{children}</>;
   }
   return (
@@ -167,8 +180,22 @@ export const AIMarkdownDocuments: FC<AIMarkdownDocumentsProps> = ({ preserveOrph
  */
 export function useDocumentRegistry(documentId: string | undefined, documentIdExplicit = true): Registry | null {
   const ctx = useContext(AIMarkdownDocumentsContext);
-  if (!ctx || !documentId || !documentIdExplicit) return null;
-  return ctx.getRegistry(documentId);
+  if (!useWouldCoordinate(documentId, documentIdExplicit)) return null;
+  return ctx!.getRegistry(documentId!);
+}
+
+/** The coordination gate itself, WITHOUT registry allocation: true iff this
+ *  position would coordinate — inside an `<AIMarkdownDocuments>` wrapper AND
+ *  carrying an explicitly-supplied documentId. Single source of truth for
+ *  the gate: `useDocumentRegistry` delegates here, and diagnostics (the
+ *  legacy-path warning in `MarkdownContent`) read the same predicate instead
+ *  of hand-copying the conditions. Safe for pure diagnostics — an allocated
+ *  registry with no registering chunk would never fire `onEmpty` and leak
+ *  its shell, which is why diagnostics must NOT call `useDocumentRegistry`.
+ *  Internal: not re-exported from the package barrel. */
+export function useWouldCoordinate(documentId: string | undefined, documentIdExplicit = true): boolean {
+  const ctx = useContext(AIMarkdownDocumentsContext);
+  return !!ctx && !!documentId && documentIdExplicit;
 }
 
 /** Returns the effective preserveOrphanReferences for this position in the tree:

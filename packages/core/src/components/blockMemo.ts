@@ -82,8 +82,8 @@ export interface BlockInfo {
   startColumn: number;
   /** True if the block contains any TAINT_TYPES node — invalidate on globalCtx change. */
   hasReference: boolean;
-  /** TAINT-block 专属：按节点类型分桶的 label set。Normalized 形态（uppercase）。
-   *  Undefined when hasReference === false. */
+  /** TAINT-block only: label sets bucketed by node type, in normalized
+   *  (uppercase) form. Undefined when hasReference === false. */
   taintLabels?: {
     footnoteRefLabels: string[];
     linkRefLabels: string[];
@@ -390,6 +390,11 @@ export function buildBlocks(mdast: MdastRoot, hast: HastRoot, source: string): B
 
     const mdastPos = mdastNode.position;
     if (!mdastPos || mdastPos.start.offset === undefined || mdastPos.end.offset === undefined) {
+      // Counterpart found but its position lacks the offsets BlockInfo needs
+      // (a remark plugin partially rewrote `position`). Degrade to `inline`
+      // like the other no-counterpart fallbacks — user content is never
+      // silently lost.
+      plan.push({ kind: 'inline', el, reactKey: `inline-${hastOffset}` });
       continue;
     }
 
@@ -425,8 +430,12 @@ export function buildBlocks(mdast: MdastRoot, hast: HastRoot, source: string): B
  * with the same fingerprint render byte-equal output; if any encoded value
  * differs, the block must re-render.
  *
- * Encoding format (deterministic, stable across versions):
- *   `<clobberPrefix>|fn:<L>=<globalNumber>|lr:<L>=<url>|<title>|ir:<L>=<url>|fd:<L>=<canonical>/<refCount>`
+ * Encoding: the collected parts are JSON-stringified (same approach as
+ * `globalCtx`), so content-controlled values (labels/urls/titles) cannot
+ * forge part boundaries the way a plain `join('|')` allowed — two distinct
+ * registry states always produce distinct fingerprints:
+ *   `[<clobberPrefix>, ["fn",<L>,<globalNumber>], ["lr",<L>,<url>,<title>],
+ *    ["ir",<L>,<url>,<title>], ["fd",<L>,<isCanonical>,<refCount>]]`
  *
  * @param taintLabels - Per-block label dependency footprint (from BlockInfo.taintLabels).
  * @param registry    - Shared cross-chunk registry.
@@ -439,23 +448,23 @@ export function computeBlockFingerprint(
   thisChunkSym: symbol,
   clobberPrefix: string
 ): string {
-  const parts: string[] = [clobberPrefix];
+  const parts: unknown[] = [clobberPrefix];
   for (const label of taintLabels.footnoteRefLabels) {
-    parts.push(`fn:${label}=${registry.globalNumber(label) ?? 'null'}`);
+    parts.push(['fn', label, registry.globalNumber(label) ?? null]);
   }
   for (const label of taintLabels.linkRefLabels) {
     const def = registry.resolveLinkDef(label);
-    parts.push(`lr:${label}=${def?.url ?? 'null'}|${def?.title ?? ''}`);
+    parts.push(['lr', label, def?.url ?? null, def?.title ?? null]);
   }
   for (const label of taintLabels.imageRefLabels) {
     const def = registry.resolveLinkDef(label);
-    parts.push(`ir:${label}=${def?.url ?? 'null'}|${def?.title ?? ''}`);
+    parts.push(['ir', label, def?.url ?? null, def?.title ?? null]);
   }
   for (const label of taintLabels.footnoteDefLabels) {
     const isCanonical = registry.canonicalFootnoteFor(label) === thisChunkSym ? 1 : 0;
-    parts.push(`fd:${label}=${isCanonical}/${registry.getRefsForLabel(label)}`);
+    parts.push(['fd', label, isCanonical, registry.getRefsForLabel(label)]);
   }
-  return parts.join('|');
+  return JSON.stringify(parts);
 }
 
 /**
@@ -499,7 +508,12 @@ export function renderBlocksWithCache(
   for (const item of plan) {
     if (item.kind === 'inline') {
       rendered.push({
-        node: renderHastSubtree(item.el, postOptions),
+        // Inline items render fresh EVERY frame on the same memoized hast.
+        // Element inlines (raw-HTML fallbacks) take the default clone — the
+        // visit transform mutates elements in place. Non-element inlines
+        // (the common case: whitespace text between blocks) cannot be
+        // mutated by the transform, so skip the per-frame clone for them.
+        node: renderHastSubtree(item.el, postOptions, item.el.type === 'element'),
         reactKey: item.reactKey,
       });
       continue;

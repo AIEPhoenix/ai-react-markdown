@@ -72,7 +72,7 @@ import {
   AIMarkdownRenderExtraSyntax,
 } from '../defs';
 import { collectDefLabels } from './collectDefLabels';
-import { useDocumentRegistry, usePreserveOrphanReferences } from './AIMarkdownDocuments';
+import { useDocumentRegistry, usePreserveOrphanReferences, useWouldCoordinate } from './AIMarkdownDocuments';
 import type { RegistryInternal } from './documentRegistry';
 import type { SanitizeSchema } from './extendSanitizeSchema';
 import { augmentSourceWithPhantoms } from './remarkInjectPhantomDefs';
@@ -107,6 +107,16 @@ const ExtraSyntaxRemarkPluginMap = {
 
 /** Stable empty object to avoid unnecessary re-renders when no custom components are given. */
 const DefaultCustomComponents: AIMarkdownCustomComponents = {};
+
+/** Zero-allocation Set equality (same size, same members). Shared by the
+ *  ref-stabilized memo pattern used for `ownLabels` and `targetPhantoms`. */
+function setsEqual(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const v of a) {
+    if (!b.has(v)) return false;
+  }
+  return true;
+}
 
 interface AIMarkdownContentProps {
   /** Preprocessed markdown string to render. */
@@ -223,11 +233,36 @@ const BlockMemoizedRenderer = memo(
     useSyncExternalStore(subscribeRegistry, getRegistryVersion, REGISTRY_SSR_SNAPSHOT);
 
     // PASS 0: lightweight def-label scan, then publish to registry.labelSet.
-    const ownLabels = useMemo(() => collectDefLabels(content ?? ''), [content]);
+    //
+    // Stable reference (same pattern as targetPhantoms below): during
+    // streaming, `content` changes on every token, so an unstabilized useMemo
+    // would mint fresh Set identities per token → the register effect below
+    // re-fires per token → releaseSymbol + registerChunk + full labelSet
+    // rebuild + `_notify`, waking EVERY chunk in the document once per token.
+    // Compare the fresh scan against the previous result and keep the old
+    // reference while the label contents are unchanged (the common case —
+    // definitions appear rarely relative to token count).
+    const ownLabelsRef = useRef<ReturnType<typeof collectDefLabels>>({
+      footnoteLabels: new Set<string>(),
+      linkLabels: new Set<string>(),
+    });
+    const ownLabels = useMemo(() => {
+      const next = collectDefLabels(content ?? '');
+      const prev = ownLabelsRef.current;
+      if (setsEqual(next.footnoteLabels, prev.footnoteLabels) && setsEqual(next.linkLabels, prev.linkLabels)) {
+        return prev;
+      }
+      ownLabelsRef.current = next;
+      return next;
+    }, [content]);
 
     useEffect(() => {
       if (!registry) return;
       const s = registry.registerChunk(reactId, ownLabels.footnoteLabels, ownLabels.linkLabels);
+      // No bail needed: the cleanup below always resets to null before a
+      // re-run, so an updater's `prev` could never match anyway. The churn
+      // protection lives upstream — `ownLabels` is ref-stabilized, so this
+      // effect only re-fires when the label CONTENTS actually changed.
       setAllocation({ registry, sym: s });
       return () => {
         registry.releaseSymbol(reactId);
@@ -348,12 +383,7 @@ const BlockMemoizedRenderer = memo(
         }
       }
       const prev = targetPhantomsRef.current;
-      if (
-        nextFootnotes.size === prev.missingFootnotes.size &&
-        nextLinks.size === prev.missingLinks.size &&
-        [...nextFootnotes].every((l) => prev.missingFootnotes.has(l)) &&
-        [...nextLinks].every((l) => prev.missingLinks.has(l))
-      ) {
+      if (setsEqual(nextFootnotes, prev.missingFootnotes) && setsEqual(nextLinks, prev.missingLinks)) {
         return prev;
       }
       const next = { missingFootnotes: nextFootnotes, missingLinks: nextLinks };
@@ -413,7 +443,6 @@ const BlockMemoizedRenderer = memo(
             phantomFootnoteLabels: targetPhantoms.missingFootnotes,
             phantomLinkLabels: targetPhantoms.missingLinks,
             preserveOrphan: preserveForBodyHarvest,
-            documentId,
           }
         : {
             ...remarkRehypeOptions,
@@ -424,16 +453,7 @@ const BlockMemoizedRenderer = memo(
         rehypePlugins,
         remarkRehypeOptions: mergedRemarkRehypeOptions as RemarkRehypeOptions,
       });
-    }, [
-      content,
-      targetPhantoms,
-      remarkPlugins,
-      rehypePlugins,
-      remarkRehypeOptions,
-      handlers,
-      preserveForBodyHarvest,
-      documentId,
-    ]);
+    }, [content, targetPhantoms, remarkPlugins, rehypePlugins, remarkRehypeOptions, handlers, preserveForBodyHarvest]);
     const hast = useMemo(() => transformStage(parsed), [parsed]);
 
     // Cut hast into per-block units indexed back to mdast for cache identity,
@@ -690,7 +710,10 @@ LegacyRenderer.displayName = 'LegacyRenderer';
  */
 const AIMarkdownContent = memo(
   ({ content, customComponents, urlTransform, sanitizeSchema: customSanitizeSchema }: AIMarkdownContentProps) => {
-    const { config, clobberPrefix } = useAIMarkdownRenderState();
+    const { config, clobberPrefix, documentId, documentIdExplicit } = useAIMarkdownRenderState();
+    // Same predicate (and same arguments) as BlockMemoizedRenderer's
+    // `useDocumentRegistry` gate — shared implementation, cannot drift.
+    const wouldCoordinate = useWouldCoordinate(documentId, documentIdExplicit ?? false);
     // Dev-mode flip warnings live in the parent `<AIMarkdown>` (`./../index.tsx`)
     // — they MUST run BEFORE `useStableValue` collapses identity churn, otherwise
     // an inline-but-deep-equal `sanitizeSchema` would be silently stabilized and
@@ -791,6 +814,27 @@ const AIMarkdownContent = memo(
       }),
       [enableDefinitionList]
     );
+
+    // The legacy path silently skips cross-chunk coordination (see
+    // LegacyRenderer docs). Surface the misconfiguration in dev instead of
+    // relying on users reading the JSDoc. Runs in an effect (render must stay
+    // pure) with a per-instance once-guard so a streaming chat re-rendering
+    // per token logs a single line. Gated on `useWouldCoordinate` — NOT on
+    // `documentId` alone, which the provider always fills with a `useId()`
+    // fallback and is therefore never undefined even for standalone usage.
+    const warnedLegacyRef = useRef(false);
+    const legacyUnderDocuments = !config.blockMemoEnabled && wouldCoordinate;
+    useEffect(() => {
+      if (process.env.NODE_ENV === 'production') return;
+      if (!legacyUnderDocuments || warnedLegacyRef.current) return;
+      warnedLegacyRef.current = true;
+      console.warn(
+        '[ai-react-markdown] blockMemoEnabled is false while rendering inside <AIMarkdownDocuments>. ' +
+          'The legacy render path does not participate in cross-chunk coordination — footnote/link ' +
+          'references across chunks will not resolve. Keep blockMemoEnabled: true (the default) for ' +
+          'coordinated documents.'
+      );
+    }, [legacyUnderDocuments]);
 
     const Renderer = config.blockMemoEnabled ? BlockMemoizedRenderer : LegacyRenderer;
     return (

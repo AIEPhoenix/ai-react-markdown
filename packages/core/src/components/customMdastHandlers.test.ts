@@ -18,7 +18,6 @@ function pipe(
     phantomFootnoteLabels?: Set<string>;
     phantomLinkLabels?: Set<string>;
     preserveOrphan?: boolean;
-    documentId?: string;
   }
 ): HastRoot {
   const handlers = buildCrossChunkHandlers();
@@ -26,7 +25,6 @@ function pipe(
     phantomFootnoteLabels: opts.phantomFootnoteLabels ?? new Set(),
     phantomLinkLabels: opts.phantomLinkLabels ?? new Set(),
     preserveOrphan: opts.preserveOrphan ?? true,
-    documentId: opts.documentId ?? 'doc',
   };
   const processor = unified()
     .use(remarkParse)
@@ -74,12 +72,14 @@ describe('customMdastHandlers — Direction B linkReference', () => {
       missingFootnotes: new Set(),
       missingLinks: new Set(['X']),
     });
-    const hast = pipe(augmented, { phantomLinkLabels: new Set(['X']), documentId: 'msg-1' });
+    const hast = pipe(augmented, { phantomLinkLabels: new Set(['X']) });
     const link = findTag(hast, 'cross-chunk-link');
     expect(link).toBeTruthy();
     expect(link?.properties?.label).toBe('X');
     expect(link?.properties?.referenceType).toBe('full');
-    expect(link?.properties?.documentId).toBe('msg-1');
+    // Placeholders read documentId from context, not from a per-element
+    // attribute — the handler must not emit one.
+    expect(link?.properties?.documentId).toBeUndefined();
   });
 
   test('linkReference with no source def emits no placeholder (mdast drops the node)', () => {
@@ -135,7 +135,6 @@ describe('customMdastHandlers — footnoteReference with phantom def', () => {
       phantomFootnoteLabels: new Set<string>(),
       phantomLinkLabels: new Set<string>(),
       preserveOrphan: true,
-      documentId: 'doc',
     };
     const processor = unified()
       .use(remarkParse)
@@ -170,7 +169,6 @@ describe('customMdastHandlers — footnoteReference with phantom def', () => {
       phantomFootnoteLabels: new Set<string>(),
       phantomLinkLabels: new Set<string>(['MISSING']),
       preserveOrphan: true,
-      documentId: 'doc',
     };
     const processor = unified()
       .use(remarkParse)

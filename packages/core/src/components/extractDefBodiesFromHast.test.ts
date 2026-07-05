@@ -460,7 +460,7 @@ describe('extractDefBodiesFromHast', () => {
                         {
                           type: 'element',
                           tagName: 'footnote-sup',
-                          properties: { label: 'y', localOccurrence: 1, documentId: 'd' },
+                          properties: { label: 'y', localOccurrence: 1 },
                           children: [],
                         },
                       ],
@@ -483,7 +483,6 @@ describe('extractDefBodiesFromHast', () => {
     expect(sup.properties).not.toHaveProperty('localOccurrence');
     // Other props survive.
     expect(sup.properties?.label).toBe('y');
-    expect(sup.properties?.documentId).toBe('d');
   });
 
   test('returns empty map when there is no <section data-footnotes>', () => {

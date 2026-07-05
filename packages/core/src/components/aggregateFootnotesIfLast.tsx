@@ -27,6 +27,7 @@
 import { memo, useMemo, type FC } from 'react';
 import type { Element as HastElement, ElementContent as HastElementContent } from 'hast';
 import { renderHastSubtree } from './markdown';
+import { cloneHastForRender } from './cloneHastForRender';
 import type { Registry } from './documentRegistry';
 import type { PostOptions } from './blockMemo';
 
@@ -49,8 +50,12 @@ interface OrderedDef {
   withBackref: boolean;
 }
 
+/** Assembly-time clone: the `<li>` builder below pushes backref anchors into
+ *  the cloned def bodies, which must never mutate the registry-held
+ *  `bodyHast`. Delegates to the shared structural clone (render-time cloning
+ *  is handled separately by `renderHastSubtree`'s default). */
 function cloneHast<T extends HastElementContent>(node: T): T {
-  return JSON.parse(JSON.stringify(node)) as T;
+  return cloneHastForRender(node);
 }
 
 /** Whitespace-only text node — produced by mdast-util-to-hast's
@@ -281,14 +286,11 @@ const AggregateFootnotesIfLastImpl: FC<AggregateFootnotesIfLastProps> = ({
   if (order.length === 0) return null;
   if (order[order.length - 1] !== thisChunkSym) return null;
   if (!tree) return null;
-  // `renderHastSubtree` mutates its input tree in place (see comment on
-  // that function: it assumes the tree is freshly produced per render).
   // Our `tree` is memoised by registry.version, so a non-version-bumping
-  // parent re-render would re-enter the same cached tree. Any non-
-  // idempotent transform (a user-supplied non-idempotent `urlTransform`
-  // is the realistic case) would then compound on every re-render. Clone
-  // before rendering so the cached `tree` stays pristine.
-  return <>{renderHastSubtree(cloneHast(tree), postOptions)}</>;
+  // parent re-render re-enters the same cached tree. `renderHastSubtree`'s
+  // default (`preserveInput: true`) runs the mutating visit on a private
+  // clone, keeping the cached `tree` pristine — no manual clone needed here.
+  return <>{renderHastSubtree(tree, postOptions)}</>;
 };
 
 export const AggregateFootnotesIfLast = memo(AggregateFootnotesIfLastImpl);
