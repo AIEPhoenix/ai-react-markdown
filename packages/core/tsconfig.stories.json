@@ -1,0 +1,7 @@
+{
+  // The single `pnpm typecheck` entry: a strict superset of tsconfig.json
+  // (src + stories + build configs), so src is checked exactly once.
+  // tsconfig.json itself stays src-only for tsup's dts build.
+  "extends": "../../tsconfig.base.json",
+  "include": ["src", "stories", "tsup.config.ts", "vitest.config.ts", "../../types/style-shims.d.ts"]
+}

@@ -91,7 +91,7 @@ git tag vX.Y.Z
 git push origin main vX.Y.Z
 ```
 
-The legacy local path (`pnpm release`) still runs the same gates but relies on your local `npm login` session and cannot attach provenance — prefer the tag flow.
+There is no local publish path: `pnpm release:dry` runs the same quality gates plus a `pnpm publish --dry-run` as a no-publish preflight, and actual publishing only happens through the tag-triggered workflow (npm trusted publishing / OIDC, with provenance).
 
 The workflow also creates the GitHub release, with notes taken from the version's section in `docs/release-highlights.md` — write that section before tagging (it falls back to auto-generated notes otherwise).
 

@@ -9,11 +9,11 @@ export default defineConfig(
     ignores: [
       '**/dist/**',
       '**/node_modules/**',
-      '**/.storybook/**',
       // Build output — companion to `3a1b045 chore: gitignore storybook-static/`,
       // which added the artifact dir to .gitignore but missed the eslint
       // config. Linting bundled JS produces tens of thousands of false-
-      // positive errors against minified code.
+      // positive errors against minified code. (.storybook/ itself is real
+      // source — config, decorators, docs container — and IS linted.)
       '**/storybook-static/**',
     ],
   },
@@ -37,6 +37,17 @@ export default defineConfig(
           ignoreRestSiblings: true,
         },
       ],
+    },
+  },
+  {
+    // Node-run scripts (release tooling). Keeps `process`/`console` from
+    // tripping no-undef without inline /* global */ comments.
+    files: ['scripts/**'],
+    languageOptions: {
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+      },
     },
   },
   eslintConfigPrettier

@@ -5,11 +5,14 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Manual re-runs on any branch (runner debugging, flake triage).
+  workflow_dispatch:
 
-# Cancel any in-progress run on the same ref when a new commit arrives.
+# Cancel superseded runs on PRs only: every main commit keeps its full CI
+# conclusion (bisect / branch-protection readability).
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   ci:
@@ -27,6 +30,7 @@ jobs:
           - format-check
           - typecheck
           - test
+          - storybook-test
           - build
 
     steps:
@@ -55,22 +59,45 @@ jobs:
         if: matrix.task == 'format-check'
         run: pnpm format:check
 
-      # mantine's typecheck/tests resolve @ai-react-markdown/core through its
-      # exports map, which points at dist/ — absent on a fresh checkout since
-      # matrix tasks run in isolated jobs. Build core first so dependents
-      # check against the real built artifact (what npm consumers get).
-      - name: Build core (dependents resolve its dist)
+      # Dependents (mantine src, stories importing package names) resolve
+      # through the exports maps, which point at dist/ — absent on a fresh
+      # checkout since matrix tasks run in isolated jobs. Building first means
+      # they check against the real built artifact (what npm consumers get).
+      - name: Build packages (dependents resolve dist)
         if: matrix.task == 'typecheck' || matrix.task == 'test'
-        run: pnpm --filter @ai-react-markdown/core build
+        run: pnpm build
 
+      # --include-workspace-root also runs the root typecheck script, which
+      # covers .storybook/ and the root config files (no package tsconfig does).
       - name: Typecheck (all packages)
         if: matrix.task == 'typecheck'
-        run: pnpm -r typecheck
+        run: pnpm -r --include-workspace-root typecheck
 
       - name: Test (all packages)
         if: matrix.task == 'test'
         run: pnpm -r test
 
+      # Smoke-renders every story in headless Chromium via the addon-vitest
+      # project — the only automated coverage the stories/decorators have.
+      - name: Storybook browser tests
+        if: matrix.task == 'storybook-test'
+        run: |
+          pnpm build
+          pnpm exec playwright install chromium --with-deps
+          pnpm vitest run --project storybook
+
       - name: Build (all packages)
         if: matrix.task == 'build'
         run: pnpm build
+
+      # Machine-guard the packaging invariants (exports map resolution across
+      # node10/node16/bundler, tarball contents) instead of relying on memory.
+      # ./styles.css is excluded from attw: it is a CSS entrypoint, which attw
+      # can only ever see as an unresolvable JS module.
+      - name: Package checks (attw + publint)
+        if: matrix.task == 'build'
+        run: |
+          pnpm exec attw --pack packages/core
+          pnpm exec attw --pack packages/mantine --exclude-entrypoints ./styles.css
+          pnpm exec publint packages/core
+          pnpm exec publint packages/mantine

@@ -4,7 +4,9 @@ packages:
 # Security floors for transitive deps (formerly package.json `pnpm.overrides`,
 # which pnpm 10 no longer reads — see https://pnpm.io/settings).
 overrides:
-  dompurify: ^3.4.0
+  # >=3.4.11 clears all current advisories (GHSA-cmwh-pvxp-8882 et al.) —
+  # keep this floor on the latest advisory's fix version, or it's decorative.
+  dompurify: ^3.4.11
   uuid: ^11.1.1
   picomatch: ^4.0.4
   # Pin the TS major: workspace packages don't declare typescript themselves,
