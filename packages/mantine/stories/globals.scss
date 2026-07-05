@@ -1,0 +1,12 @@
+@use 'sass:meta';
+
+@import 'highlight.js/styles/atom-one-light.min.css' layer(highlight-js);
+
+// CSS `@import` is only valid at the top of a stylesheet — nesting it under a
+// selector silently drops the scoping at build time. Inline the dark theme via
+// Sass instead so every rule actually nests under the Mantine dark attribute.
+@layer highlight-js {
+  [data-mantine-color-scheme='dark'] {
+    @include meta.load-css('highlight.js/styles/agate.min.css');
+  }
+}

@@ -1,49 +1,41 @@
-import type { Meta, StoryObj } from '@storybook/react-vite';
-import AIMarkdown from '../../src';
+import { coreMetaBase, type CoreMeta, type CoreStory, ThemedAIMarkdown } from '../_shared/coreMeta';
 import { AIMarkdownDocuments } from '../../src/components/AIMarkdownDocuments';
-import { withThemedBackground } from '../decorators';
 
-// Read the Storybook toolbar theme global and normalize to a colorScheme value.
-// AIMarkdown defaults to 'light', so without this every story would stay light
-// regardless of the toolbar toggle — `withThemedBackground` would still flip
-// the page background, leaving white-on-dark text unreadable. The decorator +
-// per-story colorScheme prop together mirror what AIMarkdown.stories.tsx does.
-// Plain function (not a hook) — the leading verb keeps the React Compiler /
-// react-hooks lint rule from flagging it inside render.
-function resolveToolbarColorScheme(globals: Record<string, unknown>): 'light' | 'dark' {
-  return globals.theme === 'dark' ? 'dark' : 'light';
-}
-
-const meta = {
-  title: 'coordination/Cross-chunk footnote',
-  component: AIMarkdownDocuments,
-  decorators: [withThemedBackground],
-} satisfies Meta<typeof AIMarkdownDocuments>;
-export default meta;
-
-export const TwoChunks: StoryObj<typeof meta> = {
-  render: (_, context) => {
-    const colorScheme = resolveToolbarColorScheme(context.globals);
-    return (
-      <AIMarkdownDocuments>
-        <AIMarkdown content="See [^x] for details." documentId="msg-1" colorScheme={colorScheme} />
-        <AIMarkdown
-          content={'More text continues.\n\n[^x]: detailed footnote content.'}
-          documentId="msg-1"
-          colorScheme={colorScheme}
-        />
-      </AIMarkdownDocuments>
-    );
+const meta: CoreMeta = {
+  ...coreMetaBase,
+  tags: ['autodocs'],
+  title: 'Core/Coordination/Cross-Chunk Footnotes',
+  parameters: {
+    docs: {
+      description: {
+        component:
+          'When one logical document is split across multiple `<AIMarkdown>` instances (chunked / ' +
+          'streamed rendering), wrap them in `<AIMarkdownDocuments>` and give every chunk the same ' +
+          '`documentId`. A shared registry then coordinates footnotes and reference definitions ' +
+          'across chunks: refs resolve to defs that live in a *later* chunk, global footnote ' +
+          'numbering stays consistent, backrefs are injected, and the aggregate footnote footer ' +
+          'renders only after the last chunk. Different `documentId`s stay fully isolated — same ' +
+          'labels in two documents never cross-link.',
+      },
+    },
   },
 };
 
-export const OrphanDef: StoryObj<typeof meta> = {
-  render: (_, context) => {
-    const colorScheme = resolveToolbarColorScheme(context.globals);
-    return (
-      <AIMarkdown content={'Body text.\n\n[^x]: orphan note still rendered (Direction A).'} colorScheme={colorScheme} />
-    );
-  },
+export default meta;
+
+/** Ref in chunk 1, definition arrives in chunk 2 — the footnote still resolves. */
+export const TwoChunks: CoreStory = {
+  render: () => (
+    <AIMarkdownDocuments>
+      <ThemedAIMarkdown content="See [^x] for details." documentId="msg-1" />
+      <ThemedAIMarkdown content={'More text continues.\n\n[^x]: detailed footnote content.'} documentId="msg-1" />
+    </AIMarkdownDocuments>
+  ),
+};
+
+/** A definition with no ref anywhere is still rendered (Direction A: preserve orphans). */
+export const OrphanDef: CoreStory = {
+  render: () => <ThemedAIMarkdown content={'Body text.\n\n[^x]: orphan note still rendered (Direction A).'} />,
 };
 
 /**
@@ -57,67 +49,59 @@ export const OrphanDef: StoryObj<typeof meta> = {
  *   - backref injection should fire on chunks 4 and 5 for each of their
  *     local defs that have cross-chunk refs.
  */
-export const FiveChunksScattered: StoryObj<typeof meta> = {
-  render: (_, context) => {
-    const colorScheme = resolveToolbarColorScheme(context.globals);
-    return (
-      <AIMarkdownDocuments>
-        <AIMarkdown
-          documentId="msg-2"
-          colorScheme={colorScheme}
-          content={[
-            '# Introduction',
-            '',
-            'The system uses [^markdown] for content rendering and [^streaming] for partial',
-            'updates. See the [reference docs][docs] for more.',
-          ].join('\n')}
-        />
-        <AIMarkdown
-          documentId="msg-2"
-          colorScheme={colorScheme}
-          content={[
-            '## Architecture',
-            '',
-            'Components are composed [^markdown] hierarchically. Below is the architecture',
-            'diagram:',
-            '',
-            '![Architecture diagram][arch-img]',
-          ].join('\n')}
-        />
-        <AIMarkdown
-          documentId="msg-2"
-          colorScheme={colorScheme}
-          content={[
-            '## Usage example',
-            '',
-            'The [`AIMarkdown`][api] component accepts these props. Refer back to',
-            '[^streaming] for related concepts.',
-          ].join('\n')}
-        />
-        <AIMarkdown
-          documentId="msg-2"
-          colorScheme={colorScheme}
-          content={[
-            '[^markdown]: GitHub-flavored Markdown spec, plus a few extensions for AI',
-            '    rendering scenarios.',
-            '',
-            '[docs]: https://example.com/docs "Project documentation"',
-          ].join('\n')}
-        />
-        <AIMarkdown
-          documentId="msg-2"
-          colorScheme={colorScheme}
-          content={[
-            '[^streaming]: Token-by-token streaming support for LLM outputs.',
-            '',
-            '[arch-img]: https://fastly.picsum.photos/id/337/200/300.jpg?hmac=0CnfGB9OuB4D8IneXqgjPMaGgLSHBKRjSkl_ITBmDxQ "Architecture overview"',
-            '',
-            '[api]: https://example.com/api',
-          ].join('\n')}
-        />
-      </AIMarkdownDocuments>
-    );
-  },
+export const FiveChunksScattered: CoreStory = {
+  render: () => (
+    <AIMarkdownDocuments>
+      <ThemedAIMarkdown
+        documentId="msg-2"
+        content={[
+          '# Introduction',
+          '',
+          'The system uses [^markdown] for content rendering and [^streaming] for partial',
+          'updates. See the [reference docs][docs] for more.',
+        ].join('\n')}
+      />
+      <ThemedAIMarkdown
+        documentId="msg-2"
+        content={[
+          '## Architecture',
+          '',
+          'Components are composed [^markdown] hierarchically. Below is the architecture',
+          'diagram:',
+          '',
+          '![Architecture diagram][arch-img]',
+        ].join('\n')}
+      />
+      <ThemedAIMarkdown
+        documentId="msg-2"
+        content={[
+          '## Usage example',
+          '',
+          'The [`AIMarkdown`][api] component accepts these props. Refer back to',
+          '[^streaming] for related concepts.',
+        ].join('\n')}
+      />
+      <ThemedAIMarkdown
+        documentId="msg-2"
+        content={[
+          '[^markdown]: GitHub-flavored Markdown spec, plus a few extensions for AI',
+          '    rendering scenarios.',
+          '',
+          '[docs]: https://example.com/docs "Project documentation"',
+        ].join('\n')}
+      />
+      <ThemedAIMarkdown
+        documentId="msg-2"
+        content={[
+          '[^streaming]: Token-by-token streaming support for LLM outputs.',
+          '',
+          '[arch-img]: https://fastly.picsum.photos/id/337/200/300.jpg?hmac=0CnfGB9OuB4D8IneXqgjPMaGgLSHBKRjSkl_ITBmDxQ "Architecture overview"',
+          '',
+          '[api]: https://example.com/api',
+        ].join('\n')}
+      />
+    </AIMarkdownDocuments>
+  ),
 };
 
 // ─── Stress: 30 chunks, single document ──────────────────────────────────────
@@ -200,9 +184,9 @@ function buildThirtyChunkSingleDoc(): string[] {
   ];
 }
 
-export const ThirtyChunksSingleDoc: StoryObj<typeof meta> = {
-  render: (_, context) => {
-    const colorScheme = resolveToolbarColorScheme(context.globals);
+/** Stress: one document in exactly 30 chunks — footer only after the last one. */
+export const ThirtyChunksSingleDoc: CoreStory = {
+  render: () => {
     const chunks = buildThirtyChunkSingleDoc();
     // dev-only sanity assertion — keep the chunk count truthful in the title.
     if (chunks.length !== 30) {
@@ -211,7 +195,7 @@ export const ThirtyChunksSingleDoc: StoryObj<typeof meta> = {
     return (
       <AIMarkdownDocuments>
         {chunks.map((c, i) => (
-          <AIMarkdown key={i} content={c} documentId="msg-stress-30" colorScheme={colorScheme} />
+          <ThemedAIMarkdown key={i} content={c} documentId="msg-stress-30" />
         ))}
       </AIMarkdownDocuments>
     );
@@ -265,22 +249,22 @@ function buildDocChunks(tag: string): string[] {
   return all;
 }
 
-export const SixtyChunksThreeDocs: StoryObj<typeof meta> = {
-  render: (_, context) => {
-    const colorScheme = resolveToolbarColorScheme(context.globals);
+/** Stress: three interleaved documents sharing labels — registries must not leak. */
+export const SixtyChunksThreeDocs: CoreStory = {
+  render: () => {
     const a = buildDocChunks('A');
     const b = buildDocChunks('B');
     const c = buildDocChunks('C');
     return (
       <AIMarkdownDocuments>
         {a.map((ch, i) => (
-          <AIMarkdown key={`a-${i}`} content={ch} documentId="msg-stress-A" colorScheme={colorScheme} />
+          <ThemedAIMarkdown key={`a-${i}`} content={ch} documentId="msg-stress-A" />
         ))}
         {b.map((ch, i) => (
-          <AIMarkdown key={`b-${i}`} content={ch} documentId="msg-stress-B" colorScheme={colorScheme} />
+          <ThemedAIMarkdown key={`b-${i}`} content={ch} documentId="msg-stress-B" />
         ))}
         {c.map((ch, i) => (
-          <AIMarkdown key={`c-${i}`} content={ch} documentId="msg-stress-C" colorScheme={colorScheme} />
+          <ThemedAIMarkdown key={`c-${i}`} content={ch} documentId="msg-stress-C" />
         ))}
       </AIMarkdownDocuments>
     );

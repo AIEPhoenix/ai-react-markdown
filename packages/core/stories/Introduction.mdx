@@ -1,0 +1,132 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Introduction" />
+
+# ai-react-markdown
+
+A batteries-included React component for rendering **AI-generated markdown** — LaTeX math,
+GFM, CJK text, emoji, and streaming content — with the robustness an LLM chat surface
+actually needs.
+
+```tsx
+import AIMarkdown from '@ai-react-markdown/core';
+import '@ai-react-markdown/core/typography/default.css';
+import 'katex/dist/katex.min.css'; // only if you render math
+
+function Message({ content }: { content: string }) {
+  return <AIMarkdown content={content} colorScheme="light" />;
+}
+```
+
+That's the whole API for the common case. Everything below is opt-in.
+
+> **Tip — use the toolbar.** The **Theme** switch (top toolbar) drives every story's
+> `colorScheme`, so you can preview light/dark on any example. Open the **Controls** and
+> **Docs** tabs to edit content live and read the per-story notes.
+
+---
+
+## What to explore
+
+The sidebar has two top-level branches — one per package. **Core** is the framework-agnostic
+renderer; **Mantine** is the Mantine-integrated build layered on top of it. Pick your package,
+then drill into the capability you care about. Each leaf isolates one facet so you can feel the
+capability, the robustness, and the ergonomics on their own — instead of hunting through one
+giant blob.
+
+## Core — `@ai-react-markdown/core`
+
+The zero-dependency-on-any-UI-kit renderer. Everything below lives under the **Core** branch.
+
+- **Core / AIMarkdown** — the interactive playground plus the streaming, profiling, and
+  block-memo benchmark stories. Start here to see real token-by-token rendering and the
+  per-frame cost savings of block-level memoization.
+
+### Core / Features — what it renders out of the box
+
+| Group                                   | Covers                                                                                                                                     |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Core / Features / Math**              | KaTeX inline + display math, and the LaTeX preprocessor that survives currency `$`, `\[…\]`/`\(…\)` delimiters, table pipes, and `mhchem`. |
+| **Core / Features / GFM**               | Tables (with alignment), task lists, strikethrough, autolinks.                                                                             |
+| **Core / Features / Code Blocks**       | Language-tagged, theme-able code blocks (semantic output — bring your own tokenizer or use the Mantine package for highlighting).          |
+| **Core / Features / Text & Inline**     | Headings, blockquotes, `==highlight==`, raw inline HTML (`<sub>`, `<sup>`, `<ins>`), horizontal rules.                                     |
+| **Core / Features / Lists & Footnotes** | Ordered/unordered/nested lists, definition lists, footnotes with back-references.                                                          |
+| **Core / Features / Emoji & CJK**       | `:shortcode:` emoji, CJK-friendly emphasis, and pangu auto-spacing between CJK and Latin.                                                  |
+
+### Core / Theming — make it yours without forking
+
+- **Core / Theming / Color Schemes** — light/dark, driven entirely by CSS token scopes.
+- **Core / Theming / Font Size** — one prop proportionally scales every dimension.
+- **Core / Theming / Design Tokens** — retheme spacing, color, and weight by overriding CSS
+  custom properties. No JavaScript required.
+- **Core / Theming / Extra Styles** — a wrapper slot between typography and the markdown
+  content for scoped stylesheets or theme providers.
+
+### Core / Configuration — toggle the pipeline
+
+- **Core / Configuration / Syntax Extensions** — `==highlight==` and definition lists, on/off.
+- **Core / Configuration / Display Optimizations** — SmartyPants, pangu CJK spacing, HTML
+  comment removal, each independently switchable.
+
+### Core / Extending — escape hatches that compose
+
+- **Core / Extending / Custom Components** — replace any element renderer (code blocks, links, …).
+- **Core / Extending / Custom Typography** — swap the wrapper for design-system integration.
+- **Core / Extending / Metadata Context** — pass callbacks to nested components without
+  prop-drilling or busting the streaming cache.
+- **Core / Extending / Content Preprocessors** — string→string transforms before parsing.
+- **Core / Extending / TypeScript Generics** — type an extended config and metadata
+  end-to-end with `<AIMarkdown<TConfig, TRenderData>>` and typed wrapper hooks.
+
+### Core / Robustness — the unglamorous part that matters for LLM output
+
+- **Core / Robustness / URL Sanitization** — two-gate XSS defense neutralizes `javascript:`,
+  `data:`, and `onerror` injection in model output.
+- **Core / Robustness / Partial Markdown** — half-streamed, unclosed syntax renders gracefully
+  instead of throwing.
+- **Core / Robustness / Document Isolation** — two messages on one page never cross-link their
+  footnotes or hash anchors.
+
+### Core / Coordination
+
+- **Core / Coordination / Cross-Chunk Footnotes** — `<AIMarkdownDocuments>` stitches footnotes
+  and references across a document split into multiple streamed chunks.
+
+## Mantine — `@ai-react-markdown/mantine`
+
+The same renderer wired into the Mantine design system: tokenized syntax highlighting,
+Mermaid diagrams, Mantine-native theming, and code-block ergonomics. Lives under the
+**Mantine** branch.
+
+- **Mantine / MantineAIMarkdown** — the interactive playground for the Mantine build.
+
+### Mantine / Features — what the integration adds (and inherits)
+
+| Group                                      | Covers                                                                                                                                              |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Mantine / Features / GFM & Text**        | The Core markdown surface — tables, task lists, strikethrough, the full heading scale — restyled through Mantine typography.                        |
+| **Mantine / Features / Code Highlighting** | The headline difference from Core: fenced code blocks tokenized via `@mantine/code-highlight` (highlight.js), with language tabs and a copy button. |
+| **Mantine / Features / Math**              | Core's full KaTeX + LaTeX-preprocessor pipeline, inherited unchanged inside Mantine typography.                                                     |
+| **Mantine / Features / Mermaid Diagrams**  | ` ```mermaid ` fences render as live SVG diagrams with light/dark theming and a raw-source toggle; parse errors fall back to source.                |
+| **Mantine / Features / Rich Document**     | A realistic assistant message exercising the whole surface at once — prose, highlighted code, math, a table, a task list, a diagram.                |
+
+### Mantine / Configuration — Mantine-only knobs
+
+- **Mantine / Configuration / Code Block** — `codeBlock.defaultExpanded` (collapse long blocks
+  behind an expand button) and `codeBlock.autoDetectUnknownLanguage` (highlight.js language
+  detection for untagged fences).
+
+---
+
+## Design goals
+
+1. **Correct on messy input.** LLM output is partial, malformed mid-stream, and occasionally
+   hostile. The renderer is built to degrade gracefully and sanitize aggressively.
+2. **Cheap to re-render while streaming.** Block-level memoization keeps per-frame cost
+   proportional to the _changed_ fraction of the document — see **Core / AIMarkdown**.
+3. **Themable without forking.** A CSS-custom-property token surface covers most theming;
+   component and typography overrides cover the rest.
+4. **Honest about boundaries.** Core ships semantic, sanitized HTML + typography. Tokenized
+   syntax highlighting and Mermaid diagram rendering are deliberately left out of Core — the
+   Mantine subpackage ships both. Anything beyond that (admonitions, callouts, …) is custom
+   component territory in either package.

@@ -1,22 +1,29 @@
 import type { Preview } from '@storybook/react-vite';
-import { setOptions, start } from 'react-scan';
 import { getUserPreferredColorTheme } from './utils/sb-theme';
-import { withReactScan } from './decorators/withReactScan';
-
-// `scan()` short-circuits when running inside an iframe (Storybook preview is one)
-// and also bails when called with both `enabled: false` and `showToolbar: false`.
-// Calling `start()` directly bypasses both guards so the renderer hook is armed
-// from the very first commit, regardless of toggle state.
-//
-// NOTE: outlines only render in Storybook's *standalone* iframe view
-// (http://localhost:6006/iframe.html?id=...). In the default canvas view the
-// nested manager→preview iframe layout breaks react-scan's overlay positioning.
-// See https://github.com/aidenybai/react-scan/issues/419 — open as of 2025-12.
-setOptions({ enabled: false, showToolbar: false, dangerouslyForceRunInProduction: true });
-start();
+import { ThemedDocsContainer } from './ThemedDocsContainer';
 
 const preview: Preview = {
   parameters: {
+    options: {
+      // Curate the sidebar: Introduction first, then the two packages (Core,
+      // Mantine) as top-level branches, each ordered capability-first via the
+      // nested arrays. Anything not listed falls through to the end, A→Z.
+      storySort: {
+        order: [
+          'Introduction',
+          'Core',
+          ['AIMarkdown', 'Features', 'Theming', 'Configuration', 'Extending', 'Robustness', 'Coordination'],
+          'Mantine',
+          ['MantineAIMarkdown', 'Features', 'Configuration'],
+        ],
+      },
+    },
+    docs: {
+      // Theme the Docs page chrome (MDX / autodocs) to follow the toolbar Theme
+      // switch — `addon-docs`'s static `docs.theme` otherwise keeps it light.
+      container: ThemedDocsContainer,
+    },
+
     controls: {
       matchers: {
         color: /(background|color)$/i,
@@ -33,7 +40,6 @@ const preview: Preview = {
   },
   initialGlobals: {
     theme: getUserPreferredColorTheme(),
-    reactScan: 'off',
   },
   globalTypes: {
     theme: {
@@ -48,20 +54,7 @@ const preview: Preview = {
         dynamicTitle: true,
       },
     },
-    reactScan: {
-      description: 'Toggle react-scan render visualisation (outlines render only in standalone iframe view)',
-      toolbar: {
-        title: 'React Scan',
-        icon: 'lightning',
-        items: [
-          { value: 'off', icon: 'eyeclose', title: 'Off' },
-          { value: 'on', icon: 'eye', title: 'On (use Open Canvas in New Tab)' },
-        ],
-        dynamicTitle: true,
-      },
-    },
   },
-  decorators: [withReactScan],
 };
 
 export default preview;
