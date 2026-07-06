@@ -189,7 +189,9 @@ const emptyLongTasks = (): LongTaskStats => ({ count: 0, total: 0, max: 0 });
 
 const emptyElementRenders = (): ElementRenderStats => ({ total: 0, byTag: {} });
 
-const emptySnapshot = (): RenderProfilerSnapshot => ({
+/** Zeroed snapshot — also the host-side placeholder in the isolated
+ *  (cross-iframe) comparison before a side has reported in. */
+export const emptySnapshot = (): RenderProfilerSnapshot => ({
   warmUpCommits: 0,
   actual: emptyCommitStats(),
   base: emptyCommitStats(),
@@ -364,10 +366,20 @@ export function useRenderProfiler<T extends HTMLElement = HTMLElement>(
       if (actualDuration > acc.actualMax) acc.actualMax = actualDuration;
       if (baseDuration < acc.baseMin) acc.baseMin = baseDuration;
       if (baseDuration > acc.baseMax) acc.baseMax = baseDuration;
-      acc.actualSamples.push(actualDuration);
-      acc.baseSamples.push(baseDuration);
-      if (acc.actualSamples.length > maxSamples) acc.actualSamples.shift();
-      if (acc.baseSamples.length > maxSamples) acc.baseSamples.shift();
+      // The 100 ms snapshot publish re-renders the host component; the
+      // profiled subtree bails out (memoized, stable props) and the commit
+      // lands here as a near-zero blip (~0.02 ms). Those blips are real
+      // React work, so they stay in `total`/`avg` — but they'd dilute the
+      // percentile window toward zero, so exclude them from samples. The
+      // threshold is far below any commit that actually rendered markdown
+      // (cheapest observed streaming commits are ≥ 0.1 ms in dev).
+      const isBailoutBlip = actualDuration < 0.05 && baseDuration < 0.05;
+      if (!isBailoutBlip) {
+        acc.actualSamples.push(actualDuration);
+        acc.baseSamples.push(baseDuration);
+        if (acc.actualSamples.length > maxSamples) acc.actualSamples.shift();
+        if (acc.baseSamples.length > maxSamples) acc.baseSamples.shift();
+      }
     },
     [getAccum, warmUpCount, maxSamples]
   );
