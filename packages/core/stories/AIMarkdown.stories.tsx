@@ -7,6 +7,8 @@ import { withThemedBackground } from './decorators';
 import { useStreamedContent } from './streamingHelpers';
 import { StreamingPlayground } from './streaming/StreamingPlayground';
 import { BlockMemoComparison } from './streaming/BlockMemoComparison';
+import { IsolatedComparison } from './streaming/IsolatedComparison';
+import { IsolatedSide } from './streaming/IsolatedSide';
 import { DEFAULT_PAYLOAD } from './streaming/scenarios';
 import { getStreamingTheme } from './streaming/theme';
 
@@ -186,6 +188,58 @@ export const BlockMemoCompare: Story = {
       />
     );
   },
+};
+
+/**
+ * Process-ISOLATED variant of {@link BlockMemoCompare}: each side runs in a
+ * cross-site iframe (`localhost` vs `127.0.0.1`), which Chrome's Site
+ * Isolation places in separate renderer processes — no shared main thread,
+ * GC, or frame loop between the sides, so fps / slow frames / long tasks
+ * become genuinely per-side. See IsolatedComparison.tsx for the full
+ * tradeoff notes. Keep both stories: same-page = fairest JS-layer A/B;
+ * isolated = the only shape that answers per-side browser-level questions.
+ */
+export const BlockMemoCompareIsolated: Story = {
+  args: {
+    content: DEFAULT_PAYLOAD,
+  },
+  argTypes: {
+    content: {
+      control: 'text',
+      description: 'Markdown payload streamed by every scenario. Edit to test your own content.',
+    },
+    streaming: { table: { disable: true } },
+  },
+  parameters: {
+    controls: { exclude: ['streaming'] },
+    layout: 'fullscreen',
+  },
+  render: (args, context) => {
+    const currentTheme = context.globals.theme === 'dark' ? 'dark' : 'light';
+    return (
+      <IsolatedComparison
+        colorScheme={currentTheme}
+        initialScenario="randomTokens"
+        payload={args.content ?? DEFAULT_PAYLOAD}
+      />
+    );
+  },
+};
+
+/**
+ * One SIDE of {@link BlockMemoCompareIsolated} — loaded by that story's
+ * iframes with config in the URL (`bmcMode` / `bmcSpy` / `bmcScheme`).
+ * Also usable standalone to profile a single render path in isolation.
+ */
+export const BlockMemoSide: Story = {
+  args: {
+    content: '',
+  },
+  parameters: {
+    controls: { disable: true },
+    layout: 'fullscreen',
+  },
+  render: () => <IsolatedSide />,
 };
 
 export const CJKRenderErrorFix: Story = {
