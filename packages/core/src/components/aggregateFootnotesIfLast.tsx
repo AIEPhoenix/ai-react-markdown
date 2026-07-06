@@ -27,6 +27,7 @@
 import { memo, useMemo, type FC } from 'react';
 import type { Element as HastElement, ElementContent as HastElementContent } from 'hast';
 import { renderHastSubtree } from './markdown';
+import { cloneHastForRender } from './cloneHastForRender';
 import type { Registry } from './documentRegistry';
 import type { PostOptions } from './blockMemo';
 
@@ -49,8 +50,12 @@ interface OrderedDef {
   withBackref: boolean;
 }
 
+/** Assembly-time clone: the `<li>` builder below pushes backref anchors into
+ *  the cloned def bodies, which must never mutate the registry-held
+ *  `bodyHast`. Delegates to the shared structural clone — cheaper than the
+ *  previous JSON round-trip and exact for any pipeline-produced hast. */
 function cloneHast<T extends HastElementContent>(node: T): T {
-  return JSON.parse(JSON.stringify(node)) as T;
+  return cloneHastForRender(node);
 }
 
 /** Whitespace-only text node — produced by mdast-util-to-hast's
@@ -281,14 +286,14 @@ const AggregateFootnotesIfLastImpl: FC<AggregateFootnotesIfLastProps> = ({
   if (order.length === 0) return null;
   if (order[order.length - 1] !== thisChunkSym) return null;
   if (!tree) return null;
-  // `renderHastSubtree` mutates its input tree in place (see comment on
-  // that function: it assumes the tree is freshly produced per render).
   // Our `tree` is memoised by registry.version, so a non-version-bumping
-  // parent re-render would re-enter the same cached tree. Any non-
-  // idempotent transform (a user-supplied non-idempotent `urlTransform`
-  // is the realistic case) would then compound on every re-render. Clone
-  // before rendering so the cached `tree` stays pristine.
-  return <>{renderHastSubtree(cloneHast(tree), postOptions)}</>;
+  // parent re-render re-enters the same cached tree. That is safe without a
+  // defensive clone: the visit transform applies urlTransform convergently
+  // (recomputed from the original stashed on `element.data` — see
+  // `buildTransform`), and `renderHastSubtree` itself clones when a
+  // destructive structural filter (element allow/disallow lists, skipHtml)
+  // is set on `postOptions` — never the case from `<AIMarkdown>`.
+  return <>{renderHastSubtree(tree, postOptions)}</>;
 };
 
 export const AggregateFootnotesIfLast = memo(AggregateFootnotesIfLastImpl);

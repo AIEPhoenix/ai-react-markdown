@@ -24,6 +24,7 @@ import { jsx, jsxs } from 'react/jsx-runtime';
 import type { Processor } from 'unified';
 import { visit } from 'unist-util-visit';
 import type { VFile } from 'vfile';
+import { cloneHastForRender } from '../cloneHastForRender';
 import { createFile, createProcessor } from './processor';
 import { buildTransform } from './transform';
 import type { Deprecation, Options } from './types';
@@ -135,13 +136,35 @@ export function transformStage(parsed: ParsedMarkdown): HastRoot {
  * splice-based filters (`unwrapDisallowed`) have a parent context to work
  * against.
  *
- * Note: the visit transform mutates the input tree in place. For the legacy
- * `<Markdown>` flow this is harmless (the tree is freshly produced). For the
- * block-memo flow, hast is also fresh per render, so callers do not need to
- * defensively clone.
+ * Note: the visit transform mutates the tree it walks in place, and callers
+ * MAY pass a tree that outlives the call — the block-memo flow re-enters the
+ * same memoized hast whenever a render happens without a re-parse (G3 cache
+ * flush, registry version bump, urlTransform prop swap). Re-entry is safe
+ * because every mutation class is handled:
+ *
+ * - `urlTransform` overwrites are applied CONVERGENTLY — recomputed from an
+ *   original value stashed on `element.data.originalUrls` (see
+ *   `buildTransform`), so a non-idempotent transform never compounds and a
+ *   swapped transform never sees its predecessor's output. No clone needed.
+ * - The raw→text rewrite is value-preserving and self-exhausting (no raw
+ *   nodes remain after the first pass). No clone needed.
+ * - The element filters (`allowedElements` / `disallowedElements` /
+ *   `allowElement`) and `skipHtml` splice children DESTRUCTIVELY — removed
+ *   nodes are unrecoverable, so when any of them is set the visit runs on a
+ *   private structural clone. `<AIMarkdown>` never sets them (hardcoded
+ *   `undefined` in `MarkdownContent`), so its flows never pay the clone.
+ *
+ * Known accepted edge: flipping a filter/skipHtml ON between renders of the
+ * SAME shared tree cannot retroactively restore nodes an earlier unfiltered
+ * pass already rendered — unreachable from `<AIMarkdown>`, and a content
+ * re-parse heals it on the next token in any streaming flow.
  */
 export function renderHastSubtree(tree: HastRoot | RootContent, options: Readonly<Options>): ReactNode {
-  const root: HastRoot = tree.type === 'root' ? tree : { type: 'root', children: [tree] };
+  const needsClone = Boolean(
+    options.allowedElements || options.disallowedElements || options.allowElement || options.skipHtml
+  );
+  const input: HastRoot | RootContent = needsClone ? cloneHastForRender(tree) : tree;
+  const root: HastRoot = input.type === 'root' ? input : { type: 'root', children: [input] };
 
   visit(
     root,
