@@ -75,7 +75,7 @@
     "@mantine/code-highlight": "^8.3.18",
     "@mantine/core": "^8.3.18",
     "@types/lodash-es": "^4.17.12",
-    "@types/node": "^25.9.1",
+    "@types/node": "^25.9.4",
     "autoprefixer": "^10.5.2",
     "esbuild-sass-plugin": "^3.7.0",
     "highlight.js": "^11.11.1",
