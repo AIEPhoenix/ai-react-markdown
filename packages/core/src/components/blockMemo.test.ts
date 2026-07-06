@@ -22,7 +22,8 @@ import type { Element as HastElement, Root as HastRoot } from 'hast';
 import type { Root as MdastRoot } from 'mdast';
 import { sanitizeSchema } from './sanitizeSchema';
 import rehypeRebaseHashLinks from './rehypeRebaseHashLinks';
-import type { ReactNode } from 'react';
+import { createElement, Fragment, type ReactNode } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import {
   buildBlocks,
   computeBlockFingerprint,
@@ -1079,5 +1080,75 @@ describe('renderBlocksWithCache fingerprint cache (v6)', () => {
     renderBlocksWithCache(cacheRef, built.plan, built.globalCtx, opts);
     const e2 = cacheRef.current.blocks.get('See [^x].')?.[0];
     expect(e1?.node).toBe(e2?.node); // globalCtx unchanged → cache hit
+  });
+});
+
+// ─── renderHastSubtree re-entry safety (urlTransform convergence) ──────────
+
+describe('renderBlocksWithCache — hast re-entry safety', () => {
+  // Renders without a re-parse (registry version bump, G3 cache flush,
+  // urlTransform prop swap) re-enter the SAME memoized hast elements. The
+  // visit transform must therefore apply urlTransform CONVERGENTLY — always
+  // recomputed from the stashed original (`element.data.originalUrls`), so
+  // a non-idempotent urlTransform is never applied on top of its own
+  // previous output and a swapped transform never sees the old one's.
+  test('cache-miss re-render on the same hast applies urlTransform exactly once', () => {
+    const content = '[link](https://example.com/a)';
+    const { mdast, hast } = runPipeline(content);
+    const built = buildBlocks(mdast, hast, content);
+    const opts: PostOptions = { urlTransform: (u: string) => `https://proxy.test/?u=${encodeURIComponent(u)}` };
+
+    const cacheRef = { current: createCache() };
+    renderBlocksWithCache(cacheRef, built.plan, built.globalCtx, opts);
+    // Simulate a G3 flush: fresh cache, same plan/hast, same options.
+    cacheRef.current = createCache();
+    const r2 = renderBlocksWithCache(cacheRef, built.plan, built.globalCtx, opts);
+
+    const html = renderToStaticMarkup(
+      createElement(
+        Fragment,
+        null,
+        r2.map((r) => r.node)
+      )
+    );
+    expect(html).toContain('https://proxy.test/?u=https%3A%2F%2Fexample.com%2Fa');
+    expect(html).not.toContain('u%3Dhttps'); // double-wrapped proxy URL
+
+    // Convergence contract: the transformed value lands in `properties`, but
+    // the ORIGINAL href stays recoverable in the data stash — every future
+    // pass recomputes from it, so re-entry can never compound the transform.
+    const blockItem = built.plan.find((p) => p.kind === 'block');
+    const para = blockItem && 'el' in blockItem ? (blockItem.el as HastElement) : undefined;
+    const anchor = para?.children.find((c): c is HastElement => c.type === 'element' && c.tagName === 'a');
+    const stash = (anchor?.data as { originalUrls?: Record<string, unknown> } | undefined)?.originalUrls;
+    expect(stash?.href).toBe('https://example.com/a');
+    expect(anchor?.properties.href).toBe('https://proxy.test/?u=https%3A%2F%2Fexample.com%2Fa');
+  });
+
+  test('swapping urlTransform between renders applies only the new transform', () => {
+    const content = '[link](https://example.com/a)';
+    const { mdast, hast } = runPipeline(content);
+    const built = buildBlocks(mdast, hast, content);
+
+    const cacheRef = { current: createCache() };
+    renderBlocksWithCache(cacheRef, built.plan, built.globalCtx, {
+      urlTransform: (u: string) => `${u}?v=old`,
+    });
+    // urlTransform is a G3 dep: swapping it flushes the cache, then the same
+    // hast re-renders. Only the NEW transform may appear in the output.
+    cacheRef.current = createCache();
+    const r2 = renderBlocksWithCache(cacheRef, built.plan, built.globalCtx, {
+      urlTransform: (u: string) => `${u}?v=new`,
+    });
+
+    const html = renderToStaticMarkup(
+      createElement(
+        Fragment,
+        null,
+        r2.map((r) => r.node)
+      )
+    );
+    expect(html).toContain('https://example.com/a?v=new');
+    expect(html).not.toContain('v=old');
   });
 });
