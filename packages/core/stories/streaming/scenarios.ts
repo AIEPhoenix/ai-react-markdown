@@ -8,6 +8,27 @@ export interface ScenarioConfig {
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+/**
+ * Deterministic PRNG (mulberry32). Scenario F's "random" token jitter is
+ * seeded with a fixed constant so every run produces the IDENTICAL chunk
+ * split and delay sequence — cross-run comparisons stay apples-to-apples
+ * instead of adding a second layer of run-to-run noise. (Within a single
+ * run both sides always saw the same stream regardless; seeding fixes the
+ * BETWEEN-runs variance.)
+ */
+const mulberry32 = (seed: number) => {
+  let s = seed | 0;
+  return () => {
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+};
+
+/** Fixed seed for scenario F. Displayed in the UI so reruns are known-reproducible. */
+export const RANDOM_TOKENS_SEED = 0xa11ce;
+
 const DEFAULT_BLOCKS = [
   '# Stress payload\n\n',
   'Streaming markdown with mixed token boundaries — code, math, tables, admonitions — all incomplete during transit.\n\n',
@@ -31,6 +52,11 @@ const splitBlocks = (payload: string): string[] => {
   }
   return blocks.length ? blocks : [payload];
 };
+
+/** Top-level markdown block count of a payload — same split the scenarios
+ *  use. Surfaced in the comparison UI so readers can see the payload
+ *  regime (tiny payloads make the block-memo delta noise-dominated). */
+export const countBlocks = (payload: string): number => splitBlocks(payload).length;
 
 export const buildScenarios = (payload: string): Record<string, ScenarioConfig> => {
   const fullPayload = payload || DEFAULT_PAYLOAD;
@@ -146,10 +172,13 @@ const SCENARIO_FACTORIES_FROM = (fullPayload: string, blocks: string[]): Record<
 
   randomTokens: {
     label: 'F. Random LLM-shaped tokens',
-    description: 'Random chunk size 2–8 chars + random delay 15–60ms. Mimics real LLM token jitter.',
+    description:
+      'Random chunk size 2–8 chars + random delay 15–60ms. Mimics real LLM token jitter. ' +
+      `Seeded (0x${RANDOM_TOKENS_SEED.toString(16)}) — every run replays the identical chunk pattern.`,
     hypothesis: 'The most realistic profile — what a chat UI will actually face.',
     run: (push, done) => {
-      const randInt = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
+      const rand = mulberry32(RANDOM_TOKENS_SEED);
+      const randInt = (min: number, max: number) => Math.floor(rand() * (max - min + 1)) + min;
       let cancelled = false;
       let pos = 0;
       (async () => {

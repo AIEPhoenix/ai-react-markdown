@@ -22,6 +22,18 @@ export interface StreamingTheme {
   bad: string;
 }
 
+/**
+ * Thin, theme-tinted scrollbar as inline-able CSS (the standard
+ * `scrollbar-width` / `scrollbar-color` pair — supported by Chrome 121+ and
+ * Firefox, no ::-webkit-scrollbar style injection needed). Spread into the
+ * style of any `overflow: auto` container; also settable on
+ * `document.documentElement` to slim a page's own viewport scrollbar.
+ */
+export const thinScrollbar = (theme: StreamingTheme): { scrollbarWidth: 'thin'; scrollbarColor: string } => ({
+  scrollbarWidth: 'thin',
+  scrollbarColor: `${theme.panelBorder} transparent`,
+});
+
 export const getStreamingTheme = (scheme: ColorScheme): StreamingTheme => {
   const dark = scheme === 'dark';
   return {
