@@ -108,6 +108,15 @@ const ExtraSyntaxRemarkPluginMap = {
 /** Stable empty object to avoid unnecessary re-renders when no custom components are given. */
 const DefaultCustomComponents: AIMarkdownCustomComponents = {};
 
+/** Stable empty result for the PASS 0 def-label scan in standalone mode
+ *  (no registry). One shared frozen instance so `ownLabels` keeps the same
+ *  identity across every render — downstream effects and memos that list it
+ *  as a dep never churn while uncoordinated. */
+const EMPTY_DEF_LABELS: ReturnType<typeof collectDefLabels> = Object.freeze({
+  footnoteLabels: new Set<string>(),
+  linkLabels: new Set<string>(),
+});
+
 interface AIMarkdownContentProps {
   /** Preprocessed markdown string to render. */
   content: string;
@@ -222,8 +231,21 @@ const BlockMemoizedRenderer = memo(
     const getRegistryVersion = useCallback(() => registry?.version ?? 0, [registry]);
     useSyncExternalStore(subscribeRegistry, getRegistryVersion, REGISTRY_SSR_SNAPSHOT);
 
-    // PASS 0: lightweight def-label scan, then publish to registry.labelSet.
-    const ownLabels = useMemo(() => collectDefLabels(content ?? ''), [content]);
+    // PASS 0: def-label scan, then publish to registry.labelSet.
+    //
+    // Coordinated mode ONLY. Despite the "lightweight" framing in
+    // collectDefLabels' docs, it is a full second remark-parse of the
+    // content (def-only pipeline, but parsing is parsing), and every
+    // consumer of `ownLabels` — the register effect below, targetPhantoms,
+    // the contribute effect — no-ops without a registry. Running it in
+    // standalone mode doubles the per-token parse cost of a streaming
+    // render for output nobody reads (measured at ~1/3 of total commit
+    // time on the BlockMemoCompare story). Skip it entirely and hand back
+    // a stable empty result so downstream deps never churn.
+    const ownLabels = useMemo(() => {
+      if (!registry) return EMPTY_DEF_LABELS;
+      return collectDefLabels(content ?? '');
+    }, [content, registry]);
 
     useEffect(() => {
       if (!registry) return;

@@ -43,10 +43,20 @@ export function buildTransform(ctx: TransformContext): BuildVisitor<Root> {
 
       for (key in urlAttributes) {
         if (Object.hasOwn(urlAttributes, key) && Object.hasOwn(properties, key)) {
-          const value = properties[key];
           const test = (urlAttributes as Record<string, ReadonlyArray<string> | null>)[key];
           if (test === null || test.includes(element.tagName)) {
-            properties[key] = ctx.urlTransform(String(value || ''), key, element);
+            // Convergent application: stash the pipeline's original value on
+            // the first visit, and always transform FROM the stash. A shared
+            // (memoized) tree that is re-entered without a re-parse — a
+            // block-memo cache miss after a G3 flush, a urlTransform prop
+            // swap, the aggregate footnote tree on a registry bump — then
+            // yields `currentTransform(original)` instead of compounding the
+            // transform onto its own previous output. This is what lets
+            // `renderHastSubtree` skip the defensive clone for URL rewriting.
+            const data = (element.data ??= {}) as { originalUrls?: Record<string, unknown> };
+            const stash = (data.originalUrls ??= {});
+            if (!(key in stash)) stash[key] = properties[key];
+            properties[key] = ctx.urlTransform(String(stash[key] || ''), key, element);
           }
         }
       }
