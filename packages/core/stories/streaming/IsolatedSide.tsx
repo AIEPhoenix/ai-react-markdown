@@ -46,7 +46,7 @@ export const IsolatedSide = () => {
   // property chains on a hook result that contains refs as ref accesses
   // during render; plain bindings keep the analyzer satisfied.
   const { snapshot, onRender, targetRef, recordChunk, recordElementRender, reset } =
-    useRenderProfiler<HTMLDivElement>({ running });
+    useRenderProfiler<HTMLDivElement>({ running, observeStages: mode === 'memo' });
   const theme = getStreamingTheme(scheme);
 
   // Slim the iframe's own viewport scrollbar too (the side page can be

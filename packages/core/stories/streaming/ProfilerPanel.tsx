@@ -1,6 +1,7 @@
 'use client';
 
 import type { CSSProperties, ReactNode } from 'react';
+import { PIPELINE_STAGES } from '../../src/components/devStageTimings';
 import type { RenderProfilerSnapshot } from './useRenderProfiler';
 import { getStreamingTheme, type ColorScheme } from './theme';
 
@@ -11,6 +12,16 @@ function topTags(byTag: Record<string, number>, limit: number): Array<[string, n
   return Object.entries(byTag)
     .sort((a, b) => b[1] - a[1])
     .slice(0, limit);
+}
+
+/** Panel fields for the observed pipeline stages, in pipeline order. Empty
+ *  when this profiler doesn't observe stage measures (legacy side). */
+function stageFields(snapshot: RenderProfilerSnapshot): Field[] {
+  return PIPELINE_STAGES.filter((k) => snapshot.stages[k]).map((k) => ({
+    label: `${k} avg (ms)`,
+    value: fmt(snapshot.stages[k].total / snapshot.stages[k].count),
+    sub: `Σ ${fmt(snapshot.stages[k].total, 0)} ms · ×${snapshot.stages[k].count} · max ${fmt(snapshot.stages[k].max, 1)}`,
+  }));
 }
 
 type Tone = 'good' | 'warn' | 'bad';
@@ -40,6 +51,7 @@ export const ProfilerPanel = ({
   compact?: boolean;
 }) => {
   const theme = getStreamingTheme(colorScheme);
+  const stages = stageFields(snapshot);
 
   const sectionStyle: CSSProperties = {
     background: theme.panelBg,
@@ -127,6 +139,20 @@ export const ProfilerPanel = ({
         { label: 'max base (ms)', value: fmt(snapshot.base.max) },
       ],
     },
+    // Pipeline stage timings — present only when this profiler observes the
+    // dev-only `ai-markdown:stage:*` measures (block-memo side). Ordered by
+    // the shared PIPELINE_STAGES tuple so a stage added to the pipeline
+    // cannot be silently omitted from the panel.
+    ...(stages.length === 0
+      ? []
+      : [
+          {
+            title: 'Pipeline stages (dev-only)',
+            hint:
+              'per-execution timings from ai-markdown:stage:* performance measures, emitted by the block-memo path only. parse + transform run on every content change regardless of caching — they are the incremental-parse opportunity; render is where block-memo saves. render also fires on cache-hit-only re-renders, so its avg skews low by design.',
+            fields: stages,
+          },
+        ]),
     {
       title: 'Component renders',
       hint: 'spy customComponents count function-body invocations per tag (react-scan-style). Block-memo skips re-invoking components inside cached subtrees → totals diverge cleanly between paths.',
