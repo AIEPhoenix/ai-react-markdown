@@ -7,19 +7,27 @@
  * discard the per-block memo cache on every render.
  *
  * In production builds the entire warning logic is dead-code-eliminated:
- * the gate `typeof process !== 'undefined' && process.env.NODE_ENV !==
- * 'production'` folds to a constant `false` after bundler substitution,
- * so the body's `if (!__DEV__) return;` becomes `return undefined;` and
- * the rest is dropped. The single `useRef` allocation remains
- * (unconditional, by rules of hooks) but is harmless.
+ * the shared `DEV` gate folds to a constant `false` after bundler
+ * substitution, so the body's `if (!__DEV__) return;` becomes
+ * `return undefined;` and the rest is dropped. The single `useRef`
+ * allocation remains (unconditional, by rules of hooks) but is harmless.
+ *
+ * History note: this module used to gate on
+ * `typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'`,
+ * which was silently FALSE in bundler browser dev — Vite substitutes only
+ * the bare `process.env.NODE_ENV` text and leaves `typeof process`
+ * evaluating `'undefined'` in the browser, so these warnings never fired
+ * where they mattered most. The shared crash-safe gate in `../devEnv`
+ * fixes that; see its docs before "hardening" any dev gate again.
  *
  * @module hooks/useReferenceFlipWarning
  */
 
 import { useRef } from 'react';
+import { DEV } from '../devEnv';
 
-/** Module-scope dev flag. Bundlers fold this to a constant in production. */
-const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production';
+/** Module-scope dev flag — the shared crash-safe gate. */
+const __DEV__ = DEV;
 
 /** How many identity flips before the first warning fires. */
 const FLIP_THRESHOLD = 3;
