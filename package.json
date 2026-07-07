@@ -8,6 +8,7 @@
     "build": "pnpm --filter './packages/*' run build",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
+    "typecheck": "tsc --noEmit -p tsconfig.storybook.json",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "version-packages": "node scripts/version-packages.mjs",
