@@ -35,6 +35,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ProfilerOnRenderCallback, RefObject } from 'react';
+import { STAGE_MEASURE_PREFIX } from '../../src/components/devStageTimings';
 
 export interface ChunkSample {
   index: number;
@@ -86,6 +87,13 @@ export interface ElementRenderStats {
   byTag: Record<string, number>;
 }
 
+/** Aggregate of one pipeline stage's `performance.measure` entries. */
+export interface StageStats {
+  count: number;
+  total: number;
+  max: number;
+}
+
 export interface RenderProfilerSnapshot {
   /** Commits intentionally excluded from stats during JIT warm-up. */
   warmUpCommits: number;
@@ -117,6 +125,14 @@ export interface RenderProfilerSnapshot {
    * component level" — react-scan-style without DevTools hook hackery.
    */
   elementRenders: ElementRenderStats;
+  /**
+   * Dev-only pipeline stage timings (`ai-markdown:stage:*` performance
+   * measures emitted by the block-memo render path). Empty unless the hook
+   * was created with `observeStages: true` AND an instrumented (dev-build,
+   * block-memo) renderer is measuring on this page. Keyed by stage name
+   * (parse / transform / build / render).
+   */
+  stages: Record<string, StageStats>;
   chunks: ChunkSample[];
   totalChars: number;
   lastResetAt: number;
@@ -142,6 +158,13 @@ export interface RenderProfilerOptions {
    * task after the stream ends is still captured.
    */
   running?: boolean;
+  /**
+   * Aggregate `ai-markdown:stage:*` performance measures into
+   * `snapshot.stages`. Measures are PAGE-WIDE — in a same-page comparison
+   * only ONE profiler (the block-memo side's) should observe them, or both
+   * panels would display the same union. Default `false`.
+   */
+  observeStages?: boolean;
 }
 
 export interface RenderProfilerHandle<T extends HTMLElement = HTMLElement> {
@@ -203,6 +226,7 @@ export const emptySnapshot = (): RenderProfilerSnapshot => ({
   rafCount: 0,
   longTasks: emptyLongTasks(),
   elementRenders: emptyElementRenders(),
+  stages: {},
   chunks: [],
   totalChars: 0,
   lastResetAt: 0,
@@ -244,6 +268,8 @@ interface Accum {
   // Element render counter (driven by spy customComponents)
   elementRenderTotal: number;
   elementRenderByTag: Record<string, number>;
+  // Pipeline stage measures (observeStages only)
+  stages: Record<string, StageStats>;
   // Stream chunks
   chunks: ChunkSample[];
   totalChars: number;
@@ -279,6 +305,7 @@ const emptyAccum = (now: number): Accum => ({
   longTaskMax: 0,
   elementRenderTotal: 0,
   elementRenderByTag: {},
+  stages: {},
   chunks: [],
   totalChars: 0,
   lastResetAt: now,
@@ -329,6 +356,7 @@ export function useRenderProfiler<T extends HTMLElement = HTMLElement>(
   const maxSamples = opts?.maxSamples ?? 500;
   const snapshotMs = opts?.snapshotIntervalMs ?? 100;
   const running = opts?.running ?? true;
+  const observeStages = opts?.observeStages ?? false;
 
   // Lazy initialization to avoid calling `performance.now()` during render
   // (would trip React Compiler purity checks).
@@ -465,6 +493,7 @@ export function useRenderProfiler<T extends HTMLElement = HTMLElement>(
         total: acc.elementRenderTotal,
         byTag: { ...acc.elementRenderByTag },
       },
+      stages: Object.fromEntries(Object.entries(acc.stages).map(([k, v]) => [k, { ...v }])),
       chunks: acc.chunks.slice(),
       totalChars: acc.totalChars,
       lastResetAt: acc.lastResetAt,
@@ -548,6 +577,33 @@ export function useRenderProfiler<T extends HTMLElement = HTMLElement>(
     });
     return () => obs.disconnect();
   }, []);
+
+  // PerformanceObserver measure — aggregates the dev-only pipeline stage
+  // timings the block-memo renderer emits (see src devStageTimings).
+  // Page-wide by nature; only enable on ONE profiler per page (the
+  // block-memo side), otherwise both panels show the same union.
+  useEffect(() => {
+    if (!observeStages || typeof PerformanceObserver === 'undefined') return;
+    let observer: PerformanceObserver | undefined;
+    try {
+      observer = new PerformanceObserver((list) => {
+        const acc = accumRef.current;
+        if (!acc) return;
+        for (const entry of list.getEntries()) {
+          if (!entry.name.startsWith(STAGE_MEASURE_PREFIX)) continue;
+          const stage = entry.name.slice(STAGE_MEASURE_PREFIX.length);
+          const s = (acc.stages[stage] ??= { count: 0, total: 0, max: 0 });
+          s.count += 1;
+          s.total += entry.duration;
+          if (entry.duration > s.max) s.max = entry.duration;
+        }
+      });
+      observer.observe({ entryTypes: ['measure'] });
+    } catch {
+      // measure observation unsupported — stage panel simply stays empty.
+    }
+    return () => observer?.disconnect();
+  }, [observeStages]);
 
   // PerformanceObserver longtask — main-thread blocks ≥ 50 ms, the kind
   // that produce visible jank. Page-wide (not per-side), so when two

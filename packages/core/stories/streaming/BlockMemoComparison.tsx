@@ -114,7 +114,10 @@ export const BlockMemoComparison = ({
   const payloadBlocks = useMemo(() => countBlocks(effectivePayload), [effectivePayload]);
   const scenarios = useMemo(() => buildScenarios(effectivePayload), [effectivePayload]);
 
-  const enabledProfiler = useRenderProfiler<HTMLDivElement>({ running });
+  // observeStages on the ENABLED side only: the stage measures are
+  // page-wide and only the block-memo path emits them — observing on both
+  // would print the same union under the legacy panel.
+  const enabledProfiler = useRenderProfiler<HTMLDivElement>({ running, observeStages: true });
   const disabledProfiler = useRenderProfiler<HTMLDivElement>({ running });
   const theme = getStreamingTheme(colorScheme);
 
