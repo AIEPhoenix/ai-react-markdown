@@ -65,6 +65,7 @@ import remarkSmartypants from 'remark-smartypants';
 import remarkPangu from 'remark-pangu';
 import remarkRemoveComments from 'remark-remove-comments';
 import { buildBlocks, createCache, renderBlocksWithCache, type Cache, type PostOptions } from './blockMemo';
+import { measureStage } from './devStageTimings';
 import { useAIMarkdownRenderState } from '../context';
 import {
   AIMarkdownCustomComponents,
@@ -440,12 +441,17 @@ const BlockMemoizedRenderer = memo(
         : {
             ...remarkRehypeOptions,
           };
-      return parseStage({
-        children: augmented,
-        remarkPlugins,
-        rehypePlugins,
-        remarkRehypeOptions: mergedRemarkRehypeOptions as RemarkRehypeOptions,
-      });
+      // Dev-only stage telemetry (`ai-markdown:stage:*` performance
+      // measures; no-op in production). Wraps only the stage call — the
+      // surrounding option assembly is trivial.
+      return measureStage('parse', () =>
+        parseStage({
+          children: augmented,
+          remarkPlugins,
+          rehypePlugins,
+          remarkRehypeOptions: mergedRemarkRehypeOptions as RemarkRehypeOptions,
+        })
+      );
     }, [
       content,
       targetPhantoms,
@@ -456,11 +462,14 @@ const BlockMemoizedRenderer = memo(
       preserveForBodyHarvest,
       documentId,
     ]);
-    const hast = useMemo(() => transformStage(parsed), [parsed]);
+    const hast = useMemo(() => measureStage('transform', () => transformStage(parsed)), [parsed]);
 
     // Cut hast into per-block units indexed back to mdast for cache identity,
     // and compute the document-wide ctx digest for cross-block invalidation.
-    const built = useMemo(() => buildBlocks(parsed.mdast, hast, content ?? ''), [parsed.mdast, hast, content]);
+    const built = useMemo(
+      () => measureStage('build', () => buildBlocks(parsed.mdast, hast, content ?? '')),
+      [parsed.mdast, hast, content]
+    );
 
     const postOptions = useMemo<PostOptions>(
       () => ({
@@ -613,7 +622,12 @@ const BlockMemoizedRenderer = memo(
     }, [parsed, ownLabels, registry, targetPhantoms, sym, hast, clobberPrefix, urlTransform]);
 
     // Intentional cache memoization via cacheRef; see G3 comment above.
-    const rendered = renderBlocksWithCache(cacheRef, built.plan, built.globalCtx, postOptions);
+    // Unlike the three memoized stages above, this runs on EVERY render —
+    // its 'render' measures therefore include the cheap all-cache-hit
+    // re-renders, which is the honest shape of what block-memo saves.
+    const rendered = measureStage('render', () =>
+      renderBlocksWithCache(cacheRef, built.plan, built.globalCtx, postOptions)
+    );
 
     // Cross-chunk URL sanitization policy — read by `CrossChunkLink` and
     // `CrossChunkImage` at render time to apply the same two-gate pipeline

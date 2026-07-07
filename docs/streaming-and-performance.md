@@ -205,6 +205,40 @@ If profiling shows `<AIMarkdown>` as the bottleneck:
 2. Try `blockMemoEnabled: false` to isolate whether the issue is in memoization or upstream.
 3. Profile with React DevTools — a tree with most blocks under "Did not render" is healthy.
 
+### Built-in stage timing (dev builds only)
+
+In development builds, the block-memo render path emits one
+[`performance.measure`](https://developer.mozilla.org/docs/Web/API/Performance/measure)
+entry per pipeline stage per content change, named:
+
+```
+ai-markdown:stage:parse      # unified.parse over the full document
+ai-markdown:stage:transform  # remark/rehype transformer run
+ai-markdown:stage:build      # block-plan construction
+ai-markdown:stage:render     # per-block render with cache lookup
+```
+
+This is how to answer "which stage eats the budget" without guessing —
+the numbers map 1:1 onto the (1)/(2)/(3) split above. Two supported ways
+to read them:
+
+- **DevTools Performance panel**: record a session; the measures appear in
+  the User Timing track. No wiring needed — emission is always on in dev,
+  which is a deliberate choice traded against a few `performance.*` calls
+  per token.
+- **A live `PerformanceObserver`** for `entryTypes: ['measure']`, filtering
+  by the `ai-markdown:stage:` prefix (the built-in Storybook benchmark's
+  "Pipeline stages" panel does exactly this).
+
+Delivery semantics to know before wiring your own reader: each entry is
+**cleared from the global User Timing buffer immediately after emission**,
+so the buffer never grows from render work. Already-registered observers
+still receive every entry (delivery is queued at creation), but
+`performance.getEntriesByType('measure')` from the console and
+late-attached `buffered: true` observers will see nothing — attach your
+observer before streaming starts. Production builds emit nothing and pay
+one boolean check per stage.
+
 ### Validating output equivalence
 
 If you suspect `blockMemoEnabled: true` is producing different output than `false`, the library's test suite includes a `byteEquivalence.test.tsx` harness that asserts byte-identical HTML across every plugin permutation. Failures should be reported as bugs.
