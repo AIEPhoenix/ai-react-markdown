@@ -153,16 +153,25 @@ export function transformStage(parsed: ParsedMarkdown): HastRoot {
  *   nodes are unrecoverable, so when any of them is set the visit runs on a
  *   private structural clone. `<AIMarkdown>` never sets them (hardcoded
  *   `undefined` in `MarkdownContent`), so its flows never pay the clone.
+ *   A caller that OWNS the tree — fresh-parsed, discarded when the call
+ *   returns, never re-entered (the legacy `Markdown()` path) — passes
+ *   `ownsTree: true` to skip the clone: there is nothing to protect, and
+ *   for a react-markdown-compat caller with a filter set the clone would
+ *   otherwise cost O(nodes) per render (per token when streaming).
  *
  * Known accepted edge: flipping a filter/skipHtml ON between renders of the
  * SAME shared tree cannot retroactively restore nodes an earlier unfiltered
  * pass already rendered — unreachable from `<AIMarkdown>`, and a content
  * re-parse heals it on the next token in any streaming flow.
  */
-export function renderHastSubtree(tree: HastRoot | RootContent, options: Readonly<Options>): ReactNode {
-  const needsClone = Boolean(
-    options.allowedElements || options.disallowedElements || options.allowElement || options.skipHtml
-  );
+export function renderHastSubtree(
+  tree: HastRoot | RootContent,
+  options: Readonly<Options>,
+  opts?: { ownsTree?: boolean }
+): ReactNode {
+  const needsClone =
+    !opts?.ownsTree &&
+    Boolean(options.allowedElements || options.disallowedElements || options.allowElement || options.skipHtml);
   const input: HastRoot | RootContent = needsClone ? cloneHastForRender(tree) : tree;
   const root: HastRoot = input.type === 'root' ? input : { type: 'root', children: [input] };
 
@@ -200,7 +209,10 @@ export function renderHastSubtree(tree: HastRoot | RootContent, options: Readonl
 export function Markdown(options: Readonly<Options>): ReactElement {
   const parsed = parseStage(options);
   const tree = transformStage(parsed);
-  return renderHastSubtree(tree, options) as ReactElement;
+  // The tree is a local, parsed fresh on every call and dead after it —
+  // no shared-tree re-entry exists here, so the destructive filters may
+  // splice it in place instead of paying the defensive clone.
+  return renderHastSubtree(tree, options, { ownsTree: true }) as ReactElement;
 }
 
 export default Markdown;
