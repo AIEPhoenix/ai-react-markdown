@@ -1,12 +1,13 @@
 'use client';
 
-import { Profiler, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { Profiler, memo, useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import AIMarkdown from '../../src/index';
-import { buildScenarios, countBlocks, DEFAULT_PAYLOAD, SCENARIO_KEYS, type ScenarioKey } from './scenarios';
+import { DEFAULT_PAYLOAD, SCENARIO_KEYS, type ScenarioKey } from './scenarios';
 import { useRenderProfiler, type RenderProfilerSnapshot } from './useRenderProfiler';
 import { ProfilerPanel } from './ProfilerPanel';
 import { createSpyComponents } from './spyComponents';
-import { getStreamingTheme, thinScrollbar, type ColorScheme } from './theme';
+import { controlStyles, getStreamingTheme, thinScrollbar, type ColorScheme } from './theme';
+import { PAYLOAD_SCALES, useComparisonRuns, type PayloadScale, type RunRecord } from './useComparisonRuns';
 
 interface BlockMemoComparisonProps {
   colorScheme: ColorScheme;
@@ -23,29 +24,6 @@ const fmt = (n: number, digits = 2) => (Number.isFinite(n) && !Number.isNaN(n) ?
 const fmtPct = (n: number) => (Number.isFinite(n) && !Number.isNaN(n) ? `${(n * 100).toFixed(1)}%` : '—');
 
 const fmtSigned = (n: number, digits = 1) => `${n >= 0 ? '+' : '−'}${fmt(Math.abs(n), digits)}`;
-
-export const PAYLOAD_SCALES = [1, 4, 16] as const;
-export type PayloadScale = (typeof PAYLOAD_SCALES)[number];
-
-/** One completed run, as recorded for the history table and the noise-band
- *  estimate. Sign convention matches the summary banner: positive delta =
- *  block-memo saved time. */
-export interface RunRecord {
-  at: string;
-  scenario: ScenarioKey;
-  scale: PayloadScale;
-  chars: number;
-  blocks: number;
-  spy: boolean;
-  /** disabled.total − enabled.total (ms); positive = block-memo faster. */
-  deltaTotal: number;
-  /** disabled.p95 − enabled.p95 (ms); positive = block-memo faster. */
-  deltaP95: number;
-  /** disabled − enabled element render count; null when spy was off. */
-  deltaElem: number | null;
-  enabledTotal: number;
-  disabledTotal: number;
-}
 
 interface SummaryStat {
   label: string;
@@ -77,7 +55,8 @@ interface SummaryStat {
  *   selector makes the regime explicit, and the payload size is always shown.
  * - **Run history**: every completed run is recorded (scenario, payload,
  *   deltas) so cross-run comparisons don't rely on memory. ≥3 same-config
- *   runs sharpen the noise band with 2×stddev.
+ *   runs widen the noise band with 2×stddev; ≥5 let the measured spread
+ *   also TIGHTEN it below the heuristic floor (see noiseBandMs).
  * - **Spy toggle**: the component-count spies add per-invocation overhead
  *   that scales WITH the render count — i.e. it drags the legacy side more,
  *   slightly exaggerating block-memo's win. Turn spies off for clean timing.
@@ -99,20 +78,9 @@ export const BlockMemoComparison = ({
   autoStart = true,
   payload = DEFAULT_PAYLOAD,
 }: BlockMemoComparisonProps) => {
-  const [scenario, setScenario] = useState<ScenarioKey>(initialScenario);
-  const [payloadScale, setPayloadScale] = useState<PayloadScale>(1);
-  const [spyEnabled, setSpyEnabled] = useState(true);
   const [swapped, setSwapped] = useState(false);
   const [content, setContent] = useState('');
   const [running, setRunning] = useState(false);
-  const [runs, setRuns] = useState<RunRecord[]>([]);
-  const cancelRef = useRef<(() => void) | null>(null);
-
-  const basePayload = payload || DEFAULT_PAYLOAD;
-  const effectivePayload = useMemo(() => basePayload.repeat(payloadScale), [basePayload, payloadScale]);
-  const payloadChars = effectivePayload.length;
-  const payloadBlocks = useMemo(() => countBlocks(effectivePayload), [effectivePayload]);
-  const scenarios = useMemo(() => buildScenarios(effectivePayload), [effectivePayload]);
 
   // observeStages on the ENABLED side only: the stage measures are
   // page-wide and only the block-memo path emits them — observing on both
@@ -121,114 +89,56 @@ export const BlockMemoComparison = ({
   const disabledProfiler = useRenderProfiler<HTMLDivElement>({ running });
   const theme = getStreamingTheme(colorScheme);
 
-  // Config of the run currently in flight — consumed by the record effect
-  // when `running` flips back to false.
-  const pendingRunRef = useRef<{
-    scenario: ScenarioKey;
-    scale: PayloadScale;
-    chars: number;
-    blocks: number;
-    spy: boolean;
-  } | null>(null);
-  // Remaining auto-repeats for the "Run ×3" button.
-  const multiRemainingRef = useRef(0);
-
-  const stop = useCallback(() => {
-    multiRemainingRef.current = 0;
-    cancelRef.current?.();
-    cancelRef.current = null;
-    setRunning(false);
-  }, []);
-
-  const start = useCallback(() => {
-    cancelRef.current?.();
+  // Same-page transport: one setState feeds both sides inside the same
+  // commit; run bookkeeping (history, Run ×3, noise-band inputs) lives in
+  // the shared useComparisonRuns hook.
+  const begin = useCallback(() => {
     setContent('');
     enabledProfiler.reset();
     disabledProfiler.reset();
-    pendingRunRef.current = {
-      scenario,
-      scale: payloadScale,
-      chars: payloadChars,
-      blocks: payloadBlocks,
-      spy: spyEnabled,
-    };
-    setRunning(true);
-
-    const push = (chunk: string) => {
+  }, [enabledProfiler, disabledProfiler]);
+  const push = useCallback(
+    (chunk: string) => {
       enabledProfiler.recordChunk(chunk);
       disabledProfiler.recordChunk(chunk);
       setContent((prev) => prev + chunk);
-    };
-    const done = () => setRunning(false);
+    },
+    [enabledProfiler, disabledProfiler]
+  );
 
-    cancelRef.current = scenarios[scenario].run(push, done);
-  }, [scenario, scenarios, payloadScale, payloadChars, payloadBlocks, spyEnabled, enabledProfiler, disabledProfiler]);
-
-  // Latest `start` behind a stable ref so the record effect can chain
-  // multi-runs without listing `start` (whose identity changes with config)
-  // as a dep and re-firing on config edits.
-  const startRef = useRef(start);
-  useEffect(() => {
-    startRef.current = start;
+  const {
+    scenario,
+    setScenario,
+    payloadScale,
+    setPayloadScale,
+    spyEnabled,
+    setSpyEnabled,
+    runs,
+    clearRuns,
+    sameConfigRuns,
+    payloadChars,
+    payloadBlocks,
+    scenarios,
+    start,
+    startMulti,
+    stop,
+  } = useComparisonRuns({
+    payload,
+    initialScenario,
+    running,
+    setRunning,
+    // Snapshots settle one profiler tick after `running` flips false.
+    settleMs: 200,
+    enabledSnapshot: enabledProfiler.snapshot,
+    disabledSnapshot: disabledProfiler.snapshot,
+    begin,
+    push,
   });
-
-  const startMulti = useCallback(() => {
-    multiRemainingRef.current = 2; // this run + 2 repeats = 3 total
-    start();
-  }, [start]);
-
-  // Latest snapshots behind refs, for the deferred history record below.
-  const enabledSnapRef = useRef(enabledProfiler.snapshot);
-  enabledSnapRef.current = enabledProfiler.snapshot;
-  const disabledSnapRef = useRef(disabledProfiler.snapshot);
-  disabledSnapRef.current = disabledProfiler.snapshot;
-
-  // Record a finished run into history. The profiler publishes one FINAL
-  // snapshot when `running` flips false, one render after the last interval
-  // tick — so recording synchronously here would capture a snapshot that
-  // can still be missing the last ~100 ms of commits. Instead: arm once
-  // (pending cleared immediately so re-publishes can't double-record), then
-  // read the settled snapshots from refs after a short delay. No cleanup on
-  // purpose — the timeout must survive the snapshot-driven effect re-runs.
-  useEffect(() => {
-    if (running) return;
-    const pending = pendingRunRef.current;
-    if (!pending) return;
-    if (enabledProfiler.snapshot.actual.count === 0 || disabledProfiler.snapshot.actual.count === 0) return;
-    pendingRunRef.current = null;
-    window.setTimeout(() => {
-      const e = enabledSnapRef.current;
-      const d = disabledSnapRef.current;
-      const rec: RunRecord = {
-        at: new Date().toLocaleTimeString(),
-        scenario: pending.scenario,
-        scale: pending.scale,
-        chars: pending.chars,
-        blocks: pending.blocks,
-        spy: pending.spy,
-        deltaTotal: d.actual.total - e.actual.total,
-        deltaP95: d.actual.p95 - e.actual.p95,
-        deltaElem: pending.spy ? d.elementRenders.total - e.elementRenders.total : null,
-        enabledTotal: e.actual.total,
-        disabledTotal: d.actual.total,
-      };
-      setRuns((prev) => [...prev.slice(-11), rec]);
-      if (multiRemainingRef.current > 0) {
-        multiRemainingRef.current -= 1;
-        window.setTimeout(() => startRef.current(), 400);
-      }
-    }, 200);
-  }, [running, enabledProfiler.snapshot, disabledProfiler.snapshot]);
-
-  useEffect(() => () => cancelRef.current?.(), []);
 
   useEffect(() => {
     if (!autoStart) return;
     start();
-    return () => {
-      cancelRef.current?.();
-      cancelRef.current = null;
-    };
+    // Unmount cancellation lives in useComparisonRuns.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -251,42 +161,16 @@ export const BlockMemoComparison = ({
     [spyEnabled, disabledProfiler.recordElementRender]
   );
 
-  const sameConfigRuns = useMemo(
-    () => runs.filter((r) => r.scenario === scenario && r.scale === payloadScale && r.spy === spyEnabled),
-    [runs, scenario, payloadScale, spyEnabled]
+  // Recompute per snapshot tick, not per host render — the host re-renders
+  // once per streamed chunk (setContent) on the same main thread both
+  // measured sides share during the measurement window.
+  const summary = useMemo(
+    () => computeSummary(enabledProfiler.snapshot, disabledProfiler.snapshot, spyEnabled, sameConfigRuns),
+    [enabledProfiler.snapshot, disabledProfiler.snapshot, spyEnabled, sameConfigRuns]
   );
-  const summary = computeSummary(enabledProfiler.snapshot, disabledProfiler.snapshot, spyEnabled, sameConfigRuns);
   const scenarioConfig = scenarios[scenario];
 
-  const layoutStyle: CSSProperties = {
-    color: theme.text,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 12,
-    padding: 12,
-  };
-  const buttonRowStyle: CSSProperties = { alignItems: 'center', display: 'flex', flexWrap: 'wrap', gap: 6 };
-  const baseButton: CSSProperties = {
-    background: 'transparent',
-    border: `1px solid ${theme.buttonBorder}`,
-    borderRadius: 6,
-    color: theme.buttonText,
-    cursor: 'pointer',
-    font: 'inherit',
-    fontSize: 12,
-    padding: '4px 12px',
-  };
-  const primaryButton: CSSProperties = {
-    ...baseButton,
-    background: theme.primaryBg,
-    border: `1px solid ${theme.primaryBg}`,
-    color: theme.primaryText,
-  };
-  const captionStyle: CSSProperties = {
-    color: theme.textMuted,
-    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-    fontSize: 11,
-  };
+  const controls = controlStyles(theme);
   const splitStyle: CSSProperties = {
     display: 'grid',
     gap: 12,
@@ -350,70 +234,73 @@ export const BlockMemoComparison = ({
   );
 
   return (
-    <div style={layoutStyle}>
-      <div style={buttonRowStyle}>
+    <div style={controls.layout}>
+      <div style={controls.buttonRow}>
         {SCENARIO_KEYS.map((key) => (
           <button
             key={key}
             disabled={running}
             onClick={() => setScenario(key)}
-            style={scenario === key ? primaryButton : baseButton}
+            style={scenario === key ? controls.primaryButton : controls.baseButton}
           >
             {scenarios[key].label}
           </button>
         ))}
       </div>
 
-      <div style={buttonRowStyle}>
-        <span style={captionStyle}>payload</span>
+      <div style={controls.buttonRow}>
+        <span style={controls.caption}>payload</span>
         {PAYLOAD_SCALES.map((s) => (
           <button
             key={s}
             disabled={running}
             onClick={() => setPayloadScale(s)}
-            style={payloadScale === s ? primaryButton : baseButton}
+            style={payloadScale === s ? controls.primaryButton : controls.baseButton}
           >
             {s}×
           </button>
         ))}
-        <span style={captionStyle}>
+        <span style={controls.caption}>
           {payloadChars.toLocaleString()} chars / {payloadBlocks} blocks
         </span>
-        <span style={{ ...captionStyle, marginLeft: 8 }}>·</span>
+        <span style={{ ...controls.caption, marginLeft: 8 }}>·</span>
         <button
           disabled={running}
           onClick={() => setSpyEnabled((v) => !v)}
-          style={baseButton}
+          style={controls.baseButton}
           title="Spies count component invocations but add overhead that scales with render count (drags the legacy side more). Turn OFF for the cleanest timing."
         >
           spy: {spyEnabled ? 'ON (component counts)' : 'OFF (clean timing)'}
         </button>
-        <button disabled={running} onClick={() => setSwapped((v) => !v)} style={baseButton}>
+        <button disabled={running} onClick={() => setSwapped((v) => !v)} style={controls.baseButton}>
           ⇄ swap sides
         </button>
       </div>
 
-      <div style={buttonRowStyle}>
-        <button onClick={running ? stop : start} style={primaryButton}>
+      <div style={controls.buttonRow}>
+        <button onClick={running ? stop : () => start()} style={controls.primaryButton}>
           {running ? 'Stop' : 'Run scenario'}
         </button>
-        <button disabled={running} onClick={startMulti} style={baseButton} title="Run the same config 3 times back-to-back to expose run-to-run variance.">
+        <button
+          disabled={running}
+          onClick={startMulti}
+          style={controls.baseButton}
+          title="Run the same config 3 times back-to-back to expose run-to-run variance."
+        >
           Run ×3
         </button>
         <button
           onClick={() => {
             stop();
-            setContent('');
-            enabledProfiler.reset();
-            disabledProfiler.reset();
+            begin();
           }}
-          style={baseButton}
+          style={controls.baseButton}
         >
           Reset
         </button>
       </div>
 
-      <div style={captionStyle}>
+      <div style={controls.caption}>
         <div>
           <strong style={{ color: theme.text }}>{scenarioConfig.label}</strong>
         </div>
@@ -435,7 +322,7 @@ export const BlockMemoComparison = ({
 
       <div style={splitStyle}>{swapped ? [disabledSide, enabledSide] : [enabledSide, disabledSide]}</div>
 
-      <RunHistory runs={runs} onClear={() => setRuns([])} colorScheme={colorScheme} />
+      <RunHistory runs={runs} onClear={clearRuns} colorScheme={colorScheme} />
     </div>
   );
 };
@@ -462,15 +349,21 @@ function stddev(xs: number[]): number {
 }
 
 /**
- * Noise band for the total-commit delta. Floor of 15 ms (observed swing on
- * an idle machine) or 4% of the larger side's total, whichever is bigger;
- * sharpened to 2×stddev once ≥3 same-config runs exist in history.
+ * Noise band for the total-commit delta.
+ * - <3 same-config runs: heuristic prior only — 15 ms (observed swing on an
+ *   idle machine) or 4% of the larger side's total, whichever is bigger.
+ * - 3–4 runs: the measured 2×stddev can only WIDEN the band; too few
+ *   samples to trust a narrow spread.
+ * - ≥5 runs: the measurement wins — 2×stddev floored at 5 ms (timer
+ *   resolution), so a quiet machine can tighten below the prior and a
+ *   small-but-reproducible win stops reading as a permanent tie, while a
+ *   noisy machine's band grows to its real variance.
  */
 function noiseBandMs(enabledTotal: number, disabledTotal: number, sameConfigRuns: RunRecord[]): number {
   const heuristic = Math.max(15, 0.04 * Math.max(enabledTotal, disabledTotal));
-  if (sameConfigRuns.length >= 3) {
-    return Math.max(heuristic, 2 * stddev(sameConfigRuns.map((r) => r.deltaTotal)));
-  }
+  const deltas = sameConfigRuns.map((r) => r.deltaTotal);
+  if (deltas.length >= 5) return Math.max(5, 2 * stddev(deltas));
+  if (deltas.length >= 3) return Math.max(heuristic, 2 * stddev(deltas));
   return heuristic;
 }
 
@@ -495,11 +388,7 @@ export function computeSummary(
     return enabledWins ? 'enabled' : 'disabled';
   };
 
-  const deltaStr = (e: number, d: number, digits = 2) => {
-    if (!bothActive) return '—';
-    const delta = e - d;
-    return `${delta >= 0 ? '+' : '−'}${fmt(Math.abs(delta), digits)}`;
-  };
+  const deltaStr = (e: number, d: number, digits = 2) => (bothActive ? fmtSigned(e - d, digits) : '—');
 
   const stats: SummaryStat[] = [
     {
@@ -543,12 +432,7 @@ export function computeSummary(
       label: 'element renders',
       enabled: spyEnabled ? String(enabled.elementRenders.total) : 'spy off',
       disabled: spyEnabled ? String(disabled.elementRenders.total) : 'spy off',
-      delta:
-        bothActive && spyEnabled
-          ? `${enabled.elementRenders.total - disabled.elementRenders.total >= 0 ? '+' : '−'}${Math.abs(
-              enabled.elementRenders.total - disabled.elementRenders.total
-            )}`
-          : '—',
+      delta: spyEnabled ? deltaStr(enabled.elementRenders.total, disabled.elementRenders.total, 0) : '—',
       winner: spyEnabled ? pickWinner(enabled.elementRenders.total, disabled.elementRenders.total) : undefined,
       hint: spyEnabled
         ? 'spy customComponents count each invocation; block-memo skips invoking cached subtrees → the cleanest react-scan-style measure. NOTE: the spies themselves add cost proportional to this count, slightly inflating the legacy side’s commit times.'
@@ -558,9 +442,7 @@ export function computeSummary(
       label: 'DOM mutations',
       enabled: String(enabled.dom.total),
       disabled: String(disabled.dom.total),
-      delta: bothActive
-        ? `${enabled.dom.total - disabled.dom.total >= 0 ? '+' : '−'}${Math.abs(enabled.dom.total - disabled.dom.total)}`
-        : '—',
+      delta: deltaStr(enabled.dom.total, disabled.dom.total, 0),
       // No winner: this metric SHOULD match between the two paths.
       hint: 'expected to match — React’s reconciler already skips DOM for unchanged subtrees in BOTH paths. Block-memo saves the JS decision cost (commit ms), not the DOM op. Treat large divergence as a bug signal.',
     },
@@ -568,9 +450,7 @@ export function computeSummary(
       label: 'slow frames (<30fps)',
       enabled: String(enabled.slowFrameCount),
       disabled: String(disabled.slowFrameCount),
-      delta: bothActive
-        ? `${enabled.slowFrameCount - disabled.slowFrameCount >= 0 ? '+' : '−'}${Math.abs(enabled.slowFrameCount - disabled.slowFrameCount)}`
-        : '—',
+      delta: deltaStr(enabled.slowFrameCount, disabled.slowFrameCount, 0),
       // Same-page mode: no winner — rAF is page-wide, two side-by-side
       // profilers observe near-identical frame cadence. Isolated mode
       // (cross-site iframes → separate processes): each side has its own
@@ -600,8 +480,13 @@ export function computeSummary(
  * as a block-memo regression twice: the real story was a noise-dominated
  * tiny-payload regime. The verdict encodes that interpretation so the
  * reader doesn't have to.
+ *
+ * Memoized (as are SummaryBanner/RunHistory): the host re-renders once per
+ * streamed chunk on the thread the measured sides share, while these
+ * banners' inputs only change per snapshot tick — memo keeps their string
+ * assembly out of the measurement window.
  */
-export const VerdictBanner = ({
+export const VerdictBanner = memo(function VerdictBanner({
   summary,
   sameConfigRuns,
   payloadScale,
@@ -619,7 +504,7 @@ export const VerdictBanner = ({
   spyEnabled: boolean;
   colorScheme: ColorScheme;
   isolated?: boolean;
-}) => {
+}) {
   const theme = getStreamingTheme(colorScheme);
   if (!summary.bothActive) return null;
 
@@ -689,7 +574,15 @@ export const VerdictBanner = ({
 
   return (
     <div style={banner}>
-      <div style={{ color: theme.textMuted, fontSize: 11, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase' }}>
+      <div
+        style={{
+          color: theme.textMuted,
+          fontSize: 11,
+          fontWeight: 700,
+          letterSpacing: 0.4,
+          textTransform: 'uppercase',
+        }}
+      >
         <span style={{ color: accent }}>● </span>最终结论
       </div>
       <div style={{ color: theme.text, fontSize: 13, lineHeight: 1.6 }}>{headline}</div>
@@ -707,20 +600,16 @@ export const VerdictBanner = ({
       </div>
     </div>
   );
-};
+});
 
-const SCENARIO_LETTER: Record<ScenarioKey, string> = {
-  largeAppend: 'A',
-  blockBurst: 'B',
-  fastSmall: 'C',
-  ultraFast: 'D',
-  slowSteady: 'E',
-  randomTokens: 'F',
-};
+/** Scenario letter for the history table — derived from the key's position
+ *  in SCENARIO_KEYS (labels are prefixed 'A.'…'F.' in that order), so
+ *  adding or reordering scenarios can't desync a hand-maintained map. */
+const scenarioLetter = (key: ScenarioKey): string => String.fromCharCode(65 + SCENARIO_KEYS.indexOf(key));
 
 /** History of completed runs — makes cross-run comparison a table lookup
  *  instead of a memory exercise. */
-export const RunHistory = ({
+export const RunHistory = memo(function RunHistory({
   runs,
   onClear,
   colorScheme,
@@ -728,7 +617,7 @@ export const RunHistory = ({
   runs: RunRecord[];
   onClear: () => void;
   colorScheme: ColorScheme;
-}) => {
+}) {
   const theme = getStreamingTheme(colorScheme);
   if (runs.length === 0) return null;
   const mono: CSSProperties = {
@@ -748,7 +637,15 @@ export const RunHistory = ({
       }}
     >
       <div style={{ alignItems: 'baseline', display: 'flex', gap: 12, marginBottom: 4 }}>
-        <span style={{ color: theme.textMuted, fontSize: 11, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase' }}>
+        <span
+          style={{
+            color: theme.textMuted,
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: 0.4,
+            textTransform: 'uppercase',
+          }}
+        >
           run history
         </span>
         <span style={{ ...mono, color: theme.textMuted }}>Δ &gt; 0 = block-memo faster</span>
@@ -785,7 +682,7 @@ export const RunHistory = ({
           {[...runs].reverse().map((r, i) => (
             <tr key={`${r.at}-${i}`}>
               <td style={cell}>{r.at}</td>
-              <td style={cell}>{SCENARIO_LETTER[r.scenario]}</td>
+              <td style={cell}>{scenarioLetter(r.scenario)}</td>
               <td style={cell}>
                 {r.scale}× ({r.chars.toLocaleString()}c/{r.blocks}b)
               </td>
@@ -799,9 +696,15 @@ export const RunHistory = ({
       </table>
     </div>
   );
-};
+});
 
-export const SummaryBanner = ({ summary, colorScheme }: { summary: ComparisonSummary; colorScheme: ColorScheme }) => {
+export const SummaryBanner = memo(function SummaryBanner({
+  summary,
+  colorScheme,
+}: {
+  summary: ComparisonSummary;
+  colorScheme: ColorScheme;
+}) {
   const theme = getStreamingTheme(colorScheme);
   const banner: CSSProperties = {
     background: theme.panelBg,
@@ -855,11 +758,7 @@ export const SummaryBanner = ({ summary, colorScheme }: { summary: ComparisonSum
   const enabledWins = summary.totalCommitSavingsMs > 0;
   // Within the noise band the headline stays neutral — a green/red verdict
   // on a sub-noise delta is exactly the misread this page used to invite.
-  const headlineColor = summary.withinNoise
-    ? theme.textMuted
-    : enabledWins
-      ? theme.good
-      : theme.bad;
+  const headlineColor = summary.withinNoise ? theme.textMuted : enabledWins ? theme.good : theme.bad;
 
   return (
     <div style={banner}>
@@ -893,7 +792,7 @@ export const SummaryBanner = ({ summary, colorScheme }: { summary: ComparisonSum
       </div>
     </div>
   );
-};
+});
 
 const Row = ({
   stat,
