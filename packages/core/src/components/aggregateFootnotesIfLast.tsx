@@ -50,14 +50,6 @@ interface OrderedDef {
   withBackref: boolean;
 }
 
-/** Assembly-time clone: the `<li>` builder below pushes backref anchors into
- *  the cloned def bodies, which must never mutate the registry-held
- *  `bodyHast`. Delegates to the shared structural clone — cheaper than the
- *  previous JSON round-trip and exact for any pipeline-produced hast. */
-function cloneHast<T extends HastElementContent>(node: T): T {
-  return cloneHastForRender(node);
-}
-
 /** Whitespace-only text node — produced by mdast-util-to-hast's
  *  `state.wrap(content, true)` to interleave `\n` between block-level
  *  `<li>` children. We have to look past these to find the actual tail. */
@@ -176,7 +168,9 @@ function buildAggregateTree(
   if (ordered.length === 0) return null;
 
   const liElements: HastElement[] = ordered.map(({ normalizedLabel, sourceIdentifier, bodyHast, n, withBackref }) => {
-    const liChildren = bodyHast.map((c) => cloneHast(c));
+    // Assembly-time clone: the backref logic below pushes anchors into these
+    // children, which must never mutate the registry-held `bodyHast`.
+    const liChildren = bodyHast.map((c) => cloneHastForRender(c));
     if (withBackref) {
       // Emit one backref anchor per global occurrence of this label. The
       // first href uses the bare `fnref-${id}` (matches FootnoteSupNumber's
