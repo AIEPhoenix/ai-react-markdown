@@ -45,18 +45,30 @@ export function buildTransform(ctx: TransformContext): BuildVisitor<Root> {
         if (Object.hasOwn(urlAttributes, key) && Object.hasOwn(properties, key)) {
           const test = (urlAttributes as Record<string, ReadonlyArray<string> | null>)[key];
           if (test === null || test.includes(element.tagName)) {
-            // Convergent application: stash the pipeline's original value on
-            // the first visit, and always transform FROM the stash. A shared
+            // Convergent application: always transform FROM the original —
+            // the stash if an earlier pass archived one, else the live
+            // property (untouched ⇔ nothing was archived). A shared
             // (memoized) tree that is re-entered without a re-parse — a
             // block-memo cache miss after a G3 flush, a urlTransform prop
             // swap, the aggregate footnote tree on a registry bump — then
             // yields `currentTransform(original)` instead of compounding the
             // transform onto its own previous output. This is what lets
             // `renderHastSubtree` skip the defensive clone for URL rewriting.
-            const data = (element.data ??= {}) as { originalUrls?: Record<string, unknown> };
-            const stash = (data.originalUrls ??= {});
-            if (!(key in stash)) stash[key] = properties[key];
-            properties[key] = ctx.urlTransform(String(stash[key] || ''), key, element);
+            //
+            // The stash is written only by the first pass that actually
+            // CHANGES the value: the default transform is identity for safe
+            // URLs, and these elements live long in the block-memo cache and
+            // the registry's footnote trees — an unconditional per-element
+            // stash would be retained dead weight on every URL-bearing node.
+            const stash = (element.data as { originalUrls?: Record<string, unknown> } | undefined)?.originalUrls;
+            const hasStash = stash !== undefined && key in stash;
+            const original = hasStash ? stash[key] : properties[key];
+            const transformed = ctx.urlTransform(String(original || ''), key, element);
+            if (!hasStash && transformed !== original) {
+              const data = (element.data ??= {}) as { originalUrls?: Record<string, unknown> };
+              (data.originalUrls ??= {})[key] = original;
+            }
+            properties[key] = transformed;
           }
         }
       }

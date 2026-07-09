@@ -1151,4 +1151,41 @@ describe('renderBlocksWithCache — hast re-entry safety', () => {
     expect(html).toContain('https://example.com/a?v=new');
     expect(html).not.toContain('v=old');
   });
+
+  test('identity transform stashes nothing, and a later real transform stays convergent', () => {
+    const content = '[link](https://example.com/a)';
+    const { mdast, hast } = runPipeline(content);
+    const built = buildBlocks(mdast, hast, content);
+
+    // First render under the DEFAULT transform (identity for safe URLs).
+    const cacheRef = { current: createCache() };
+    renderBlocksWithCache(cacheRef, built.plan, built.globalCtx, {});
+
+    const blockItem = built.plan.find((p) => p.kind === 'block');
+    const para = blockItem && 'el' in blockItem ? (blockItem.el as HastElement) : undefined;
+    const anchor = para?.children.find((c): c is HastElement => c.type === 'element' && c.tagName === 'a');
+    // Nothing changed → nothing archived, no per-element allocation. These
+    // nodes are retained by the block-memo cache, so a stash here would be
+    // permanent dead weight on every URL-bearing element.
+    expect((anchor?.data as { originalUrls?: Record<string, unknown> } | undefined)?.originalUrls).toBeUndefined();
+    expect(anchor?.properties.href).toBe('https://example.com/a');
+
+    // No stash ⇔ the property still holds the original, so a later pass
+    // with a REAL transform (G3 flush after a urlTransform prop swap) reads
+    // it directly and archives it only then.
+    cacheRef.current = createCache();
+    const r2 = renderBlocksWithCache(cacheRef, built.plan, built.globalCtx, {
+      urlTransform: (u: string) => `${u}?v=new`,
+    });
+    const html = renderToStaticMarkup(
+      createElement(
+        Fragment,
+        null,
+        r2.map((r) => r.node)
+      )
+    );
+    expect(html).toContain('https://example.com/a?v=new');
+    const stash = (anchor?.data as { originalUrls?: Record<string, unknown> } | undefined)?.originalUrls;
+    expect(stash?.href).toBe('https://example.com/a');
+  });
 });
