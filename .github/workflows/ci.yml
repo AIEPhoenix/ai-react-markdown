@@ -67,6 +67,13 @@ jobs:
         if: matrix.task == 'typecheck'
         run: pnpm -r typecheck
 
+      # `pnpm -r` skips the workspace root, so the root script — the only
+      # gate covering .storybook and packages/*/stories — must run
+      # explicitly. It also resolves core through dist, built above.
+      - name: Typecheck (storybook + stories)
+        if: matrix.task == 'typecheck'
+        run: pnpm typecheck
+
       - name: Test (all packages)
         if: matrix.task == 'test'
         run: pnpm -r test
