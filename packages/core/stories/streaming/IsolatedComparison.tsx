@@ -3,7 +3,8 @@
 /**
  * Process-ISOLATED variant of the block-memo comparison.
  *
- * Same controls, verdict, summary and history as `BlockMemoComparison`, but
+ * Same controls, verdict, summary and history as `BlockMemoComparison`
+ * (shared via useComparisonRuns + the exported display components), but
  * each side renders inside its own CROSS-SITE iframe (`localhost` vs
  * `127.0.0.1` against the same dev server), which Chrome's Site Isolation
  * places in separate renderer processes. That removes every coupling the
@@ -27,22 +28,20 @@
  * iframe URLs must appear as separate renderer processes. From JS there is
  * no reliable OOPIF probe.
  *
+ * REQUIRES viewing from the dev-server machine via a loopback hostname:
+ * the side URLs point at the VIEWER's own loopback aliases, so a LAN /
+ * tunnel / remote-dev viewer would load nothing. The story detects that
+ * and says so instead of waiting forever.
+ *
  * @module stories/streaming/IsolatedComparison
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { buildScenarios, countBlocks, DEFAULT_PAYLOAD, SCENARIO_KEYS, type ScenarioKey } from './scenarios';
+import { DEFAULT_PAYLOAD, SCENARIO_KEYS, type ScenarioKey } from './scenarios';
 import { emptySnapshot, type RenderProfilerSnapshot } from './useRenderProfiler';
-import { getStreamingTheme, type ColorScheme } from './theme';
-import {
-  computeSummary,
-  PAYLOAD_SCALES,
-  RunHistory,
-  SummaryBanner,
-  VerdictBanner,
-  type PayloadScale,
-  type RunRecord,
-} from './BlockMemoComparison';
+import { controlStyles, getStreamingTheme, type ColorScheme } from './theme';
+import { computeSummary, RunHistory, SummaryBanner, VerdictBanner } from './BlockMemoComparison';
+import { PAYLOAD_SCALES, useComparisonRuns } from './useComparisonRuns';
 import { isProtocolMessage, SIDE_STORY_ID, type HostToSideMessage, type SideMode } from './isolatedProtocol';
 
 interface IsolatedComparisonProps {
@@ -58,6 +57,8 @@ interface SideState {
 }
 
 const initialSideState = (): SideState => ({ ready: false, snapshot: emptySnapshot() });
+
+const LOOPBACK_HOSTNAMES = ['localhost', '127.0.0.1', '[::1]'];
 
 /** Resolved isolation topology: which loopback host serves each side. */
 interface SideHosts {
@@ -90,7 +91,7 @@ interface SideHosts {
  */
 function pickSideHosts(ipv6Available: boolean): SideHosts {
   const { hostname } = window.location;
-  const pool = ['127.0.0.1', '[::1]', 'localhost'].filter((h) => h !== hostname);
+  const pool = LOOPBACK_HOSTNAMES.filter((h) => h !== hostname);
   const usable = ipv6Available ? pool : pool.filter((h) => h !== '[::1]');
   if (usable.length >= 2) {
     return { memo: usable[0], legacy: usable[1], symmetric: true };
@@ -111,79 +112,80 @@ function buildSideUrl(host: string, mode: SideMode, spy: boolean, scheme: ColorS
   );
 }
 
+/** sessionStorage, tolerating disabled/blocked storage. */
+const readSession = (key: string): string | null => {
+  try {
+    return window.sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+const writeSession = (key: string, value: string): void => {
+  try {
+    window.sessionStorage.setItem(key, value);
+  } catch {
+    /* storage blocked — probe again next visit */
+  }
+};
+
 export const IsolatedComparison = ({
   colorScheme,
   initialScenario = 'randomTokens',
   payload = DEFAULT_PAYLOAD,
 }: IsolatedComparisonProps) => {
-  const [scenario, setScenario] = useState<ScenarioKey>(initialScenario);
-  const [payloadScale, setPayloadScale] = useState<PayloadScale>(1);
-  const [spyEnabled, setSpyEnabled] = useState(true);
   const [running, setRunning] = useState(false);
-  const [runs, setRuns] = useState<RunRecord[]>([]);
   const [memoSide, setMemoSide] = useState<SideState>(initialSideState);
   const [legacySide, setLegacySide] = useState<SideState>(initialSideState);
 
-  const cancelRef = useRef<(() => void) | null>(null);
   const memoFrameRef = useRef<HTMLIFrameElement | null>(null);
   const legacyFrameRef = useRef<HTMLIFrameElement | null>(null);
-  const pendingRunRef = useRef<{
-    scenario: ScenarioKey;
-    scale: PayloadScale;
-    chars: number;
-    blocks: number;
-    spy: boolean;
-  } | null>(null);
-  const multiRemainingRef = useRef(0);
 
-  const basePayload = payload || DEFAULT_PAYLOAD;
-  const effectivePayload = useMemo(() => basePayload.repeat(payloadScale), [basePayload, payloadScale]);
-  const payloadChars = effectivePayload.length;
-  const payloadBlocks = useMemo(() => countBlocks(effectivePayload), [effectivePayload]);
-  const scenarios = useMemo(() => buildScenarios(effectivePayload), [effectivePayload]);
   const theme = getStreamingTheme(colorScheme);
 
-  // Isolation topology, resolved once: probe whether the dev server also
-  // listens on IPv6 loopback (`[::1]`), which unlocks the three-way
-  // cross-site split (see pickSideHosts). Falls back — flagged — otherwise.
+  // The side URLs point at the VIEWER's loopback aliases, so the whole
+  // story only works when the page itself is opened from the dev-server
+  // machine via a loopback hostname. Detect the LAN/tunnel/remote case up
+  // front and explain, instead of pointing two iframes at hosts that serve
+  // nothing and waiting on a handshake that can never arrive.
+  const loopbackHost = LOOPBACK_HOSTNAMES.includes(window.location.hostname);
+
+  // Isolation topology, resolved once per session: probe whether the dev
+  // server also listens on IPv6 loopback (`[::1]`), which unlocks the
+  // three-way cross-site split (see pickSideHosts). The verdict is cached
+  // in sessionStorage so only the first visit pays the probe (worst case
+  // 1.5 s when [::1] neither connects nor refuses promptly).
   const [sideHosts, setSideHosts] = useState<SideHosts | null>(null);
   useEffect(() => {
+    if (!loopbackHost) return;
     let alive = true;
     (async () => {
-      const { protocol, port } = window.location;
+      const { protocol, port, host } = window.location;
+      const cacheKey = `bmc:ipv6-probe:${protocol}//${host}`;
       let ipv6: boolean;
-      try {
-        const controller = new AbortController();
-        const timer = window.setTimeout(() => controller.abort(), 1500);
-        await fetch(`${protocol}//[::1]${port ? `:${port}` : ''}/iframe.html`, {
-          mode: 'no-cors',
-          signal: controller.signal,
-        });
-        window.clearTimeout(timer);
-        ipv6 = true;
-      } catch {
-        ipv6 = false;
+      const cached = readSession(cacheKey);
+      if (cached !== null) {
+        ipv6 = cached === '1';
+      } else {
+        try {
+          const controller = new AbortController();
+          const timer = window.setTimeout(() => controller.abort(), 1500);
+          await fetch(`${protocol}//[::1]${port ? `:${port}` : ''}/iframe.html`, {
+            mode: 'no-cors',
+            signal: controller.signal,
+          });
+          window.clearTimeout(timer);
+          ipv6 = true;
+        } catch {
+          ipv6 = false;
+        }
+        writeSession(cacheKey, ipv6 ? '1' : '0');
       }
       if (alive) setSideHosts(pickSideHosts(ipv6));
     })();
     return () => {
       alive = false;
     };
-  }, []);
-
-  // URLs depend on topology + spy/scheme; changing any remounts both
-  // iframes (React key) and re-runs the ready handshake.
-  const urls = useMemo(
-    () =>
-      sideHosts
-        ? {
-            memo: buildSideUrl(sideHosts.memo, 'memo', spyEnabled, colorScheme),
-            legacy: buildSideUrl(sideHosts.legacy, 'legacy', spyEnabled, colorScheme),
-          }
-        : null,
-    [sideHosts, spyEnabled, colorScheme]
-  );
-  const framesKey = `${sideHosts?.memo}-${sideHosts?.legacy}-${spyEnabled}-${colorScheme}`;
+  }, [loopbackHost]);
 
   const broadcast = useCallback((msg: HostToSideMessage) => {
     memoFrameRef.current?.contentWindow?.postMessage(msg, '*');
@@ -223,9 +225,9 @@ export const IsolatedComparison = ({
     return () => window.clearInterval(id);
   }, [running, flushPendingSnaps]);
 
-  // Inbound: ready handshakes and snapshot ticks. Source is verified
-  // against our two owned iframes — the claimed `mode` field is only
-  // trusted after that check.
+  // Inbound: ready handshakes and snapshot ticks. Side identity comes
+  // SOLELY from `event.source` against our two owned iframes — the
+  // protocol deliberately carries no self-identification to route by.
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       const data: unknown = event.data;
@@ -251,125 +253,80 @@ export const IsolatedComparison = ({
 
   const bothReady = memoSide.ready && legacySide.ready;
 
-  const stop = useCallback(() => {
-    multiRemainingRef.current = 0;
-    cancelRef.current?.();
-    cancelRef.current = null;
-    broadcast({ type: 'bmc:stop' });
-    setRunning(false);
-  }, [broadcast]);
+  // postMessage transport; run bookkeeping (history, Run ×3, noise-band
+  // inputs) lives in the shared useComparisonRuns hook.
+  const canStart = useCallback(() => bothReady, [bothReady]);
+  const begin = useCallback(() => broadcast({ type: 'bmc:start' }), [broadcast]);
+  const push = useCallback((chunk: string) => broadcast({ type: 'bmc:chunk', text: chunk }), [broadcast]);
+  const end = useCallback(() => broadcast({ type: 'bmc:stop' }), [broadcast]);
 
-  const start = useCallback(() => {
-    if (!bothReady) return;
-    cancelRef.current?.();
-    pendingRunRef.current = {
-      scenario,
-      scale: payloadScale,
-      chars: payloadChars,
-      blocks: payloadBlocks,
-      spy: spyEnabled,
-    };
-    broadcast({ type: 'bmc:start' });
-    setRunning(true);
-    const push = (chunk: string) => broadcast({ type: 'bmc:chunk', text: chunk });
-    const done = () => {
-      broadcast({ type: 'bmc:stop' });
-      setRunning(false);
-    };
-    cancelRef.current = scenarios[scenario].run(push, done);
-  }, [bothReady, scenario, scenarios, payloadScale, payloadChars, payloadBlocks, spyEnabled, broadcast]);
-
-  const startRef = useRef(start);
-  useEffect(() => {
-    startRef.current = start;
+  const {
+    scenario,
+    setScenario,
+    payloadScale,
+    setPayloadScale,
+    spyEnabled,
+    setSpyEnabled,
+    runs,
+    clearRuns,
+    sameConfigRuns,
+    payloadChars,
+    payloadBlocks,
+    scenarios,
+    start,
+    startMulti,
+    stop,
+  } = useComparisonRuns({
+    payload,
+    initialScenario,
+    running,
+    setRunning,
+    // Longer settle than the same-page variant: each side's FINAL snapshot
+    // crosses a process boundary before it reaches us.
+    settleMs: 400,
+    enabledSnapshot: memoSide.snapshot,
+    disabledSnapshot: legacySide.snapshot,
+    canStart,
+    begin,
+    push,
+    end,
   });
 
-  const startMulti = useCallback(() => {
-    multiRemainingRef.current = 2; // this run + 2 repeats = 3 total
-    start();
-  }, [start]);
-
-  // Latest side snapshots behind refs for the deferred history record.
-  // Mirrored in an effect (not during render) to satisfy react-hooks/refs;
-  // the deferred reader below fires ≥400 ms later, long after these commit.
-  const memoSnapRef = useRef(memoSide.snapshot);
-  const legacySnapRef = useRef(legacySide.snapshot);
-  useEffect(() => {
-    memoSnapRef.current = memoSide.snapshot;
-    legacySnapRef.current = legacySide.snapshot;
-  }, [memoSide.snapshot, legacySide.snapshot]);
-
-  // Record a finished run — same deferred pattern as the same-page variant,
-  // with a longer settle delay: each side's FINAL snapshot crosses a
-  // process boundary before it reaches us.
-  useEffect(() => {
-    if (running) return;
-    const pending = pendingRunRef.current;
-    if (!pending) return;
-    if (memoSide.snapshot.actual.count === 0 || legacySide.snapshot.actual.count === 0) return;
-    pendingRunRef.current = null;
-    window.setTimeout(() => {
-      const e = memoSnapRef.current;
-      const d = legacySnapRef.current;
-      const rec: RunRecord = {
-        at: new Date().toLocaleTimeString(),
-        scenario: pending.scenario,
-        scale: pending.scale,
-        chars: pending.chars,
-        blocks: pending.blocks,
-        spy: pending.spy,
-        deltaTotal: d.actual.total - e.actual.total,
-        deltaP95: d.actual.p95 - e.actual.p95,
-        deltaElem: pending.spy ? d.elementRenders.total - e.elementRenders.total : null,
-        enabledTotal: e.actual.total,
-        disabledTotal: d.actual.total,
-      };
-      setRuns((prev) => [...prev.slice(-11), rec]);
-      if (multiRemainingRef.current > 0) {
-        multiRemainingRef.current -= 1;
-        window.setTimeout(() => startRef.current(), 400);
-      }
-    }, 400);
-  }, [running, memoSide.snapshot, legacySide.snapshot]);
-
-  useEffect(() => () => cancelRef.current?.(), []);
-
-  const sameConfigRuns = useMemo(
-    () => runs.filter((r) => r.scenario === scenario && r.scale === payloadScale && r.spy === spyEnabled),
-    [runs, scenario, payloadScale, spyEnabled]
+  // URLs depend on topology + spy/scheme. Each iframe is keyed by its own
+  // URL, so any change remounts it — and the effect below drops the stale
+  // ready flags so Run re-gates on the NEW frames' handshakes (a remounted
+  // frame's listeners aren't attached until its story boots).
+  const urls = useMemo(
+    () =>
+      sideHosts
+        ? {
+            memo: buildSideUrl(sideHosts.memo, 'memo', spyEnabled, colorScheme),
+            legacy: buildSideUrl(sideHosts.legacy, 'legacy', spyEnabled, colorScheme),
+          }
+        : null,
+    [sideHosts, spyEnabled, colorScheme]
   );
-  const summary = computeSummary(memoSide.snapshot, legacySide.snapshot, spyEnabled, sameConfigRuns, true);
+  // Drop the stale ready flags the moment the URLs change — the remounted
+  // frames' handshakes haven't happened yet, so Run must re-gate on them.
+  // Done during render (the documented adjust-state-on-prop-change pattern)
+  // rather than in an effect: no commit exists where the old `ready` still
+  // reads true against the new frames.
+  const [prevUrls, setPrevUrls] = useState(urls);
+  if (urls !== prevUrls) {
+    setPrevUrls(urls);
+    setMemoSide(initialSideState());
+    setLegacySide(initialSideState());
+  }
+
+  // Recompute per snapshot tick, not per host render (see the same memo in
+  // BlockMemoComparison).
+  const summary = useMemo(
+    () => computeSummary(memoSide.snapshot, legacySide.snapshot, spyEnabled, sameConfigRuns, true),
+    [memoSide.snapshot, legacySide.snapshot, spyEnabled, sameConfigRuns]
+  );
   const scenarioConfig = scenarios[scenario];
 
-  const layoutStyle: CSSProperties = {
-    color: theme.text,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 12,
-    padding: 12,
-  };
-  const buttonRowStyle: CSSProperties = { alignItems: 'center', display: 'flex', flexWrap: 'wrap', gap: 6 };
-  const baseButton: CSSProperties = {
-    background: 'transparent',
-    border: `1px solid ${theme.buttonBorder}`,
-    borderRadius: 6,
-    color: theme.buttonText,
-    cursor: 'pointer',
-    font: 'inherit',
-    fontSize: 12,
-    padding: '4px 12px',
-  };
-  const primaryButton: CSSProperties = {
-    ...baseButton,
-    background: theme.primaryBg,
-    border: `1px solid ${theme.primaryBg}`,
-    color: theme.primaryText,
-  };
-  const captionStyle: CSSProperties = {
-    color: theme.textMuted,
-    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-    fontSize: 11,
-  };
+  const controls = controlStyles(theme);
   const frameStyle: CSSProperties = {
     background: 'transparent',
     border: `1px solid ${theme.surfaceBorder}`,
@@ -379,54 +336,58 @@ export const IsolatedComparison = ({
   };
 
   return (
-    <div style={layoutStyle}>
-      <div style={buttonRowStyle}>
+    <div style={controls.layout}>
+      <div style={controls.buttonRow}>
         {SCENARIO_KEYS.map((key) => (
           <button
             key={key}
             disabled={running}
             onClick={() => setScenario(key)}
-            style={scenario === key ? primaryButton : baseButton}
+            style={scenario === key ? controls.primaryButton : controls.baseButton}
           >
             {scenarios[key].label}
           </button>
         ))}
       </div>
 
-      <div style={buttonRowStyle}>
-        <span style={captionStyle}>payload</span>
+      <div style={controls.buttonRow}>
+        <span style={controls.caption}>payload</span>
         {PAYLOAD_SCALES.map((s) => (
           <button
             key={s}
             disabled={running}
             onClick={() => setPayloadScale(s)}
-            style={payloadScale === s ? primaryButton : baseButton}
+            style={payloadScale === s ? controls.primaryButton : controls.baseButton}
           >
             {s}×
           </button>
         ))}
-        <span style={captionStyle}>
+        <span style={controls.caption}>
           {payloadChars.toLocaleString()} chars / {payloadBlocks} blocks
         </span>
-        <span style={{ ...captionStyle, marginLeft: 8 }}>·</span>
+        <span style={{ ...controls.caption, marginLeft: 8 }}>·</span>
         <button
           disabled={running}
-          onClick={() => setSpyEnabled((v) => !v)}
-          style={baseButton}
+          onClick={() => setSpyEnabled(!spyEnabled)}
+          style={controls.baseButton}
           title="Spies count component invocations but add overhead that scales with render count. Toggling remounts both frames."
         >
           spy: {spyEnabled ? 'ON (component counts)' : 'OFF (clean timing)'}
         </button>
       </div>
 
-      <div style={buttonRowStyle}>
-        <button onClick={running ? stop : start} disabled={!running && !bothReady} style={primaryButton}>
+      <div style={controls.buttonRow}>
+        <button
+          onClick={running ? stop : () => start()}
+          disabled={!running && !bothReady}
+          style={controls.primaryButton}
+        >
           {running ? 'Stop' : bothReady ? 'Run scenario' : 'Waiting for frames…'}
         </button>
         <button
           disabled={running || !bothReady}
           onClick={startMulti}
-          style={baseButton}
+          style={controls.baseButton}
           title="Run the same config 3 times back-to-back to expose run-to-run variance."
         >
           Run ×3
@@ -438,23 +399,25 @@ export const IsolatedComparison = ({
             setMemoSide((prev) => ({ ...prev, snapshot: emptySnapshot() }));
             setLegacySide((prev) => ({ ...prev, snapshot: emptySnapshot() }));
           }}
-          style={baseButton}
+          style={controls.baseButton}
         >
           Reset
         </button>
       </div>
 
-      <div style={captionStyle}>
+      <div style={controls.caption}>
         <div>
           <strong style={{ color: theme.text }}>{scenarioConfig.label}</strong>
         </div>
         <div style={{ marginTop: 2 }}>{scenarioConfig.description}</div>
         <div style={{ marginTop: 2 }}>
-          {sideHosts
-            ? sideHosts.symmetric
-              ? `process isolation: three-way cross-site · host ${window.location.hostname} / memo ${sideHosts.memo} / legacy ${sideHosts.legacy} — verify via Chrome Task Manager (⇧Esc): each frame URL owns its own renderer process.`
-              : `⚠ degraded isolation: ${sideHosts.memo === window.location.hostname ? 'memo' : 'legacy'} side shares the host page's process (dev server has no [::1] listener) — that side absorbs the host UI's work and reads SLOWER than it is. Trust the other metrics loosely.`
-            : 'probing isolation topology…'}
+          {!loopbackHost
+            ? `⚠ unavailable from ${window.location.hostname}: the side iframes point at the VIEWER's loopback (127.0.0.1 / [::1] / localhost), which only serves Storybook on the dev machine itself. Open this story via http://localhost:<port> on the machine running the dev server.`
+            : sideHosts
+              ? sideHosts.symmetric
+                ? `process isolation: three-way cross-site · host ${window.location.hostname} / memo ${sideHosts.memo} / legacy ${sideHosts.legacy} — verify via Chrome Task Manager (⇧Esc): each frame URL owns its own renderer process.`
+                : `⚠ degraded isolation: ${sideHosts.memo === window.location.hostname ? 'memo' : 'legacy'} side shares the host page's process (dev server has no [::1] listener) — that side absorbs the host UI's work and reads SLOWER than it is. Trust the other metrics loosely.`
+              : 'probing isolation topology…'}
         </div>
       </div>
 
@@ -474,14 +437,14 @@ export const IsolatedComparison = ({
       {urls ? (
         <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)' }}>
           <iframe
-            key={`memo-${framesKey}`}
+            key={urls.memo}
             ref={memoFrameRef}
             src={urls.memo}
             style={frameStyle}
             title="blockMemo enabled (isolated)"
           />
           <iframe
-            key={`legacy-${framesKey}`}
+            key={urls.legacy}
             ref={legacyFrameRef}
             src={urls.legacy}
             style={frameStyle}
@@ -490,7 +453,7 @@ export const IsolatedComparison = ({
         </div>
       ) : null}
 
-      <RunHistory runs={runs} onClear={() => setRuns([])} colorScheme={colorScheme} />
+      <RunHistory runs={runs} onClear={clearRuns} colorScheme={colorScheme} />
     </div>
   );
 };
