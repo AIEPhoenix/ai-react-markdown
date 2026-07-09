@@ -45,23 +45,26 @@ export const IsolatedSide = () => {
   // Destructured on purpose: react-hooks/refs (v7) treats `handle.x`
   // property chains on a hook result that contains refs as ref accesses
   // during render; plain bindings keep the analyzer satisfied.
-  const { snapshot, onRender, targetRef, recordChunk, recordElementRender, reset } =
-    useRenderProfiler<HTMLDivElement>({ running, observeStages: mode === 'memo' });
+  const { snapshot, onRender, targetRef, recordChunk, recordElementRender, reset } = useRenderProfiler<HTMLDivElement>({
+    running,
+    observeStages: mode === 'memo',
+  });
   const theme = getStreamingTheme(scheme);
 
   // Slim the iframe's own viewport scrollbar too (the side page can be
   // taller than the host's fixed-height iframe). The document root isn't
   // reachable via JSX inline styles, so set the standard properties in an
   // effect; cleanup restores the defaults for story-switch hygiene.
+  const { scrollbarWidth, scrollbarColor } = thinScrollbar(theme);
   useEffect(() => {
     const root = document.documentElement.style;
-    root.setProperty('scrollbar-width', 'thin');
-    root.setProperty('scrollbar-color', `${theme.panelBorder} transparent`);
+    root.setProperty('scrollbar-width', scrollbarWidth);
+    root.setProperty('scrollbar-color', scrollbarColor);
     return () => {
       root.removeProperty('scrollbar-width');
       root.removeProperty('scrollbar-color');
     };
-  }, [theme.panelBorder]);
+  }, [scrollbarWidth, scrollbarColor]);
 
   const config = useMemo(() => ({ blockMemoEnabled: mode === 'memo' }) as const, [mode]);
   const spyComponents = useMemo(
@@ -100,18 +103,18 @@ export const IsolatedSide = () => {
       }
     };
     window.addEventListener('message', onMessage);
-    const ready: SideToHostMessage = { type: 'bmc:ready', mode };
+    const ready: SideToHostMessage = { type: 'bmc:ready' };
     window.parent.postMessage(ready, '*');
     return () => window.removeEventListener('message', onMessage);
-  }, [reset, recordChunk, mode]);
+  }, [reset, recordChunk]);
 
   // Publish every snapshot tick to the host. The hook already throttles
   // publishes to 100 ms while running and emits one final snapshot on stop,
   // so this effect's cadence is bounded.
   useEffect(() => {
-    const msg: SideToHostMessage = { type: 'bmc:snapshot', mode, running, snapshot };
+    const msg: SideToHostMessage = { type: 'bmc:snapshot', snapshot };
     window.parent.postMessage(msg, '*');
-  }, [snapshot, running, mode]);
+  }, [snapshot]);
 
   const headerStyle: CSSProperties = {
     color: theme.text,

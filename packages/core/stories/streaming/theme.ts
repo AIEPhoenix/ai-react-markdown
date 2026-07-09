@@ -1,3 +1,5 @@
+import type { CSSProperties } from 'react';
+
 export type ColorScheme = 'light' | 'dark';
 
 export interface StreamingTheme {
@@ -33,6 +35,55 @@ export const thinScrollbar = (theme: StreamingTheme): { scrollbarWidth: 'thin'; 
   scrollbarWidth: 'thin',
   scrollbarColor: `${theme.panelBorder} transparent`,
 });
+
+/**
+ * Control-row styling shared by the streaming benchmark stories (layout
+ * column, button rows, buttons, monospace captions). Kept here — next to
+ * the theme it derives from — so the comparison variants can't drift apart
+ * visually one copy at a time.
+ */
+export const controlStyles = (
+  theme: StreamingTheme
+): {
+  layout: CSSProperties;
+  buttonRow: CSSProperties;
+  baseButton: CSSProperties;
+  primaryButton: CSSProperties;
+  caption: CSSProperties;
+} => {
+  const baseButton: CSSProperties = {
+    background: 'transparent',
+    border: `1px solid ${theme.buttonBorder}`,
+    borderRadius: 6,
+    color: theme.buttonText,
+    cursor: 'pointer',
+    font: 'inherit',
+    fontSize: 12,
+    padding: '4px 12px',
+  };
+  return {
+    layout: {
+      color: theme.text,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 12,
+      padding: 12,
+    },
+    buttonRow: { alignItems: 'center', display: 'flex', flexWrap: 'wrap', gap: 6 },
+    baseButton,
+    primaryButton: {
+      ...baseButton,
+      background: theme.primaryBg,
+      border: `1px solid ${theme.primaryBg}`,
+      color: theme.primaryText,
+    },
+    caption: {
+      color: theme.textMuted,
+      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+      fontSize: 11,
+    },
+  };
+};
 
 export const getStreamingTheme = (scheme: ColorScheme): StreamingTheme => {
   const dark = scheme === 'dark';

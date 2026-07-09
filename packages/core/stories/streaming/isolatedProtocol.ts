@@ -38,16 +38,17 @@ export type HostToSideMessage =
   | { type: 'bmc:stop' }
   | { type: 'bmc:reset' };
 
-/** Side → host. */
-export type SideToHostMessage =
-  | { type: 'bmc:ready'; mode: SideMode }
-  | { type: 'bmc:snapshot'; mode: SideMode; running: boolean; snapshot: RenderProfilerSnapshot };
+/** Side → host. Deliberately carries NO self-identification: the host
+ *  attributes every message by `event.source` identity against its two
+ *  owned iframes. A claimed `mode` field would only invite routing by
+ *  attacker-controllable data instead of by that identity check. */
+export type SideToHostMessage = { type: 'bmc:ready' } | { type: 'bmc:snapshot'; snapshot: RenderProfilerSnapshot };
 
 export const isProtocolMessage = (data: unknown): data is HostToSideMessage | SideToHostMessage =>
   typeof data === 'object' &&
   data !== null &&
   typeof (data as { type?: unknown }).type === 'string' &&
-  ((data as { type: string }).type.startsWith('bmc:'));
+  (data as { type: string }).type.startsWith('bmc:');
 
 /** Storybook story id of the single-side story (title `Core/AIMarkdown`,
  *  export `BlockMemoSide`). Used to build the iframe URLs. */
