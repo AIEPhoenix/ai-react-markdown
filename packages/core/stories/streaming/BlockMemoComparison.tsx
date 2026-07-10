@@ -1,7 +1,7 @@
 'use client';
 
 import { Profiler, memo, useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
-import AIMarkdown from '../../src/index';
+import AIMarkdown, { AIMarkdownDocuments } from '../../src/index';
 import { DEFAULT_PAYLOAD, SCENARIO_KEYS, type ScenarioKey } from './scenarios';
 import { useRenderProfiler, type RenderProfilerSnapshot } from './useRenderProfiler';
 import { ProfilerPanel } from './ProfilerPanel';
@@ -60,6 +60,10 @@ interface SummaryStat {
  * - **Spy toggle**: the component-count spies add per-invocation overhead
  *   that scales WITH the render count — i.e. it drags the legacy side more,
  *   slightly exaggerating block-memo's win. Turn spies off for clean timing.
+ * - **Registry toggle**: wraps both sides in AIMarkdownDocuments so the
+ *   coordinated-mode PASS 0 def-label scan runs per token — the primary
+ *   chat-UI configuration, whose cost the standalone mode never shows.
+ *   Runs are recorded per mode; the noise band never mixes the two.
  * - **Seeded stream**: scenario F replays the identical chunk pattern every
  *   run (see scenarios.ts), removing between-run stream variance.
  * - **Swap sides**: render order inside the shared commit is fixed (enabled
@@ -113,6 +117,8 @@ export const BlockMemoComparison = ({
     setPayloadScale,
     spyEnabled,
     setSpyEnabled,
+    registryEnabled,
+    setRegistryEnabled,
     runs,
     clearRuns,
     sameConfigRuns,
@@ -193,6 +199,32 @@ export const BlockMemoComparison = ({
     ...thinScrollbar(theme),
   };
 
+  // Registry mode: wrap each side in its OWN AIMarkdownDocuments (separate
+  // registries — fair A/B) and pass an explicit documentId, which is what
+  // opts a chunk into coordination. This runs the per-token PASS 0 def-label
+  // scan on both sides — the coordinated-mode cost the standalone story
+  // never shows.
+  const enabledMarkdown = (
+    <AIMarkdown
+      content={content}
+      streaming={running}
+      colorScheme={colorScheme}
+      config={enabledConfig}
+      customComponents={enabledSpy}
+      documentId={registryEnabled ? 'bmc-enabled' : undefined}
+    />
+  );
+  const disabledMarkdown = (
+    <AIMarkdown
+      content={content}
+      streaming={running}
+      colorScheme={colorScheme}
+      config={disabledConfig}
+      customComponents={disabledSpy}
+      documentId={registryEnabled ? 'bmc-disabled' : undefined}
+    />
+  );
+
   const enabledSide = (
     <div key="enabled" style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
       <h4 style={panelHeaderStyle}>
@@ -200,13 +232,7 @@ export const BlockMemoComparison = ({
       </h4>
       <div style={renderSurfaceStyle} ref={enabledProfiler.targetRef}>
         <Profiler id="comparison-enabled" onRender={enabledProfiler.onRender}>
-          <AIMarkdown
-            content={content}
-            streaming={running}
-            colorScheme={colorScheme}
-            config={enabledConfig}
-            customComponents={enabledSpy}
-          />
+          {registryEnabled ? <AIMarkdownDocuments>{enabledMarkdown}</AIMarkdownDocuments> : enabledMarkdown}
         </Profiler>
       </div>
       <ProfilerPanel snapshot={enabledProfiler.snapshot} colorScheme={colorScheme} compact />
@@ -220,13 +246,7 @@ export const BlockMemoComparison = ({
       </h4>
       <div style={renderSurfaceStyle} ref={disabledProfiler.targetRef}>
         <Profiler id="comparison-disabled" onRender={disabledProfiler.onRender}>
-          <AIMarkdown
-            content={content}
-            streaming={running}
-            colorScheme={colorScheme}
-            config={disabledConfig}
-            customComponents={disabledSpy}
-          />
+          {registryEnabled ? <AIMarkdownDocuments>{disabledMarkdown}</AIMarkdownDocuments> : disabledMarkdown}
         </Profiler>
       </div>
       <ProfilerPanel snapshot={disabledProfiler.snapshot} colorScheme={colorScheme} compact />
@@ -271,6 +291,14 @@ export const BlockMemoComparison = ({
           title="Spies count component invocations but add overhead that scales with render count (drags the legacy side more). Turn OFF for the cleanest timing."
         >
           spy: {spyEnabled ? 'ON (component counts)' : 'OFF (clean timing)'}
+        </button>
+        <button
+          disabled={running}
+          onClick={() => setRegistryEnabled(!registryEnabled)}
+          style={controls.baseButton}
+          title="Wraps both sides in AIMarkdownDocuments (coordinated mode): the per-token PASS 0 def-label scan runs on each side — the cross-chunk coordination overhead the standalone mode skips."
+        >
+          registry: {registryEnabled ? 'ON (coordinated)' : 'OFF (standalone)'}
         </button>
         <button disabled={running} onClick={() => setSwapped((v) => !v)} style={controls.baseButton}>
           ⇄ swap sides
@@ -673,6 +701,7 @@ export const RunHistory = memo(function RunHistory({
             <th style={head}>scenario</th>
             <th style={head}>payload</th>
             <th style={head}>spy</th>
+            <th style={head}>reg</th>
             <th style={head}>Δ total (ms)</th>
             <th style={head}>Δ p95 (ms)</th>
             <th style={head}>Δ element renders</th>
@@ -687,6 +716,7 @@ export const RunHistory = memo(function RunHistory({
                 {r.scale}× ({r.chars.toLocaleString()}c/{r.blocks}b)
               </td>
               <td style={cell}>{r.spy ? 'on' : 'off'}</td>
+              <td style={cell}>{r.registry ? 'on' : 'off'}</td>
               <td style={{ ...cell, color: deltaColor(r.deltaTotal) }}>{fmtSigned(r.deltaTotal)}</td>
               <td style={{ ...cell, color: deltaColor(r.deltaP95) }}>{fmtSigned(r.deltaP95)}</td>
               <td style={cell}>{r.deltaElem === null ? '—' : fmtSigned(r.deltaElem, 0)}</td>
