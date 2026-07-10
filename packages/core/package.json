@@ -42,6 +42,10 @@
         "import": "./dist/index.d.ts",
         "require": "./dist/index.d.cts"
       },
+      "development": {
+        "import": "./dist/index.dev.js",
+        "require": "./dist/index.dev.cjs"
+      },
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
