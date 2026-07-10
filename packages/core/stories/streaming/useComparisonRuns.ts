@@ -34,6 +34,9 @@ export interface RunRecord {
   chars: number;
   blocks: number;
   spy: boolean;
+  /** True when both sides ran under an AIMarkdownDocuments registry
+   *  (coordinated mode — PASS 0 def-label scan active per token). */
+  registry: boolean;
   /** disabled.total − enabled.total (ms); positive = block-memo faster. */
   deltaTotal: number;
   /** disabled.p95 − enabled.p95 (ms); positive = block-memo faster. */
@@ -90,6 +93,7 @@ export function useComparisonRuns({
   const [scenario, setScenario] = useState<ScenarioKey>(initialScenario);
   const [payloadScale, setPayloadScale] = useState<PayloadScale>(1);
   const [spyEnabled, setSpyEnabled] = useState(true);
+  const [registryEnabled, setRegistryEnabled] = useState(false);
   const [runs, setRuns] = useState<RunRecord[]>([]);
 
   const cancelRef = useRef<(() => void) | null>(null);
@@ -101,6 +105,7 @@ export function useComparisonRuns({
     chars: number;
     blocks: number;
     spy: boolean;
+    registry: boolean;
   } | null>(null);
   // Remaining auto-repeats for the "Run ×3" button.
   const multiRemainingRef = useRef(0);
@@ -144,6 +149,7 @@ export function useComparisonRuns({
         chars: payloadChars,
         blocks: payloadBlocks,
         spy: spyEnabled,
+        registry: registryEnabled,
       };
       setRunning(true);
       cancelRef.current = scenarios[scenario].run(push, () => {
@@ -151,7 +157,20 @@ export function useComparisonRuns({
         setRunning(false);
       });
     },
-    [canStart, begin, push, end, setRunning, scenario, scenarios, payloadScale, payloadChars, payloadBlocks, spyEnabled]
+    [
+      canStart,
+      begin,
+      push,
+      end,
+      setRunning,
+      scenario,
+      scenarios,
+      payloadScale,
+      payloadChars,
+      payloadBlocks,
+      spyEnabled,
+      registryEnabled,
+    ]
   );
 
   // Latest `start` behind a stable ref so the record effect can chain
@@ -206,6 +225,7 @@ export function useComparisonRuns({
         chars: pending.chars,
         blocks: pending.blocks,
         spy: pending.spy,
+        registry: pending.registry,
         deltaTotal: d.actual.total - e.actual.total,
         deltaP95: d.actual.p95 - e.actual.p95,
         deltaElem: pending.spy ? d.elementRenders.total - e.elementRenders.total : null,
@@ -230,8 +250,12 @@ export function useComparisonRuns({
   }, []);
 
   const sameConfigRuns = useMemo(
-    () => runs.filter((r) => r.scenario === scenario && r.scale === payloadScale && r.spy === spyEnabled),
-    [runs, scenario, payloadScale, spyEnabled]
+    () =>
+      runs.filter(
+        (r) =>
+          r.scenario === scenario && r.scale === payloadScale && r.spy === spyEnabled && r.registry === registryEnabled
+      ),
+    [runs, scenario, payloadScale, spyEnabled, registryEnabled]
   );
 
   const clearRuns = useCallback(() => setRuns([]), []);
@@ -243,6 +267,8 @@ export function useComparisonRuns({
     setPayloadScale,
     spyEnabled,
     setSpyEnabled,
+    registryEnabled,
+    setRegistryEnabled,
     runs,
     clearRuns,
     sameConfigRuns,
