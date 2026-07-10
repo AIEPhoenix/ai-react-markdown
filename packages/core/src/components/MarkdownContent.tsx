@@ -72,7 +72,7 @@ import {
   AIMarkdownRenderDisplayOptimizeAbility,
   AIMarkdownRenderExtraSyntax,
 } from '../defs';
-import { collectDefLabels } from './collectDefLabels';
+import { collectDefLabels, createDefLabelScanner, type DefLabelScanner } from './collectDefLabels';
 import { useDocumentRegistry, usePreserveOrphanReferences } from './AIMarkdownDocuments';
 import type { RegistryInternal } from './documentRegistry';
 import type { SanitizeSchema } from './extendSanitizeSchema';
@@ -243,9 +243,19 @@ const BlockMemoizedRenderer = memo(
     // render for output nobody reads (measured at ~1/3 of total commit
     // time on the BlockMemoCompare story). Skip it entirely and hand back
     // a stable empty result so downstream deps never churn.
+    //
+    // Coordinated mode goes through an append-aware scanner: while a token
+    // stream appends prose that can't contain a definition, the previous
+    // result is returned by REFERENCE — no re-parse, and the register
+    // effect below (which lists `ownLabels` as a dep) stops re-registering
+    // the chunk on every token. The scanner is convergent (falls back to a
+    // full parse on any doubt), so StrictMode double-invokes and aborted
+    // renders can't poison it.
+    const defScannerRef = useRef<DefLabelScanner | null>(null);
     const ownLabels = useMemo(() => {
       if (!registry) return EMPTY_DEF_LABELS;
-      return collectDefLabels(content ?? '');
+      const scanner = (defScannerRef.current ??= createDefLabelScanner());
+      return scanner.scan(content ?? '');
     }, [content, registry]);
 
     useEffect(() => {
