@@ -8,9 +8,11 @@
  * Configuration is read from plain URL query params (NOT storybook args —
  * plain params dodge the args URL-encoding quirks and keep the host's URL
  * builder trivial):
- *   - `bmcMode`:   'memo' | 'legacy'  → blockMemoEnabled true/false
- *   - `bmcSpy`:    'on' | 'off'       → wrap tags in counting spies
- *   - `bmcScheme`: 'light' | 'dark'
+ *   - `bmcMode`:     'memo' | 'legacy' → blockMemoEnabled true/false
+ *   - `bmcSpy`:      'on' | 'off'      → wrap tags in counting spies
+ *   - `bmcRegistry`: 'on' | 'off'      → wrap in AIMarkdownDocuments
+ *                    (coordinated mode: per-token PASS 0 def-label scan)
+ *   - `bmcScheme`:   'light' | 'dark'
  *
  * Everything dynamic arrives via postMessage: the host streams chunks and
  * flips start/stop/reset; this side publishes its profiler snapshot back on
@@ -20,18 +22,19 @@
  */
 
 import { Profiler, useEffect, useMemo, useState, type CSSProperties } from 'react';
-import AIMarkdown from '../../src/index';
+import AIMarkdown, { AIMarkdownDocuments } from '../../src/index';
 import { useRenderProfiler } from './useRenderProfiler';
 import { ProfilerPanel } from './ProfilerPanel';
 import { createSpyComponents } from './spyComponents';
 import { getStreamingTheme, thinScrollbar, type ColorScheme } from './theme';
 import { isProtocolMessage, type SideMode, type SideToHostMessage } from './isolatedProtocol';
 
-function readParams(): { mode: SideMode; spy: boolean; scheme: ColorScheme } {
+function readParams(): { mode: SideMode; spy: boolean; registry: boolean; scheme: ColorScheme } {
   const params = new URLSearchParams(window.location.search);
   return {
     mode: params.get('bmcMode') === 'legacy' ? 'legacy' : 'memo',
     spy: params.get('bmcSpy') !== 'off',
+    registry: params.get('bmcRegistry') === 'on',
     scheme: params.get('bmcScheme') === 'dark' ? 'dark' : 'light',
   };
 }
@@ -39,7 +42,7 @@ function readParams(): { mode: SideMode; spy: boolean; scheme: ColorScheme } {
 export const IsolatedSide = () => {
   // Params are fixed for the lifetime of the iframe — the host remounts the
   // iframe (new URL) when mode/spy/scheme change.
-  const [{ mode, spy, scheme }] = useState(readParams);
+  const [{ mode, spy, registry, scheme }] = useState(readParams);
   const [content, setContent] = useState('');
   const [running, setRunning] = useState(false);
   // Destructured on purpose: react-hooks/refs (v7) treats `handle.x`
@@ -133,6 +136,20 @@ export const IsolatedSide = () => {
     ...thinScrollbar(theme),
   };
 
+  // Registry mode (bmcRegistry=on): wrap in AIMarkdownDocuments and pass an
+  // explicit documentId — that pair is what opts the chunk into coordinated
+  // mode, activating the per-token PASS 0 def-label scan.
+  const markdown = (
+    <AIMarkdown
+      content={content}
+      streaming={running}
+      colorScheme={scheme}
+      config={config}
+      customComponents={spyComponents}
+      documentId={registry ? `bmc-side-${mode}` : undefined}
+    />
+  );
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 12 }}>
       <h4 style={headerStyle}>
@@ -147,18 +164,12 @@ export const IsolatedSide = () => {
             textTransform: 'none',
           }}
         >
-          {window.location.host} · spy {spy ? 'on' : 'off'}
+          {window.location.host} · spy {spy ? 'on' : 'off'} · registry {registry ? 'on' : 'off'}
         </span>
       </h4>
       <div style={surfaceStyle} ref={targetRef}>
         <Profiler id={`isolated-${mode}`} onRender={onRender}>
-          <AIMarkdown
-            content={content}
-            streaming={running}
-            colorScheme={scheme}
-            config={config}
-            customComponents={spyComponents}
-          />
+          {registry ? <AIMarkdownDocuments>{markdown}</AIMarkdownDocuments> : markdown}
         </Profiler>
       </div>
       <ProfilerPanel snapshot={snapshot} colorScheme={scheme} compact />

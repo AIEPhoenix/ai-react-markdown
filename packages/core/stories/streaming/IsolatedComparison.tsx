@@ -104,11 +104,12 @@ function pickSideHosts(ipv6Available: boolean): SideHosts {
 /** Build one side's iframe URL. `globals=theme:` keeps the side story's
  *  withThemedBackground decorator in sync with the host's theme; the bmc*
  *  params configure the side itself. */
-function buildSideUrl(host: string, mode: SideMode, spy: boolean, scheme: ColorScheme): string {
+function buildSideUrl(host: string, mode: SideMode, spy: boolean, registry: boolean, scheme: ColorScheme): string {
   const { protocol, port } = window.location;
   return (
     `${protocol}//${host}${port ? `:${port}` : ''}/iframe.html?id=${SIDE_STORY_ID}&viewMode=story` +
-    `&globals=theme:${scheme}&bmcMode=${mode}&bmcSpy=${spy ? 'on' : 'off'}&bmcScheme=${scheme}`
+    `&globals=theme:${scheme}&bmcMode=${mode}&bmcSpy=${spy ? 'on' : 'off'}` +
+    `&bmcRegistry=${registry ? 'on' : 'off'}&bmcScheme=${scheme}`
   );
 }
 
@@ -267,6 +268,8 @@ export const IsolatedComparison = ({
     setPayloadScale,
     spyEnabled,
     setSpyEnabled,
+    registryEnabled,
+    setRegistryEnabled,
     runs,
     clearRuns,
     sameConfigRuns,
@@ -300,11 +303,11 @@ export const IsolatedComparison = ({
     () =>
       sideHosts
         ? {
-            memo: buildSideUrl(sideHosts.memo, 'memo', spyEnabled, colorScheme),
-            legacy: buildSideUrl(sideHosts.legacy, 'legacy', spyEnabled, colorScheme),
+            memo: buildSideUrl(sideHosts.memo, 'memo', spyEnabled, registryEnabled, colorScheme),
+            legacy: buildSideUrl(sideHosts.legacy, 'legacy', spyEnabled, registryEnabled, colorScheme),
           }
         : null,
-    [sideHosts, spyEnabled, colorScheme]
+    [sideHosts, spyEnabled, registryEnabled, colorScheme]
   );
   // Drop the stale ready flags the moment the URLs change — the remounted
   // frames' handshakes haven't happened yet, so Run must re-gate on them.
@@ -373,6 +376,14 @@ export const IsolatedComparison = ({
           title="Spies count component invocations but add overhead that scales with render count. Toggling remounts both frames."
         >
           spy: {spyEnabled ? 'ON (component counts)' : 'OFF (clean timing)'}
+        </button>
+        <button
+          disabled={running}
+          onClick={() => setRegistryEnabled(!registryEnabled)}
+          style={controls.baseButton}
+          title="Runs both sides under AIMarkdownDocuments (coordinated mode: per-token PASS 0 def-label scan). Toggling remounts both frames."
+        >
+          registry: {registryEnabled ? 'ON (coordinated)' : 'OFF (standalone)'}
         </button>
       </div>
 
