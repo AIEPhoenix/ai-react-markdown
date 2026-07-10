@@ -103,6 +103,23 @@ pnpm add @ai-react-markdown/mantine @ai-react-markdown/core \
 | **React Native?**               | No. The renderer depends on the DOM (`<div>`, `<span>`, KaTeX CSS). React Native would need a separate renderer                                                                                                                                                                    |
 | **Remix / Vite / CRA?**         | Yes — any React 19 host. The only environment-specific note is the strict-isolation pnpm/yarn-PnP `katex` install (see [Peer Dependencies](#peer-dependencies))                                                                                                                    |
 
+### Development vs production builds
+
+The core package ships two builds (react/redux-style) selected by the `development`
+[exports condition](https://nodejs.org/api/packages.html#community-conditions-definitions):
+the development build has all warnings and dev-time invariant checks enabled; the
+production build has them compiled out. Neither file references `process.env`, so
+importing the package without a bundler (browser native ESM, CDN, Deno) is safe and
+yields the production build.
+
+Bundlers that understand the condition (Vite, webpack/Next.js in development mode)
+pick the right build automatically — nothing to configure.
+
+**Footgun:** a resolver that does _not_ know the condition always gets the
+**production** build, even during development. The common case is server-side
+rendering with plain Node (no bundler): dev warnings will be silent there. Run Node
+with `--conditions=development` if you want them in that setup.
+
 ### CSS Imports
 
 Pick the set that matches the package you installed.
