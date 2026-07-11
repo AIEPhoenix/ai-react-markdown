@@ -7,7 +7,7 @@ import { useMemo } from 'react';
 import { useRenderProfiler } from './useRenderProfiler';
 import { ProfilerPanel } from './ProfilerPanel';
 import { ChunkPanel } from './ChunkPanel';
-import { getStreamingTheme, type ColorScheme } from './theme';
+import { controlStyles, getStreamingTheme, type ColorScheme } from './theme';
 
 interface PlaygroundProps {
   colorScheme: ColorScheme;
@@ -70,35 +70,10 @@ export const StreamingPlayground = ({
 
   const config = scenarios[scenario];
 
-  const layoutStyle: CSSProperties = {
-    color: theme.text,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 12,
-    padding: 12,
-  };
-  const buttonRowStyle: CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: 6 };
-  const baseButton: CSSProperties = {
-    background: 'transparent',
-    border: `1px solid ${theme.buttonBorder}`,
-    borderRadius: 6,
-    color: theme.buttonText,
-    cursor: 'pointer',
-    font: 'inherit',
-    fontSize: 12,
-    padding: '4px 12px',
-  };
-  const primaryButton: CSSProperties = {
-    ...baseButton,
-    background: theme.primaryBg,
-    border: `1px solid ${theme.primaryBg}`,
-    color: theme.primaryText,
-  };
-  const captionStyle: CSSProperties = {
-    color: theme.textMuted,
-    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-    fontSize: 11,
-  };
+  // Shared control styling (theme.ts) — this file used to carry its own
+  // near-identical copies, the drift the helper exists to prevent. Only
+  // visible delta: the shared buttonRow adds alignItems:'center'.
+  const controls = controlStyles(theme);
   const renderSurfaceStyle: CSSProperties = {
     border: `1px solid ${theme.surfaceBorder}`,
     borderRadius: 8,
@@ -120,22 +95,22 @@ export const StreamingPlayground = ({
   );
 
   return (
-    <div style={layoutStyle}>
-      <div style={buttonRowStyle}>
+    <div style={controls.layout}>
+      <div style={controls.buttonRow}>
         {SCENARIO_KEYS.map((key) => (
           <button
             key={key}
             disabled={running}
             onClick={() => setScenario(key)}
-            style={scenario === key ? primaryButton : baseButton}
+            style={scenario === key ? controls.primaryButton : controls.baseButton}
           >
             {scenarios[key].label}
           </button>
         ))}
       </div>
 
-      <div style={buttonRowStyle}>
-        <button onClick={running ? stop : start} style={primaryButton}>
+      <div style={controls.buttonRow}>
+        <button onClick={running ? stop : start} style={controls.primaryButton}>
           {running ? 'Stop' : 'Run scenario'}
         </button>
         <button
@@ -144,13 +119,13 @@ export const StreamingPlayground = ({
             setContent('');
             reset();
           }}
-          style={baseButton}
+          style={controls.baseButton}
         >
           Reset
         </button>
       </div>
 
-      <div style={captionStyle}>
+      <div style={controls.caption}>
         <div>
           <strong style={{ color: theme.text }}>{config.label}</strong>
         </div>

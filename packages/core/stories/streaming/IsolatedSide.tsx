@@ -22,7 +22,8 @@
  */
 
 import { Profiler, useEffect, useMemo, useState, type CSSProperties } from 'react';
-import AIMarkdown, { AIMarkdownDocuments } from '../../src/index';
+import AIMarkdown from '../../src/index';
+import { MaybeCoordinated } from './MaybeCoordinated';
 import { useRenderProfiler } from './useRenderProfiler';
 import { ProfilerPanel } from './ProfilerPanel';
 import { createSpyComponents } from './spyComponents';
@@ -169,7 +170,7 @@ export const IsolatedSide = () => {
       </h4>
       <div style={surfaceStyle} ref={targetRef}>
         <Profiler id={`isolated-${mode}`} onRender={onRender}>
-          {registry ? <AIMarkdownDocuments>{markdown}</AIMarkdownDocuments> : markdown}
+          <MaybeCoordinated enabled={registry}>{markdown}</MaybeCoordinated>
         </Profiler>
       </div>
       <ProfilerPanel snapshot={snapshot} colorScheme={scheme} compact />
