@@ -2,7 +2,7 @@
 
 import { Profiler, memo, useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import AIMarkdown, { AIMarkdownDocuments } from '../../src/index';
-import { DEFAULT_PAYLOAD, SCENARIO_KEYS, type ScenarioKey } from './scenarios';
+import { DEFAULT_PAYLOAD, PAYLOAD_WITH_DEFS, SCENARIO_KEYS, type ScenarioKey } from './scenarios';
 import { useRenderProfiler, type RenderProfilerSnapshot } from './useRenderProfiler';
 import { ProfilerPanel } from './ProfilerPanel';
 import { createSpyComponents } from './spyComponents';
@@ -64,6 +64,9 @@ interface SummaryStat {
  *   coordinated-mode PASS 0 def-label scan runs per token — the primary
  *   chat-UI configuration, whose cost the standalone mode never shows.
  *   Runs are recorded per mode; the noise band never mixes the two.
+ *   Pair it with the **defs toggle** (PAYLOAD_WITH_DEFS): the default
+ *   payload has zero definitions, so registry mode alone measures PASS 0
+ *   on a best-case input where the phantom/aggregation paths never run.
  * - **Seeded stream**: scenario F replays the identical chunk pattern every
  *   run (see scenarios.ts), removing between-run stream variance.
  * - **Swap sides**: render order inside the shared commit is fixed (enabled
@@ -85,6 +88,12 @@ export const BlockMemoComparison = ({
   const [swapped, setSwapped] = useState(false);
   const [content, setContent] = useState('');
   const [running, setRunning] = useState(false);
+  // Defs payload: the default payload has ZERO definitions, so registry
+  // mode alone measures PASS 0 on a best-case input. Real coordinated-mode
+  // acceptance needs def lines actually streaming through the scanner's
+  // active region — that's what this toggle provides. Runs are keyed by
+  // chars in sameConfigRuns, so the two payloads never share a noise band.
+  const [defsPayload, setDefsPayload] = useState(false);
 
   // observeStages on the ENABLED side only: the stage measures are
   // page-wide and only the block-memo path emits them — observing on both
@@ -129,7 +138,7 @@ export const BlockMemoComparison = ({
     startMulti,
     stop,
   } = useComparisonRuns({
-    payload,
+    payload: defsPayload ? PAYLOAD_WITH_DEFS : payload,
     initialScenario,
     running,
     setRunning,
@@ -300,13 +309,21 @@ export const BlockMemoComparison = ({
         >
           registry: {registryEnabled ? 'ON (coordinated)' : 'OFF (standalone)'}
         </button>
+        <button
+          disabled={running}
+          onClick={() => setDefsPayload((v) => !v)}
+          style={controls.baseButton}
+          title="Appends footnote/link-reference definitions (plus in-text references) to the payload. The default payload has zero defs, so registry mode alone measures a best-case PASS 0 — turn this ON when the point is coordinated-mode cost."
+        >
+          defs: {defsPayload ? 'ON (payload has defs)' : 'OFF'}
+        </button>
         <button disabled={running} onClick={() => setSwapped((v) => !v)} style={controls.baseButton}>
           ⇄ swap sides
         </button>
       </div>
 
       <div style={controls.buttonRow}>
-        <button onClick={running ? stop : () => start()} style={controls.primaryButton}>
+        <button onClick={running ? stop : start} style={controls.primaryButton}>
           {running ? 'Stop' : 'Run scenario'}
         </button>
         <button

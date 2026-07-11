@@ -109,11 +109,15 @@ export function useComparisonRuns({
   } | null>(null);
   // Remaining auto-repeats for the "Run ×3" button.
   const multiRemainingRef = useRef(0);
-  // The record/chain timeouts deliberately have no cleanup (they must
-  // survive snapshot-driven effect re-runs), so they can fire after
-  // unmount; this flag makes them no-ops then instead of recording into —
-  // or restarting a stream against — an unmounted story.
-  const mountedRef = useRef(true);
+  // Run generation. Bumped by every launch, stop and unmount. The deferred
+  // record/chain timeouts (which deliberately have no cleanup — they must
+  // survive snapshot-driven effect re-runs) capture the generation at arm
+  // time and become no-ops once it moves on. One mechanism closes every
+  // disarm hole at once: Stop/Reset inside the settle window can't record
+  // a zeroed row, a restart inside the window can't attribute the next
+  // run's snapshots to the previous config, an armed chain timer can't
+  // start a run the user has since stopped, and unmount inerts everything.
+  const runGenRef = useRef(0);
 
   const basePayload = payload || DEFAULT_PAYLOAD;
   const effectivePayload = useMemo(() => basePayload.repeat(payloadScale), [basePayload, payloadScale]);
@@ -122,6 +126,7 @@ export function useComparisonRuns({
   const scenarios = useMemo(() => buildScenarios(effectivePayload), [effectivePayload]);
 
   const stop = useCallback(() => {
+    runGenRef.current += 1; // inert any armed record/chain timers
     multiRemainingRef.current = 0;
     // Disarm the pending record: a manually aborted run must NOT enter the
     // history — its truncated delta would feed sameConfigRuns and poison
@@ -133,58 +138,62 @@ export function useComparisonRuns({
     setRunning(false);
   }, [end, setRunning]);
 
-  const start = useCallback(
-    (opts?: { fromChain?: boolean }) => {
-      if (canStart && !canStart()) return;
-      // A manual start is a fresh gesture: drop any leftover auto-repeat
-      // debt (a run that produced zero commits is never recorded, so the
-      // chain counter would otherwise survive it and phantom-repeat the
-      // NEXT single run the user asks for).
-      if (!opts?.fromChain) multiRemainingRef.current = 0;
-      cancelRef.current?.();
-      begin();
-      pendingRunRef.current = {
-        scenario,
-        scale: payloadScale,
-        chars: payloadChars,
-        blocks: payloadBlocks,
-        spy: spyEnabled,
-        registry: registryEnabled,
-      };
-      setRunning(true);
-      cancelRef.current = scenarios[scenario].run(push, () => {
-        end?.();
-        setRunning(false);
-      });
-    },
-    [
-      canStart,
-      begin,
-      push,
-      end,
-      setRunning,
+  // Launch a run WITHOUT touching the auto-repeat counter — the shared
+  // core of a manual start, "Run ×3" and the chain restart.
+  const launch = useCallback(() => {
+    if (canStart && !canStart()) return;
+    runGenRef.current += 1; // a new run supersedes any armed timers
+    cancelRef.current?.();
+    begin();
+    pendingRunRef.current = {
       scenario,
-      scenarios,
-      payloadScale,
-      payloadChars,
-      payloadBlocks,
-      spyEnabled,
-      registryEnabled,
-    ]
-  );
+      scale: payloadScale,
+      chars: payloadChars,
+      blocks: payloadBlocks,
+      spy: spyEnabled,
+      registry: registryEnabled,
+    };
+    setRunning(true);
+    cancelRef.current = scenarios[scenario].run(push, () => {
+      end?.();
+      setRunning(false);
+    });
+  }, [
+    canStart,
+    begin,
+    push,
+    end,
+    setRunning,
+    scenario,
+    scenarios,
+    payloadScale,
+    payloadChars,
+    payloadBlocks,
+    spyEnabled,
+    registryEnabled,
+  ]);
 
-  // Latest `start` behind a stable ref so the record effect can chain
-  // multi-runs without listing `start` (whose identity changes with config)
+  // Latest `launch` behind a stable ref so the record effect can chain
+  // multi-runs without listing it (whose identity changes with config)
   // as a dep and re-firing on config edits.
-  const startRef = useRef(start);
+  const launchRef = useRef(launch);
   useEffect(() => {
-    startRef.current = start;
+    launchRef.current = launch;
   });
+
+  // A manual start is a fresh gesture: drop any leftover auto-repeat debt
+  // (a zero-commit run is never recorded, so the chain counter would
+  // otherwise survive it and phantom-repeat the NEXT single run). A plain
+  // () => void, so stories can pass it directly as an onClick handler.
+  const start = useCallback(() => {
+    multiRemainingRef.current = 0;
+    launch();
+  }, [launch]);
 
   const startMulti = useCallback(() => {
     multiRemainingRef.current = 2; // this run + 2 repeats = 3 total
-    start({ fromChain: true }); // preserve the repeat count just set
-  }, [start]);
+    launch();
+  }, [launch]);
 
   // Latest snapshots behind refs, for the deferred history record below.
   // Mirrored in an effect (not during render) to satisfy react-hooks/refs;
@@ -203,19 +212,21 @@ export function useComparisonRuns({
   // (pending cleared immediately so re-publishes can't double-record), then
   // read the settled snapshots from refs after the settle delay. No cleanup
   // on purpose — the timeout must survive the snapshot-driven effect
-  // re-runs; `mountedRef` keeps it inert after unmount.
+  // re-runs; the generation check keeps it inert once anything (stop,
+  // reset, a new launch, unmount) has superseded this run.
   useEffect(() => {
     if (running) return;
     const pending = pendingRunRef.current;
     if (!pending) return;
     // Zero commits means the snapshots have not settled yet — wait for the
     // re-run this effect gets when they land. (A genuinely empty run keeps
-    // its pending armed; the next start() overwrites it, and manual starts
+    // its pending armed; the next launch overwrites it, and manual starts
     // clear the chain counter, so nothing phantom-fires from it.)
     if (enabledSnapshot.actual.count === 0 || disabledSnapshot.actual.count === 0) return;
     pendingRunRef.current = null;
+    const gen = runGenRef.current;
     window.setTimeout(() => {
-      if (!mountedRef.current) return;
+      if (gen !== runGenRef.current) return; // superseded — discard
       const e = enabledSnapRef.current;
       const d = disabledSnapRef.current;
       const rec: RunRecord = {
@@ -234,28 +245,35 @@ export function useComparisonRuns({
       if (multiRemainingRef.current > 0) {
         multiRemainingRef.current -= 1;
         window.setTimeout(() => {
-          if (!mountedRef.current) return;
-          startRef.current({ fromChain: true });
+          if (gen !== runGenRef.current) return; // superseded — no chain
+          launchRef.current();
         }, 400);
       }
     }, settleMs);
   }, [running, enabledSnapshot, disabledSnapshot, settleMs]);
 
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
+  useEffect(
+    () => () => {
+      runGenRef.current += 1; // unmount inerts every armed timer
       cancelRef.current?.();
-    };
-  }, []);
+    },
+    []
+  );
 
+  // `chars` covers every payload-shape change in one comparison: the scale
+  // selector AND the base-payload variants (e.g. the defs payload) — runs
+  // from a differently-shaped document must never share a noise band.
   const sameConfigRuns = useMemo(
     () =>
       runs.filter(
         (r) =>
-          r.scenario === scenario && r.scale === payloadScale && r.spy === spyEnabled && r.registry === registryEnabled
+          r.scenario === scenario &&
+          r.scale === payloadScale &&
+          r.chars === payloadChars &&
+          r.spy === spyEnabled &&
+          r.registry === registryEnabled
       ),
-    [runs, scenario, payloadScale, spyEnabled, registryEnabled]
+    [runs, scenario, payloadScale, payloadChars, spyEnabled, registryEnabled]
   );
 
   const clearRuns = useCallback(() => setRuns([]), []);
@@ -272,7 +290,6 @@ export function useComparisonRuns({
     runs,
     clearRuns,
     sameConfigRuns,
-    effectivePayload,
     payloadChars,
     payloadBlocks,
     scenarios,
