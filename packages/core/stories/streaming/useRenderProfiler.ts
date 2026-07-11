@@ -35,7 +35,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ProfilerOnRenderCallback, RefObject } from 'react';
-import { STAGE_MEASURE_PREFIX } from '../../src/components/devStageTimings';
+import { subscribeStageTimings } from '../../src/components/devStageTimings';
 
 export interface ChunkSample {
   index: number;
@@ -126,8 +126,9 @@ export interface RenderProfilerSnapshot {
    */
   elementRenders: ElementRenderStats;
   /**
-   * Dev-only pipeline stage timings (`ai-markdown:stage:*` performance
-   * measures emitted by the block-memo render path). Empty unless the hook
+   * Dev-only pipeline stage timings, delivered over devStageTimings'
+   * direct subscription channel (NOT the User Timing buffer — React 19
+   * dev floods that with per-component measures). Empty unless the hook
    * was created with `observeStages: true` AND an instrumented (dev-build,
    * block-memo) renderer is measuring on this page. Keyed by stage name
    * (parse / transform / build / render).
@@ -168,10 +169,11 @@ export interface RenderProfilerOptions {
    */
   running?: boolean;
   /**
-   * Aggregate `ai-markdown:stage:*` performance measures into
-   * `snapshot.stages`. Measures are PAGE-WIDE — in a same-page comparison
-   * only ONE profiler (the block-memo side's) should observe them, or both
-   * panels would display the same union. Default `false`.
+   * Aggregate the block-memo pipeline's stage timings into
+   * `snapshot.stages` via devStageTimings' subscription channel. The
+   * channel is PAGE-WIDE — in a same-page comparison only ONE profiler
+   * (the block-memo side's) should subscribe, or both panels would
+   * display the same union. Default `false`.
    */
   observeStages?: boolean;
 }
@@ -455,6 +457,16 @@ export function useRenderProfiler<T extends HTMLElement = HTMLElement>(
     const now = performance.now();
     accumRef.current = emptyAccum(now);
     lastChunkAtRef.current = now;
+    // Bound the page's User Timing buffer between runs: React 19 dev
+    // emits one measure per component render (component tracks) and
+    // nothing ever clears them — millions of entries over a benchmark
+    // session, which any buffer-scanning API then pays for (measured:
+    // per-name clearMeasures on that buffer inverted the whole benchmark).
+    // Dev-only harness → wholesale clear is safe; recorded DevTools
+    // traces are unaffected (the timeline reads trace events, not the
+    // live buffer).
+    if (typeof performance.clearMeasures === 'function') performance.clearMeasures();
+    if (typeof performance.clearMarks === 'function') performance.clearMarks();
     setSnapshot(emptySnapshot());
   }, []);
 
@@ -590,31 +602,24 @@ export function useRenderProfiler<T extends HTMLElement = HTMLElement>(
     return () => obs.disconnect();
   }, []);
 
-  // PerformanceObserver measure — aggregates the dev-only pipeline stage
-  // timings the block-memo renderer emits (see src devStageTimings).
-  // Page-wide by nature; only enable on ONE profiler per page (the
-  // block-memo side), otherwise both panels show the same union.
+  // Pipeline stage timings — direct subscription to the block-memo
+  // renderer's dev-only channel (see src devStageTimings). Deliberately
+  // NOT a PerformanceObserver on 'measure': React 19 dev emits one
+  // measure per component render (component tracks), so the page-global
+  // channel is a flood this consumer would have to filter per batch. The
+  // subscription is still page-scoped (module-level listener set) — keep
+  // the one-consumer-per-page discipline (the block-memo side only),
+  // otherwise both panels would show the same union.
   useEffect(() => {
-    if (!observeStages || typeof PerformanceObserver === 'undefined') return;
-    let observer: PerformanceObserver | undefined;
-    try {
-      observer = new PerformanceObserver((list) => {
-        const acc = accumRef.current;
-        if (!acc) return;
-        for (const entry of list.getEntries()) {
-          if (!entry.name.startsWith(STAGE_MEASURE_PREFIX)) continue;
-          const stage = entry.name.slice(STAGE_MEASURE_PREFIX.length);
-          const s = (acc.stages[stage] ??= { count: 0, total: 0, max: 0 });
-          s.count += 1;
-          s.total += entry.duration;
-          if (entry.duration > s.max) s.max = entry.duration;
-        }
-      });
-      observer.observe({ entryTypes: ['measure'] });
-    } catch {
-      // measure observation unsupported — stage panel simply stays empty.
-    }
-    return () => observer?.disconnect();
+    if (!observeStages) return;
+    return subscribeStageTimings((stage, duration) => {
+      const acc = accumRef.current;
+      if (!acc) return;
+      const s = (acc.stages[stage] ??= { count: 0, total: 0, max: 0 });
+      s.count += 1;
+      s.total += duration;
+      if (duration > s.max) s.max = duration;
+    });
   }, [observeStages]);
 
   // PerformanceObserver longtask — main-thread blocks ≥ 50 ms, the kind
