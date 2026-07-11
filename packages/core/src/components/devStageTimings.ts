@@ -5,20 +5,26 @@
  * (parse → transform → build → render). Which one dominates depends on the
  * workload — plugin mix, document length, math density — and every
  * optimization decision should start from that split, not from a guess.
- * {@link measureStage} emits one `performance.measure` entry per stage
- * execution, named `ai-markdown:stage:<stage>`, so any live
- * PerformanceObserver (the DevTools Performance panel's tracing, the
- * BlockMemoCompare story's profiler) can aggregate them without the
- * library depending on the observer.
  *
- * Delivery contract: entries are cleared from the global User Timing
- * buffer immediately after emission — already-registered observers still
- * receive them (delivery is queued at creation), but buffer readers
- * (`performance.getEntriesByType('measure')` in the console, late
- * `buffered: true` observers) see nothing. That is the price of never
- * growing the page-global buffer from a render hot path (~4 entries per
- * streamed token, observer or not). The DevTools Performance panel is
- * unaffected — it captures measures from the trace, not the buffer.
+ * Two delivery channels, deliberately separate:
+ *
+ * - **Programmatic consumers** (the BlockMemoCompare story's profiler)
+ *   use {@link subscribeStageTimings} — a private, direct callback
+ *   channel. It must NOT go through the User Timing API: React 19 dev
+ *   builds emit one `performance.measure` per component render
+ *   ("component tracks"), so a page-global 'measure' observer receives a
+ *   flood of foreign entries it has to filter, and — measured — anything
+ *   that scans or clears the buffer becomes O(buffer) with MILLIONS of
+ *   entries in a long session.
+ * - **DevTools timeline visibility**: {@link measureStage} still emits
+ *   one `performance.measure` per stage, named
+ *   `ai-markdown:stage:<stage>`. Emission is an append — cheap. It does
+ *   NOT clear per name afterwards: Chromium's `clearMeasures(name)` scans
+ *   the whole buffer, and under the React-dev flood that per-call scan
+ *   cost ~35% of main-thread time ON THE INSTRUMENTED SIDE ONLY —
+ *   inverting the very benchmark this instrumentation serves. Our own
+ *   growth is ~4 entries per streamed token; the benchmark harness
+ *   bulk-clears the buffer between runs (see useRenderProfiler.reset).
  *
  * Production builds fold {@link ENABLED} to `false`: the dual dev/prod
  * build resolves `process.env.NODE_ENV` at build time (tsup `env`), so
@@ -45,49 +51,71 @@ const STAGE_NAMES = Object.fromEntries(
 ) as Record<PipelineStage, string>;
 
 /**
- * One-time capability gate. Beyond the DEV check, probes the exact calls
- * {@link measureStage} makes — the options-object `measure` overload AND
- * `clearMeasures` — by performing them once. Environments that expose
- * `performance.measure` but only support the legacy mark-name overloads
- * (older jsdom, partial polyfills) fail the probe and are gated off
- * permanently, instead of paying a thrown-and-swallowed exception per
- * stage per token for the whole session.
+ * One-time capability gate. Beyond the DEV check, probes the exact call
+ * {@link measureStage} makes — the options-object `measure` overload — by
+ * performing it once. Environments that expose `performance.measure` but
+ * only support the legacy mark-name overloads (older jsdom, partial
+ * polyfills) fail the probe and are gated off permanently, instead of
+ * paying a thrown-and-swallowed exception per stage per token for the
+ * whole session.
  */
 const ENABLED: boolean =
   process.env.NODE_ENV !== 'production' &&
   (() => {
-    if (
-      typeof performance === 'undefined' ||
-      typeof performance.measure !== 'function' ||
-      typeof performance.clearMeasures !== 'function'
-    ) {
+    if (typeof performance === 'undefined' || typeof performance.measure !== 'function') {
       return false;
     }
     try {
       const probe = `${STAGE_MEASURE_PREFIX}probe`;
       performance.measure(probe, { start: 0, end: 0 });
-      performance.clearMeasures(probe);
+      performance.clearMeasures?.(probe);
       return true;
     } catch {
       return false;
     }
   })();
 
+type StageListener = (stage: PipelineStage, durationMs: number) => void;
+const stageListeners = new Set<StageListener>();
+
 /**
- * Run `fn` as the named pipeline stage, emitting its `performance.measure`
- * in dev. The single-callable shape (instead of a start/end pair) makes
- * the stage name a typed argument and the pairing unforgettable: a call
- * site cannot mismatch or drop an end call. If `fn` throws, no measure is
- * emitted for the aborted stage.
+ * Subscribe to stage timings over the private callback channel (dev-only;
+ * in production builds {@link measureStage} never emits, so listeners
+ * simply stay silent). Returns an unsubscribe function.
+ *
+ * This exists so the benchmark profiler does NOT have to observe the
+ * page-global 'measure' entry type: React 19 dev floods that channel with
+ * one measure per component render, which would have to be filtered per
+ * batch — and the module-level listener set is still page-scoped, so the
+ * one-consumer-per-page discipline from the story docs continues to apply.
+ */
+export function subscribeStageTimings(listener: StageListener): () => void {
+  stageListeners.add(listener);
+  return () => {
+    stageListeners.delete(listener);
+  };
+}
+
+/**
+ * Run `fn` as the named pipeline stage. In dev: notifies
+ * {@link subscribeStageTimings} listeners and emits one
+ * `performance.measure` for DevTools timeline visibility. The
+ * single-callable shape (instead of a start/end pair) makes the stage
+ * name a typed argument and the pairing unforgettable: a call site cannot
+ * mismatch or drop an end call. If `fn` throws, nothing is emitted for
+ * the aborted stage.
+ *
+ * NOTE: emission is append-only — never clear per name from here. See the
+ * module docs: `clearMeasures(name)` is O(page buffer), and React 19
+ * dev's component tracks grow that buffer without bound.
  */
 export function measureStage<T>(stage: PipelineStage, fn: () => T): T {
   if (!ENABLED) return fn();
   const start = performance.now();
   const result = fn();
-  const name = STAGE_NAMES[stage];
-  // Probe-verified calls — no per-call try/catch needed. See the module
-  // docs for why the entry is cleared immediately after emission.
-  performance.measure(name, { start, end: performance.now() });
-  performance.clearMeasures(name);
+  const end = performance.now();
+  for (const listener of stageListeners) listener(stage, end - start);
+  // Probe-verified call — no per-call try/catch needed.
+  performance.measure(STAGE_NAMES[stage], { start, end });
   return result;
 }
