@@ -124,7 +124,11 @@ The same applies to **Jest**: its resolver never includes the `development`
 condition (regardless of `NODE_ENV`), so consumer test suites exercise the
 production build — this package's dev-only warnings and invariant checks will not
 fire in tests. Opt back in with
-`testEnvironmentOptions: { customExportConditions: ['development'] }`.
+`testEnvironmentOptions: { customExportConditions: ['development', 'node', 'node-addons'] }`
+(jest-environment-node; use `['development', 'browser']` with jsdom). Keep the
+environment's defaults in the list — `customExportConditions` **replaces** them
+rather than adding to them, and dropping `node`/`browser` would misresolve every
+other conditional-exports package in the test process.
 
 **Footgun (all dual-build packages — react and redux share it):** resolution
 conditions must be consistent within one process. If part of your toolchain inlines

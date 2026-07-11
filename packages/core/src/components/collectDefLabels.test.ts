@@ -138,4 +138,68 @@ describe('createDefLabelScanner', () => {
     const next = scanner.scan('[new]: /url\n\ndifferent');
     expect(asPlain(next)).toEqual(asPlain(collectDefLabels('[new]: /url\n\ndifferent')));
   });
+
+  test('fast path actually skips the parse on def-free prose appends', () => {
+    // Injectable parse counts invocations — externally, a skipped parse is
+    // indistinguishable from a parse whose sets came out equal.
+    let calls = 0;
+    const counting = (s: string) => {
+      calls++;
+      return collectDefLabels(s);
+    };
+    const scanner = createDefLabelScanner(counting);
+    let acc = 'intro paragraph\n\nprose ';
+    scanner.scan(acc);
+    expect(calls).toBe(1); // first scan always parses
+    for (const token of ['streams ', 'in with [a link](https://e.com) ', 'and citations [1] ', 'to the end.']) {
+      acc += token;
+      scanner.scan(acc);
+    }
+    expect(calls).toBe(1); // every append rode the fast path
+    // A def line DOES force the parse.
+    acc += '\n\n[d]: /url';
+    scanner.scan(acc);
+    expect(calls).toBe(2);
+  });
+
+  test('property: seeded random token streams match a full parse at every step', () => {
+    // mulberry32 — deterministic; the pieces bias toward the constructs the
+    // scanner's grammar facts interact with (defs, brackets, blank lines,
+    // fences, CRLF, container prefixes, partial def lines).
+    let s = 0xdef5 | 0;
+    const rand = () => {
+      s = (s + 0x6d2b79f5) | 0;
+      let t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const PIECES = [
+      'word ',
+      'two words ',
+      '\n',
+      '\n\n',
+      '\r\n',
+      '[',
+      ']',
+      '(https://e.com) ',
+      '[^fn]: body\n',
+      '[ref]: /url\n',
+      '[ref]: ',
+      '"title"\n',
+      '```\n[fenced]: /nope\n```\n',
+      '> quoted line\n',
+      '- list item ',
+      '   ',
+      '===\n',
+      ': ',
+    ];
+    for (let stream = 0; stream < 25; stream++) {
+      const scanner = createDefLabelScanner();
+      let acc = '';
+      for (let i = 0; i < 40; i++) {
+        acc += PIECES[Math.floor(rand() * PIECES.length)];
+        expect(asPlain(scanner.scan(acc))).toEqual(asPlain(collectDefLabels(acc)));
+      }
+    }
+  });
 });
