@@ -1,7 +1,8 @@
 'use client';
 
 import { Profiler, memo, useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
-import AIMarkdown, { AIMarkdownDocuments } from '../../src/index';
+import AIMarkdown from '../../src/index';
+import { MaybeCoordinated } from './MaybeCoordinated';
 import { DEFAULT_PAYLOAD, PAYLOAD_WITH_DEFS, SCENARIO_KEYS, type ScenarioKey } from './scenarios';
 import { useRenderProfiler, type RenderProfilerSnapshot } from './useRenderProfiler';
 import { ProfilerPanel } from './ProfilerPanel';
@@ -241,7 +242,7 @@ export const BlockMemoComparison = ({
       </h4>
       <div style={renderSurfaceStyle} ref={enabledProfiler.targetRef}>
         <Profiler id="comparison-enabled" onRender={enabledProfiler.onRender}>
-          {registryEnabled ? <AIMarkdownDocuments>{enabledMarkdown}</AIMarkdownDocuments> : enabledMarkdown}
+          <MaybeCoordinated enabled={registryEnabled}>{enabledMarkdown}</MaybeCoordinated>
         </Profiler>
       </div>
       <ProfilerPanel snapshot={enabledProfiler.snapshot} colorScheme={colorScheme} compact />
@@ -255,7 +256,7 @@ export const BlockMemoComparison = ({
       </h4>
       <div style={renderSurfaceStyle} ref={disabledProfiler.targetRef}>
         <Profiler id="comparison-disabled" onRender={disabledProfiler.onRender}>
-          {registryEnabled ? <AIMarkdownDocuments>{disabledMarkdown}</AIMarkdownDocuments> : disabledMarkdown}
+          <MaybeCoordinated enabled={registryEnabled}>{disabledMarkdown}</MaybeCoordinated>
         </Profiler>
       </div>
       <ProfilerPanel snapshot={disabledProfiler.snapshot} colorScheme={colorScheme} compact />
