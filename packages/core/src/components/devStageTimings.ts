@@ -20,15 +20,14 @@
  * streamed token, observer or not). The DevTools Performance panel is
  * unaffected — it captures measures from the trace, not the buffer.
  *
- * Production builds fold {@link ENABLED} to `false` (bundler substitution
- * via the shared `DEV` gate) and the whole thing costs one boolean check
- * per stage; unbundled Node SSR pays the same boolean, evaluated from an
- * env read done once at import.
+ * Production builds fold {@link ENABLED} to `false`: the dual dev/prod
+ * build resolves `process.env.NODE_ENV` at build time (tsup `env`), so
+ * the published dist carries no env read at all; in-repo src consumers
+ * (storybook, vitest) run under Vite/Node where the text is substituted
+ * or `process` exists. The whole thing costs one boolean check per stage.
  *
  * @module components/devStageTimings
  */
-
-import { DEV } from '../devEnv';
 
 /** The stages of the block-memo render pipeline, in execution order.
  *  Single source of truth: the union type, the emitted measure names, and
@@ -55,7 +54,7 @@ const STAGE_NAMES = Object.fromEntries(
  * stage per token for the whole session.
  */
 const ENABLED: boolean =
-  DEV &&
+  process.env.NODE_ENV !== 'production' &&
   (() => {
     if (
       typeof performance === 'undefined' ||

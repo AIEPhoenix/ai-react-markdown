@@ -120,6 +120,21 @@ pick the right build automatically — nothing to configure.
 rendering with plain Node (no bundler): dev warnings will be silent there. Run Node
 with `--conditions=development` if you want them in that setup.
 
+The same applies to **Jest**: its resolver never includes the `development`
+condition (regardless of `NODE_ENV`), so consumer test suites exercise the
+production build — this package's dev-only warnings and invariant checks will not
+fire in tests. Opt back in with
+`testEnvironmentOptions: { customExportConditions: ['development'] }`.
+
+**Footgun (all dual-build packages — react and redux share it):** resolution
+conditions must be consistent within one process. If part of your toolchain inlines
+this package under the `development` condition while another part — say an
+externalized wrapper like `@ai-react-markdown/mantine` in a partially-inlined
+Vitest setup — resolves it through Node without that condition, two copies load
+and React contexts split across them: cross-chunk coordination appears silently
+dead. Align `deps.inline` / aliases so everything in the process resolves the
+same build.
+
 ### CSS Imports
 
 Pick the set that matches the package you installed.
