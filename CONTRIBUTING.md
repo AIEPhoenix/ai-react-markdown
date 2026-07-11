@@ -68,6 +68,23 @@ CI runs lint + format:check + typecheck + test + build on every PR.
 - No emojis in source or docs unless explicitly requested.
 - For JSDoc on public API, include a `Why` / `Recommended pattern` / `Footguns` triplet when the surface is non-trivial — this is the convention readers expect.
 
+## Dev-only gates (warnings, invariant checks)
+
+Write the **bare** text — `if (process.env.NODE_ENV !== 'production') { ... }` —
+at module scope or in function bodies alike. Never wrap it in a
+`typeof process !== 'undefined'` guard: Vite substitutes only the bare text, so
+the guard evaluates `'undefined'` in bundler browser dev and silently disables
+the gate exactly where it matters (this bug shipped once; see the history note
+in `useReferenceFlipWarning.ts`).
+
+What makes the bare text safe everywhere: `process.env.NODE_ENV` is resolved at
+**build time**. Both entries of core's `tsup.config.ts` carry
+`env: { NODE_ENV: ... }` — those two keys are **load-bearing**; removing either
+would ship a dist that evaluates `process.env` at import and crashes no-bundler
+consumers (browser native ESM/CDN, Deno). The build fails if that ever regresses:
+`scripts/assert-dist-clean.mjs` greps the emitted artifacts for `process.env`
+after every `build:js`.
+
 ## Larger changes
 
 For anything that touches the rendering pipeline, sanitization model, or cross-chunk registry: **open a Discussion or Issue first**. These areas have walked-through design constraints (documented at the top of each implementation file); a quick design sync saves a lot of rework.

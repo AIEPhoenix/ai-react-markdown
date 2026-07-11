@@ -52,7 +52,7 @@
     "./typography/*.css": "./dist/typography/*.css"
   },
   "scripts": {
-    "build:js": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsup",
+    "build:js": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsup && node scripts/assert-dist-clean.mjs",
     "build:css": "sass src/components/typography/variants/:dist/typography/ && postcss dist/typography/*.css --replace",
     "build": "pnpm run build:js && pnpm run build:css",
     "test": "vitest --run",
