@@ -59,10 +59,10 @@ function sourceIdFromFootnoteLiId(idProp: string, clobberPrefix?: string): strin
     // than crashing the harvest. The raw form will key-mismatch the registry
     // def, so the aggregate footer's `<li>` renders empty for this label —
     // surface that in development instead of failing silently.
-    // Bare env access on purpose (function-body form — see ../devEnv docs):
-    // the previous `typeof process` guard was dead in bundler browser dev,
-    // where Vite substitutes only the bare text and `typeof process` stays
-    // `'undefined'` — this warning never fired where it mattered.
+    // Bare env access on purpose — the dual dev/prod build resolves it at
+    // build time, so dist never evaluates it. The previous `typeof process`
+    // guard was dead in bundler browser dev (Vite substitutes only the bare
+    // text, `typeof process` stays 'undefined'); do not reintroduce it.
     if (process.env.NODE_ENV !== 'production') {
       console.warn(
         `[ai-react-markdown] Malformed percent-encoding in footnote id "${raw}"; ` +

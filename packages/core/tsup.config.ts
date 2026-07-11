@@ -1,7 +1,9 @@
-import { defineConfig } from 'tsup';
+import { defineConfig, type Options } from 'tsup';
 
-const shared = {
-  format: ['cjs', 'esm'] as const,
+// Typed so misspelled/renamed keys fail the config typecheck — spread-in
+// properties bypass excess-property checking at the use sites below.
+const shared: Options = {
+  format: ['cjs', 'esm'],
   sourcemap: true,
   external: ['react', 'react-dom'],
   noExternal: ['lodash-es'],
