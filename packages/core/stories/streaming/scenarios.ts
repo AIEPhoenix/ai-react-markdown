@@ -42,21 +42,34 @@ const DEFAULT_BLOCKS = [
 
 export const DEFAULT_PAYLOAD = DEFAULT_BLOCKS.join('');
 
-/**
- * DEFAULT_PAYLOAD plus a definition-bearing tail: footnote and
- * link-reference defs WITH in-text references. The default payload
- * contains ZERO definitions, so coordinated (registry) mode ran PASS 0 on
- * a best-case input — def lines never entered the label scanner's active
- * region and the phantom/aggregation paths never executed. Measurements
- * that claim to show coordinated-mode cost must stream THIS payload.
- */
-export const PAYLOAD_WITH_DEFS =
-  DEFAULT_PAYLOAD +
-  '\nReferences[^n1] appear mid-prose[^n2], along with [reference links][spec] and [another one][gfm].\n\n' +
+/** Definition-bearing tail appended by {@link withDefs}: footnote and
+ *  link-reference defs WITH in-text references. */
+const DEFS_TAIL =
+  'References[^n1] appear mid-prose[^n2], along with [reference links][spec] and [another one][gfm].\n\n' +
   '[^n1]: First footnote body with `code` and a [link](https://example.com/fn).\n' +
   '[^n2]: Second footnote body, plain text.\n\n' +
   '[spec]: https://spec.commonmark.org\n' +
   '[gfm]: https://github.github.com/gfm/ "GFM spec"\n';
+
+/**
+ * Append the definitions tail to a payload (any payload — including the
+ * ALREADY-SCALED one; apply after `.repeat()` so one tail serves the whole
+ * document and no repeat seam glues a def line onto the next repetition).
+ *
+ * What this exercises — and what it does NOT: the default payload contains
+ * zero definitions, so without this tail the def-label scanner runs on a
+ * best-case input and the aggregate footnote footer never renders. With
+ * it, def lines stream through the scanner's active region (its full-parse
+ * slow path) and the footer assembles. It does NOT exercise the
+ * cross-chunk PHANTOM path: each benchmark side is a single chunk, so no
+ * label is ever defined "elsewhere" and the phantom candidate set stays
+ * empty — measuring that needs a second chunk contributing definitions
+ * the first one references.
+ */
+export function withDefs(payload: string): string {
+  const sep = payload.endsWith('\n\n') ? '' : payload.endsWith('\n') ? '\n' : '\n\n';
+  return payload + sep + DEFS_TAIL;
+}
 
 const splitBlocks = (payload: string): string[] => {
   const parts = payload.split(/(\n\n+)/);

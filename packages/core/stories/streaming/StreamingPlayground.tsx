@@ -1,9 +1,8 @@
 'use client';
 
-import { Profiler, useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { Profiler, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import AIMarkdown from '../../src/index';
 import { buildScenarios, DEFAULT_PAYLOAD, SCENARIO_KEYS, type ScenarioKey } from './scenarios';
-import { useMemo } from 'react';
 import { useRenderProfiler } from './useRenderProfiler';
 import { ProfilerPanel } from './ProfilerPanel';
 import { ChunkPanel } from './ChunkPanel';
