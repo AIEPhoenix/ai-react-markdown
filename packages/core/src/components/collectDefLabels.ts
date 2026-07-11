@@ -130,8 +130,13 @@ export interface DefLabelScanner {
  *
  * The reference stability doubles as churn control: consumers that list
  * the result in effect deps (chunk re-registration) stop firing per token.
+ *
+ * @param parse Full-parse fallback — injectable so tests can COUNT parses
+ *   and assert the fast path actually fires (from the outside, a skipped
+ *   parse is indistinguishable from a parse whose sets came out equal).
+ *   Production callers never pass it.
  */
-export function createDefLabelScanner(): DefLabelScanner {
+export function createDefLabelScanner(parse: (source: string) => DefLabels = collectDefLabels): DefLabelScanner {
   let prevSource: string | null = null;
   let prevLabels: DefLabels | null = null;
 
@@ -150,7 +155,7 @@ export function createDefLabelScanner(): DefLabelScanner {
           }
         }
       }
-      const next = collectDefLabels(source);
+      const next = parse(source);
       if (
         prevLabels !== null &&
         setsEqual(next.footnoteLabels, prevLabels.footnoteLabels) &&
