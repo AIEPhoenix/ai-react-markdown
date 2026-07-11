@@ -28,11 +28,17 @@ export default defineConfig([
   // Production build: gates fold to false, dev-only branches are
   // dead-code-eliminated. This is what `import`/`require` (and the
   // top-level main/module fields) point at.
+  //
+  // `clean` must stay FALSE on both configs: tsup builds array configs
+  // concurrently (Promise.all), so a clean here races the other config's
+  // file writes and can silently delete its freshly-emitted output — a
+  // published package whose `development` condition points at nothing.
+  // The build:js script rm -rf's dist BEFORE tsup starts instead.
   {
     ...shared,
     entry: ['src/index.tsx'],
     dts: true,
-    clean: true,
+    clean: false,
     env: { NODE_ENV: 'production' },
   },
   // Development build: gates fold to true — warnings and dev invariants
@@ -42,7 +48,7 @@ export default defineConfig([
     ...shared,
     entry: { 'index.dev': 'src/index.tsx' },
     dts: false,
-    clean: false,
+    clean: false, // see above — never clean from inside the array
     env: { NODE_ENV: 'development' },
   },
 ]);
