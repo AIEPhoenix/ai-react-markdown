@@ -37,7 +37,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { DEFAULT_PAYLOAD, PAYLOAD_WITH_DEFS, SCENARIO_KEYS, type ScenarioKey } from './scenarios';
+import { DEFAULT_PAYLOAD, SCENARIO_KEYS, type ScenarioKey } from './scenarios';
 import { emptySnapshot, type RenderProfilerSnapshot } from './useRenderProfiler';
 import { controlStyles, getStreamingTheme, type ColorScheme } from './theme';
 import { computeSummary, RunHistory, SummaryBanner, VerdictBanner } from './BlockMemoComparison';
@@ -129,6 +129,21 @@ const writeSession = (key: string, value: string): void => {
   }
 };
 
+/** IPv6 probe verdicts expire after this long — long enough to amortize
+ *  the 1.5 s worst-case probe across story visits, short enough that a
+ *  mid-session dev-server change (listener gained OR lost) self-heals. */
+const PROBE_TTL_MS = 60_000;
+const readProbeCache = (key: string): boolean | null => {
+  const raw = readSession(key);
+  if (!raw) return null;
+  const [verdict, expiresAt] = raw.split(':');
+  // Old-format entries (no expiry) parse as NaN and re-probe — harmless.
+  return Number(expiresAt) > Date.now() ? verdict === '1' : null;
+};
+const writeProbeCache = (key: string, ipv6: boolean): void => {
+  writeSession(key, `${ipv6 ? '1' : '0'}:${Date.now() + PROBE_TTL_MS}`);
+};
+
 export const IsolatedComparison = ({
   colorScheme,
   initialScenario = 'randomTokens',
@@ -137,11 +152,6 @@ export const IsolatedComparison = ({
   const [running, setRunning] = useState(false);
   const [memoSide, setMemoSide] = useState<SideState>(initialSideState);
   const [legacySide, setLegacySide] = useState<SideState>(initialSideState);
-  // See BlockMemoComparison: registry mode needs def lines in the stream
-  // to measure anything real; runs are keyed by chars so the payloads
-  // never share a noise band. Content is streamed FROM the host, so the
-  // sides need no URL param for this.
-  const [defsPayload, setDefsPayload] = useState(false);
 
   const memoFrameRef = useRef<HTMLIFrameElement | null>(null);
   const legacyFrameRef = useRef<HTMLIFrameElement | null>(null);
@@ -155,11 +165,15 @@ export const IsolatedComparison = ({
   // nothing and waiting on a handshake that can never arrive.
   const loopbackHost = LOOPBACK_HOSTNAMES.includes(window.location.hostname);
 
-  // Isolation topology, resolved once per session: probe whether the dev
-  // server also listens on IPv6 loopback (`[::1]`), which unlocks the
-  // three-way cross-site split (see pickSideHosts). The verdict is cached
-  // in sessionStorage so only the first visit pays the probe (worst case
-  // 1.5 s when [::1] neither connects nor refuses promptly).
+  // Isolation topology: probe whether the dev server also listens on IPv6
+  // loopback (`[::1]`), which unlocks the three-way cross-site split (see
+  // pickSideHosts). The verdict — EITHER way — is cached with a short TTL:
+  // stale-success can't wedge the story after a mid-session server restart
+  // that dropped [::1] (it re-validates within a minute), stale-failure
+  // can't lock the tab into degraded topology after the listener comes up,
+  // and an IPv4-only host pays the 1.5 s worst-case probe at most once per
+  // TTL instead of on every visit. One symmetric mechanism, no staleness
+  // direction favored.
   const [sideHosts, setSideHosts] = useState<SideHosts | null>(null);
   useEffect(() => {
     if (!loopbackHost) return;
@@ -167,29 +181,22 @@ export const IsolatedComparison = ({
     (async () => {
       const { protocol, port, host } = window.location;
       const cacheKey = `bmc:ipv6-probe:${protocol}//${host}`;
-      let ipv6: boolean;
-      // Only SUCCESS is cached. A failed probe can be transient (dev server
-      // still starting, [::1] listener toggled) and caching it would lock
-      // the whole tab session into the degraded topology with no way back
-      // but clearing sessionStorage — re-probing on every visit until it
-      // succeeds keeps the story self-healing, at the cost of the 1.5s
-      // worst case only while the server genuinely lacks IPv6.
-      if (readSession(cacheKey) === '1') {
-        ipv6 = true;
-      } else {
+      let ipv6 = readProbeCache(cacheKey);
+      if (ipv6 === null) {
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), 1500);
         try {
-          const controller = new AbortController();
-          const timer = window.setTimeout(() => controller.abort(), 1500);
           await fetch(`${protocol}//[::1]${port ? `:${port}` : ''}/iframe.html`, {
             mode: 'no-cors',
             signal: controller.signal,
           });
-          window.clearTimeout(timer);
           ipv6 = true;
-          writeSession(cacheKey, '1');
         } catch {
           ipv6 = false;
+        } finally {
+          window.clearTimeout(timer);
         }
+        writeProbeCache(cacheKey, ipv6);
       }
       if (alive) setSideHosts(pickSideHosts(ipv6));
     })();
@@ -267,7 +274,16 @@ export const IsolatedComparison = ({
   // postMessage transport; run bookkeeping (history, Run ×3, noise-band
   // inputs) lives in the shared useComparisonRuns hook.
   const canStart = useCallback(() => bothReady, [bothReady]);
-  const begin = useCallback(() => broadcast({ type: 'bmc:start' }), [broadcast]);
+  const begin = useCallback(() => {
+    // Clear the LOCAL snapshot mirrors before the remote resets kick in —
+    // the record handshake keys on `settled`, and a previous run's settled
+    // final must never be able to satisfy it while this run's snapshots
+    // are still crossing the process boundary (mirrors the same-page
+    // variant, whose begin() resets both profilers synchronously).
+    setMemoSide((prev) => ({ ...prev, snapshot: emptySnapshot() }));
+    setLegacySide((prev) => ({ ...prev, snapshot: emptySnapshot() }));
+    broadcast({ type: 'bmc:start' });
+  }, [broadcast]);
   const push = useCallback((chunk: string) => broadcast({ type: 'bmc:chunk', text: chunk }), [broadcast]);
   const end = useCallback(() => broadcast({ type: 'bmc:stop' }), [broadcast]);
 
@@ -280,6 +296,8 @@ export const IsolatedComparison = ({
     setSpyEnabled,
     registryEnabled,
     setRegistryEnabled,
+    defsEnabled,
+    setDefsEnabled,
     runs,
     clearRuns,
     sameConfigRuns,
@@ -289,14 +307,12 @@ export const IsolatedComparison = ({
     start,
     startMulti,
     stop,
+    busy,
   } = useComparisonRuns({
-    payload: defsPayload ? PAYLOAD_WITH_DEFS : payload,
+    payload,
     initialScenario,
     running,
     setRunning,
-    // Longer settle than the same-page variant: each side's FINAL snapshot
-    // crosses a process boundary before it reaches us.
-    settleMs: 400,
     enabledSnapshot: memoSide.snapshot,
     disabledSnapshot: legacySide.snapshot,
     canStart,
@@ -361,7 +377,7 @@ export const IsolatedComparison = ({
         {SCENARIO_KEYS.map((key) => (
           <button
             key={key}
-            disabled={running}
+            disabled={busy}
             onClick={() => setScenario(key)}
             style={scenario === key ? controls.primaryButton : controls.baseButton}
           >
@@ -375,7 +391,7 @@ export const IsolatedComparison = ({
         {PAYLOAD_SCALES.map((s) => (
           <button
             key={s}
-            disabled={running}
+            disabled={busy}
             onClick={() => setPayloadScale(s)}
             style={payloadScale === s ? controls.primaryButton : controls.baseButton}
           >
@@ -387,7 +403,7 @@ export const IsolatedComparison = ({
         </span>
         <span style={{ ...controls.caption, marginLeft: 8 }}>·</span>
         <button
-          disabled={running}
+          disabled={busy}
           onClick={() => setSpyEnabled(!spyEnabled)}
           style={controls.baseButton}
           title="Spies count component invocations but add overhead that scales with render count. Toggling remounts both frames."
@@ -395,7 +411,7 @@ export const IsolatedComparison = ({
           spy: {spyEnabled ? 'ON (component counts)' : 'OFF (clean timing)'}
         </button>
         <button
-          disabled={running}
+          disabled={busy}
           onClick={() => setRegistryEnabled(!registryEnabled)}
           style={controls.baseButton}
           title="Runs both sides under AIMarkdownDocuments (coordinated mode: per-token PASS 0 def-label scan). Toggling remounts both frames."
@@ -403,12 +419,12 @@ export const IsolatedComparison = ({
           registry: {registryEnabled ? 'ON (coordinated)' : 'OFF (standalone)'}
         </button>
         <button
-          disabled={running}
-          onClick={() => setDefsPayload((v) => !v)}
+          disabled={busy}
+          onClick={() => setDefsEnabled(!defsEnabled)}
           style={controls.baseButton}
-          title="Appends footnote/link-reference definitions (plus in-text references) to the payload — the default payload has zero defs, so registry mode alone measures a best-case PASS 0."
+          title="Appends a footnote/link-reference definitions tail (plus in-text references) to the scaled payload — the default payload has zero defs. Note: the cross-chunk phantom path still doesn't run; each side is a single chunk. Content streams FROM the host, so no URL param is needed."
         >
-          defs: {defsPayload ? 'ON (payload has defs)' : 'OFF'}
+          defs: {defsEnabled ? 'ON (defs tail appended)' : 'OFF'}
         </button>
       </div>
 
@@ -417,7 +433,7 @@ export const IsolatedComparison = ({
           {running ? 'Stop' : bothReady ? 'Run scenario' : 'Waiting for frames…'}
         </button>
         <button
-          disabled={running || !bothReady}
+          disabled={busy || !bothReady}
           onClick={startMulti}
           style={controls.baseButton}
           title="Run the same config 3 times back-to-back to expose run-to-run variance."
