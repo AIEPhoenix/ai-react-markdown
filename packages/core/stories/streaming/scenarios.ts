@@ -42,6 +42,22 @@ const DEFAULT_BLOCKS = [
 
 export const DEFAULT_PAYLOAD = DEFAULT_BLOCKS.join('');
 
+/**
+ * DEFAULT_PAYLOAD plus a definition-bearing tail: footnote and
+ * link-reference defs WITH in-text references. The default payload
+ * contains ZERO definitions, so coordinated (registry) mode ran PASS 0 on
+ * a best-case input — def lines never entered the label scanner's active
+ * region and the phantom/aggregation paths never executed. Measurements
+ * that claim to show coordinated-mode cost must stream THIS payload.
+ */
+export const PAYLOAD_WITH_DEFS =
+  DEFAULT_PAYLOAD +
+  '\nReferences[^n1] appear mid-prose[^n2], along with [reference links][spec] and [another one][gfm].\n\n' +
+  '[^n1]: First footnote body with `code` and a [link](https://example.com/fn).\n' +
+  '[^n2]: Second footnote body, plain text.\n\n' +
+  '[spec]: https://spec.commonmark.org\n' +
+  '[gfm]: https://github.github.com/gfm/ "GFM spec"\n';
+
 const splitBlocks = (payload: string): string[] => {
   const parts = payload.split(/(\n\n+)/);
   const blocks: string[] = [];
