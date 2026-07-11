@@ -138,6 +138,15 @@ export interface RenderProfilerSnapshot {
   lastResetAt: number;
   /** True once the React.Profiler has fired at least once. */
   profilerActive: boolean;
+  /**
+   * True only on the ONE final snapshot published after `running` flips
+   * false. Interval publishes during a run and reset/empty snapshots are
+   * always false. Consumers that record results (useComparisonRuns) gate
+   * on this instead of guessing a settle delay: a slow cross-process final
+   * simply records when it arrives, and an externally wiped snapshot can
+   * never be mistaken for a finished run.
+   */
+  settled: boolean;
 }
 
 export interface RenderProfilerOptions {
@@ -231,6 +240,7 @@ export const emptySnapshot = (): RenderProfilerSnapshot => ({
   totalChars: 0,
   lastResetAt: 0,
   profilerActive: false,
+  settled: false,
 });
 
 interface Accum {
@@ -448,7 +458,7 @@ export function useRenderProfiler<T extends HTMLElement = HTMLElement>(
     setSnapshot(emptySnapshot());
   }, []);
 
-  const publishSnapshot = useCallback(() => {
+  const publishSnapshot = useCallback((settled: boolean) => {
     const acc = accumRef.current;
     if (!acc) return;
     const actual = computeStats(
@@ -498,19 +508,21 @@ export function useRenderProfiler<T extends HTMLElement = HTMLElement>(
       totalChars: acc.totalChars,
       lastResetAt: acc.lastResetAt,
       profilerActive: acc.profilerActive,
+      settled,
     });
   }, []);
 
   // Periodic snapshot publish — only while running. Sorts samples once per
   // tick rather than per commit, capping React re-render pressure caused by
   // the panel itself. When `running` flips to false, we publish ONE final
-  // snapshot so the panel shows the final state and then go idle.
+  // snapshot — marked `settled` — so the panel shows the final state and
+  // recording consumers have a positive completion handshake; then go idle.
   useEffect(() => {
     if (!running) {
-      publishSnapshot();
+      publishSnapshot(true);
       return;
     }
-    const id = window.setInterval(publishSnapshot, snapshotMs);
+    const id = window.setInterval(() => publishSnapshot(false), snapshotMs);
     return () => window.clearInterval(id);
   }, [running, snapshotMs, publishSnapshot]);
 

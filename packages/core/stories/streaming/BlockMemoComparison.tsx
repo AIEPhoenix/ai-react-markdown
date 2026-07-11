@@ -3,7 +3,7 @@
 import { Profiler, memo, useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import AIMarkdown from '../../src/index';
 import { MaybeCoordinated } from './MaybeCoordinated';
-import { DEFAULT_PAYLOAD, PAYLOAD_WITH_DEFS, SCENARIO_KEYS, type ScenarioKey } from './scenarios';
+import { DEFAULT_PAYLOAD, SCENARIO_KEYS, type ScenarioKey } from './scenarios';
 import { useRenderProfiler, type RenderProfilerSnapshot } from './useRenderProfiler';
 import { ProfilerPanel } from './ProfilerPanel';
 import { createSpyComponents } from './spyComponents';
@@ -65,9 +65,11 @@ interface SummaryStat {
  *   coordinated-mode PASS 0 def-label scan runs per token — the primary
  *   chat-UI configuration, whose cost the standalone mode never shows.
  *   Runs are recorded per mode; the noise band never mixes the two.
- *   Pair it with the **defs toggle** (PAYLOAD_WITH_DEFS): the default
- *   payload has zero definitions, so registry mode alone measures PASS 0
- *   on a best-case input where the phantom/aggregation paths never run.
+ *   Pair it with the **defs toggle** (withDefs in scenarios.ts): the
+ *   default payload has zero definitions, so registry mode alone measures
+ *   the scanner on a best-case input. Scope honesty: even with defs ON,
+ *   the cross-chunk PHANTOM path stays cold — each side is a single chunk,
+ *   so no label is ever defined "elsewhere" (see withDefs docs).
  * - **Seeded stream**: scenario F replays the identical chunk pattern every
  *   run (see scenarios.ts), removing between-run stream variance.
  * - **Swap sides**: render order inside the shared commit is fixed (enabled
@@ -89,12 +91,6 @@ export const BlockMemoComparison = ({
   const [swapped, setSwapped] = useState(false);
   const [content, setContent] = useState('');
   const [running, setRunning] = useState(false);
-  // Defs payload: the default payload has ZERO definitions, so registry
-  // mode alone measures PASS 0 on a best-case input. Real coordinated-mode
-  // acceptance needs def lines actually streaming through the scanner's
-  // active region — that's what this toggle provides. Runs are keyed by
-  // chars in sameConfigRuns, so the two payloads never share a noise band.
-  const [defsPayload, setDefsPayload] = useState(false);
 
   // observeStages on the ENABLED side only: the stage measures are
   // page-wide and only the block-memo path emits them — observing on both
@@ -129,6 +125,8 @@ export const BlockMemoComparison = ({
     setSpyEnabled,
     registryEnabled,
     setRegistryEnabled,
+    defsEnabled,
+    setDefsEnabled,
     runs,
     clearRuns,
     sameConfigRuns,
@@ -138,13 +136,12 @@ export const BlockMemoComparison = ({
     start,
     startMulti,
     stop,
+    busy,
   } = useComparisonRuns({
-    payload: defsPayload ? PAYLOAD_WITH_DEFS : payload,
+    payload,
     initialScenario,
     running,
     setRunning,
-    // Snapshots settle one profiler tick after `running` flips false.
-    settleMs: 200,
     enabledSnapshot: enabledProfiler.snapshot,
     disabledSnapshot: disabledProfiler.snapshot,
     begin,
@@ -269,7 +266,7 @@ export const BlockMemoComparison = ({
         {SCENARIO_KEYS.map((key) => (
           <button
             key={key}
-            disabled={running}
+            disabled={busy}
             onClick={() => setScenario(key)}
             style={scenario === key ? controls.primaryButton : controls.baseButton}
           >
@@ -283,7 +280,7 @@ export const BlockMemoComparison = ({
         {PAYLOAD_SCALES.map((s) => (
           <button
             key={s}
-            disabled={running}
+            disabled={busy}
             onClick={() => setPayloadScale(s)}
             style={payloadScale === s ? controls.primaryButton : controls.baseButton}
           >
@@ -295,7 +292,7 @@ export const BlockMemoComparison = ({
         </span>
         <span style={{ ...controls.caption, marginLeft: 8 }}>·</span>
         <button
-          disabled={running}
+          disabled={busy}
           onClick={() => setSpyEnabled((v) => !v)}
           style={controls.baseButton}
           title="Spies count component invocations but add overhead that scales with render count (drags the legacy side more). Turn OFF for the cleanest timing."
@@ -303,7 +300,7 @@ export const BlockMemoComparison = ({
           spy: {spyEnabled ? 'ON (component counts)' : 'OFF (clean timing)'}
         </button>
         <button
-          disabled={running}
+          disabled={busy}
           onClick={() => setRegistryEnabled(!registryEnabled)}
           style={controls.baseButton}
           title="Wraps both sides in AIMarkdownDocuments (coordinated mode): the per-token PASS 0 def-label scan runs on each side — the cross-chunk coordination overhead the standalone mode skips."
@@ -311,14 +308,14 @@ export const BlockMemoComparison = ({
           registry: {registryEnabled ? 'ON (coordinated)' : 'OFF (standalone)'}
         </button>
         <button
-          disabled={running}
-          onClick={() => setDefsPayload((v) => !v)}
+          disabled={busy}
+          onClick={() => setDefsEnabled(!defsEnabled)}
           style={controls.baseButton}
-          title="Appends footnote/link-reference definitions (plus in-text references) to the payload. The default payload has zero defs, so registry mode alone measures a best-case PASS 0 — turn this ON when the point is coordinated-mode cost."
+          title="Appends a footnote/link-reference definitions tail (plus in-text references) to the scaled payload. The default payload has zero defs, so registry mode alone measures the def-label scanner on a best-case input. Note: the cross-chunk phantom path still doesn't run — each side is a single chunk."
         >
-          defs: {defsPayload ? 'ON (payload has defs)' : 'OFF'}
+          defs: {defsEnabled ? 'ON (defs tail appended)' : 'OFF'}
         </button>
-        <button disabled={running} onClick={() => setSwapped((v) => !v)} style={controls.baseButton}>
+        <button disabled={busy} onClick={() => setSwapped((v) => !v)} style={controls.baseButton}>
           ⇄ swap sides
         </button>
       </div>
@@ -328,7 +325,7 @@ export const BlockMemoComparison = ({
           {running ? 'Stop' : 'Run scenario'}
         </button>
         <button
-          disabled={running}
+          disabled={busy}
           onClick={startMulti}
           style={controls.baseButton}
           title="Run the same config 3 times back-to-back to expose run-to-run variance."
@@ -720,6 +717,7 @@ export const RunHistory = memo(function RunHistory({
             <th style={head}>payload</th>
             <th style={head}>spy</th>
             <th style={head}>reg</th>
+            <th style={head}>defs</th>
             <th style={head}>Δ total (ms)</th>
             <th style={head}>Δ p95 (ms)</th>
             <th style={head}>Δ element renders</th>
@@ -735,6 +733,7 @@ export const RunHistory = memo(function RunHistory({
               </td>
               <td style={cell}>{r.spy ? 'on' : 'off'}</td>
               <td style={cell}>{r.registry ? 'on' : 'off'}</td>
+              <td style={cell}>{r.defs ? 'on' : 'off'}</td>
               <td style={{ ...cell, color: deltaColor(r.deltaTotal) }}>{fmtSigned(r.deltaTotal)}</td>
               <td style={{ ...cell, color: deltaColor(r.deltaP95) }}>{fmtSigned(r.deltaP95)}</td>
               <td style={cell}>{r.deltaElem === null ? '—' : fmtSigned(r.deltaElem, 0)}</td>
