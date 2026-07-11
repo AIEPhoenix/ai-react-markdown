@@ -37,7 +37,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { DEFAULT_PAYLOAD, SCENARIO_KEYS, type ScenarioKey } from './scenarios';
+import { DEFAULT_PAYLOAD, PAYLOAD_WITH_DEFS, SCENARIO_KEYS, type ScenarioKey } from './scenarios';
 import { emptySnapshot, type RenderProfilerSnapshot } from './useRenderProfiler';
 import { controlStyles, getStreamingTheme, type ColorScheme } from './theme';
 import { computeSummary, RunHistory, SummaryBanner, VerdictBanner } from './BlockMemoComparison';
@@ -137,6 +137,11 @@ export const IsolatedComparison = ({
   const [running, setRunning] = useState(false);
   const [memoSide, setMemoSide] = useState<SideState>(initialSideState);
   const [legacySide, setLegacySide] = useState<SideState>(initialSideState);
+  // See BlockMemoComparison: registry mode needs def lines in the stream
+  // to measure anything real; runs are keyed by chars so the payloads
+  // never share a noise band. Content is streamed FROM the host, so the
+  // sides need no URL param for this.
+  const [defsPayload, setDefsPayload] = useState(false);
 
   const memoFrameRef = useRef<HTMLIFrameElement | null>(null);
   const legacyFrameRef = useRef<HTMLIFrameElement | null>(null);
@@ -163,9 +168,14 @@ export const IsolatedComparison = ({
       const { protocol, port, host } = window.location;
       const cacheKey = `bmc:ipv6-probe:${protocol}//${host}`;
       let ipv6: boolean;
-      const cached = readSession(cacheKey);
-      if (cached !== null) {
-        ipv6 = cached === '1';
+      // Only SUCCESS is cached. A failed probe can be transient (dev server
+      // still starting, [::1] listener toggled) and caching it would lock
+      // the whole tab session into the degraded topology with no way back
+      // but clearing sessionStorage — re-probing on every visit until it
+      // succeeds keeps the story self-healing, at the cost of the 1.5s
+      // worst case only while the server genuinely lacks IPv6.
+      if (readSession(cacheKey) === '1') {
+        ipv6 = true;
       } else {
         try {
           const controller = new AbortController();
@@ -176,10 +186,10 @@ export const IsolatedComparison = ({
           });
           window.clearTimeout(timer);
           ipv6 = true;
+          writeSession(cacheKey, '1');
         } catch {
           ipv6 = false;
         }
-        writeSession(cacheKey, ipv6 ? '1' : '0');
       }
       if (alive) setSideHosts(pickSideHosts(ipv6));
     })();
@@ -280,7 +290,7 @@ export const IsolatedComparison = ({
     startMulti,
     stop,
   } = useComparisonRuns({
-    payload,
+    payload: defsPayload ? PAYLOAD_WITH_DEFS : payload,
     initialScenario,
     running,
     setRunning,
@@ -314,8 +324,15 @@ export const IsolatedComparison = ({
   // Done during render (the documented adjust-state-on-prop-change pattern)
   // rather than in an effect: no commit exists where the old `ready` still
   // reads true against the new frames.
+  //
+  // Compared by STRING, matching the iframes' keys exactly: React may
+  // legitimately re-run the memo above and hand back a new object with the
+  // same URLs (Fast Refresh re-runs memos while keeping state), and an
+  // identity comparison would then clear `ready` without remounting any
+  // frame — nothing re-sends bmc:ready and Run wedges on 'Waiting for
+  // frames…'. Reset must fire iff the frames actually remount.
   const [prevUrls, setPrevUrls] = useState(urls);
-  if (urls !== prevUrls) {
+  if (urls?.memo !== prevUrls?.memo || urls?.legacy !== prevUrls?.legacy) {
     setPrevUrls(urls);
     setMemoSide(initialSideState());
     setLegacySide(initialSideState());
@@ -385,14 +402,18 @@ export const IsolatedComparison = ({
         >
           registry: {registryEnabled ? 'ON (coordinated)' : 'OFF (standalone)'}
         </button>
+        <button
+          disabled={running}
+          onClick={() => setDefsPayload((v) => !v)}
+          style={controls.baseButton}
+          title="Appends footnote/link-reference definitions (plus in-text references) to the payload — the default payload has zero defs, so registry mode alone measures a best-case PASS 0."
+        >
+          defs: {defsPayload ? 'ON (payload has defs)' : 'OFF'}
+        </button>
       </div>
 
       <div style={controls.buttonRow}>
-        <button
-          onClick={running ? stop : () => start()}
-          disabled={!running && !bothReady}
-          style={controls.primaryButton}
-        >
+        <button onClick={running ? stop : start} disabled={!running && !bothReady} style={controls.primaryButton}>
           {running ? 'Stop' : bothReady ? 'Run scenario' : 'Waiting for frames…'}
         </button>
         <button

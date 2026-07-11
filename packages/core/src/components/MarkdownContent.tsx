@@ -368,16 +368,30 @@ const BlockMemoizedRenderer = memo(
         nextFootnotes = new Set<string>();
         nextLinks = new Set<string>();
       } else {
-        const normalized = normalizeForMatch(content ?? '');
         nextFootnotes = new Set<string>();
         nextLinks = new Set<string>();
+        // Candidates first, normalization second: phantom targets can only
+        // be labels defined by OTHER chunks, and in the common case (single
+        // chunk, or no defs elsewhere) there are none. normalizeForMatch is
+        // two full-content regex passes plus toUpperCase — per token — so
+        // skipping it when there is nothing to look for removes the
+        // dominant PASS 0 cost left after the append-aware label scanner.
+        const candidateFootnotes: string[] = [];
         for (const label of registry.labelSet.footnoteLabels) {
-          if (ownLabels.footnoteLabels.has(label)) continue;
-          if (normalized.includes(label)) nextFootnotes.add(label);
+          if (!ownLabels.footnoteLabels.has(label)) candidateFootnotes.push(label);
         }
+        const candidateLinks: string[] = [];
         for (const label of registry.labelSet.linkLabels) {
-          if (ownLabels.linkLabels.has(label)) continue;
-          if (normalized.includes(label)) nextLinks.add(label);
+          if (!ownLabels.linkLabels.has(label)) candidateLinks.push(label);
+        }
+        if (candidateFootnotes.length > 0 || candidateLinks.length > 0) {
+          const normalized = normalizeForMatch(content ?? '');
+          for (const label of candidateFootnotes) {
+            if (normalized.includes(label)) nextFootnotes.add(label);
+          }
+          for (const label of candidateLinks) {
+            if (normalized.includes(label)) nextLinks.add(label);
+          }
         }
       }
       const prev = targetPhantomsRef.current;

@@ -1,5 +1,11 @@
 import { describe, test, expect } from 'vitest';
-import { collectDefLabels, createDefLabelScanner, type DefLabels } from './collectDefLabels';
+import {
+  collectDefLabels,
+  createDefLabelScanner,
+  DEF_LINE_START_RE,
+  lastRegionStart,
+  type DefLabels,
+} from './collectDefLabels';
 
 describe('collectDefLabels', () => {
   test('extracts footnote def labels', () => {
@@ -80,6 +86,33 @@ describe('createDefLabelScanner', () => {
     replay(['> quoted\n> [q]: /q\n\n', 'tail [^f', 'n]: body\n']);
     // Document with no blank lines at all (region = whole source).
     replay(['line one\n', 'line two\n', '[d]: /url\n']);
+    // Bracket-dense prose: inline links and citations mid-line.
+    replay(['Cite [1] then [a link](https://e.com) ', 'and more [2] prose.\n\n', 'tail [3] text ', 'continues.']);
+    // CRLF stream with a def across a CRLF blank line.
+    replay(['line one\r\n\r\n', '[d]: /url\r\n', 'prose after\r\n']);
+    // Bulleted link (over-match direction) and blockquoted def.
+    replay(['- [t](https://e.com)\n', '- second bullet\n\n', '> [q]: /q\n']);
+  });
+
+  test('region boundary is CRLF-aware', () => {
+    expect(lastRegionStart('a\n\nb')).toBe(3);
+    expect(lastRegionStart('a\r\n\r\nb')).toBe(5);
+    expect(lastRegionStart('a\r\n \r\nb')).toBe(6);
+    expect(lastRegionStart('no blanks at all')).toBe(0);
+  });
+
+  test('fast-path trigger is line-anchored, not any-bracket', () => {
+    // Mid-line brackets — the shape AI prose is dense with — must NOT
+    // knock the stream off the fast path.
+    expect(DEF_LINE_START_RE.test('See [the docs](https://e.com) and [1] for details')).toBe(false);
+    expect(DEF_LINE_START_RE.test('prose line\nmore [citation] prose')).toBe(false);
+    // Anything that CAN start a definition must trigger.
+    expect(DEF_LINE_START_RE.test('[x]: /url')).toBe(true);
+    expect(DEF_LINE_START_RE.test('prose\n[^fn]: body')).toBe(true);
+    expect(DEF_LINE_START_RE.test('> [q]: /q')).toBe(true);
+    expect(DEF_LINE_START_RE.test('  - [maybe][ref]')).toBe(true); // over-match: safe
+    expect(DEF_LINE_START_RE.test('1. [ordered](u)')).toBe(true); // over-match: safe
+    expect(DEF_LINE_START_RE.test('[x')).toBe(true); // partial def line mid-stream
   });
 
   test('append without "[" in the active region returns the SAME object', () => {
