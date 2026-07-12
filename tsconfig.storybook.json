@@ -1,10 +1,4 @@
 {
   "extends": "./tsconfig.base.json",
-  "include": [
-    ".storybook",
-    "packages/*/stories",
-    "packages/*/src/typings",
-    "vitest.config.ts",
-    "vitest.shims.d.ts"
-  ]
+  "include": [".storybook", "packages/*/stories", "packages/*/src/typings", "vitest.config.ts", "vitest.shims.d.ts"]
 }
