@@ -10,6 +10,13 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 The 1.4 line opened up the customization surface (URL sanitization, document namespacing, design tokens) and put guardrails around it so consumers can extend safely.
 
+### 1.4.9 — Dual dev/prod builds; streaming re-parse eliminated
+
+- The package now ships separate development and production builds behind the `development` exports condition, and the published files contain no `process.env` reads at all — consumers without a bundler (import maps, plain `<script type="module">`, CDN ESM) no longer crash on `process is not defined`. A post-build assertion keeps the dist permanently free of env reads. See the README's "Development vs production builds" section for the SSR and Jest footguns that come with conditional exports.
+- Streaming no longer pays a second full markdown parse per token. Standalone chunks skip the definition-label scan entirely; coordinated chunks (`documentId` under `<AIMarkdownDocuments>`) gate it behind an append-aware scanner that re-scans only the region since the last blank line, and only when a line-start `[` could introduce a new definition. The label set keeps its object identity when unchanged, so per-token re-registration and downstream memo invalidation stop too.
+- `urlTransform` application is now convergent: original URLs are stashed on first transform and every pass recomputes from the original, so a memoized (re-entered) hast tree can never be double-transformed. Internal defensive tree clones are skipped when the tree is caller-owned — the common path allocates nothing.
+- Development builds emit per-stage `performance.measure` entries (`ai-markdown:stage:parse|transform|build|render`) for pipeline profiling in the DevTools Performance panel; production builds compile the entire gate away.
+
 ### 1.4.8 — Automated GitHub releases
 
 - Pushing a `v*` tag now also publishes the matching GitHub release, with notes lifted from this file's section for that version (falling back to auto-generated notes). The npm publish and the GitHub release are a single CI step away from one tag push. No library runtime changes.
