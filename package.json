@@ -12,7 +12,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "version-packages": "node scripts/version-packages.mjs",
-    "release": "pnpm lint && pnpm format:check && pnpm build && pnpm -r typecheck && pnpm vitest run && pnpm publish -r --access public",
+    "preflight": "pnpm lint && pnpm format:check && pnpm build && pnpm -r typecheck && pnpm typecheck && pnpm vitest run",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build"
   },
