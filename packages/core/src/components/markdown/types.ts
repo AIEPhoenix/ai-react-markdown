@@ -18,8 +18,7 @@ export interface ExtraProps {
 /** Map tag names to user components or other tag names. */
 export type Components = {
   [Key in keyof JSX.IntrinsicElements]?:
-    | ComponentType<JSX.IntrinsicElements[Key] & ExtraProps>
-    | keyof JSX.IntrinsicElements;
+    ComponentType<JSX.IntrinsicElements[Key] & ExtraProps> | keyof JSX.IntrinsicElements;
 };
 
 /** Filter callback for elements. Return falsy to drop. */

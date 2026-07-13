@@ -219,7 +219,9 @@ function buildAggregateTree(
       tagName: 'li',
       properties: {
         id: `${clobberPrefix}fn-${sourceIdentifier}`,
-        ...(n !== null ? { value: n } : {}),
+        // Stringified: @types/hast (≥3.0.5) types li's `value` as string;
+        // React serializes value={3} and value="3" to identical markup.
+        ...(n !== null ? { value: String(n) } : {}),
       },
       children: liChildren,
     };
