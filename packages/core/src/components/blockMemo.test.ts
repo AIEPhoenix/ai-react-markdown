@@ -1189,3 +1189,136 @@ describe('renderBlocksWithCache — hast re-entry safety', () => {
     expect(stash?.href).toBe('https://example.com/a');
   });
 });
+
+describe('raw-HTML swallow invalidation (hastDigest)', () => {
+  // rehype-raw's HTML parsing algorithm reparents every FOLLOWING top-level
+  // sibling into an unclosed container tag. The container's mdast identity
+  // (raw, position, ctx) is byte-identical across those frames, so before
+  // hastDigest the first swallowed snapshot became a permanent cache hit —
+  // trailing content froze inside the container and the synthetic footnote
+  // section ended up duplicated (stale copy trapped in <details> + fresh
+  // top-level copy) once the close tag arrived.
+
+  const DOC = [
+    '一段话[^1]。',
+    '',
+    '[^1]: 脚注内容。',
+    '',
+    '<details>',
+    '<summary>标题</summary>',
+    '',
+    '内部段落',
+    '',
+    '</details>',
+    '',
+    '尾部段落',
+    '',
+  ].join('\n');
+
+  function detailsNodeOf(built: ReturnType<typeof buildBlocks>, all: { node: ReactNode }[]) {
+    const idx = built.plan.findIndex((p) => p.kind === 'block' && (p.el as HastElement).tagName === 'details');
+    return idx === -1 ? undefined : { item: built.plan[idx], node: all[idx].node };
+  }
+
+  function rawFrame(content: string, cacheRef: { current: Cache }) {
+    const { mdast, hast } = runPipeline(content);
+    const built = buildBlocks(mdast, hast, content);
+    const all = renderBlocksWithCache(cacheRef, built.plan, built.globalCtx, emptyPostOptions);
+    return { built, all };
+  }
+
+  test('unclosed <details> swallowing the footnote section re-renders when the extent changes', () => {
+    const cacheRef = { current: createCache() };
+    // F1: cut right after the swallowed 内部段落 starts — details contains
+    // summary + partial paragraph + the swallowed footnote section.
+    const f1 = rawFrame(DOC.slice(0, DOC.indexOf('内部段落') + 3), cacheRef);
+    const d1 = detailsNodeOf(f1.built, f1.all);
+    expect(d1).toBeDefined();
+    const html1 = renderToStaticMarkup(createElement(Fragment, null, d1!.node));
+    expect(html1).toContain('data-footnotes');
+
+    // F2: more bytes, still unclosed — digest must differ, node must be fresh.
+    const f2 = rawFrame(DOC.slice(0, DOC.indexOf('</details>')), cacheRef);
+    const d2 = detailsNodeOf(f2.built, f2.all);
+    expect(d2).toBeDefined();
+    expect(d2!.node).not.toBe(d1!.node);
+
+    // F3: fully closed document — the details block must re-render WITHOUT
+    // the swallowed section, and the section must appear exactly once at
+    // the document level.
+    const f3 = rawFrame(DOC, cacheRef);
+    const d3 = detailsNodeOf(f3.built, f3.all);
+    expect(d3).toBeDefined();
+    expect(d3!.node).not.toBe(d1!.node);
+    const html3 = renderToStaticMarkup(createElement(Fragment, null, d3!.node));
+    expect(html3).not.toContain('data-footnotes');
+    const fullHtml = renderToStaticMarkup(
+      createElement(
+        Fragment,
+        null,
+        f3.all.map((r, i) => createElement(Fragment, { key: i }, r.node))
+      )
+    );
+    expect(fullHtml.split('data-footnotes').length - 1).toBe(1);
+  });
+
+  test('degenerate corner: swallowed section leaves no maxEnd trace (positions point backwards)', () => {
+    // <details> closes with NOTHING inside except the summary, and the
+    // footnote defs live BEFORE it — the swallowed section's positioned
+    // descendants all end before the details' own end offset, so maxEnd
+    // alone cannot distinguish the swallowed frame from the closed frame.
+    // The descendant-count / dataFootnotes components must catch it.
+    //
+    // The blank line before </details> is load-bearing: it makes the close
+    // tag its OWN html block, so the open-tag block's `raw` is byte-identical
+    // between the unclosed and closed frames (matching the streaming shape
+    // of the original bug). Without it the close tag joins the open block
+    // and plain raw-invalidation would mask what this test targets.
+    const doc = ['引用[^a]。', '', '[^a]: 定义。', '', '<details>', '<summary>x</summary>', '', '</details>', ''].join(
+      '\n'
+    );
+    const cacheRef = { current: createCache() };
+    // Unclosed frame: cut just before </details> — section gets swallowed.
+    const f1 = rawFrame(doc.slice(0, doc.indexOf('</details>')), cacheRef);
+    const d1 = detailsNodeOf(f1.built, f1.all);
+    expect(d1).toBeDefined();
+    expect(renderToStaticMarkup(createElement(Fragment, null, d1!.node))).toContain('data-footnotes');
+
+    const f2 = rawFrame(doc, cacheRef);
+    const d2 = detailsNodeOf(f2.built, f2.all);
+    expect(d2).toBeDefined();
+    expect(d2!.node).not.toBe(d1!.node);
+    expect(renderToStaticMarkup(createElement(Fragment, null, d2!.node))).not.toContain('data-footnotes');
+  });
+
+  test('stable closed raw-HTML block stays a cache hit across appends elsewhere', () => {
+    const closed = '<details>\n<summary>x</summary>\n\n体\n\n</details>\n\n尾巴';
+    const cacheRef = { current: createCache() };
+    const f1 = rawFrame(closed, cacheRef);
+    const d1 = detailsNodeOf(f1.built, f1.all);
+    const f2 = rawFrame(closed + '继续追加的文字', cacheRef);
+    const d2 = detailsNodeOf(f2.built, f2.all);
+    // Subtree unchanged → digest unchanged → referential cache hit preserved.
+    expect(d2!.node).toBe(d1!.node);
+  });
+
+  test('markdown-native blocks skip the digest walk; raw-HTML blocks get one', () => {
+    const { mdast, hast } = runPipeline('段落文字\n\n<details>\n<summary>x</summary>\n</details>\n');
+    const built = buildBlocks(mdast, hast, '段落文字\n\n<details>\n<summary>x</summary>\n</details>\n');
+    const para = built.plan.find((p) => p.kind === 'block' && (p.el as HastElement).tagName === 'p');
+    const details = built.plan.find((p) => p.kind === 'block' && (p.el as HastElement).tagName === 'details');
+    expect(para && para.kind === 'block' ? para.info.hastDigest : 'missing').toBeUndefined();
+    expect(details && details.kind === 'block' ? details.info.hastDigest : undefined).toMatch(/^\d+:\d+:[01]$/);
+  });
+
+  test('range-fallback blocks (split raw HTML) also get a digest', () => {
+    // Leading spaces make rehype-raw emit the <div> as a hast sibling whose
+    // offset sits INSIDE the mdast html node's range — resolved via the
+    // range-containment fallback, which must also opt into the digest.
+    const doc = '   <div>内容</div>\n\n尾部\n';
+    const { mdast, hast } = runPipeline(doc);
+    const built = buildBlocks(mdast, hast, doc);
+    const div = built.plan.find((p) => p.kind === 'block' && (p.el as HastElement).tagName === 'div');
+    expect(div && div.kind === 'block' ? div.info.hastDigest : undefined).toMatch(/^\d+:\d+:[01]$/);
+  });
+});

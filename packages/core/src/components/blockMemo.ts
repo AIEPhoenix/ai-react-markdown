@@ -6,8 +6,10 @@
  * `buildBlocks` cuts the hast into per-block units 1:1 with hast top-level
  * children that have an mdast counterpart, plus an optional synthetic
  * footnote section. `renderBlocksWithCache` then memoizes each block by
- * `(raw, occurrence index, ctx, startOffset)` so cached blocks skip the
- * downstream `toJsxRuntime` + React reconcile work.
+ * `(raw, occurrence index, ctx, position triple[, hastDigest])` so cached
+ * blocks skip the downstream `toJsxRuntime` + React reconcile work. The
+ * `hastDigest` component exists only for raw-HTML blocks — see
+ * {@link BlockInfo.hastDigest} for the rehype-raw swallow problem it solves.
  *
  * Design contract is in `/tmp/phase5-block-memo-decisions.md`. Read it before
  * touching any of the invariants in this file.
@@ -82,6 +84,38 @@ export interface BlockInfo {
   startColumn: number;
   /** True if the block contains any TAINT_TYPES node — invalidate on globalCtx change. */
   hasReference: boolean;
+  /**
+   * Structural digest of the block's hast subtree, computed ONLY for blocks
+   * that originate from raw HTML (mdast `html` nodes, or blocks resolved via
+   * the range-containment fallback). Undefined for markdown-native blocks.
+   *
+   * Why it exists: rehype-raw applies the HTML parsing algorithm, so an
+   * UNCLOSED container tag (`<details>` mid-stream, before its `</details>`
+   * arrives) swallows every FOLLOWING top-level sibling into itself —
+   * including the synthetic `<section data-footnotes>`. The block's mdast
+   * identity (raw, position, ctx) is byte-identical across all those frames,
+   * so without this digest the first swallowed snapshot would be a permanent
+   * cache hit: content rendered inside the container freezes, and when the
+   * close tag finally arrives the real nodes re-render at top level while the
+   * stale copies stay trapped in the cached container (the "duplicate
+   * footnote section inside <details>" bug).
+   *
+   * Digest composition — `maxEnd:descendantCount:hasFootnoteSection`:
+   * - max end offset over the subtree catches swallowed POSITIONED siblings
+   *   (their offsets lie beyond the mdast node's own range);
+   * - descendant count catches position-less synthetic content moving in or
+   *   out (the footnote section's own element carries no position, and its
+   *   li contents point BACK at the definitions' offsets, which can be
+   *   smaller than the container's end — maxEnd alone misses that case);
+   * - the explicit dataFootnotes bit closes the degenerate corner where a
+   *   swallowed section and later real children tie on both numbers.
+   *
+   * Markdown-native blocks (paragraph/list/math/code/…) never receive
+   * reparented content — every hast descendant derives from their own mdast
+   * source range — so they skip the subtree walk entirely. This keeps the
+   * per-frame cost away from huge deterministic subtrees like KaTeX output.
+   */
+  hastDigest?: string;
   /** TAINT-block 专属：按节点类型分桶的 label set。Normalized 形态（uppercase）。
    *  Undefined when hasReference === false. */
   taintLabels?: {
@@ -101,6 +135,9 @@ export interface BlockCacheEntry {
   startOffset: number;
   startLine: number;
   startColumn: number;
+  /** Mirrors {@link BlockInfo.hastDigest} — must match for raw-HTML blocks
+   *  (undefined === undefined for markdown-native blocks). */
+  hastDigest?: string;
 }
 
 /** Cache entry for the synthesized footnote section (single slot, keyed by globalCtx). */
@@ -166,6 +203,36 @@ export function isFootnoteSection(node: HastElement): boolean {
 /** Dev invariant: every block hast child must retain its mdast `position`. */
 export function hasMdastSource(node: HastElement): boolean {
   return node.position !== undefined;
+}
+
+/**
+ * Compute {@link BlockInfo.hastDigest} for a raw-HTML block: iterative walk
+ * over the hast subtree collecting (max end offset, descendant count,
+ * contains-footnote-section). See the field's JSDoc for why each component
+ * is load-bearing. Exported for tests.
+ */
+export function computeHtmlBlockDigest(el: HastElement): string {
+  let maxEnd = el.position?.end?.offset ?? 0;
+  let count = 0;
+  let hasFootnoteSection = false;
+  const stack: HastElement['children'][number][] = [...el.children];
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    count++;
+    const end = node.position?.end?.offset;
+    if (end !== undefined && end > maxEnd) {
+      maxEnd = end;
+    }
+    if (node.type === 'element') {
+      if (isFootnoteSection(node)) {
+        hasFootnoteSection = true;
+      }
+      for (const child of node.children) {
+        stack.push(child);
+      }
+    }
+  }
+  return `${maxEnd}:${count}:${hasFootnoteSection ? 1 : 0}`;
 }
 
 /**
@@ -342,9 +409,11 @@ export function buildBlocks(mdast: MdastRoot, hast: HastRoot, source: string): B
     }
 
     let mdastNode = mdastByOffset.get(hastOffset);
+    let viaRangeFallback = false;
 
     if (!mdastNode) {
       mdastNode = findContainingMdast(hastOffset);
+      viaRangeFallback = mdastNode !== undefined;
     }
 
     if (!mdastNode) {
@@ -393,6 +462,16 @@ export function buildBlocks(mdast: MdastRoot, hast: HastRoot, source: string): B
       continue;
     }
 
+    // Raw-HTML blocks are the only ones rehype-raw can reparent following
+    // siblings into (unclosed container tags mid-stream). Two origins:
+    // a top-level mdast `html` node, or a block resolved via the
+    // range-containment fallback (raw HTML embedded in another node, split
+    // into extra hast siblings). Digest their subtree so the cache
+    // invalidates when the swallowed extent changes; markdown-native blocks
+    // skip the walk (their subtrees derive purely from their own source
+    // range, already covered by `raw` + position).
+    const hastDigest = mdastNode.type === 'html' || viaRangeFallback ? computeHtmlBlockDigest(el) : undefined;
+
     const info: BlockInfo = {
       raw: extractRaw(mdastNode, source),
       startOffset: mdastPos.start.offset,
@@ -400,6 +479,7 @@ export function buildBlocks(mdast: MdastRoot, hast: HastRoot, source: string): B
       startLine: mdastPos.start.line,
       startColumn: mdastPos.start.column,
       hasReference,
+      ...(hastDigest !== undefined ? { hastDigest } : {}),
       ...(hasReference
         ? {
             taintLabels: { footnoteRefLabels, linkRefLabels, imageRefLabels, footnoteDefLabels },
@@ -462,8 +542,11 @@ export function computeBlockFingerprint(
  * Render the document plan with cache lookup + atomic Cache replacement.
  *
  * Cache identity for a `block` item is `(raw, occurrence index within bucket,
- * ctx, startOffset)`. ctx == globalCtx for tainted blocks, '' otherwise
- * (sentinel collapses both paths into one validation).
+ * ctx, position triple, hastDigest)`. ctx == globalCtx for tainted blocks, ''
+ * otherwise (sentinel collapses both paths into one validation). hastDigest
+ * is undefined for markdown-native blocks (undefined === undefined passes)
+ * and a subtree digest for raw-HTML blocks, so containers that swallowed
+ * following siblings mid-stream re-render when the swallowed extent changes.
  *
  * The synthesized footnote section is a single-slot cache keyed by globalCtx.
  * Atomic Cache replacement (`cacheRef.current = next`) ensures stale slots
@@ -565,7 +648,8 @@ export function renderBlocksWithCache(
         entry.ctx === blockCtx &&
         entry.startOffset === block.startOffset &&
         entry.startLine === block.startLine &&
-        entry.startColumn === block.startColumn;
+        entry.startColumn === block.startColumn &&
+        entry.hastDigest === block.hastDigest;
 
       let node: ReactNode;
       if (valid) {
@@ -586,6 +670,7 @@ export function renderBlocksWithCache(
         startOffset: block.startOffset,
         startLine: block.startLine,
         startColumn: block.startColumn,
+        hastDigest: block.hastDigest,
       });
       rendered.push({ node, reactKey: item.reactKey });
       continue;
@@ -599,7 +684,8 @@ export function renderBlocksWithCache(
         entry.ctx === '' &&
         entry.startOffset === block.startOffset &&
         entry.startLine === block.startLine &&
-        entry.startColumn === block.startColumn;
+        entry.startColumn === block.startColumn &&
+        entry.hastDigest === block.hastDigest;
       const node = valid ? entry.node : renderHastSubtree(item.el, postOptions);
       bucket.push({
         node,
@@ -607,6 +693,7 @@ export function renderBlocksWithCache(
         startOffset: block.startOffset,
         startLine: block.startLine,
         startColumn: block.startColumn,
+        hastDigest: block.hastDigest,
       });
       rendered.push({ node, reactKey: item.reactKey });
     }
