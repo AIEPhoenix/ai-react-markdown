@@ -83,13 +83,13 @@ pnpm add @ai-react-markdown/mantine @ai-react-markdown/core \
 
 ### Peer Dependencies
 
-| Peer                      | Required by                                    | Version    |
-| ------------------------- | ---------------------------------------------- | ---------- |
-| `react` / `react-dom`     | both packages                                  | `>=19.0.0` |
-| `katex`                   | `core` (optional — only if you import its CSS) | `^0.16.0`  |
-| `@mantine/core`           | `mantine`                                      | `^8.3.17`  |
-| `@mantine/code-highlight` | `mantine`                                      | `^8.3.17`  |
-| `highlight.js`            | `mantine`                                      | `^11.11.1` |
+| Peer                      | Required by                                    | Version                |
+| ------------------------- | ---------------------------------------------- | ---------------------- |
+| `react` / `react-dom`     | both packages                                  | `>=19.0.0`             |
+| `katex`                   | `core` (optional — only if you import its CSS) | `^0.16.0 \|\| ^0.17.0` |
+| `@mantine/core`           | `mantine`                                      | `^9.0.0`               |
+| `@mantine/code-highlight` | `mantine`                                      | `^9.0.0`               |
+| `highlight.js`            | `mantine`                                      | `^11.11.1`             |
 
 > `katex` is an **optional peer**. It ships transitively via `rehype-katex`, so hoisted installers (npm, yarn classic, default pnpm) resolve `'katex/dist/katex.min.css'` automatically. Strict-isolation installers (yarn PnP, `pnpm --node-linker=isolated`) must install it explicitly. Skip this only if you never render math.
 
@@ -672,7 +672,7 @@ Issues and pull requests are welcome. For non-trivial changes, please open an is
 
 Reporting a bug helps most when it includes:
 
-- The package and version (`@ai-react-markdown/core@1.4.9` …)
+- The package and version (`@ai-react-markdown/core@1.5.0` …)
 - The relevant `<AIMarkdown>` / `<MantineAIMarkdown>` props
 - A minimal markdown sample that reproduces the issue
 - For streaming-related bugs: the chunk sequence (one string per chunk)
