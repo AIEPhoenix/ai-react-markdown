@@ -33,10 +33,7 @@ export type SideMode = 'memo' | 'legacy';
 
 /** Host → side. */
 export type HostToSideMessage =
-  | { type: 'bmc:start' }
-  | { type: 'bmc:chunk'; text: string }
-  | { type: 'bmc:stop' }
-  | { type: 'bmc:reset' };
+  { type: 'bmc:start' } | { type: 'bmc:chunk'; text: string } | { type: 'bmc:stop' } | { type: 'bmc:reset' };
 
 /** Side → host. Deliberately carries NO self-identification: the host
  *  attributes every message by `event.source` identity against its two

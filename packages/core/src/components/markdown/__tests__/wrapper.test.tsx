@@ -627,7 +627,7 @@ describe('Markdown', () => {
         tree.children.unshift({
           type: 'element',
           tagName: 'input',
-          properties: { id: 'a', ariaDescribedBy: 'b', required: true },
+          properties: { id: 'a', ariaDescribedBy: ['b'], required: true },
           children: [],
         });
       };
@@ -741,7 +741,7 @@ describe('Markdown', () => {
             {
               type: 'element',
               tagName: 'circle',
-              properties: { cx: 120, cy: 120, r: 100 },
+              properties: { cx: '120', cy: '120', r: '100' },
               children: [],
             },
             // `strokeMiterLimit` in hast, `strokeMiterlimit` in React.

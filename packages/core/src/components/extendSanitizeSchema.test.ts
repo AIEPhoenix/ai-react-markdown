@@ -71,8 +71,7 @@ describe('extendSanitizeSchema — mutate-and-return form', () => {
     const schema = extendSanitizeSchema(() => {});
     const codeAttrs = schema.attributes?.code ?? [];
     const classNameEntry = codeAttrs.find((entry) => Array.isArray(entry) && entry[0] === 'className') as
-      | readonly unknown[]
-      | undefined;
+      readonly unknown[] | undefined;
     expect(classNameEntry).toBeDefined();
     // The RegExp from defaultSchema should still BE a RegExp (not a plain object).
     expect(classNameEntry!.some((v) => v instanceof RegExp)).toBe(true);
