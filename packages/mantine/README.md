@@ -36,9 +36,9 @@ yarn add @ai-react-markdown/mantine @ai-react-markdown/core
 {
   "react": ">=19",
   "react-dom": ">=19",
-  "@ai-react-markdown/core": "^1.4.9",
-  "@mantine/core": "^8.3.17",
-  "@mantine/code-highlight": "^8.3.17",
+  "@ai-react-markdown/core": "^1.5.0",
+  "@mantine/core": "^9.0.0",
+  "@mantine/code-highlight": "^9.0.0",
   "highlight.js": "^11.11.1"
 }
 ```

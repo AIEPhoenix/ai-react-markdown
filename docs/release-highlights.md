@@ -6,6 +6,15 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 ---
 
+## 1.5.x — Mantine 9
+
+### 1.5.0 — `@ai-react-markdown/mantine` moves to Mantine 9
+
+- `@ai-react-markdown/mantine` now requires `@mantine/core` and `@mantine/code-highlight` `^9.0.0` as peers (tested against 9.4.1). No API changes on our side — the package's surface survives every Mantine 9 breaking change untouched. Consumers inherit Mantine 9's defaults: `md` (8px) default radius, solid light-variant colors (Mantine's `v8CssVariablesResolver` restores the 8.x look), and a React 19.2 floor.
+- If you install `@mantine/hooks` yourself, note that `@mantine/core@9` pins its hooks peer to the exact matching version — keep the three `@mantine/*` packages on one version.
+- Core is unchanged in behavior. One internal type adaptation for `@types/hast` ≥3.0.5: the aggregated footnote footer's `<li>` numbering is now stored as a string in hast (`value: "3"` instead of `value: 3`) — the rendered DOM is byte-identical.
+- Core's optional `katex` peer widens to `^0.16.0 || ^0.17.0`. The range previously excluded 0.17 (a `^0.16.0` range does not match 0.17 under 0.x semver), so npm users on katex 0.17 hit spurious `ERESOLVE` conflicts — even though the library is continuously tested against 0.17.
+
 ## 1.4.x — Customization surface hardening
 
 The 1.4 line opened up the customization surface (URL sanitization, document namespacing, design tokens) and put guardrails around it so consumers can extend safely.
