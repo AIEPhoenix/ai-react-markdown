@@ -7,6 +7,13 @@ overrides:
   dompurify: ^3.4.0
   uuid: ^11.1.1
   picomatch: ^4.0.4
+  # Dependabot #18 (GHSA dev-server file read, fixed in 0.28.1): the only
+  # in-range holdout is dormant tsup's `esbuild: ^0.27.0` dependency —
+  # every other dependent allows 0.28 (vite peers ^0.27 || ^0.28). Verified
+  # empirically against tsup 8.5.1: dist output, "use client" preservation
+  # and the full preflight are green under 0.28. Drop when tsup (or its
+  # successor) declares ^0.28 itself.
+  esbuild: ^0.28.1
   # Pin the TS major: workspace packages don't declare typescript themselves,
   # so on lockfile re-resolution (e.g. dependabot) autoInstallPeers grabs the
   # latest for tsup's optional peer — and TS 7 has no programmatic JS API
