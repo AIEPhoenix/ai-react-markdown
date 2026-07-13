@@ -83,11 +83,13 @@ export type ApplyDefaultOptions<
       Merge<
         Defaults,
         {
-          [Key in keyof SpecifiedOptions as Key extends OptionalKeysOf<Options>
-            ? undefined extends SpecifiedOptions[Key]
-              ? never
+          [
+            Key in keyof SpecifiedOptions as Key extends OptionalKeysOf<Options>
+              ? undefined extends SpecifiedOptions[Key]
+                ? never
+                : Key
               : Key
-            : Key]: SpecifiedOptions[Key];
+          ]: SpecifiedOptions[Key];
         }
       > &
         Required<Options>
@@ -218,8 +220,7 @@ export type PartialDeep<T, Options extends PartialDeepOptions = {}> = _PartialDe
 >;
 
 type _PartialDeep<T, Options extends Required<PartialDeepOptions>> = T extends
-  | BuiltIns
-  | (new (...arguments_: any[]) => unknown)
+  BuiltIns | (new (...arguments_: any[]) => unknown)
   ? T
   : T extends Map<infer KeyType, infer ValueType>
     ? PartialMapDeep<KeyType, ValueType, Options>
