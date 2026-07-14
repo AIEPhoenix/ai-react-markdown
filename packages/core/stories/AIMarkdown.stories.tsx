@@ -229,6 +229,43 @@ export const IncrementalParseCompare: Story = {
 };
 
 /**
+ * Process-ISOLATED variant of {@link IncrementalParseCompare}: each side runs
+ * in its own cross-site iframe (separate renderer processes), so the per-side
+ * stage panels are trustworthy without instance scoping and fps / slow frames
+ * / long tasks become genuinely per-side. What this variant CANNOT do is the
+ * same-page per-frame DOM-equality verification — the frames are cross-origin
+ * by design; use {@link IncrementalParseCompare} for that. Same loopback
+ * requirements as {@link BlockMemoCompareIsolated}.
+ */
+export const IncrementalParseCompareIsolated: Story = {
+  args: {
+    content: DEFAULT_PAYLOAD,
+  },
+  argTypes: {
+    content: {
+      control: 'text',
+      description: 'Markdown payload streamed by every scenario. Edit to test your own content.',
+    },
+    streaming: { table: { disable: true } },
+  },
+  parameters: {
+    controls: { exclude: ['streaming'] },
+    layout: 'fullscreen',
+  },
+  render: (args, context) => {
+    const currentTheme = context.globals.theme === 'dark' ? 'dark' : 'light';
+    return (
+      <IsolatedComparison
+        colorScheme={currentTheme}
+        initialScenario="randomTokens"
+        payload={args.content ?? DEFAULT_PAYLOAD}
+        axis="incrementalParse"
+      />
+    );
+  },
+};
+
+/**
  * Process-ISOLATED variant of {@link BlockMemoCompare}: each side runs in a
  * cross-site iframe (`localhost` vs `127.0.0.1`), which Chrome's Site
  * Isolation places in separate renderer processes — no shared main thread,

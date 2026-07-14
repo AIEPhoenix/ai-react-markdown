@@ -40,7 +40,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { DEFAULT_PAYLOAD, SCENARIO_KEYS, type ScenarioKey } from './scenarios';
 import { emptySnapshot, type RenderProfilerSnapshot } from './useRenderProfiler';
 import { controlStyles, getStreamingTheme, type ColorScheme } from './theme';
-import { computeSummary, RunHistory, SummaryBanner, VerdictBanner } from './BlockMemoComparison';
+import { BLOCK_MEMO_AXIS, INCREMENTAL_AXIS, computeSummary, RunHistory, SummaryBanner, VerdictBanner } from './BlockMemoComparison';
 import { PAYLOAD_SCALES, useComparisonRuns } from './useComparisonRuns';
 import { isProtocolMessage, SIDE_STORY_ID, type HostToSideMessage, type SideMode } from './isolatedProtocol';
 
@@ -49,6 +49,16 @@ interface IsolatedComparisonProps {
   initialScenario?: ScenarioKey;
   /** Base markdown payload (multiplied by the payload scale). */
   payload?: string;
+  /**
+   * Which A/B this host runs. 'blockMemo' (default): memo vs legacy.
+   * 'incrementalParse': BOTH sides run block-memo and differ only in
+   * `incrementalParseEnabled` — process isolation makes the per-side stage
+   * panels trustworthy without instance scoping (each side owns its page's
+   * stage channel), and fps/jank become genuinely per-side. Note the
+   * same-page variant's per-frame DOM-equality verifier cannot exist here:
+   * the frames are cross-origin by design.
+   */
+  axis?: 'blockMemo' | 'incrementalParse';
 }
 
 interface SideState {
@@ -104,11 +114,18 @@ function pickSideHosts(ipv6Available: boolean): SideHosts {
 /** Build one side's iframe URL. `globals=theme:` keeps the side story's
  *  withThemedBackground decorator in sync with the host's theme; the bmc*
  *  params configure the side itself. */
-function buildSideUrl(host: string, mode: SideMode, spy: boolean, registry: boolean, scheme: ColorScheme): string {
+function buildSideUrl(
+  host: string,
+  side: { mode: SideMode; axis: 'blockMemo' | 'incrementalParse'; incremental: boolean },
+  spy: boolean,
+  registry: boolean,
+  scheme: ColorScheme
+): string {
   const { protocol, port } = window.location;
   return (
     `${protocol}//${host}${port ? `:${port}` : ''}/iframe.html?id=${SIDE_STORY_ID}&viewMode=story` +
-    `&globals=theme:${scheme}&bmcMode=${mode}&bmcSpy=${spy ? 'on' : 'off'}` +
+    `&globals=theme:${scheme}&bmcMode=${side.mode}&bmcAxis=${side.axis}` +
+    `&bmcIncremental=${side.incremental ? 'on' : 'off'}&bmcSpy=${spy ? 'on' : 'off'}` +
     `&bmcRegistry=${registry ? 'on' : 'off'}&bmcScheme=${scheme}`
   );
 }
@@ -148,7 +165,9 @@ export const IsolatedComparison = ({
   colorScheme,
   initialScenario = 'randomTokens',
   payload = DEFAULT_PAYLOAD,
+  axis = 'blockMemo',
 }: IsolatedComparisonProps) => {
+  const axisLabels = axis === 'incrementalParse' ? INCREMENTAL_AXIS : BLOCK_MEMO_AXIS;
   const [running, setRunning] = useState(false);
   const [memoSide, setMemoSide] = useState<SideState>(initialSideState);
   const [legacySide, setLegacySide] = useState<SideState>(initialSideState);
@@ -329,11 +348,23 @@ export const IsolatedComparison = ({
     () =>
       sideHosts
         ? {
-            memo: buildSideUrl(sideHosts.memo, 'memo', spyEnabled, registryEnabled, colorScheme),
-            legacy: buildSideUrl(sideHosts.legacy, 'legacy', spyEnabled, registryEnabled, colorScheme),
+            memo: buildSideUrl(
+              sideHosts.memo,
+              { mode: 'memo', axis, incremental: axis === 'incrementalParse' },
+              spyEnabled,
+              registryEnabled,
+              colorScheme
+            ),
+            legacy: buildSideUrl(
+              sideHosts.legacy,
+              { mode: axis === 'incrementalParse' ? 'memo' : 'legacy', axis, incremental: false },
+              spyEnabled,
+              registryEnabled,
+              colorScheme
+            ),
           }
         : null,
-    [sideHosts, spyEnabled, registryEnabled, colorScheme]
+    [sideHosts, spyEnabled, registryEnabled, colorScheme, axis]
   );
   // Drop the stale ready flags the moment the URLs change — the remounted
   // frames' handshakes haven't happened yet, so Run must re-gate on them.
@@ -357,8 +388,8 @@ export const IsolatedComparison = ({
   // Recompute per snapshot tick, not per host render (see the same memo in
   // BlockMemoComparison).
   const summary = useMemo(
-    () => computeSummary(memoSide.snapshot, legacySide.snapshot, spyEnabled, sameConfigRuns, true),
-    [memoSide.snapshot, legacySide.snapshot, spyEnabled, sameConfigRuns]
+    () => computeSummary(memoSide.snapshot, legacySide.snapshot, spyEnabled, sameConfigRuns, true, axisLabels),
+    [memoSide.snapshot, legacySide.snapshot, spyEnabled, sameConfigRuns, axisLabels]
   );
   const scenarioConfig = scenarios[scenario];
 
@@ -463,8 +494,8 @@ export const IsolatedComparison = ({
             ? `⚠ unavailable from ${window.location.hostname}: the side iframes point at the VIEWER's loopback (127.0.0.1 / [::1] / localhost), which only serves Storybook on the dev machine itself. Open this story via http://localhost:<port> on the machine running the dev server.`
             : sideHosts
               ? sideHosts.symmetric
-                ? `process isolation: three-way cross-site · host ${window.location.hostname} / memo ${sideHosts.memo} / legacy ${sideHosts.legacy} — verify via Chrome Task Manager (⇧Esc): each frame URL owns its own renderer process.`
-                : `⚠ degraded isolation: ${sideHosts.memo === window.location.hostname ? 'memo' : 'legacy'} side shares the host page's process (dev server has no [::1] listener) — that side absorbs the host UI's work and reads SLOWER than it is. Trust the other metrics loosely.`
+                ? `process isolation: three-way cross-site · host ${window.location.hostname} / ${axisLabels.onLabel} ${sideHosts.memo} / ${axisLabels.offLabel} ${sideHosts.legacy} — verify via Chrome Task Manager (⇧Esc): each frame URL owns its own renderer process.`
+                : `⚠ degraded isolation: the ${sideHosts.memo === window.location.hostname ? axisLabels.onLabel : axisLabels.offLabel} side shares the host page's process (dev server has no [::1] listener) — that side absorbs the host UI's work and reads SLOWER than it is. Trust the other metrics loosely.`
               : 'probing isolation topology…'}
         </div>
       </div>
@@ -478,9 +509,10 @@ export const IsolatedComparison = ({
         spyEnabled={spyEnabled}
         colorScheme={colorScheme}
         isolated
+        axis={axisLabels}
       />
 
-      <SummaryBanner summary={summary} colorScheme={colorScheme} />
+      <SummaryBanner summary={summary} colorScheme={colorScheme} axis={axisLabels} />
 
       {urls ? (
         <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)' }}>
@@ -489,19 +521,19 @@ export const IsolatedComparison = ({
             ref={memoFrameRef}
             src={urls.memo}
             style={frameStyle}
-            title="blockMemo enabled (isolated)"
+            title={`${axisLabels.onLabel} (isolated)`}
           />
           <iframe
             key={urls.legacy}
             ref={legacyFrameRef}
             src={urls.legacy}
             style={frameStyle}
-            title="blockMemo disabled (isolated)"
+            title={`${axisLabels.offLabel} (isolated)`}
           />
         </div>
       ) : null}
 
-      <RunHistory runs={runs} onClear={clearRuns} colorScheme={colorScheme} />
+      <RunHistory runs={runs} onClear={clearRuns} colorScheme={colorScheme} axis={axisLabels} />
     </div>
   );
 };
