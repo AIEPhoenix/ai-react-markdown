@@ -30,7 +30,7 @@ import type { Root as MdastRoot } from 'mdast';
 
 import { isFootnoteSection } from '../blockMemo';
 
-export function attributeHastChildren(mdast: MdastRoot, hast: HastRoot): number[] {
+export function attributeHastChildren(mdast: MdastRoot, hast: HastRoot, stopAt = Infinity): number[] {
   const mdastStarts: number[] = [];
   for (const child of mdast.children) {
     const off = child.position?.start?.offset;
@@ -38,7 +38,18 @@ export function attributeHastChildren(mdast: MdastRoot, hast: HastRoot): number[
   }
   let cursor = 0;
   let mdastIdx = 0;
-  return hast.children.map((child) => {
+  // `stopAt` truncates the walk once attribution reaches the boundary —
+  // the splice consumer only reads the prefix, and top-level attribution
+  // is non-decreasing (E5).
+  const out: number[] = [];
+  for (const child of hast.children) {
+    const attr = attributeOne(child);
+    out.push(attr);
+    if (attr >= stopAt) break;
+  }
+  return out;
+
+  function attributeOne(child: HastRoot['children'][number]): number {
     const start = child.position?.start?.offset;
     const end = child.position?.end?.offset;
     if (start !== undefined && start !== null) {
@@ -48,5 +59,5 @@ export function attributeHastChildren(mdast: MdastRoot, hast: HastRoot): number[
     if (child.type === 'element' && isFootnoteSection(child)) return Infinity;
     while (mdastIdx < mdastStarts.length && mdastStarts[mdastIdx] < cursor) mdastIdx += 1;
     return mdastIdx < mdastStarts.length ? mdastStarts[mdastIdx] : cursor;
-  });
+  }
 }

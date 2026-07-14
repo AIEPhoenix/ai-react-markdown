@@ -42,7 +42,7 @@ import type { Root as HastRoot } from 'hast';
 import type { Root as MdastRoot } from 'mdast';
 
 import { parseStage, transformStage, type Options as MarkdownOptions } from '../markdown';
-import { computeFreezeBoundary } from './computeFreezeBoundary';
+import { computeFreezeBoundary, type FreezeScanCheckpoint } from './computeFreezeBoundary';
 import { buildInjectionPrefix, collectPrefixDefSources, spliceTrees } from './spliceParse';
 
 export interface IncrementalParseState {
@@ -57,6 +57,10 @@ export interface IncrementalParseState {
    *  entirely and take the full path (the E1 dead-scan fix). Cleared by any
    *  non-append change (G1 resets the whole state). */
   sawFootnote: boolean;
+  /** Detector resume state: append frames re-lex only past the confirmed
+   *  prefix instead of the whole document (E2). Single-consumer mutable —
+   *  owned by this state lineage; null once footnotes disengage the scan. */
+  scanCheckpoint: FreezeScanCheckpoint | null;
   /** Identity tuple of every parse input beyond `content` (G0). */
   depsKey: readonly unknown[];
 }
@@ -136,7 +140,15 @@ export function advanceIncrementalParse(
       hast,
       usedIncremental: false,
       boundary: 0,
-      nextState: { content, mdast, hast, stableBoundary: 0, sawFootnote: true, depsKey: options.depsKey },
+      nextState: {
+        content,
+        mdast,
+        hast,
+        stableBoundary: 0,
+        sawFootnote: true,
+        scanCheckpoint: null,
+        depsKey: options.depsKey,
+      },
     };
   }
 
@@ -145,7 +157,13 @@ export function advanceIncrementalParse(
   // check did, permanently, for exactly the code-heavy documents that
   // benefit most). Full-path frames consume the scan on the NEXT frame
   // via `prev.stableBoundary`.
-  const scan = measure('scan', () => computeFreezeBoundary(content, { defListEnabled: options.defListEnabled }));
+  // Append frames resume the detector from its confirmed-prefix checkpoint
+  // instead of re-lexing the whole document (E2); everything else scans
+  // fresh. The checkpoint is mutable and single-consumer — this state
+  // lineage owns it.
+  const scan = measure('scan', () =>
+    computeFreezeBoundary(content, { defListEnabled: options.defListEnabled }, appendOnly ? prev!.scanCheckpoint : null)
+  );
   const freshBoundary = scan.hasFootnoteSyntax ? 0 : scan.boundary;
 
   const finish = (mdast: MdastRoot, hast: HastRoot, usedIncremental: boolean, boundary: number): AdvanceResult => ({
@@ -159,6 +177,7 @@ export function advanceIncrementalParse(
       hast,
       stableBoundary: freshBoundary,
       sawFootnote: scan.hasFootnoteSyntax,
+      scanCheckpoint: scan.hasFootnoteSyntax ? null : scan.checkpoint,
       depsKey: options.depsKey,
     },
   });
