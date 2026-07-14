@@ -229,6 +229,78 @@ export const IncrementalParseCompare: Story = {
 };
 
 /**
+ * BOOST A/B — everything on vs everything off: (block-memo + incremental
+ * parse) against the legacy full pipeline. This is the end-to-end "what do
+ * consumers actually gain" comparison; the commit-total delta is the
+ * headline (the legacy side emits no stage timings, so per-stage
+ * attribution lives in {@link BlockMemoCompare} and
+ * {@link IncrementalParseCompare} — use those to see WHERE the win comes
+ * from). The per-frame DOM-equality verifier crosses all three output
+ * contracts at once: legacy ≡ block-memo ≡ spliced.
+ */
+export const BoostCompare: Story = {
+  args: {
+    content: DEFAULT_PAYLOAD,
+  },
+  argTypes: {
+    content: {
+      control: 'text',
+      description: 'Markdown payload streamed by every scenario. Edit to test your own content.',
+    },
+    streaming: { table: { disable: true } },
+  },
+  parameters: {
+    controls: { exclude: ['streaming'] },
+    layout: 'fullscreen',
+  },
+  render: (args, context) => {
+    const currentTheme = context.globals.theme === 'dark' ? 'dark' : 'light';
+    return (
+      <IncrementalParseComparison
+        colorScheme={currentTheme}
+        initialScenario="randomTokens"
+        payload={args.content ?? DEFAULT_PAYLOAD}
+        variant="boost"
+      />
+    );
+  },
+};
+
+/**
+ * Process-ISOLATED variant of {@link BoostCompare} — (memo+incremental) vs
+ * legacy, each side in its own renderer process. Same loopback requirements
+ * and same cross-origin limitation (no DOM-equality verifier) as the other
+ * isolated stories.
+ */
+export const BoostCompareIsolated: Story = {
+  args: {
+    content: DEFAULT_PAYLOAD,
+  },
+  argTypes: {
+    content: {
+      control: 'text',
+      description: 'Markdown payload streamed by every scenario. Edit to test your own content.',
+    },
+    streaming: { table: { disable: true } },
+  },
+  parameters: {
+    controls: { exclude: ['streaming'] },
+    layout: 'fullscreen',
+  },
+  render: (args, context) => {
+    const currentTheme = context.globals.theme === 'dark' ? 'dark' : 'light';
+    return (
+      <IsolatedComparison
+        colorScheme={currentTheme}
+        initialScenario="randomTokens"
+        payload={args.content ?? DEFAULT_PAYLOAD}
+        axis="boost"
+      />
+    );
+  },
+};
+
+/**
  * Process-ISOLATED variant of {@link IncrementalParseCompare}: each side runs
  * in its own cross-site iframe (separate renderer processes), so the per-side
  * stage panels are trustworthy without instance scoping and fps / slow frames
