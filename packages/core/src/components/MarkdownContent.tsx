@@ -488,15 +488,18 @@ const BlockMemoizedRenderer = memo(
         // Dev-only stage telemetry (`ai-markdown:stage:*` performance
         // measures; no-op in production). Wraps only the stage calls — the
         // surrounding option assembly is trivial.
-        const parsed = measureStage('parse', () =>
-          parseStage({
-            children: augmented,
-            remarkPlugins,
-            rehypePlugins,
-            remarkRehypeOptions: mergedRemarkRehypeOptions,
-          })
+        const parsed = measureStage(
+          'parse',
+          () =>
+            parseStage({
+              children: augmented,
+              remarkPlugins,
+              rehypePlugins,
+              remarkRehypeOptions: mergedRemarkRehypeOptions,
+            }),
+          documentId
         );
-        const hastRoot = measureStage('transform', () => transformStage(parsed));
+        const hastRoot = measureStage('transform', () => transformStage(parsed), documentId);
         return { mdast: parsed.mdast, hast: hastRoot };
       }
 
@@ -510,7 +513,7 @@ const BlockMemoizedRenderer = memo(
         // any G3 field — e.g. a `preserveOrphanReferences` flip).
         depsKey: [remarkPlugins, rehypePlugins, remarkRehypeOptions, handlers, preserveForBodyHarvest, documentId],
         defListEnabled: config.extraSyntaxSupported.includes(AIMarkdownRenderExtraSyntax.DEFINITION_LIST),
-        measure: measureStage,
+        measure: (stage, fn) => measureStage(stage, fn, documentId),
       });
       incrementalStateRef.current = result.nextState;
       return { mdast: result.mdast, hast: result.hast };
@@ -531,8 +534,8 @@ const BlockMemoizedRenderer = memo(
     // Cut hast into per-block units indexed back to mdast for cache identity,
     // and compute the document-wide ctx digest for cross-block invalidation.
     const built = useMemo(
-      () => measureStage('build', () => buildBlocks(pipeline.mdast, pipeline.hast, content ?? '')),
-      [pipeline, content]
+      () => measureStage('build', () => buildBlocks(pipeline.mdast, pipeline.hast, content ?? ''), documentId),
+      [pipeline, content, documentId]
     );
 
     const postOptions = useMemo<PostOptions>(
@@ -689,8 +692,10 @@ const BlockMemoizedRenderer = memo(
     // Unlike the three memoized stages above, this runs on EVERY render —
     // its 'render' measures therefore include the cheap all-cache-hit
     // re-renders, which is the honest shape of what block-memo saves.
-    const rendered = measureStage('render', () =>
-      renderBlocksWithCache(cacheRef, built.plan, built.globalCtx, postOptions)
+    const rendered = measureStage(
+      'render',
+      () => renderBlocksWithCache(cacheRef, built.plan, built.globalCtx, postOptions),
+      documentId
     );
 
     // Cross-chunk URL sanitization policy — read by `CrossChunkLink` and
