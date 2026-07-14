@@ -128,7 +128,10 @@ function computeIndent(text: string): number {
 }
 
 function normalizeLabel(label: string): string {
-  return label.trim().replace(/[ \t\r\n]+/g, ' ').toLowerCase();
+  return label
+    .trim()
+    .replace(/[ \t\r\n]+/g, ' ')
+    .toLowerCase();
 }
 
 /**

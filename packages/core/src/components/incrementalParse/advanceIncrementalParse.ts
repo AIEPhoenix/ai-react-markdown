@@ -18,8 +18,11 @@
  *    the previous trees unchanged. Non-append rewrites (including Stage-A
  *    preprocessor rewrites near the stream end) land here.
  *  - G2 footnote bypass — single-doc footnote numbering is parse-local
- *    (mdast-util-to-hast `footnoteOrder`), so any `[^` in the content
- *    forces the full path. Over-matches `[^` inside code — acceptable.
+ *    (mdast-util-to-hast `footnoteOrder`), so `[^` on a markdown TEXT line
+ *    forces the full path. Fence/math interiors are excluded (a regex
+ *    negated character class in a code block no longer disables the
+ *    feature), and the flag is sticky under appends so footnote streams
+ *    skip the scan entirely after first detection.
  *  - G3 boundary — `b = min(computeFreezeBoundary(content), prev.stableBoundary)`
  *    must be > 0. The `min` with the PREVIOUS frame's boundary is
  *    load-bearing, not defensive: the freshly computed boundary proves
@@ -47,8 +50,13 @@ export interface IncrementalParseState {
   /** Post-transform trees (transformStage mutates mdast in place; these are the settled shapes). */
   mdast: MdastRoot;
   hast: HastRoot;
-  /** computeFreezeBoundary(content) at the frame that produced these trees. */
+  /** Scan boundary at the frame that produced these trees (0 while footnotes present). */
   stableBoundary: number;
+  /** Sticky under appends: once `[^` is seen on a markdown text line, every
+   *  later append still contains it — subsequent frames skip the scan
+   *  entirely and take the full path (the E1 dead-scan fix). Cleared by any
+   *  non-append change (G1 resets the whole state). */
+  sawFootnote: boolean;
   /** Identity tuple of every parse input beyond `content` (G0). */
   depsKey: readonly unknown[];
 }
@@ -77,7 +85,7 @@ export interface AdvanceResult {
   nextState: IncrementalParseState;
 }
 
-const identityMeasure = <T,>(_stage: IncrementalStage, fn: () => T): T => fn();
+const identityMeasure = <T>(_stage: IncrementalStage, fn: () => T): T => fn();
 
 function depsKeyEqual(a: readonly unknown[], b: readonly unknown[]): boolean {
   return a.length === b.length && a.every((value, i) => value === b[i]);
@@ -103,21 +111,56 @@ export function advanceIncrementalParse(
   options: AdvanceOptions
 ): AdvanceResult {
   const measure = options.measure ?? identityMeasure;
-  const freshBoundary = measure('scan', () =>
-    computeFreezeBoundary(content, { defListEnabled: options.defListEnabled })
-  );
+  const sameDeps = prev !== null && depsKeyEqual(prev.depsKey, options.depsKey);
 
-  const finish = (
-    mdast: MdastRoot,
-    hast: HastRoot,
-    usedIncremental: boolean,
-    boundary: number
-  ): AdvanceResult => ({
+  // Zero-scan short-circuits — no boundary scan runs on these frames:
+  // - identical content: reuse the whole previous state verbatim;
+  // - sticky footnote: `[^` cannot disappear under appends, so once seen
+  //   every subsequent append frame goes straight to the full path
+  //   (previously each such frame paid a dead O(N) scan whose result was
+  //   never consumed — the E1 finding).
+  if (sameDeps && content === prev!.content) {
+    return {
+      mdast: prev!.mdast,
+      hast: prev!.hast,
+      usedIncremental: true,
+      boundary: prev!.stableBoundary,
+      nextState: prev!,
+    };
+  }
+  const appendOnly = sameDeps && content.startsWith(prev!.content);
+  if (appendOnly && prev!.sawFootnote) {
+    const { mdast, hast } = runPipeline(content, options);
+    return {
+      mdast,
+      hast,
+      usedIncremental: false,
+      boundary: 0,
+      nextState: { content, mdast, hast, stableBoundary: 0, sawFootnote: true, depsKey: options.depsKey },
+    };
+  }
+
+  // Every remaining frame scans ONCE (fence-aware — a `[^` inside a code
+  // fence no longer disables splicing; the old whole-string substring
+  // check did, permanently, for exactly the code-heavy documents that
+  // benefit most). Full-path frames consume the scan on the NEXT frame
+  // via `prev.stableBoundary`.
+  const scan = measure('scan', () => computeFreezeBoundary(content, { defListEnabled: options.defListEnabled }));
+  const freshBoundary = scan.hasFootnoteSyntax ? 0 : scan.boundary;
+
+  const finish = (mdast: MdastRoot, hast: HastRoot, usedIncremental: boolean, boundary: number): AdvanceResult => ({
     mdast,
     hast,
     usedIncremental,
     boundary,
-    nextState: { content, mdast, hast, stableBoundary: freshBoundary, depsKey: options.depsKey },
+    nextState: {
+      content,
+      mdast,
+      hast,
+      stableBoundary: freshBoundary,
+      sawFootnote: scan.hasFootnoteSyntax,
+      depsKey: options.depsKey,
+    },
   });
 
   const fullPath = (): AdvanceResult => {
@@ -125,17 +168,15 @@ export function advanceIncrementalParse(
     return finish(mdast, hast, false, 0);
   };
 
-  // G0 + G1
-  if (!prev || !depsKeyEqual(prev.depsKey, options.depsKey)) return fullPath();
-  if (content === prev.content) return finish(prev.mdast, prev.hast, true, prev.stableBoundary);
-  if (!content.startsWith(prev.content)) return fullPath();
-  // G2
-  if (content.includes('[^')) return fullPath();
+  // G0 + G1 (scan already ran — its result seeds nextState either way)
+  if (!appendOnly) return fullPath();
+  // G2 — footnote syntax on a markdown text line (fence-aware)
+  if (scan.hasFootnoteSyntax) return fullPath();
   // G3
-  const boundary = Math.min(freshBoundary, prev.stableBoundary);
+  const boundary = Math.min(freshBoundary, prev!.stableBoundary);
   if (boundary <= 0) return fullPath();
   // G4 (defensive)
-  for (const child of prev.mdast.children) {
+  for (const child of prev!.mdast.children) {
     const start = child.position?.start?.offset;
     const end = child.position?.end?.offset;
     if (start !== undefined && end !== undefined && start < boundary && end > boundary) {
@@ -143,17 +184,24 @@ export function advanceIncrementalParse(
     }
   }
 
-  const injectionPrefix = buildInjectionPrefix(collectPrefixDefSources(prev.mdast, prev.content, boundary));
+  const defs = collectPrefixDefSources(prev!.mdast, prev!.content, boundary);
+  // A nested multi-line definition cannot be re-injected verbatim — take
+  // the full path this frame rather than splice without it (A3).
+  if (defs.uninjectable) return fullPath();
+  const injectionPrefix = buildInjectionPrefix(defs.sources);
   const tailSource = injectionPrefix + content.slice(boundary);
   const tail = runPipeline(tailSource, options);
-  const { mdast, hast } = spliceTrees({
-    prevMdast: prev.mdast,
-    prevHast: prev.hast,
+  const spliced = spliceTrees({
+    prevMdast: prev!.mdast,
+    prevHast: prev!.hast,
     tailMdast: tail.mdast,
     tailHast: tail.hast,
     content,
     boundary,
     injectionPrefix,
   });
-  return finish(mdast, hast, true, boundary);
+  // null = the prefix contains a sanitize-stripped node whose wrap
+  // separators can't be reconstructed reliably — full parse this frame.
+  if (spliced === null) return fullPath();
+  return finish(spliced.mdast, spliced.hast, true, boundary);
 }
