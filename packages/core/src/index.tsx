@@ -372,6 +372,7 @@ export default AIMarkdown as typeof AIMarkdownComponent;
 
 // Types
 export type { AIMDContentPreprocessor };
+export type { RemendPreprocessorOptions } from './preprocessors/remend';
 export type {
   AIMarkdownCustomComponents,
   AIMarkdownRenderConfig,
@@ -395,6 +396,11 @@ export {
 // Hooks -- for custom components to access render state & metadata
 export { useAIMarkdownRenderState, useAIMarkdownMetadata } from './context';
 export { useStableValue };
+
+// Content preprocessors — opt-in factories for the `contentPreprocessors`
+// prop. Tree-shakeable: `remend` only enters a consumer bundle when this
+// factory is imported.
+export { createRemendPreprocessor } from './preprocessors/remend';
 
 // URL handling — primitives for the `urlTransform` prop and a factory
 // helper for the `sanitizeSchema` prop on `<AIMarkdown>`.

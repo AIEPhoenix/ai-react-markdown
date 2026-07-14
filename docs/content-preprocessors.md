@@ -33,6 +33,41 @@ You can rely on `$…$` and `$$…$$` already being normalized by the time your 
 
 ---
 
+## Built-in optional: streaming tail repair (`createRemendPreprocessor`)
+
+While a response streams, the tail of the source is frequently mid-construct — `**bold` without its closer, an unterminated `` `code `` span, a half-typed `[link](url`. By default those frames render literally (asterisks and all) until the closing bytes arrive. The library ships an opt-in factory wrapping [`remend`](https://www.npmjs.com/package/remend) (the markdown-termination engine extracted from Vercel's Streamdown; zero-dependency, Apache-2.0) that completes the unterminated syntax so every frame renders styled:
+
+```tsx
+import AIMarkdown, { createRemendPreprocessor } from '@ai-react-markdown/core';
+
+// Module scope — see “Reference stability” below.
+const PREPROCESSORS = [createRemendPreprocessor()];
+
+<AIMarkdown content={streamed} streaming contentPreprocessors={PREPROCESSORS} />;
+```
+
+It is tree-shakeable: `remend` only enters your bundle if you import the factory.
+
+What it repairs: bold/italic/bold-italic, inline code, strikethrough, links, images (incomplete images are **dropped**, not placeholder-rendered), setext-heading ambiguity, stray `>`/`~` false positives. It is a no-op on well-formed text, so the final frame renders identically with or without it.
+
+Two defaults differ from stock `remend`, one overridable and one not:
+
+- `linkMode: 'text-only'` (overridable) — remend's own default substitutes a `streamdown:incomplete-link` placeholder URL for half-streamed links, but this library's URL sanitizer strips unknown protocols, which would leave a dead `<a>` for the duration of the stream. Text-only renders the link text plainly until the real URL arrives. Pass `{ linkMode: 'protocol' }` if you handle the placeholder scheme yourself.
+- `katex`/`inlineKatex`: forced **off** (not overridable, removed from the option type) — the built-in LaTeX preprocessor runs first and already owns `$`/`$$` handling, including truncating unclosed `$$` tails. Two writers on the same delimiters would fight.
+
+### Interactions with the streaming optimizations
+
+- **Block-level memoization** (`blockMemoEnabled`, default on): zero conflict. Repairs only affect the tail; earlier blocks' bytes — and therefore their memoized hast — are untouched.
+- **Incremental parsing** (`incrementalParseEnabled`): partial discount. A frame whose tail was repaired is not a byte-append of the previous frame, so the engine's append gate falls back to a full parse for exactly the frames sitting inside an unterminated construct. The fallback is per-frame, not sticky — splicing resumes as soon as the construct closes in the real bytes. Typical prose streams degrade on a minority of frames; heavily-inline content degrades more. Both flags stay correct in combination; you are trading some splice hits for mid-stream visual completeness.
+
+### Footguns
+
+- **Create the preprocessor once** (module scope or `useMemo`). A fresh factory call per render defeats `contentPreprocessors`' stable-value memoization and re-runs the whole pipeline every frame.
+- **Don't apply it to static content.** A document that legitimately ends inside an unterminated marker (a trailing lone `*`) gets it closed. Reserve it for streaming UIs, or swap it out when `streaming` flips false (see the streaming-state pattern below).
+- **Repair runs after `preprocessLaTeX`** (it lives in the caller slot). In the rare mid-stream frame where an unterminated code span contains currency (`` `$100 and… ``), the LaTeX pass may escape the `$` before the span is closed by the repair — a transient artifact on that frame only; it self-heals when the real closing backtick streams in.
+
+---
+
 ## Recipes
 
 ### Strip YAML frontmatter
