@@ -65,6 +65,10 @@ export function collectPrefixDefSources(mdast: MdastRoot, content: string, bound
     }
   };
   for (const child of mdast.children) {
+    // Top-level children are position-ordered — nothing at or past the
+    // boundary can contribute a prefix definition (E5).
+    const start = child.position?.start?.offset;
+    if (start !== undefined && start >= boundary) break;
     if (child.type === 'definition') visit(child, false);
     else visit(child, true);
   }
@@ -134,7 +138,7 @@ export function spliceTrees(input: SpliceInput): { mdast: MdastRoot; hast: HastR
     const start = child.position?.start?.offset;
     if (start !== undefined && start < boundary) prefixMdast.push(child);
   }
-  const attrs = attributeHastChildren(prevMdast, prevHast);
+  const attrs = attributeHastChildren(prevMdast, prevHast, boundary);
   const prefixHast: HastContent[] = [];
   for (let i = 0; i < prevHast.children.length && attrs[i] < boundary; i++) {
     prefixHast.push(prevHast.children[i]);

@@ -234,3 +234,33 @@ describe('computeFreezeBoundary — fence-aware footnote detection', () => {
     expect(scanFreezeBoundary('para one\n\npara two\n', OFF).hasFootnoteSyntax).toBe(false);
   });
 });
+
+describe('computeFreezeBoundary — inline code-span masking (safe direction)', () => {
+  test('intra-line spans no longer over-block html/ref/footnote checks', () => {
+    const html = 'use `<div>` in prose\n\nzzz';
+    expect(computeFreezeBoundary(html, OFF)).toBe(html.indexOf('zzz'));
+    const ref = 'the `[x]` token\n\nzzz';
+    expect(computeFreezeBoundary(ref, OFF)).toBe(ref.indexOf('zzz'));
+    expect(scanFreezeBoundary('regex `[^0-9]` inline\n\ntail\n\n', OFF).hasFootnoteSyntax).toBe(false);
+  });
+
+  test('a paragraph with an unpaired run disables masking (cross-line span gate)', () => {
+    // The ` before <div> could pair with a run on the NEXT line — masking
+    // must not hide the tag (over-block instead).
+    expect(computeFreezeBoundary('a `unclosed <div> here\n\nfiller\n\n', OFF)).toBe(0);
+  });
+
+  test('resume-vs-fresh equivalence: chained checkpoints match fresh scans', () => {
+    const payload =
+      'para `code` one\n\n- item\n\n    indented\n\n[a]: /x\n\nsee [a] and `<b>`\n\n```js\nx\n```\n\n<?pi?> done\n\ntail.\n';
+    let checkpoint: ReturnType<typeof scanFreezeBoundary>['checkpoint'] | null = null;
+    for (let i = 1; i <= payload.length; i++) {
+      const prefix = payload.slice(0, i);
+      const resumed = scanFreezeBoundary(prefix, OFF, checkpoint);
+      checkpoint = resumed.checkpoint;
+      const fresh = scanFreezeBoundary(prefix, OFF);
+      expect(resumed.boundary, `at length ${i}`).toBe(fresh.boundary);
+      expect(resumed.hasFootnoteSyntax, `fn at length ${i}`).toBe(fresh.hasFootnoteSyntax);
+    }
+  });
+});
