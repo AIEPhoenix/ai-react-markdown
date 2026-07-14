@@ -45,6 +45,8 @@ export interface RunRecord {
   registry: boolean;
   /** True when the definitions tail was appended to the scaled payload. */
   defs: boolean;
+  /** True when the enabled side ran with `incrementalParseEnabled` (prefix-freeze parsing). */
+  incremental: boolean;
   /** disabled.total − enabled.total (ms); positive = block-memo faster. */
   deltaTotal: number;
   /** disabled.p95 − enabled.p95 (ms); positive = block-memo faster. */
@@ -100,6 +102,7 @@ export function useComparisonRuns({
   const [spyEnabled, setSpyEnabled] = useState(true);
   const [registryEnabled, setRegistryEnabled] = useState(false);
   const [defsEnabled, setDefsEnabled] = useState(false);
+  const [incrementalEnabled, setIncrementalEnabled] = useState(false);
   const [runs, setRuns] = useState<RunRecord[]>([]);
   // True from Run ×3 until its last repeat records (or anything cancels
   // the chain). Exposed via `busy` so stories disable config controls for
@@ -118,6 +121,7 @@ export function useComparisonRuns({
     spy: boolean;
     registry: boolean;
     defs: boolean;
+    incremental: boolean;
   } | null>(null);
   // Remaining auto-repeats for the "Run ×3" button.
   const multiRemainingRef = useRef(0);
@@ -171,6 +175,7 @@ export function useComparisonRuns({
       spy: spyEnabled,
       registry: registryEnabled,
       defs: defsEnabled,
+      incremental: incrementalEnabled,
     };
     setRunning(true);
     cancelRef.current = scenarios[scenario].run(push, () => {
@@ -191,6 +196,7 @@ export function useComparisonRuns({
     spyEnabled,
     registryEnabled,
     defsEnabled,
+    incrementalEnabled,
   ]);
 
   // Latest `launch` behind a stable ref so the record effect can chain
@@ -254,6 +260,7 @@ export function useComparisonRuns({
         spy: pending.spy,
         registry: pending.registry,
         defs: pending.defs,
+        incremental: pending.incremental,
         deltaTotal: disabled.actual.total - enabled.actual.total,
         deltaP95: disabled.actual.p95 - enabled.actual.p95,
         deltaElem: pending.spy ? disabled.elementRenders.total - enabled.elementRenders.total : null,
@@ -293,9 +300,10 @@ export function useComparisonRuns({
           r.chars === payloadChars &&
           r.spy === spyEnabled &&
           r.registry === registryEnabled &&
-          r.defs === defsEnabled
+          r.defs === defsEnabled &&
+          r.incremental === incrementalEnabled
       ),
-    [runs, scenario, payloadScale, payloadChars, spyEnabled, registryEnabled, defsEnabled]
+    [runs, scenario, payloadScale, payloadChars, spyEnabled, registryEnabled, defsEnabled, incrementalEnabled]
   );
 
   const clearRuns = useCallback(() => setRuns([]), []);
@@ -311,6 +319,8 @@ export function useComparisonRuns({
     setRegistryEnabled,
     defsEnabled,
     setDefsEnabled,
+    incrementalEnabled,
+    setIncrementalEnabled,
     runs,
     clearRuns,
     sameConfigRuns,
