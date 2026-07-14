@@ -189,17 +189,16 @@ function PlaygroundRun({
     if (done || s.frames % 4 === 0) setStats({ ...s, scans: scansRef.current });
   }, [content, done, statsRef]);
 
-  // Mirror the ENGINE's decision: the scan itself reports fence-aware
-  // footnote syntax (the default playground payload ends with a footnote
-  // tail, so the bar visibly flips to fallback mid-stream — honest
-  // behavior, not a bug; a `[^` inside a code fence does NOT trip it).
+  // Mirror the ENGINE's boundary. Since v2 footnotes SPLICE (injection
+  // replay) — the default payload's footnote tail no longer flips the bar
+  // to a fallback; the reference taint just holds the boundary below any
+  // unresolved `[^x]` until its def settles.
   // Memoized: the stats-mirror state update below re-renders this
   // component, and an unmemoized scan would run the whole-document pass
   // twice per streamed tick — the visualizer distorting the number it
   // exists to show (review finding E6).
   const scan = useMemo(() => (content ? computeFreezeBoundary(content, { defListEnabled: true }) : null), [content]);
-  const bypassed = scan?.hasFootnoteSyntax ?? false;
-  const boundary = scan && !bypassed ? scan.boundary : 0;
+  const boundary = scan ? scan.boundary : 0;
   const frozenPct = content.length > 0 ? boundary / content.length : 0;
   const streamedPct = payload.length > 0 ? content.length / payload.length : 0;
   const equalityColor = stats.mismatches === 0 ? theme.good : theme.bad;
@@ -234,15 +233,9 @@ function PlaygroundRun({
         <span style={mono}>
           streamed {content.length}/{payload.length}
         </span>
-        {bypassed ? (
-          <span style={{ ...mono, color: theme.warn }}>
-            full-parse fallback — content contains {'"[^"'} (G2 footnote bypass)
-          </span>
-        ) : (
-          <span style={{ ...mono, color: theme.good }}>
-            frozen {(frozenPct * 100).toFixed(0)}% (offset {boundary})
-          </span>
-        )}
+        <span style={{ ...mono, color: theme.good }}>
+          frozen {(frozenPct * 100).toFixed(0)}% (offset {boundary})
+        </span>
         <span style={mono}>scans {stats.scans}</span>
         <span style={{ ...mono, color: equalityColor }}>
           equality: {stats.frames} frames / {stats.mismatches} mismatches
@@ -338,27 +331,38 @@ export const VerificationPlayground: StoryObj<typeof IncrementalParsePlayground>
   ),
 };
 
+const smokePlay: Story['play'] = async ({ canvasElement }) => {
+  const summary = await waitFor(
+    () => {
+      const el = canvasElement.querySelector('[data-testid="ip-smoke-summary"]');
+      if (!el || el.getAttribute('data-done') !== 'true') throw new Error('streaming not finished yet');
+      return el;
+    },
+    { timeout: 20_000 }
+  );
+  const frames = Number(summary.getAttribute('data-frames'));
+  const mismatches = Number(summary.getAttribute('data-mismatches'));
+  const scans = Number(summary.getAttribute('data-scans'));
+  expect(
+    mismatches,
+    `flag-on DOM diverged from flag-off (first at content length ${summary.getAttribute('data-first-mismatch-length')})`
+  ).toBe(0);
+  expect(frames).toBeGreaterThan(10);
+  // The incremental engine must have actually engaged — a silent
+  // permanent fallback would make the mismatch assertion vacuous.
+  expect(scans).toBeGreaterThan(0);
+};
+
 export const StreamingSmoke: Story = {
   render: () => <IncrementalParseSmoke payload={DEFAULT_PAYLOAD} />,
-  play: async ({ canvasElement }) => {
-    const summary = await waitFor(
-      () => {
-        const el = canvasElement.querySelector('[data-testid="ip-smoke-summary"]');
-        if (!el || el.getAttribute('data-done') !== 'true') throw new Error('streaming not finished yet');
-        return el;
-      },
-      { timeout: 20_000 }
-    );
-    const frames = Number(summary.getAttribute('data-frames'));
-    const mismatches = Number(summary.getAttribute('data-mismatches'));
-    const scans = Number(summary.getAttribute('data-scans'));
-    expect(
-      mismatches,
-      `flag-on DOM diverged from flag-off (first at content length ${summary.getAttribute('data-first-mismatch-length')})`
-    ).toBe(0);
-    expect(frames).toBeGreaterThan(10);
-    // The incremental engine must have actually engaged — a silent
-    // permanent fallback would make the mismatch assertion vacuous.
-    expect(scans).toBeGreaterThan(0);
-  },
+  play: smokePlay,
+};
+
+/** Footnote-bearing payload through the REACT wiring — the v2 injection
+ *  replay's footer regeneration, clobber-prefixed fn/fnref ids, and backref
+ *  counts must all survive StrictMode double-render and the G3 interplay,
+ *  not just the node-level arbiter. */
+export const StreamingSmokeWithFootnotes: Story = {
+  render: () => <IncrementalParseSmoke payload={withDefs(DEFAULT_PAYLOAD)} />,
+  play: smokePlay,
 };

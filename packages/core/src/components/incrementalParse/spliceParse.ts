@@ -35,35 +35,101 @@ import type { Node as UnistNode, Position } from 'unist';
 
 import { attributeHastChildren } from './attributeHastChildren';
 
-export interface PrefixDefCollection {
-  /** Verbatim source slices, injectable as standalone def lines. */
-  sources: string[];
-  /** True when a def exists that CANNOT be injected reliably — the caller
+/** One injected footnote-definition block's coordinate mapping — footer
+ *  `<li>` content carries positions from the DEF node, so injected-copy
+ *  coordinates must be rewritten back to the original's (C0 probe). */
+export interface InjectedSegment {
+  injStart: number;
+  injEnd: number;
+  offsetDelta: number;
+  lineDelta: number;
+}
+
+/** Prefix footnote/definition events in DOCUMENT ORDER. Order is the whole
+ *  point: mdast-util-to-hast's footnoteOrder/footnoteCounts are built from
+ *  encounter order, and the replay must reproduce it exactly. */
+export type InjectionEvent =
+  /** Link/image definition — parse-time resolution only, zero hast. */
+  | { kind: 'def'; source: string }
+  /** Footnote definition — sliced from the PHYSICAL LINE START (column
+   *  invariance for the footer position rebase). */
+  | { kind: 'footnoteDef'; source: string; origStart: number; origLine: number }
+  /** Consecutive footnote references, verbatim source tokens. Seeds
+   *  footnoteOrder (first-encounter) and footnoteCounts (backref -N ids). */
+  | { kind: 'refs'; tokens: string[] };
+
+export interface PrefixInjectionPlan {
+  events: InjectionEvent[];
+  /** True when an event exists that CANNOT be injected reliably — the caller
    *  must fall back to a full parse for this frame (safe, one-frame cost). */
   uninjectable: boolean;
 }
 
-/** Source slices of link/image definitions that start before `boundary`.
+/** Collect the prefix's injectable events (document order).
  *
  * Walks the FULL subtree, not just top-level children: definitions nested
  * inside blockquotes/lists are document-scoped in CommonMark
  * (probe-confirmed A3 — a `> [a]: /url` def must resolve a later tail
- * ref). A nested definition's position starts at its own `[`, so a
+ * ref). A nested link definition's position starts at its own `[`, so a
  * single-line slice is a valid standalone def line; a MULTI-LINE nested
  * slice would drag `> ` container prefixes into the injection text, so it
- * is flagged uninjectable instead (full-parse fallback). */
-export function collectPrefixDefSources(mdast: MdastRoot, content: string, boundary: number): PrefixDefCollection {
-  const sources: string[] = [];
+ * is flagged uninjectable instead (full-parse fallback).
+ *
+ * Footnote definitions must be sliced from their physical line start (the
+ * footer position rebase requires column invariance), so ANY nested
+ * footnote def is uninjectable — the line-start slice would drag the `> `
+ * container prefix in, and a node-start slice would shift columns.
+ *
+ * footnoteDefinition subtrees are NOT descended: refs inside a def body are
+ * counted at FOOTER time (state.all over the stored def node), and the
+ * injected def text replays them there; emitting them as inline events
+ * would double-count.
+ */
+export function collectPrefixInjection(mdast: MdastRoot, content: string, boundary: number): PrefixInjectionPlan {
+  const events: InjectionEvent[] = [];
   let uninjectable = false;
+  const pushRef = (token: string): void => {
+    const last = events[events.length - 1];
+    if (last && last.kind === 'refs') last.tokens.push(token);
+    else events.push({ kind: 'refs', tokens: [token] });
+  };
   const visit = (node: UnistNode, nested: boolean): void => {
-    if ((node as { type?: string }).type === 'definition') {
+    const type = (node as { type?: string }).type;
+    if (type === 'definition') {
       const start = node.position?.start?.offset;
       const end = node.position?.end?.offset;
       if (start !== undefined && end !== undefined && start < boundary) {
         const slice = content.slice(start, end);
         if (nested && slice.includes('\n')) uninjectable = true;
-        else sources.push(slice);
+        else events.push({ kind: 'def', source: slice });
       }
+      return;
+    }
+    if (type === 'footnoteDefinition') {
+      const start = node.position?.start;
+      const end = node.position?.end?.offset;
+      if (start?.offset === undefined || end === undefined || start.offset >= boundary) return;
+      if (nested) {
+        uninjectable = true;
+        return;
+      }
+      const lineStart = start.offset - (start.column - 1);
+      events.push({
+        kind: 'footnoteDef',
+        source: content.slice(lineStart, end),
+        origStart: lineStart,
+        origLine: start.line,
+      });
+      return; // body refs replay at footer time via the injected text
+    }
+    if (type === 'footnoteReference') {
+      const start = node.position?.start?.offset;
+      const end = node.position?.end?.offset;
+      if (start === undefined || end === undefined) {
+        uninjectable = true; // cannot reproduce the token verbatim
+        return;
+      }
+      pushRef(content.slice(start, end));
       return;
     }
     const children = (node as TreeWithChildren).children;
@@ -73,18 +139,47 @@ export function collectPrefixDefSources(mdast: MdastRoot, content: string, bound
   };
   for (const child of mdast.children) {
     // Top-level children are position-ordered — nothing at or past the
-    // boundary can contribute a prefix definition (E5).
+    // boundary can contribute a prefix event (E5).
     const start = child.position?.start?.offset;
     if (start !== undefined && start >= boundary) break;
-    if (child.type === 'definition') visit(child, false);
-    else visit(child, true);
+    visit(child, false);
   }
-  return { sources, uninjectable };
+  return { events, uninjectable };
 }
 
-/** The injection block prepended to the tail source ('' when no defs). */
-export function buildInjectionPrefix(defSources: string[]): string {
-  return defSources.length > 0 ? `${defSources.join('\n')}\n\n` : '';
+export interface InjectionPrefix {
+  text: string;
+  segments: InjectedSegment[];
+}
+
+/** Build the injection text prepended to the tail source (with per-footnote-
+ *  def coordinate segments). Blocks are '\n\n'-joined: a def line directly
+ *  after a ref paragraph would be a paragraph CONTINUATION (A2, literal
+ *  text), and anything unindented after a footnote def line would join its
+ *  body. */
+export function buildInjectionPrefix(events: InjectionEvent[]): InjectionPrefix {
+  if (events.length === 0) return { text: '', segments: [] };
+  let text = '';
+  const segments: InjectedSegment[] = [];
+  for (const event of events) {
+    if (text.length > 0) text += '\n\n';
+    const injStart = text.length;
+    if (event.kind === 'refs') {
+      text += event.tokens.join(' ');
+    } else if (event.kind === 'def') {
+      text += event.source;
+    } else {
+      const injLine = countNewlines(text) + 1;
+      segments.push({
+        injStart,
+        injEnd: injStart + event.source.length,
+        offsetDelta: event.origStart - injStart,
+        lineDelta: event.origLine - injLine,
+      });
+      text += event.source;
+    }
+  }
+  return { text: `${text}\n\n`, segments };
 }
 
 interface TreeWithChildren extends UnistNode {
@@ -110,6 +205,44 @@ export function rebaseTree(node: UnistNode, offsetDelta: number, lineDelta: numb
   }
 }
 
+/**
+ * Dual-rule position rebase for the tail HAST (C0-probe-verified): the
+ * footer's `<li>` content carries positions from footnoteById's DEF nodes —
+ * for INJECTED defs those are injection coordinates (per-segment mapping),
+ * while tail-native nodes (inline content and tail-defined footnotes) take
+ * the ordinary tail shift. Dispatch is per POINT with CLOSED segment bounds:
+ * END offsets are exclusive, so a node ending exactly at a segment's last
+ * byte has offset === injEnd (segments are '\n\n'-separated — unambiguous).
+ * Column is invariant under both rules (defs are sliced from line start).
+ */
+export function rebaseTreeDual(
+  node: UnistNode,
+  segments: InjectedSegment[],
+  offsetDelta: number,
+  lineDelta: number
+): void {
+  const position = node.position as Position | undefined;
+  if (position) {
+    for (const point of [position.start, position.end]) {
+      const seg =
+        segments.length > 0 && point.offset !== undefined
+          ? segments.find((s) => point.offset! >= s.injStart && point.offset! <= s.injEnd)
+          : undefined;
+      if (seg) {
+        point.offset! += seg.offsetDelta;
+        point.line += seg.lineDelta;
+      } else {
+        if (point.offset !== undefined) point.offset += offsetDelta;
+        point.line += lineDelta;
+      }
+    }
+  }
+  const children = (node as TreeWithChildren).children;
+  if (children) {
+    for (const child of children) rebaseTreeDual(child, segments, offsetDelta, lineDelta);
+  }
+}
+
 export interface SpliceInput {
   prevMdast: MdastRoot;
   prevHast: HastRoot;
@@ -119,6 +252,8 @@ export interface SpliceInput {
   content: string;
   boundary: number;
   injectionPrefix: string;
+  /** Coordinate mappings for injected footnote-def blocks (footer rebase). */
+  injectedSegments: InjectedSegment[];
 }
 
 /**
@@ -131,7 +266,7 @@ export interface SpliceInput {
  * never mutating the previous frame's roots.
  */
 export function spliceTrees(input: SpliceInput): { mdast: MdastRoot; hast: HastRoot } | null {
-  const { prevMdast, prevHast, tailMdast, tailHast, content, boundary, injectionPrefix } = input;
+  const { prevMdast, prevHast, tailMdast, tailHast, content, boundary, injectionPrefix, injectedSegments } = input;
 
   const injectedLen = injectionPrefix.length;
   const injectedLines = countNewlines(injectionPrefix);
@@ -157,9 +292,13 @@ export function spliceTrees(input: SpliceInput): { mdast: MdastRoot; hast: HastR
   // to-hast output), not by whether the tail hast ends up non-empty.
   // (Learned from the arbiter: a sanitize-removed comment leaves its
   // separator behind.)
+  //
+  // ALL injected nodes are dropped from the tail mdast — wrap-invisible
+  // defs (v1) and the replay's footnote-ref paragraphs alike; non-injected
+  // children can never start before injectedLen.
   const tailMdastChildren = tailMdast.children.filter((child) => {
     const start = child.position?.start?.offset;
-    return !(isWrapInvisible(child) && start !== undefined && start < injectedLen);
+    return !(start !== undefined && start < injectedLen);
   });
   const tailWrapVisible = tailMdastChildren.some((child) => !isWrapInvisible(child));
 
@@ -169,9 +308,11 @@ export function spliceTrees(input: SpliceInput): { mdast: MdastRoot; hast: HastR
   const hastChildren = alignPrefixCut(prefixMdast, cutRegion, tailWrapVisible);
   if (hastChildren === null) return null;
 
-  // --- tail: drop injected definitions, then re-base into document space ---
+  // --- tail: strip the injected region's hast, then re-base ---
+  const strippedTailHast = stripInjectedHast(tailMdast, tailHast, injectedLen, tailWrapVisible);
+  if (strippedTailHast === null) return null;
   for (const child of tailMdastChildren) rebaseTree(child, offsetDelta, lineDelta);
-  for (const child of tailHast.children) rebaseTree(child, offsetDelta, lineDelta);
+  for (const child of strippedTailHast) rebaseTreeDual(child, injectedSegments, offsetDelta, lineDelta);
 
   // --- join ---
   //
@@ -193,9 +334,9 @@ export function spliceTrees(input: SpliceInput): { mdast: MdastRoot; hast: HastR
   //   parse keeps as a separate node (the comment sat between them at
   //   reparse time), so merging would be wrong there.
   const mdastChildren = prefixMdast.concat(tailMdastChildren);
-  const seamMergeAllowed = tailLeadingTextIsHoist(tailMdastChildren, tailHast.children);
+  const seamMergeAllowed = tailLeadingTextIsHoist(tailMdastChildren, strippedTailHast);
   let firstTailChild = true;
-  for (const child of tailHast.children) {
+  for (const child of strippedTailHast) {
     const tailEnd = hastChildren[hastChildren.length - 1];
     if (
       firstTailChild &&
@@ -345,6 +486,66 @@ function alignPrefixCut(
     out.push({ type: 'text', value: '\n' });
   }
   return out;
+}
+
+/**
+ * Drop the injected region's output from a freshly-parsed tail hast.
+ *
+ * The injection contributes two kinds of root output: the replay's footnote
+ * REF paragraphs (one `<p>` each — footnote/link defs are wrap-invisible)
+ * and the wrap separators around them. Consume exactly:
+ *
+ *   output_1 [sep output_2 … sep output_k] [gapSep]
+ *
+ * where k = injected wrap-visible children and gapSep (present only when
+ * the REAL tail has wrap-visible children) is the injected|tail gap slot.
+ * gapSep's value beyond its wrap '\n' is rehype-raw HOIST text belonging to
+ * the tail's first element (a table) — retained as a leading text node so
+ * the seam-merge reproduces the full parse's layout.
+ *
+ * Returns null on any layout surprise (caller falls back to a full parse).
+ */
+function stripInjectedHast(
+  tailMdast: MdastRoot,
+  tailHast: HastRoot,
+  injectedLen: number,
+  tailWrapVisible: boolean
+): HastContent[] | null {
+  if (injectedLen === 0) return tailHast.children.slice();
+  const injectedVisibleCount = tailMdast.children.filter((c) => {
+    const start = c.position?.start?.offset;
+    return start !== undefined && start < injectedLen && !isWrapInvisible(c);
+  }).length;
+  if (injectedVisibleCount === 0) return tailHast.children.slice();
+
+  const children = tailHast.children;
+  let idx = 0;
+  let consumed = 0;
+  while (idx < children.length && consumed < injectedVisibleCount) {
+    const node = children[idx];
+    if (isSeparatorText(node)) {
+      idx += 1;
+      continue;
+    }
+    const start = node.position?.start?.offset;
+    // Injected outputs are always positioned paragraphs; running into tail
+    // content (or anything unpositioned) before finishing is a surprise.
+    if (start === undefined || start >= injectedLen) return null;
+    consumed += 1;
+    idx += 1;
+  }
+  if (consumed < injectedVisibleCount) return null;
+
+  let remnant = '';
+  if (tailWrapVisible) {
+    const gap = children[idx];
+    if (!gap || !isSeparatorText(gap)) return null;
+    remnant = (gap as { value: string }).value.slice(1);
+    idx += 1;
+  }
+  const rest = children.slice(idx);
+  if (remnant !== '') rest.unshift({ type: 'text', value: remnant });
+  return rest;
 }
 
 /**
