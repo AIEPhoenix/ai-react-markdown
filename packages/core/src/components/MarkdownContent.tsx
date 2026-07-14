@@ -65,6 +65,7 @@ import remarkSmartypants from 'remark-smartypants';
 import remarkPangu from 'remark-pangu';
 import remarkRemoveComments from 'remark-remove-comments';
 import { buildBlocks, createCache, renderBlocksWithCache, type Cache, type PostOptions } from './blockMemo';
+import { advanceIncrementalParse, type IncrementalParseState } from './incrementalParse';
 import { measureStage } from './devStageTimings';
 import { useAIMarkdownRenderState } from '../context';
 import {
@@ -283,6 +284,12 @@ const BlockMemoizedRenderer = memo(
     // plugin versions, so the previous block disable no longer suppresses
     // anything in v7+). See design `/tmp/phase5-block-memo-decisions.md` §4.
     const cacheRef = useRef<Cache>(createCache());
+    // Incremental-parse state (previous frame's content + post-transform
+    // trees + verified freeze boundary). Render-phase ref mutation, same
+    // pattern as `defScannerRef`/`cacheRef`. Cleared by the G3 flush below
+    // (belt-and-suspenders — the engine's own depsKey gate, which covers
+    // MORE inputs than G3's 12 fields, is the primary invalidation).
+    const incrementalStateRef = useRef<IncrementalParseState | null>(null);
     const depsRef = useRef<{
       usedComponents: typeof usedComponents;
       remarkPlugins: typeof remarkPlugins;
@@ -325,6 +332,7 @@ const BlockMemoizedRenderer = memo(
       depsRef.current.symbol !== sym
     ) {
       cacheRef.current = createCache();
+      incrementalStateRef.current = null;
       depsRef.current = {
         usedComponents,
         remarkPlugins,
@@ -352,7 +360,7 @@ const BlockMemoizedRenderer = memo(
     // Stable reference: every `registry._notify` (3× per chunk on mount: alloc,
     // contributeLabels, contributeChunkData) bumps `registry.version`, which is
     // a useMemo dep here. Without ref-stability, every bump produces fresh Set
-    // instances → `parsed` useMemo invalidates → full re-parse runs. With N
+    // instances → `pipeline` useMemo invalidates → full re-parse runs. With N
     // chunks coordinating, that's O(N²) parses at mount and a visible white
     // screen for 30+ chunks. We compare the freshly-computed Sets to the
     // previous result via a ref and return the previous reference when the
@@ -443,39 +451,69 @@ const BlockMemoizedRenderer = memo(
       return undefined;
     }, [registry, effectivePreserveOrphan]);
 
-    // Stage 1 + 2: parse → run remark/rehype pipeline. The `parsed.mdast` is
-    // mutated in place during `transformStage`; the useMemo chain below keeps
-    // ordering correct for `buildBlocks`.
-    const parsed = useMemo(() => {
+    // Stage 1 + 2: parse → run remark/rehype pipeline, as ONE memo returning
+    // `{ mdast, hast }`. Merged (formerly separate `parsed`/`hast` memos)
+    // because the incremental-parse engine owns both stages: on a splice it
+    // reuses the frozen prefix of the previous frame's post-transform trees
+    // and runs parse+transform over the tail only.
+    const pipeline = useMemo(() => {
       const augmented = augmentSourceWithPhantoms(content ?? '', targetPhantoms);
       const baseHandlers = remarkRehypeOptions?.handlers ?? {};
-      const mergedRemarkRehypeOptions = handlers
-        ? {
-            ...remarkRehypeOptions,
-            handlers: { ...baseHandlers, ...handlers },
-            // Phantom label sets are empty in standalone mode (no PASS 0.5
-            // injection happened); the footnoteDefinition handler still reads
-            // them via `state.options.phantomFootnoteLabels.has(id)`, which
-            // returns false for every id → orphan-protect path proceeds.
-            phantomFootnoteLabels: targetPhantoms.missingFootnotes,
-            phantomLinkLabels: targetPhantoms.missingLinks,
-            preserveOrphan: preserveForBodyHarvest,
-            documentId,
-          }
-        : {
-            ...remarkRehypeOptions,
-          };
-      // Dev-only stage telemetry (`ai-markdown:stage:*` performance
-      // measures; no-op in production). Wraps only the stage call — the
-      // surrounding option assembly is trivial.
-      return measureStage('parse', () =>
-        parseStage({
-          children: augmented,
-          remarkPlugins,
-          rehypePlugins,
-          remarkRehypeOptions: mergedRemarkRehypeOptions as RemarkRehypeOptions,
-        })
-      );
+      const mergedRemarkRehypeOptions = (
+        handlers
+          ? {
+              ...remarkRehypeOptions,
+              handlers: { ...baseHandlers, ...handlers },
+              // Phantom label sets are empty in standalone mode (no PASS 0.5
+              // injection happened); the footnoteDefinition handler still reads
+              // them via `state.options.phantomFootnoteLabels.has(id)`, which
+              // returns false for every id → orphan-protect path proceeds.
+              phantomFootnoteLabels: targetPhantoms.missingFootnotes,
+              phantomLinkLabels: targetPhantoms.missingLinks,
+              preserveOrphan: preserveForBodyHarvest,
+              documentId,
+            }
+          : {
+              ...remarkRehypeOptions,
+            }
+      ) as RemarkRehypeOptions;
+
+      // Incremental parsing is standalone-only in v1: coordinated (registry)
+      // mode parses phantom-augmented sources and contributes tree-derived
+      // data, both of which the splice engine does not model. When not
+      // eligible, the state is CLEARED — a later eligible frame must never
+      // splice against trees parsed under different conditions.
+      if (!config.incrementalParseEnabled || registry) {
+        incrementalStateRef.current = null;
+        // Dev-only stage telemetry (`ai-markdown:stage:*` performance
+        // measures; no-op in production). Wraps only the stage calls — the
+        // surrounding option assembly is trivial.
+        const parsed = measureStage('parse', () =>
+          parseStage({
+            children: augmented,
+            remarkPlugins,
+            rehypePlugins,
+            remarkRehypeOptions: mergedRemarkRehypeOptions,
+          })
+        );
+        const hastRoot = measureStage('transform', () => transformStage(parsed));
+        return { mdast: parsed.mdast, hast: hastRoot };
+      }
+
+      const result = advanceIncrementalParse(incrementalStateRef.current, augmented, {
+        remarkPlugins,
+        rehypePlugins,
+        remarkRehypeOptions: mergedRemarkRehypeOptions,
+        // Identity tuple over every parse input beyond the content itself.
+        // Deliberately covers MORE than the G3 flush's 12 fields (handlers /
+        // preserveForBodyHarvest / documentId can change without touching
+        // any G3 field — e.g. a `preserveOrphanReferences` flip).
+        depsKey: [remarkPlugins, rehypePlugins, remarkRehypeOptions, handlers, preserveForBodyHarvest, documentId],
+        defListEnabled: config.extraSyntaxSupported.includes(AIMarkdownRenderExtraSyntax.DEFINITION_LIST),
+        measure: measureStage,
+      });
+      incrementalStateRef.current = result.nextState;
+      return { mdast: result.mdast, hast: result.hast };
     }, [
       content,
       targetPhantoms,
@@ -485,14 +523,16 @@ const BlockMemoizedRenderer = memo(
       handlers,
       preserveForBodyHarvest,
       documentId,
+      config.incrementalParseEnabled,
+      config.extraSyntaxSupported,
+      registry,
     ]);
-    const hast = useMemo(() => measureStage('transform', () => transformStage(parsed)), [parsed]);
 
     // Cut hast into per-block units indexed back to mdast for cache identity,
     // and compute the document-wide ctx digest for cross-block invalidation.
     const built = useMemo(
-      () => measureStage('build', () => buildBlocks(parsed.mdast, hast, content ?? '')),
-      [parsed.mdast, hast, content]
+      () => measureStage('build', () => buildBlocks(pipeline.mdast, pipeline.hast, content ?? '')),
+      [pipeline, content]
     );
 
     const postOptions = useMemo<PostOptions>(
@@ -535,7 +575,7 @@ const BlockMemoizedRenderer = memo(
     // Guarded by a fingerprint to prevent an infinite re-render cascade:
     // contributeChunkData calls _notify → version++ → useSyncExternalStore
     // wakes this renderer → targetPhantoms recomputes (fresh Set instances)
-    // → parsed re-runs (new mdast reference) → this effect would re-fire
+    // → pipeline re-runs (new mdast reference) → this effect would re-fire
     // and re-contribute the same data → loop. Comparing serialized payload
     // to last contribution breaks the cycle at the side-effect layer.
     //
@@ -576,7 +616,7 @@ const BlockMemoizedRenderer = memo(
       // a hygiene-of-registry-contents convenience for any future consumer
       // reading `Registry.resolveLinkDef` directly.
       const resolvedUrlTransform = urlTransform ?? defaultUrlTransform;
-      for (const node of extractContributions(parsed.mdast, {
+      for (const node of extractContributions(pipeline.mdast, {
         phantomFootnoteLabels: targetPhantoms.missingFootnotes,
         urlTransform: resolvedUrlTransform,
       })) {
@@ -622,7 +662,7 @@ const BlockMemoizedRenderer = memo(
       // and publish. Missing entries are defensive: after allocation,
       // preserveForBodyHarvest keeps real local defs in the synthetic footer
       // even when visible orphan rendering is disabled.
-      const bodiesByLabel = extractDefBodiesFromHast(hast, clobberPrefix);
+      const bodiesByLabel = extractDefBodiesFromHast(pipeline.hast, clobberPrefix);
       const defs = new Map<
         string,
         { identifier: string; sourceIdentifier: string; contentSource: string; bodyHast: HastElementContent[] }
@@ -643,7 +683,7 @@ const BlockMemoizedRenderer = memo(
         ownFootnoteLabels: ownLabels.footnoteLabels,
         ownLinkLabels: ownLabels.linkLabels,
       });
-    }, [parsed, ownLabels, registry, targetPhantoms, sym, hast, clobberPrefix, urlTransform]);
+    }, [pipeline, ownLabels, registry, targetPhantoms, sym, clobberPrefix, urlTransform]);
 
     // Intentional cache memoization via cacheRef; see G3 comment above.
     // Unlike the three memoized stages above, this runs on EVERY render —

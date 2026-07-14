@@ -61,6 +61,7 @@ describe('AIMarkdownRenderStateProvider config merge', () => {
       displayOptimizeAbilities: [AIMarkdownRenderDisplayOptimizeAbility.REMOVE_COMMENTS],
       blockMemoEnabled: true,
       preserveOrphanReferences: true,
+      incrementalParseEnabled: false,
     };
     const snapshot = JSON.stringify(consumerDefault);
 
