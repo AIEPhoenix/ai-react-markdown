@@ -20,6 +20,13 @@
  * injected region, which are dropped before the join. Definition text is
  * sliced verbatim from the previous content via node positions — exact
  * source roundtrip preserves escapes and multi-line titles.
+ *
+ * Sanitize-STRIPPED prefix nodes (HTML comments, `<?…?>` bogus comments,
+ * `<script>`) are modeled explicitly: their wrap separators survive as
+ * orphans, and `alignPrefixCut` re-derives the mdast↔hast pairing from
+ * separator-run lengths (B0-probe-verified: one orphan '\n' per stripped
+ * child's gap slot). Layouts outside the model return null → full-parse
+ * fallback for the frame.
  */
 
 import type { Root as HastRoot, RootContent as HastContent } from 'hast';
@@ -139,27 +146,30 @@ export function spliceTrees(input: SpliceInput): { mdast: MdastRoot; hast: HastR
     if (start !== undefined && start < boundary) prefixMdast.push(child);
   }
   const attrs = attributeHastChildren(prevMdast, prevHast, boundary);
-  const prefixHast: HastContent[] = [];
+  const cutRegion: HastContent[] = [];
   for (let i = 0; i < prevHast.children.length && attrs[i] < boundary; i++) {
-    prefixHast.push(prevHast.children[i]);
+    cutRegion.push(prevHast.children[i]);
   }
 
-  // Wrap-separator bookkeeping is only sound when every wrap-visible prefix
-  // mdast child still has a hast output node: a sanitize-STRIPPED node
-  // (HTML comment, `<?…?>` bogus comment — probe-confirmed A6) leaves its
-  // wrap separators behind but no output, so the seam would need a
-  // stripped-node-position-aware separator count. Rather than model that,
-  // bail to a full parse for the frame (the default config removes
-  // comments at the mdast level, so this fallback is rare in practice).
-  const visiblePrefixCount = prefixMdast.filter((c) => c.type !== 'definition').length;
-  const outputCount = prefixHast.filter((c) => !isSeparatorText(c)).length;
-  if (visiblePrefixCount !== outputCount) return null;
-
-  // --- tail: drop injected definitions, then re-base into document space ---
+  // wrap() emits separators per mdast-child ADJACENCY, before sanitize
+  // strips anything — so the seam's existence is decided by the tail's
+  // post-transform MDAST (excluding wrap-invisible types, which produce no
+  // to-hast output), not by whether the tail hast ends up non-empty.
+  // (Learned from the arbiter: a sanitize-removed comment leaves its
+  // separator behind.)
   const tailMdastChildren = tailMdast.children.filter((child) => {
     const start = child.position?.start?.offset;
-    return !(child.type === 'definition' && start !== undefined && start < injectedLen);
+    return !(isWrapInvisible(child) && start !== undefined && start < injectedLen);
   });
+  const tailWrapVisible = tailMdastChildren.some((child) => !isWrapInvisible(child));
+
+  // Align the cut region against the prefix mdast (stripped-node aware) and
+  // rebuild its trailing separators. Bails null on any layout the model
+  // does not cover — the caller falls back to a full parse for the frame.
+  const hastChildren = alignPrefixCut(prefixMdast, cutRegion, tailWrapVisible);
+  if (hastChildren === null) return null;
+
+  // --- tail: drop injected definitions, then re-base into document space ---
   for (const child of tailMdastChildren) rebaseTree(child, offsetDelta, lineDelta);
   for (const child of tailHast.children) rebaseTree(child, offsetDelta, lineDelta);
 
@@ -168,42 +178,28 @@ export function spliceTrees(input: SpliceInput): { mdast: MdastRoot; hast: HastR
   // Seam anatomy (all learned from the arbiter, not theory):
   // - Pre-raw, wrap() puts exactly ONE '\n' text node between any two root
   //   children — including between the last frozen block and the first
-  //   tail block. Attribution quirk: a separator following an UNPOSITIONED
-  //   element (KaTeX output) is pinned to the PRECEDING mdast block and is
-  //   already inside the cut; after a positioned element it attaches to
-  //   the next block and falls outside it. Synthesize only in the latter
-  //   case.
+  //   tail block; `alignPrefixCut` has already synthesized it (plus one per
+  //   trailing stripped-child gap) as plain '\n' nodes.
   // - rehype-raw's reserialize+reparse HOISTS whitespace-only text out of
   //   table internals to just BEFORE the <table> (parse5 foster-parenting),
-  //   then merges it with the wrap separator into one multi-'\n' text
+  //   then merges it with the adjacent separator into one multi-'\n' text
   //   node. That run is TAIL-derived and grows with the table — it must
   //   come from the tail parse (which reproduces it as leading text), not
-  //   from the previous frame's tree. Joining therefore MERGES adjacent
-  //   text nodes across the seam, exactly like the reparse would.
+  //   from the previous frame's tree. Joining therefore MERGES the seam
+  //   separator with the tail's leading text, exactly like the reparse
+  //   would — but ONLY when they were literally adjacent in the serialized
+  //   HTML. A tail whose first wrap-visible child was sanitize-STRIPPED
+  //   (leading comment) emits its leading text as a gap SLOT that the full
+  //   parse keeps as a separate node (the comment sat between them at
+  //   reparse time), so merging would be wrong there.
   const mdastChildren = prefixMdast.concat(tailMdastChildren);
-  const hastChildren: HastContent[] = prefixHast.slice();
-  const last = hastChildren[hastChildren.length - 1];
-  // wrap() emits the seam separator per mdast-child ADJACENCY, before
-  // sanitize strips anything — so its existence is decided by the tail's
-  // post-transform MDAST (excluding definitions, which produce no to-hast
-  // output), not by whether the tail hast ends up non-empty. (Learned from
-  // the arbiter: a sanitize-removed comment leaves its separator behind.)
-  const tailWrapVisible = tailMdastChildren.some((child) => child.type !== 'definition');
-  if (hastChildren.length > 0 && tailWrapVisible) {
-    if (last && isSeparatorText(last)) {
-      // The cut-trailing separator (attribution pins it to the preceding
-      // block after unpositioned elements like KaTeX output) may already
-      // contain the PREVIOUS frame's hoisted-table newlines — tail-derived
-      // and stale. The prefix-side contribution is always exactly one
-      // wrap '\n'; the tail's own hoist re-merges below.
-      hastChildren[hastChildren.length - 1] = { type: 'text', value: '\n' };
-    } else {
-      hastChildren.push({ type: 'text', value: '\n' });
-    }
-  }
+  const seamMergeAllowed = tailLeadingTextIsHoist(tailMdastChildren, tailHast.children);
+  let firstTailChild = true;
   for (const child of tailHast.children) {
     const tailEnd = hastChildren[hastChildren.length - 1];
     if (
+      firstTailChild &&
+      seamMergeAllowed &&
       tailEnd &&
       tailEnd.type === 'text' &&
       tailEnd.position === undefined &&
@@ -214,8 +210,10 @@ export function spliceTrees(input: SpliceInput): { mdast: MdastRoot; hast: HastR
       // merged these during rehype-raw's reparse. Replace (don't mutate) the
       // seam node: it may be a reference into the previous frame's tree.
       hastChildren[hastChildren.length - 1] = { ...tailEnd, value: tailEnd.value + child.value };
+      firstTailChild = false;
       continue;
     }
+    firstTailChild = false;
     hastChildren.push(child);
   }
 
@@ -245,6 +243,129 @@ function rebasePoint(point: Position['end'], offsetDelta: number, lineDelta: num
     column: point.column,
     offset: point.offset !== undefined ? point.offset + offsetDelta : undefined,
   };
+}
+
+/** mdast types with no to-hast output AND no wrap separator slot. Everything
+ *  else gets a slot at wrap() time — even nodes sanitize later strips
+ *  (comments, PIs, `<script>`), whose slots survive as orphan separators. */
+function isWrapInvisible(node: MdastContent): boolean {
+  return node.type === 'definition' || node.type === 'footnoteDefinition';
+}
+
+/**
+ * Stripped-node-aware prefix cut (B0-probe-verified layout model).
+ *
+ * The cut region of the previous hast interleaves CONTENT nodes with
+ * position-less '\n' SEPARATORS. wrap() emitted one separator per gap
+ * between adjacent wrap-visible mdast children; sanitize then stripped some
+ * children's output (HTML comment / PI / `<script>`), leaving their
+ * separators orphaned. The walk below re-derives the pairing:
+ *
+ * - separator-run lengths are the gap ground truth (a run of length L
+ *   between two content nodes ⇒ L−1 stripped children between them; a
+ *   leading run of length L ⇒ L leading stripped children);
+ * - positioned content cross-checks the pairing (its start offset must fall
+ *   inside the paired mdast child's range). Multiple positioned content
+ *   nodes inside ONE child's range are a raw-reparse multi-output html
+ *   block — legal, zero separators between them;
+ * - position-less content (KaTeX span) pairs by cursor arithmetic alone.
+ *
+ * Internal separators are kept VERBATIM (one before a frozen <table> may
+ * legitimately hold hoisted newlines — frozen with the table, stable). The
+ * TRAILING run is rebuilt from scratch as plain '\n' nodes: its last member
+ * is seam-adjacent and may carry the previous frame's tail-derived hoist
+ * (stale), and its length must reflect the CURRENT tail's wrap visibility,
+ * not the previous frame's.
+ *
+ * Returns null whenever the observed layout contradicts the model — the
+ * caller falls back to a full parse (safe, one-frame cost).
+ */
+function alignPrefixCut(
+  prefixMdast: MdastContent[],
+  cutRegion: HastContent[],
+  tailWrapVisible: boolean
+): HastContent[] | null {
+  const visibles = prefixMdast.filter((c) => !isWrapInvisible(c));
+
+  const out: HastContent[] = [];
+  let sepBuffer: HastContent[] = [];
+  let pairIdx = -1; // index into `visibles` of the child paired with the last content node
+  let sawContent = false;
+
+  for (const node of cutRegion) {
+    if (isSeparatorText(node)) {
+      sepBuffer.push(node);
+      continue;
+    }
+    const start = node.position?.start?.offset;
+    const paired = pairIdx >= 0 ? visibles[pairIdx] : undefined;
+    if (
+      sawContent &&
+      start !== undefined &&
+      paired &&
+      paired.position?.start?.offset !== undefined &&
+      paired.position?.end?.offset !== undefined &&
+      start >= paired.position.start.offset &&
+      start < paired.position.end.offset
+    ) {
+      // Multi-output continuation of the SAME mdast child (raw reparse of a
+      // multi-element html block) — serialized adjacently, so no separator
+      // may sit between the outputs.
+      if (sepBuffer.length !== 0) return null;
+      out.push(node);
+      continue;
+    }
+    // New pairing: the separator run before this node covers the gap from
+    // the previous content node (1 separator) plus one per stripped child.
+    const stripped = sawContent ? sepBuffer.length - 1 : sepBuffer.length;
+    if (stripped < 0) return null;
+    const nextIdx = pairIdx + 1 + stripped;
+    const candidate = visibles[nextIdx];
+    if (!candidate) return null;
+    if (start !== undefined) {
+      const cStart = candidate.position?.start?.offset;
+      const cEnd = candidate.position?.end?.offset;
+      if (cStart === undefined || cEnd === undefined || start < cStart || start >= cEnd) return null;
+    }
+    out.push(...sepBuffer, node);
+    sepBuffer = [];
+    pairIdx = nextIdx;
+    sawContent = true;
+  }
+
+  // Trailing region: every visible child after the last paired one must be
+  // stripped. The observed run came from the PREVIOUS frame (its length
+  // includes that frame's seam separator when its tail was wrap-visible),
+  // so it is discarded and rebuilt for the current tail.
+  const trailingStripped = visibles.length - (pairIdx + 1);
+  const trailingGaps = sawContent ? trailingStripped : Math.max(0, visibles.length - 1);
+  if (sepBuffer.length !== trailingGaps && sepBuffer.length !== trailingGaps + 1) return null;
+  const seam = visibles.length > 0 && tailWrapVisible ? 1 : 0;
+  for (let i = 0; i < trailingGaps + seam; i++) {
+    out.push({ type: 'text', value: '\n' });
+  }
+  return out;
+}
+
+/**
+ * Decide whether the tail hast's LEADING position-less text may merge with
+ * the seam separator. True only when it is rehype-raw hoist output sitting
+ * directly against the seam in serialized HTML — i.e. the tail's first
+ * wrap-visible mdast child SURVIVED sanitize (its output is the first tail
+ * content node). If that child was stripped (leading comment), the leading
+ * text is a gap SLOT the full parse keeps as a separate node.
+ */
+function tailLeadingTextIsHoist(tailMdastChildren: MdastContent[], tailHastChildren: HastContent[]): boolean {
+  const firstText = tailHastChildren[0];
+  if (!firstText || !isSeparatorText(firstText)) return false;
+  const firstVisible = tailMdastChildren.find((c) => !isWrapInvisible(c));
+  if (!firstVisible) return false;
+  const firstContent = tailHastChildren.find((c) => !isSeparatorText(c));
+  const start = firstContent?.position?.start?.offset;
+  const vStart = firstVisible.position?.start?.offset;
+  const vEnd = firstVisible.position?.end?.offset;
+  if (start === undefined || vStart === undefined || vEnd === undefined) return false;
+  return start >= vStart && start < vEnd;
 }
 
 /** Position-less whitespace-only root text — wrap()/rehype-raw separator runs. */
