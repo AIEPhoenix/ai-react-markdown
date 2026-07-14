@@ -380,6 +380,7 @@ The README covers the 90% case. For deep customization — replacing element ren
 | [Streaming chat: end-to-end](./docs/streaming-chat-example.md)    | Copy-runnable SSE chat example — backend route, React client, Next.js App Router |
 | [CJK typography](./docs/cjk-typography.md)                        | Chinese / Japanese / Korean text — line breaking, pangu spacing, font stack      |
 | [Release highlights](./docs/release-highlights.md)                | What's notable in each version — distilled from the commit log                   |
+| [Benchmark](./docs/benchmark.md)                                  | Measured numbers for block-memo × incremental parse, and how to reproduce them   |
 
 > Below this point: the full prop / config / hook / API reference. Most readers can stop here and dive into the customization guides — come back when you need a specific signature.
 

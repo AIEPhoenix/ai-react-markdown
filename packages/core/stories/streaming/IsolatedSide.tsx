@@ -178,14 +178,20 @@ export const IsolatedSide = () => {
       colorScheme={scheme}
       config={config}
       customComponents={spyComponents}
-      documentId={registry ? `bmc-side-${axis === 'incrementalParse' ? (incremental ? 'inc' : 'full') : mode}` : undefined}
+      documentId={
+        registry ? `bmc-side-${axis === 'incrementalParse' ? (incremental ? 'inc' : 'full') : mode}` : undefined
+      }
     />
   );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 12 }}>
       <h4 style={headerStyle}>
-        <span style={{ color: (axis === 'incrementalParse' ? incremental : mode === 'memo') ? theme.good : theme.warn }}>● </span>
+        <span
+          style={{ color: (axis === 'incrementalParse' ? incremental : mode === 'memo') ? theme.good : theme.warn }}
+        >
+          ●{' '}
+        </span>
         {axis === 'incrementalParse'
           ? `incrementalParseEnabled: ${incremental ? 'true' : 'false'}`
           : axis === 'boost'
