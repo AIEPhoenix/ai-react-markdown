@@ -65,6 +65,14 @@ export interface PrefixInjectionPlan {
   uninjectable: boolean;
 }
 
+/** A plan cached in engine state: valid for any LATER boundary of the same
+ *  append lineage, because events derive from (content, positions) alone
+ *  and the boundary is monotone under appends — new frames only APPEND
+ *  events for children in [cached.boundary, newBoundary). */
+export interface CachedInjectionPlan extends PrefixInjectionPlan {
+  boundary: number;
+}
+
 /** Collect the prefix's injectable events (document order).
  *
  * Walks the FULL subtree, not just top-level children: definitions nested
@@ -85,8 +93,21 @@ export interface PrefixInjectionPlan {
  * injected def text replays them there; emitting them as inline events
  * would double-count.
  */
-export function collectPrefixInjection(mdast: MdastRoot, content: string, boundary: number): PrefixInjectionPlan {
-  const events: InjectionEvent[] = [];
+export function collectPrefixInjection(
+  mdast: MdastRoot,
+  content: string,
+  boundary: number,
+  resume?: CachedInjectionPlan | null
+): PrefixInjectionPlan {
+  // Resume path (final-review R3): the frozen prefix is byte-identical
+  // frame to frame, so a cached plan only needs the children in
+  // [resume.boundary, boundary) appended — without this the deep visit
+  // re-walks the ENTIRE prefix every splice frame (the collectDefLabels
+  // O(stream²) shape). `uninjectable` is sticky: the offending node stays
+  // in the prefix for the lineage's lifetime.
+  if (resume && resume.uninjectable) return { events: resume.events, uninjectable: true };
+  const resumeAt = resume && resume.boundary <= boundary ? resume.boundary : 0;
+  const events: InjectionEvent[] = resumeAt > 0 ? cloneEventsForAppend(resume!.events) : [];
   let uninjectable = false;
   const pushRef = (token: string): void => {
     const last = events[events.length - 1];
@@ -139,18 +160,50 @@ export function collectPrefixInjection(mdast: MdastRoot, content: string, bounda
   };
   for (const child of mdast.children) {
     // Top-level children are position-ordered — nothing at or past the
-    // boundary can contribute a prefix event (E5).
+    // boundary can contribute a prefix event (E5), and nothing before the
+    // resume point needs re-visiting.
     const start = child.position?.start?.offset;
     if (start !== undefined && start >= boundary) break;
+    if (start !== undefined && start < resumeAt) continue;
     visit(child, false);
   }
   return { events, uninjectable };
+}
+
+/** Cached plans are shared with the previous state — clone the array, and
+ *  the trailing refs event too (pushRef mutates its token list when the new
+ *  region opens with another reference). */
+function cloneEventsForAppend(events: InjectionEvent[]): InjectionEvent[] {
+  const out = events.slice();
+  const last = out[out.length - 1];
+  if (last && last.kind === 'refs') out[out.length - 1] = { kind: 'refs', tokens: last.tokens.slice() };
+  return out;
 }
 
 export interface InjectionPrefix {
   text: string;
   segments: InjectedSegment[];
 }
+
+/** The injection TERMINATOR: a sentinel link-definition block appended after
+ *  the last event. The detector's blockers prove the REAL prefix is inert
+ *  toward the tail — but the injection text itself introduces continuation
+ *  context the real prefix did not have (final-review R1, probe-confirmed):
+ *
+ *  - a trailing footnote-def event's body continues across blank lines into
+ *    any >=4-indented tail line, swallowing real content into a node the
+ *    splice then strips;
+ *  - with the definition-list extension, a tail-leading `: desc` separated
+ *    from the ORIGINAL prefix by two blank lines (claim-immune) sits only
+ *    ONE '\n\n' from the last injected block and would claim it as a <dt>.
+ *
+ *  A column-0 link definition neutralizes both: it terminates a footnote
+ *  body (not >=4-indented), cannot be claimed as a <dt> (not a paragraph),
+ *  emits zero hast and zero wrap-separator slots, and is stripped with the
+ *  rest of the injected region. The sentinel label collides with real
+ *  content only if a document defines the exact same label — the same
+ *  accepted-risk class as the phantom sentinel URLs. */
+const INJECTION_TERMINATOR = '[__aimd_injection_terminator__]: __aimd_sentinel_link__';
 
 /** Build the injection text prepended to the tail source (with per-footnote-
  *  def coordinate segments). Blocks are '\n\n'-joined: a def line directly
@@ -160,26 +213,29 @@ export interface InjectionPrefix {
 export function buildInjectionPrefix(events: InjectionEvent[]): InjectionPrefix {
   if (events.length === 0) return { text: '', segments: [] };
   let text = '';
+  // Rolling line number of the text end — recounting the accumulated text
+  // per event would be O(events × textLength) (final-review R3).
+  let line = 1;
   const segments: InjectedSegment[] = [];
   for (const event of events) {
-    if (text.length > 0) text += '\n\n';
+    if (text.length > 0) {
+      text += '\n\n';
+      line += 2;
+    }
     const injStart = text.length;
-    if (event.kind === 'refs') {
-      text += event.tokens.join(' ');
-    } else if (event.kind === 'def') {
-      text += event.source;
-    } else {
-      const injLine = countNewlines(text) + 1;
+    const source = event.kind === 'refs' ? event.tokens.join(' ') : event.source;
+    if (event.kind === 'footnoteDef') {
       segments.push({
         injStart,
-        injEnd: injStart + event.source.length,
+        injEnd: injStart + source.length,
         offsetDelta: event.origStart - injStart,
-        lineDelta: event.origLine - injLine,
+        lineDelta: event.origLine - line,
       });
-      text += event.source;
     }
+    text += source;
+    line += countNewlines(source);
   }
-  return { text: `${text}\n\n`, segments };
+  return { text: `${text}\n\n${INJECTION_TERMINATOR}\n\n`, segments };
 }
 
 interface TreeWithChildren extends UnistNode {
@@ -192,18 +248,12 @@ interface TreeWithChildren extends UnistNode {
  * Mutates in place — callers only pass freshly-parsed tail trees.
  */
 export function rebaseTree(node: UnistNode, offsetDelta: number, lineDelta: number): void {
-  const position = node.position as Position | undefined;
-  if (position) {
-    if (position.start.offset !== undefined) position.start.offset += offsetDelta;
-    position.start.line += lineDelta;
-    if (position.end.offset !== undefined) position.end.offset += offsetDelta;
-    position.end.line += lineDelta;
-  }
-  const children = (node as TreeWithChildren).children;
-  if (children) {
-    for (const child of children) rebaseTree(child, offsetDelta, lineDelta);
-  }
+  // Exactly rebaseTreeDual with no segments (find never matches) — one
+  // implementation, two names for the two call sites' semantics.
+  rebaseTreeDual(node, EMPTY_SEGMENTS, offsetDelta, lineDelta);
 }
+
+const EMPTY_SEGMENTS: InjectedSegment[] = [];
 
 /**
  * Dual-rule position rebase for the tail HAST (C0-probe-verified): the
@@ -221,11 +271,26 @@ export function rebaseTreeDual(
   offsetDelta: number,
   lineDelta: number
 ): void {
+  // Segments live entirely inside the injection prefix; after the injected
+  // region is stripped, ~every remaining point sits past them all. One
+  // bound check replaces an always-failing O(segments) scan per point
+  // (final-review R3).
+  const maxEnd = segments.length > 0 ? segments[segments.length - 1].injEnd : -1;
+  rebaseDualWalk(node, segments, maxEnd, offsetDelta, lineDelta);
+}
+
+function rebaseDualWalk(
+  node: UnistNode,
+  segments: InjectedSegment[],
+  maxEnd: number,
+  offsetDelta: number,
+  lineDelta: number
+): void {
   const position = node.position as Position | undefined;
   if (position) {
     for (const point of [position.start, position.end]) {
       const seg =
-        segments.length > 0 && point.offset !== undefined
+        point.offset !== undefined && point.offset <= maxEnd
           ? segments.find((s) => point.offset! >= s.injStart && point.offset! <= s.injEnd)
           : undefined;
       if (seg) {
@@ -239,7 +304,7 @@ export function rebaseTreeDual(
   }
   const children = (node as TreeWithChildren).children;
   if (children) {
-    for (const child of children) rebaseTreeDual(child, segments, offsetDelta, lineDelta);
+    for (const child of children) rebaseDualWalk(child, segments, maxEnd, offsetDelta, lineDelta);
   }
 }
 
@@ -270,15 +335,19 @@ export function spliceTrees(input: SpliceInput): { mdast: MdastRoot; hast: HastR
 
   const injectedLen = injectionPrefix.length;
   const injectedLines = countNewlines(injectionPrefix);
-  const prefixLines = countNewlines(content.slice(0, boundary));
+  // Bounded count — slicing the prefix would allocate a copy of the whole
+  // frozen document every frame just to count newlines (final-review R3).
+  const prefixLines = countNewlines(content, boundary);
   const offsetDelta = boundary - injectedLen;
   const lineDelta = prefixLines - injectedLines;
 
   // --- prefix cuts (non-mutating reads of the previous frame's trees) ---
   const prefixMdast: MdastContent[] = [];
   for (const child of prevMdast.children) {
+    // Position-ordered — the first child at/past the boundary ends the prefix.
     const start = child.position?.start?.offset;
-    if (start !== undefined && start < boundary) prefixMdast.push(child);
+    if (start !== undefined && start >= boundary) break;
+    if (start !== undefined) prefixMdast.push(child);
   }
   const attrs = attributeHastChildren(prevMdast, prevHast, boundary);
   const cutRegion: HastContent[] = [];
@@ -458,15 +527,45 @@ function alignPrefixCut(
     }
     // New pairing: the separator run before this node covers the gap from
     // the previous content node (1 separator) plus one per stripped child.
-    const stripped = sawContent ? sepBuffer.length - 1 : sepBuffer.length;
-    if (stripped < 0) return null;
-    const nextIdx = pairIdx + 1 + stripped;
-    const candidate = visibles[nextIdx];
-    if (!candidate) return null;
-    if (start !== undefined) {
-      const cStart = candidate.position?.start?.offset;
-      const cEnd = candidate.position?.end?.offset;
-      if (cStart === undefined || cEnd === undefined || start < cStart || start >= cEnd) return null;
+    //
+    // LEADING-run exception (final-review R2): when the FIRST wrap-visible
+    // child is a table (or any foster-parenting element), rehype-raw's
+    // hoisted whitespace has no preceding wrap slot to merge into and lands
+    // as a bare leading text node — one leading text with ZERO stripped
+    // children. A positioned first content node therefore locates its own
+    // pair by containment within [0..sepBuffer.length]; the excess leading
+    // texts are hoist, kept verbatim (frozen with their table, stable —
+    // interior hoist always merges into an existing slot, so only the
+    // leading run needs this). Position-less first content (KaTeX — never
+    // hoist-preceded) keeps the pure run-length rule.
+    let nextIdx: number;
+    if (!sawContent && start !== undefined) {
+      nextIdx = -1;
+      for (let j = 0; j <= sepBuffer.length && j < visibles.length; j++) {
+        const vStart = visibles[j].position?.start?.offset;
+        const vEnd = visibles[j].position?.end?.offset;
+        if (vStart !== undefined && vEnd !== undefined && start >= vStart && start < vEnd) {
+          nextIdx = j;
+          break;
+        }
+      }
+      if (nextIdx === -1) return null;
+      // j slots belong to the j leading stripped children; the rest is hoist.
+      // Only the no-stripped shape is probe-verified (hoist merges into the
+      // last slot when slots exist) — mixed shapes beyond one hoist text are
+      // out of model.
+      if (sepBuffer.length - nextIdx > 1) return null;
+    } else {
+      const stripped = sawContent ? sepBuffer.length - 1 : sepBuffer.length;
+      if (stripped < 0) return null;
+      nextIdx = pairIdx + 1 + stripped;
+      const candidate = visibles[nextIdx];
+      if (!candidate) return null;
+      if (start !== undefined) {
+        const cStart = candidate.position?.start?.offset;
+        const cEnd = candidate.position?.end?.offset;
+        if (cStart === undefined || cEnd === undefined || start < cStart || start >= cEnd) return null;
+      }
     }
     out.push(...sepBuffer, node);
     sepBuffer = [];
@@ -555,6 +654,18 @@ function stripInjectedHast(
  * wrap-visible mdast child SURVIVED sanitize (its output is the first tail
  * content node). If that child was stripped (leading comment), the leading
  * text is a gap SLOT the full parse keeps as a separate node.
+ *
+ * Classification exhaustiveness under the SHIPPED plugin chain (this is the
+ * one seam decision without a null→full-parse escape, so the false branch
+ * must be provably correct wherever the evidence is ambiguous): every
+ * "cannot positively classify" case returns false, and false is right for
+ * each — no first content node ⇒ the leading texts are stripped-child slots
+ * (comment-only tail); position-less first content ⇒ KaTeX output, which no
+ * foster-parenting element precedes (hoist comes only from positioned
+ * tables). A consumer rehype plugin emitting novel root-level position-less
+ * text could defeat this — such a plugin changes depsKey/G3 identity and is
+ * outside the arbiter's modeled chain, like every other plugin-behavior
+ * assumption in this file.
  */
 function tailLeadingTextIsHoist(tailMdastChildren: MdastContent[], tailHastChildren: HastContent[]): boolean {
   const firstText = tailHastChildren[0];
@@ -574,8 +685,10 @@ function isSeparatorText(node: HastContent): boolean {
   return node.type === 'text' && node.position === undefined && node.value.trim() === '';
 }
 
-function countNewlines(text: string): number {
+/** Newlines in `text` before `end` (defaults to the whole string) — the
+ *  bound avoids allocating prefix slices on the per-frame hot path. */
+function countNewlines(text: string, end = text.length): number {
   let count = 0;
-  for (let i = text.indexOf('\n'); i !== -1; i = text.indexOf('\n', i + 1)) count += 1;
+  for (let i = text.indexOf('\n'); i !== -1 && i < end; i = text.indexOf('\n', i + 1)) count += 1;
   return count;
 }

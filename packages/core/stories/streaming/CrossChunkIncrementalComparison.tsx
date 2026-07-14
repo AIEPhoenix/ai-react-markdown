@@ -8,8 +8,8 @@ import { useRenderProfiler } from './useRenderProfiler';
 import { ProfilerPanel } from './ProfilerPanel';
 import { controlStyles, getStreamingTheme, thinScrollbar, type ColorScheme } from './theme';
 import { useComparisonRuns } from './useComparisonRuns';
-import { shortenDocumentId } from '../../src/components/shortenDocumentId';
-import { useDomEqualityStats } from './useDomEqualityStats';
+import { normalizeClobberPrefix, useDomEqualityStats } from './useDomEqualityStats';
+import { buildChunkSources, CHUNK_COUNT, sliceChunkContents } from './crossChunkFixtures';
 
 /**
  * Cross-chunk (coordinated) A/B for `incrementalParseEnabled` — each side is
@@ -37,34 +37,7 @@ const ON_DOC_ID = 'xckc-on';
 const OFF_DOC_ID = 'xckc-off';
 const ON_CONFIG = { blockMemoEnabled: true, incrementalParseEnabled: true } as const;
 const OFF_CONFIG = { blockMemoEnabled: true, incrementalParseEnabled: false } as const;
-const CHUNK_COUNT = 3;
 const PIPELINE_STAGES_SHOWN = ['scan', 'parse', 'transform'] as const;
-
-/** Cross-chunk decoration appended per chunk slice: chunk 1 DEFINES labels,
- *  chunks 2/3 REFERENCE them — guaranteeing phantom injection + aggregate
- *  footer regardless of the user payload. */
-const CHUNK_DECORATIONS = [
-  '\n\nChunk one defines a footnote[^xck1] locally.\n\n[^xck1]: defined in chunk one\n\n[xck-spec]: https://example.com/spec\n',
-  '\n\nChunk two cross-references[^xck1] and links [the spec][xck-spec].\n',
-  '\n\nChunk three closes with another cross reference[^xck1].\n',
-] as const;
-
-/** Split at the nearest block boundary to each third, then decorate.
- *  Exported for the coordinated streaming smoke (same chunk layout). */
-export function buildChunkSources(payload: string): string[] {
-  const cuts: number[] = [0];
-  for (let i = 1; i < CHUNK_COUNT; i++) {
-    const target = Math.floor((payload.length * i) / CHUNK_COUNT);
-    const at = payload.indexOf('\n\n', target);
-    cuts.push(at === -1 ? payload.length : at + 2);
-  }
-  cuts.push(payload.length);
-  return Array.from({ length: CHUNK_COUNT }, (_, i) => payload.slice(cuts[i], cuts[i + 1]) + CHUNK_DECORATIONS[i]);
-}
-
-const normalizeClobberPrefix = (html: string, docId: string): string =>
-  html.replaceAll(`${encodeURIComponent(shortenDocumentId(docId))}-user-content-`, '§doc§-user-content-');
-
 const fmt = (n: number, digits = 1) => (Number.isFinite(n) && !Number.isNaN(n) ? n.toFixed(digits) : '—');
 
 function pipelineTotal(stages: Record<string, { total: number }>): number {
@@ -208,16 +181,7 @@ export const CrossChunkIncrementalComparison = ({
     if (!running) setEquality({ ...equalityRef.current });
   }, [content, running, equalityRef]);
 
-  const chunkContents = useMemo(() => {
-    const out: string[] = [];
-    let cursor = content.length;
-    for (const source of chunkSources) {
-      const take = Math.max(0, Math.min(cursor, source.length));
-      cursor -= take;
-      out.push(source.slice(0, take));
-    }
-    return out;
-  }, [chunkSources, content.length]);
+  const chunkContents = useMemo(() => sliceChunkContents(chunkSources, content.length), [chunkSources, content.length]);
 
   const onStages = onProfiler.snapshot.stages;
   const offStages = offProfiler.snapshot.stages;

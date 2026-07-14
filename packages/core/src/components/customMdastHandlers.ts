@@ -72,7 +72,7 @@ export function buildCrossChunkHandlers(): Handlers {
       const id = normalizeId(node.identifier);
       const resolved = s.definitionById.has(id);
       if (!resolved) {
-        // Unreachable in coordinated pipeline because augmentSourceWithPhantoms
+        // Unreachable in coordinated pipeline because the phantom suffix
         // guarantees a def for every referenced label that survives PASS 0.5.
         // Verified by experiment: remark-parse produces a `linkReference`
         // mdast node ONLY when a corresponding `[label]:` exists in the
