@@ -31,6 +31,7 @@ Most readers come in with a task, not a curriculum. Pick the row that matches wh
 | **Building your own `@yourorg/ai-react-markdown-…` integration**            | [Extending via a sub-package](./extending-via-subpackage.md) | [Architecture](./architecture.md), [TypeScript generics](./typescript-generics.md)                                                                                |
 | **Debugging unexpected render output**                                      | [Architecture](./architecture.md)                            | [Streaming & performance](./streaming-and-performance.md) (cache invariants)                                                                                      |
 | **Tracking what changed across versions**                                   | [Release highlights](./release-highlights.md)                | —                                                                                                                                                                 |
+| **Evaluating the performance flags before enabling them**                   | [Benchmark](./benchmark.md)                                  | [Streaming & performance](./streaming-and-performance.md)                                                                                                         |
 
 If none of these matches, the full topic index below covers every surface.
 
@@ -55,6 +56,7 @@ If none of these matches, the full topic index below covers every surface.
 | ★   | [Streaming chat: end-to-end](./streaming-chat-example.md)    | Copy-runnable example — SSE backend, React state, Next.js App Router                                         |
 | ★   | [CJK typography](./cjk-typography.md)                        | Chinese / Japanese / Korean text — line breaking, pangu spacing, font stack                                  |
 | ★   | [Release highlights](./release-highlights.md)                | What's notable in each version — distilled from the commit log                                               |
+| ★   | [Benchmark](./benchmark.md)                                  | Measured numbers for block-memo × incremental parse, methodology, and how to reproduce them                  |
 
 The documents are independent — read them in any order. Cross-references are inlined where helpful.
 
