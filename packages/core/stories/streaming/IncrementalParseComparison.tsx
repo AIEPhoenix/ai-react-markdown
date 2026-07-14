@@ -8,6 +8,7 @@ import { ProfilerPanel } from './ProfilerPanel';
 import { controlStyles, getStreamingTheme, thinScrollbar, type ColorScheme } from './theme';
 import { PAYLOAD_SCALES, useComparisonRuns } from './useComparisonRuns';
 import { shortenDocumentId } from '../../src/components/shortenDocumentId';
+import { useDomEqualityStats } from './useDomEqualityStats';
 
 /**
  * Side-by-side A/B for `incrementalParseEnabled` — BOTH columns run the
@@ -123,19 +124,25 @@ export const IncrementalParseComparison = ({
   const onProfiler = useRenderProfiler<HTMLDivElement>({ running, observeStages: true, stageInstanceId: V.onDocId });
   const offProfiler = useRenderProfiler<HTMLDivElement>({ running, observeStages: true, stageInstanceId: V.offDocId });
 
-  // Per-frame DOM equality (the verification half of this story).
+  // Per-frame DOM equality (the verification half of this story) — the
+  // shared accumulator; clobber-prefix normalization plugs in because the
+  // two sides intentionally use different documentIds.
   const onDomRef = useRef<HTMLDivElement>(null);
   const offDomRef = useRef<HTMLDivElement>(null);
-  const equalityRef = useRef({ frames: 0, mismatches: 0, firstMismatchLength: -1 });
-  const [equality, setEquality] = useState(equalityRef.current);
+  const normalize = useCallback(
+    (html: string, side: 'on' | 'off') => normalizeClobberPrefix(html, side === 'on' ? V.onDocId : V.offDocId),
+    [V.onDocId, V.offDocId]
+  );
+  const { statsRef: equalityRef, reset: resetEquality } = useDomEqualityStats(onDomRef, offDomRef, content, normalize);
+  const [equality, setEquality] = useState({ frames: 0, mismatches: 0, firstMismatchLength: -1 });
 
   const begin = useCallback(() => {
     setContent('');
-    equalityRef.current = { frames: 0, mismatches: 0, firstMismatchLength: -1 };
-    setEquality(equalityRef.current);
+    resetEquality();
+    setEquality({ frames: 0, mismatches: 0, firstMismatchLength: -1 });
     onProfiler.reset();
     offProfiler.reset();
-  }, [onProfiler, offProfiler]);
+  }, [onProfiler, offProfiler, resetEquality]);
   const push = useCallback(
     (chunk: string) => {
       onProfiler.recordChunk(chunk);
@@ -190,19 +197,11 @@ export const IncrementalParseComparison = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Post-commit: both columns have rendered THIS content — compare live DOM.
+  // Mirror the shared accumulator to state when idle (a per-frame setState
+  // would re-render the host mid-measurement).
   useEffect(() => {
-    if (!content || !onDomRef.current || !offDomRef.current) return;
-    const eq = equalityRef.current;
-    eq.frames += 1;
-    const onHtml = normalizeClobberPrefix(onDomRef.current.innerHTML, V.onDocId);
-    const offHtml = normalizeClobberPrefix(offDomRef.current.innerHTML, V.offDocId);
-    if (onHtml !== offHtml) {
-      eq.mismatches += 1;
-      if (eq.firstMismatchLength === -1) eq.firstMismatchLength = content.length;
-    }
-    if (!running) setEquality({ ...eq });
-  }, [content, running, V.onDocId, V.offDocId]);
+    if (!running) setEquality({ ...equalityRef.current });
+  }, [content, running, equalityRef]);
 
   const onStages = onProfiler.snapshot.stages;
   const offStages = offProfiler.snapshot.stages;

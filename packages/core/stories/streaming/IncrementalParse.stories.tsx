@@ -12,7 +12,7 @@
  * the dev-only `scan` stage channel) rather than silently falling back.
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, waitFor } from 'storybook/test';
 
@@ -24,6 +24,8 @@ import '../../src/components/typography/variants/all.scss';
 import { withThemedBackground } from '../decorators';
 import { getStreamingTheme } from './theme';
 import { DEFAULT_PAYLOAD, withDefs } from './scenarios';
+import { codePointSnapshots } from '../../src/components/incrementalParse/codePointSnapshots';
+import { useDomEqualityStats } from './useDomEqualityStats';
 
 /** Shared documentId so both sides emit identical clobber-prefixed ids. */
 const SMOKE_DOCUMENT_ID = 'ip-smoke';
@@ -46,45 +48,37 @@ function IncrementalParseSmoke({ payload }: { payload: string }) {
   const [finalStats, setFinalStats] = useState<SmokeStats | null>(null);
   const onRef = useRef<HTMLDivElement>(null);
   const offRef = useRef<HTMLDivElement>(null);
-  const statsRef = useRef<SmokeStats>({ frames: 0, mismatches: 0, scans: 0, firstMismatchLength: -1 });
+  const scansRef = useRef(0);
+  const { statsRef } = useDomEqualityStats(onRef, offRef, content);
 
   // Count `scan` stage emissions — the incremental engine is the only
   // caller, so scans > 0 proves the flag-on side routed through it.
   useEffect(
     () =>
       subscribeStageTimings((stage) => {
-        if (stage === 'scan') statsRef.current.scans += 1;
+        if (stage === 'scan') scansRef.current += 1;
       }),
     []
   );
 
   useEffect(() => {
-    const codePoints = Array.from(payload);
-    let cursor = 0;
+    const snapshots = codePointSnapshots(payload, CHUNK_CODE_POINTS);
+    let idx = 0;
     const timer = setInterval(() => {
-      cursor += CHUNK_CODE_POINTS;
-      if (cursor >= codePoints.length) {
-        setContent(payload);
+      setContent(snapshots[idx]);
+      if (idx === snapshots.length - 1) {
         setDone(true);
         clearInterval(timer);
-        return;
       }
-      setContent(codePoints.slice(0, cursor).join(''));
+      idx += 1;
     }, FRAME_INTERVAL_MS);
     return () => clearInterval(timer);
   }, [payload]);
 
-  // Post-commit, both sides have rendered THIS content — compare live DOM.
+  // Final mirror only — the play assertion reads the data attributes.
   useEffect(() => {
-    if (!content || !onRef.current || !offRef.current) return;
-    const stats = statsRef.current;
-    stats.frames += 1;
-    if (onRef.current.innerHTML !== offRef.current.innerHTML) {
-      stats.mismatches += 1;
-      if (stats.firstMismatchLength === -1) stats.firstMismatchLength = content.length;
-    }
-    if (done) setFinalStats({ ...stats });
-  }, [content, done]);
+    if (done) setFinalStats({ ...statsRef.current, scans: scansRef.current });
+  }, [content, done, statsRef]);
 
   return (
     <div>
@@ -158,31 +152,30 @@ function PlaygroundRun({
   const [done, setDone] = useState(false);
   const onRef = useRef<HTMLDivElement>(null);
   const offRef = useRef<HTMLDivElement>(null);
-  const statsRef = useRef({ frames: 0, mismatches: 0, scans: 0, firstMismatchLength: -1 });
-  // Render-facing mirror of statsRef (react-hooks forbids reading refs in render).
+  const scansRef = useRef(0);
+  const { statsRef } = useDomEqualityStats(onRef, offRef, content);
+  // Render-facing mirror (react-hooks forbids reading refs in render).
   const [stats, setStats] = useState({ frames: 0, mismatches: 0, scans: 0, firstMismatchLength: -1 });
 
   useEffect(
     () =>
       subscribeStageTimings((stage, _ms, instanceId) => {
-        if (stage === 'scan' && instanceId === SMOKE_DOCUMENT_ID) statsRef.current.scans += 1;
+        if (stage === 'scan' && instanceId === SMOKE_DOCUMENT_ID) scansRef.current += 1;
       }),
     []
   );
 
   useEffect(() => {
-    const codePoints = Array.from(payload);
-    let cursor = 0;
+    const snapshots = codePointSnapshots(payload, Math.max(1, chunkSize));
+    let idx = 0;
     const timer = setInterval(
       () => {
-        cursor += Math.max(1, chunkSize);
-        if (cursor >= codePoints.length) {
-          setContent(payload);
+        setContent(snapshots[idx]);
+        if (idx === snapshots.length - 1) {
           setDone(true);
           clearInterval(timer);
-          return;
         }
-        setContent(codePoints.slice(0, cursor).join(''));
+        idx += 1;
       },
       Math.max(5, intervalMs)
     );
@@ -190,21 +183,21 @@ function PlaygroundRun({
   }, [payload, chunkSize, intervalMs]);
 
   useEffect(() => {
-    if (!content || !onRef.current || !offRef.current) return;
-    const stats = statsRef.current;
-    stats.frames += 1;
-    if (onRef.current.innerHTML !== offRef.current.innerHTML) {
-      stats.mismatches += 1;
-      if (stats.firstMismatchLength === -1) stats.firstMismatchLength = content.length;
-    }
-    setStats({ ...statsRef.current }); // display tracks every frame
-  }, [content]);
+    // Throttled mirror (every 4th frame + final) — a per-frame setState
+    // would double this component's render count for a counters-only UI.
+    const s = statsRef.current;
+    if (done || s.frames % 4 === 0) setStats({ ...s, scans: scansRef.current });
+  }, [content, done, statsRef]);
 
   // Mirror the ENGINE's decision: the scan itself reports fence-aware
   // footnote syntax (the default playground payload ends with a footnote
   // tail, so the bar visibly flips to fallback mid-stream — honest
   // behavior, not a bug; a `[^` inside a code fence does NOT trip it).
-  const scan = content ? computeFreezeBoundary(content, { defListEnabled: true }) : null;
+  // Memoized: the stats-mirror state update below re-renders this
+  // component, and an unmemoized scan would run the whole-document pass
+  // twice per streamed tick — the visualizer distorting the number it
+  // exists to show (review finding E6).
+  const scan = useMemo(() => (content ? computeFreezeBoundary(content, { defListEnabled: true }) : null), [content]);
   const bypassed = scan?.hasFootnoteSyntax ?? false;
   const boundary = scan && !bypassed ? scan.boundary : 0;
   const frozenPct = content.length > 0 ? boundary / content.length : 0;
