@@ -9,9 +9,10 @@
  * plain params dodge the args URL-encoding quirks and keep the host's URL
  * builder trivial):
  *   - `bmcMode`:     'memo' | 'legacy' → blockMemoEnabled true/false
- *   - `bmcAxis`:     'blockMemo' | 'incrementalParse' → which A/B this side
- *                    belongs to; the incremental axis forces blockMemo on
- *                    and differentiates sides via `bmcIncremental`
+ *   - `bmcAxis`:     'blockMemo' | 'incrementalParse' | 'boost' → which A/B
+ *                    this side belongs to; the incremental axis forces
+ *                    blockMemo on and differentiates via `bmcIncremental`;
+ *                    the boost axis is (memo+incremental) vs legacy
  *   - `bmcIncremental`: 'on' | 'off'   → incrementalParseEnabled (incremental axis)
  *   - `bmcSpy`:      'on' | 'off'      → wrap tags in counting spies
  *   - `bmcRegistry`: 'on' | 'off'      → wrap in AIMarkdownDocuments
@@ -36,7 +37,7 @@ import { isProtocolMessage, type SideMode, type SideToHostMessage } from './isol
 
 function readParams(): {
   mode: SideMode;
-  axis: 'blockMemo' | 'incrementalParse';
+  axis: 'blockMemo' | 'incrementalParse' | 'boost';
   incremental: boolean;
   spy: boolean;
   registry: boolean;
@@ -45,7 +46,12 @@ function readParams(): {
   const params = new URLSearchParams(window.location.search);
   return {
     mode: params.get('bmcMode') === 'legacy' ? 'legacy' : 'memo',
-    axis: params.get('bmcAxis') === 'incrementalParse' ? 'incrementalParse' : 'blockMemo',
+    axis:
+      params.get('bmcAxis') === 'incrementalParse'
+        ? 'incrementalParse'
+        : params.get('bmcAxis') === 'boost'
+          ? 'boost'
+          : 'blockMemo',
     incremental: params.get('bmcIncremental') === 'on',
     spy: params.get('bmcSpy') !== 'off',
     registry: params.get('bmcRegistry') === 'on',
@@ -85,11 +91,15 @@ export const IsolatedSide = () => {
 
   // Incremental axis: BOTH sides run block-memo; the flag differentiates.
   // (In registry mode the incremental side auto-falls-back — honest measure.)
+  // General form across all three axes: the incremental axis pins blockMemo
+  // on for both sides; blockMemo/boost differentiate memo via mode, and the
+  // boost on-side additionally enables incremental (host URL sets the flag).
   const config = useMemo(
     () =>
-      axis === 'incrementalParse'
-        ? ({ blockMemoEnabled: true, incrementalParseEnabled: incremental } as const)
-        : ({ blockMemoEnabled: mode === 'memo' } as const),
+      ({
+        blockMemoEnabled: axis === 'incrementalParse' ? true : mode === 'memo',
+        incrementalParseEnabled: incremental,
+      }) as const,
     [axis, incremental, mode]
   );
   const spyComponents = useMemo(
@@ -178,7 +188,11 @@ export const IsolatedSide = () => {
         <span style={{ color: (axis === 'incrementalParse' ? incremental : mode === 'memo') ? theme.good : theme.warn }}>● </span>
         {axis === 'incrementalParse'
           ? `incrementalParseEnabled: ${incremental ? 'true' : 'false'}`
-          : `blockMemoEnabled: ${mode === 'memo' ? 'true (default)' : 'false (legacy)'}`}
+          : axis === 'boost'
+            ? mode === 'memo'
+              ? 'boost: block-memo + incremental (all on)'
+              : 'legacy: full pipeline every frame (all off)'
+            : `blockMemoEnabled: ${mode === 'memo' ? 'true (default)' : 'false (legacy)'}`}
         <span
           style={{
             color: theme.textMuted,

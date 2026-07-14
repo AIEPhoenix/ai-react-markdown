@@ -40,7 +40,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { DEFAULT_PAYLOAD, SCENARIO_KEYS, type ScenarioKey } from './scenarios';
 import { emptySnapshot, type RenderProfilerSnapshot } from './useRenderProfiler';
 import { controlStyles, getStreamingTheme, type ColorScheme } from './theme';
-import { BLOCK_MEMO_AXIS, INCREMENTAL_AXIS, computeSummary, RunHistory, SummaryBanner, VerdictBanner } from './BlockMemoComparison';
+import { BLOCK_MEMO_AXIS, BOOST_AXIS, INCREMENTAL_AXIS, computeSummary, RunHistory, SummaryBanner, VerdictBanner } from './BlockMemoComparison';
 import { PAYLOAD_SCALES, useComparisonRuns } from './useComparisonRuns';
 import { isProtocolMessage, SIDE_STORY_ID, type HostToSideMessage, type SideMode } from './isolatedProtocol';
 
@@ -58,7 +58,7 @@ interface IsolatedComparisonProps {
    * same-page variant's per-frame DOM-equality verifier cannot exist here:
    * the frames are cross-origin by design.
    */
-  axis?: 'blockMemo' | 'incrementalParse';
+  axis?: 'blockMemo' | 'incrementalParse' | 'boost';
 }
 
 interface SideState {
@@ -116,7 +116,7 @@ function pickSideHosts(ipv6Available: boolean): SideHosts {
  *  params configure the side itself. */
 function buildSideUrl(
   host: string,
-  side: { mode: SideMode; axis: 'blockMemo' | 'incrementalParse'; incremental: boolean },
+  side: { mode: SideMode; axis: 'blockMemo' | 'incrementalParse' | 'boost'; incremental: boolean },
   spy: boolean,
   registry: boolean,
   scheme: ColorScheme
@@ -167,7 +167,7 @@ export const IsolatedComparison = ({
   payload = DEFAULT_PAYLOAD,
   axis = 'blockMemo',
 }: IsolatedComparisonProps) => {
-  const axisLabels = axis === 'incrementalParse' ? INCREMENTAL_AXIS : BLOCK_MEMO_AXIS;
+  const axisLabels = axis === 'incrementalParse' ? INCREMENTAL_AXIS : axis === 'boost' ? BOOST_AXIS : BLOCK_MEMO_AXIS;
   const [running, setRunning] = useState(false);
   const [memoSide, setMemoSide] = useState<SideState>(initialSideState);
   const [legacySide, setLegacySide] = useState<SideState>(initialSideState);
@@ -348,9 +348,11 @@ export const IsolatedComparison = ({
     () =>
       sideHosts
         ? {
+            // on-side: memo always; incremental for the incremental AND boost
+            // axes. off-side: legacy for blockMemo/boost, memo for incremental.
             memo: buildSideUrl(
               sideHosts.memo,
-              { mode: 'memo', axis, incremental: axis === 'incrementalParse' },
+              { mode: 'memo', axis, incremental: axis !== 'blockMemo' },
               spyEnabled,
               registryEnabled,
               colorScheme

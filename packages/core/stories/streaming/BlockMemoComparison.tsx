@@ -54,6 +54,16 @@ export const BLOCK_MEMO_AXIS: ComparisonAxisLabels = {
     'expected to match — React’s reconciler already skips DOM for unchanged subtrees in BOTH paths. Block-memo saves the JS decision cost (commit ms), not the DOM op. Treat large divergence as a bug signal.',
 };
 
+export const BOOST_AXIS: ComparisonAxisLabels = {
+  subject: 'boost（双开）',
+  onLabel: 'boost on (memo+incremental)',
+  offLabel: 'legacy (all off)',
+  spyHint:
+    'spy customComponents count each invocation; the fully-optimized side skips invoking cached subtrees → the invocation gap is the render-layer share of the boost. NOTE: spies add cost proportional to this count, dragging the legacy side slightly more.',
+  domHint:
+    'expected to match — all paths are byte-identical by contract (byteEquivalence + splice equivalence). Treat divergence as a bug signal.',
+};
+
 export const INCREMENTAL_AXIS: ComparisonAxisLabels = {
   subject: 'incremental parse',
   onLabel: 'incremental on',
