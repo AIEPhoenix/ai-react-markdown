@@ -18,10 +18,12 @@ import { expect, waitFor } from 'storybook/test';
 
 import AIMarkdown from '../../src/index';
 import { subscribeStageTimings } from '../../src/components/devStageTimings';
+import { computeFreezeBoundary } from '../../src/components/incrementalParse';
 import 'katex/dist/katex.min.css';
 import '../../src/components/typography/variants/all.scss';
 import { withThemedBackground } from '../decorators';
-import { DEFAULT_PAYLOAD } from './scenarios';
+import { getStreamingTheme } from './theme';
+import { DEFAULT_PAYLOAD, withDefs } from './scenarios';
 
 /** Shared documentId so both sides emit identical clobber-prefixed ids. */
 const SMOKE_DOCUMENT_ID = 'ip-smoke';
@@ -111,6 +113,193 @@ function IncrementalParseSmoke({ payload }: { payload: string }) {
   );
 }
 
+/**
+ * Interactive verification playground: streams arbitrary markdown into a
+ * flag-on / flag-off pair while visualizing what the incremental engine is
+ * doing — the freeze boundary's live position (frozen vs active fraction of
+ * the source), the per-frame DOM-equality verdict, and the `scan` stage
+ * count proving the engine engaged. Use it to eyeball a suspicious payload:
+ * paste it into `content`, watch the bar, and read the mismatch counter.
+ */
+function IncrementalParsePlayground(props: {
+  content: string;
+  chunkSize: number;
+  intervalMs: number;
+  colorScheme: 'light' | 'dark';
+}) {
+  // Restart = REMOUNT of the streaming run (key bump) — resetting run state
+  // in an effect would be a sync-setState-in-effect lint violation, and a
+  // fresh mount is the honest semantics anyway (fresh engine state ref).
+  const [generation, setGeneration] = useState(0);
+  return (
+    <PlaygroundRun
+      key={`${generation}:${props.chunkSize}:${props.intervalMs}:${props.content}`}
+      onRestart={() => setGeneration((g) => g + 1)}
+      {...props}
+    />
+  );
+}
+
+function PlaygroundRun({
+  content: payload,
+  chunkSize,
+  intervalMs,
+  colorScheme,
+  onRestart,
+}: {
+  content: string;
+  chunkSize: number;
+  intervalMs: number;
+  colorScheme: 'light' | 'dark';
+  onRestart: () => void;
+}) {
+  const theme = getStreamingTheme(colorScheme);
+  const [content, setContent] = useState('');
+  const [done, setDone] = useState(false);
+  const onRef = useRef<HTMLDivElement>(null);
+  const offRef = useRef<HTMLDivElement>(null);
+  const statsRef = useRef({ frames: 0, mismatches: 0, scans: 0, firstMismatchLength: -1 });
+  // Render-facing mirror of statsRef (react-hooks forbids reading refs in render).
+  const [stats, setStats] = useState({ frames: 0, mismatches: 0, scans: 0, firstMismatchLength: -1 });
+
+  useEffect(
+    () =>
+      subscribeStageTimings((stage, _ms, instanceId) => {
+        if (stage === 'scan' && instanceId === SMOKE_DOCUMENT_ID) statsRef.current.scans += 1;
+      }),
+    []
+  );
+
+  useEffect(() => {
+    const codePoints = Array.from(payload);
+    let cursor = 0;
+    const timer = setInterval(() => {
+      cursor += Math.max(1, chunkSize);
+      if (cursor >= codePoints.length) {
+        setContent(payload);
+        setDone(true);
+        clearInterval(timer);
+        return;
+      }
+      setContent(codePoints.slice(0, cursor).join(''));
+    }, Math.max(5, intervalMs));
+    return () => clearInterval(timer);
+  }, [payload, chunkSize, intervalMs]);
+
+  useEffect(() => {
+    if (!content || !onRef.current || !offRef.current) return;
+    const stats = statsRef.current;
+    stats.frames += 1;
+    if (onRef.current.innerHTML !== offRef.current.innerHTML) {
+      stats.mismatches += 1;
+      if (stats.firstMismatchLength === -1) stats.firstMismatchLength = content.length;
+    }
+    setStats({ ...statsRef.current }); // display tracks every frame
+  }, [content]);
+
+  // Mirror the ENGINE's decision, not just the detector's: G2 bypasses
+  // incremental parsing entirely once '[^' appears (the default playground
+  // payload ends with a footnote tail, so the bar visibly flips to
+  // fallback mid-stream — that is the honest behavior, not a bug).
+  const bypassed = content.includes('[^');
+  const boundary = content && !bypassed ? computeFreezeBoundary(content, { defListEnabled: true }) : 0;
+  const frozenPct = content.length > 0 ? boundary / content.length : 0;
+  const streamedPct = payload.length > 0 ? content.length / payload.length : 0;
+  const equalityColor = stats.mismatches === 0 ? theme.good : theme.bad;
+
+  const mono: React.CSSProperties = {
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+    fontSize: 12,
+    color: theme.text,
+  };
+  const barOuter: React.CSSProperties = {
+    position: 'relative',
+    height: 14,
+    borderRadius: 7,
+    background: theme.panelBg,
+    border: `1px solid ${theme.panelBorder}`,
+    overflow: 'hidden',
+  };
+  const pane: React.CSSProperties = {
+    border: `1px solid ${theme.panelBorder}`,
+    borderRadius: 8,
+    padding: 12,
+    maxHeight: 420,
+    overflow: 'auto',
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button onClick={onRestart} style={{ ...mono, padding: '4px 10px' }}>
+          ↻ restart stream
+        </button>
+        <span style={mono}>
+          streamed {content.length}/{payload.length}
+        </span>
+        {bypassed ? (
+          <span style={{ ...mono, color: theme.warn }}>full-parse fallback — content contains {'"[^"'} (G2 footnote bypass)</span>
+        ) : (
+          <span style={{ ...mono, color: theme.good }}>frozen {(frozenPct * 100).toFixed(0)}% (offset {boundary})</span>
+        )}
+        <span style={mono}>scans {stats.scans}</span>
+        <span style={{ ...mono, color: equalityColor }}>
+          equality: {stats.frames} frames / {stats.mismatches} mismatches
+          {done && stats.mismatches === 0 && ' ✓'}
+          {stats.mismatches > 0 && ` ✗ first at length ${stats.firstMismatchLength}`}
+        </span>
+      </div>
+      {/* Freeze-boundary bar: green = frozen prefix (parsed once, reused),
+          amber = active tail (re-parsed each frame), track = not yet streamed. */}
+      <div style={barOuter} title="green: frozen prefix · amber: active tail · empty: not yet streamed">
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: `${streamedPct * 100}%`,
+            background: theme.warn,
+            opacity: 0.55,
+          }}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: `${streamedPct * frozenPct * 100}%`,
+            background: theme.good,
+          }}
+        />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        <div>
+          <div style={{ ...mono, color: theme.textMuted, marginBottom: 6 }}>incrementalParseEnabled: true</div>
+          <div ref={onRef} style={pane}>
+            <AIMarkdown
+              content={content}
+              streaming={!done}
+              documentId={SMOKE_DOCUMENT_ID}
+              config={INCREMENTAL_ON}
+              colorScheme={colorScheme}
+            />
+          </div>
+        </div>
+        <div>
+          <div style={{ ...mono, color: theme.textMuted, marginBottom: 6 }}>incrementalParseEnabled: false</div>
+          <div ref={offRef} style={pane}>
+            <AIMarkdown
+              content={content}
+              streaming={!done}
+              documentId={SMOKE_DOCUMENT_ID}
+              config={INCREMENTAL_OFF}
+              colorScheme={colorScheme}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const meta: Meta<typeof IncrementalParseSmoke> = {
   title: 'Core/Streaming/IncrementalParse',
   component: IncrementalParseSmoke,
@@ -124,6 +313,29 @@ const meta: Meta<typeof IncrementalParseSmoke> = {
 export default meta;
 
 type Story = StoryObj<typeof IncrementalParseSmoke>;
+
+export const VerificationPlayground: StoryObj<typeof IncrementalParsePlayground> = {
+  args: {
+    content: withDefs(DEFAULT_PAYLOAD),
+    chunkSize: 16,
+    intervalMs: 30,
+  },
+  argTypes: {
+    content: { control: 'text', description: 'Markdown streamed into both panes. Paste suspicious payloads here.' },
+    chunkSize: { control: { type: 'number', min: 1, max: 200 }, description: 'Code points appended per tick.' },
+    intervalMs: { control: { type: 'number', min: 5, max: 500 }, description: 'Milliseconds between ticks.' },
+    colorScheme: { table: { disable: true } },
+  },
+  parameters: { layout: 'fullscreen', chromatic: { disableSnapshot: true } },
+  render: (args, context) => (
+    <IncrementalParsePlayground
+      content={args.content ?? DEFAULT_PAYLOAD}
+      chunkSize={args.chunkSize ?? 16}
+      intervalMs={args.intervalMs ?? 30}
+      colorScheme={context.globals.theme === 'dark' ? 'dark' : 'light'}
+    />
+  ),
+};
 
 export const StreamingSmoke: Story = {
   render: () => <IncrementalParseSmoke payload={DEFAULT_PAYLOAD} />,
