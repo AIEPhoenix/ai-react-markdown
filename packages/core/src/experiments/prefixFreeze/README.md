@@ -60,25 +60,25 @@ npx vitest --run --project unit --disable-console-intercept \
 
 Falsification (violation = a frozen node changed in a later frame):
 
-| hazard fixture | L0 | L1 | L2 | L3 | L4 |
-| --- | --- | --- | --- | --- | --- |
-| plain prose | ok | ok | ok | ok | ok |
-| loose list across blanks | **violated** | **violated** | **violated** | ok | ok |
-| unclosed `<details>` swallow | **violated** | **violated** | ok | ok | ok |
-| late `[label]:` definition | **violated** | **violated** | **violated** | **violated** | ok |
-| late `[^fn]:` definition | **violated** | **violated** | **violated** | **violated** | ok |
-| setext across blank line | ok | ok | ok | ok | ok |
-| blank lines inside `$$` math | **violated** | **violated** | ok | ok | ok |
+| hazard fixture               | L0           | L1           | L2           | L3           | L4  |
+| ---------------------------- | ------------ | ------------ | ------------ | ------------ | --- |
+| plain prose                  | ok           | ok           | ok           | ok           | ok  |
+| loose list across blanks     | **violated** | **violated** | **violated** | ok           | ok  |
+| unclosed `<details>` swallow | **violated** | **violated** | ok           | ok           | ok  |
+| late `[label]:` definition   | **violated** | **violated** | **violated** | **violated** | ok  |
+| late `[^fn]:` definition     | **violated** | **violated** | **violated** | **violated** | ok  |
+| setext across blank line     | ok           | ok           | ok           | ok           | ok  |
+| blank lines inside `$$` math | **violated** | **violated** | ok           | ok           | ok  |
 
 Coverage on realistic streaming corpora (mean freeze % across frames):
 
-| fixture | L0 | L1 (x-mini's rule) | L3 | L4 (candidate rule) |
-| --- | --- | --- | --- | --- |
-| llm-typical | 76 | **0** | 76 | 76 |
-| llm-typical-with-defs | 81 ⚠️unsafe | **0** | 78 ⚠️unsafe | 73 |
-| llm-typical-3x | 89 | **0** | 87 | 87 |
-| double-blank-variant | 77 | 77 | 77 | 77 |
-| cjk-mixed | 64 | **0** | 64 | 64 |
+| fixture               | L0          | L1 (x-mini's rule) | L3          | L4 (candidate rule) |
+| --------------------- | ----------- | ------------------ | ----------- | ------------------- |
+| llm-typical           | 76          | **0**              | 76          | 76                  |
+| llm-typical-with-defs | 81 ⚠️unsafe | **0**              | 78 ⚠️unsafe | 73                  |
+| llm-typical-3x        | 89          | **0**              | 87          | 87                  |
+| double-blank-variant  | 77          | 77                 | 77          | 77                  |
+| cjk-mixed             | 64          | **0**              | 64          | 64                  |
 
 Estimated parse-cost saving (full pipeline vs L4-tail-only, per-frame sums):
 70–89% depending on fixture. Timing is directional only — same-process warmup

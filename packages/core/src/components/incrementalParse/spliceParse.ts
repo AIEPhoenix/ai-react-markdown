@@ -28,17 +28,47 @@ import type { Node as UnistNode, Position } from 'unist';
 
 import { attributeHastChildren } from './attributeHastChildren';
 
-/** Verbatim source slices of top-level link/image definitions that start before `boundary`. */
-export function collectPrefixDefSources(mdast: MdastRoot, content: string, boundary: number): string[] {
+export interface PrefixDefCollection {
+  /** Verbatim source slices, injectable as standalone def lines. */
+  sources: string[];
+  /** True when a def exists that CANNOT be injected reliably — the caller
+   *  must fall back to a full parse for this frame (safe, one-frame cost). */
+  uninjectable: boolean;
+}
+
+/** Source slices of link/image definitions that start before `boundary`.
+ *
+ * Walks the FULL subtree, not just top-level children: definitions nested
+ * inside blockquotes/lists are document-scoped in CommonMark
+ * (probe-confirmed A3 — a `> [a]: /url` def must resolve a later tail
+ * ref). A nested definition's position starts at its own `[`, so a
+ * single-line slice is a valid standalone def line; a MULTI-LINE nested
+ * slice would drag `> ` container prefixes into the injection text, so it
+ * is flagged uninjectable instead (full-parse fallback). */
+export function collectPrefixDefSources(mdast: MdastRoot, content: string, boundary: number): PrefixDefCollection {
   const sources: string[] = [];
+  let uninjectable = false;
+  const visit = (node: UnistNode, nested: boolean): void => {
+    if ((node as { type?: string }).type === 'definition') {
+      const start = node.position?.start?.offset;
+      const end = node.position?.end?.offset;
+      if (start !== undefined && end !== undefined && start < boundary) {
+        const slice = content.slice(start, end);
+        if (nested && slice.includes('\n')) uninjectable = true;
+        else sources.push(slice);
+      }
+      return;
+    }
+    const children = (node as TreeWithChildren).children;
+    if (children) {
+      for (const child of children) visit(child, true);
+    }
+  };
   for (const child of mdast.children) {
-    if (child.type !== 'definition') continue;
-    const start = child.position?.start?.offset;
-    const end = child.position?.end?.offset;
-    if (start === undefined || end === undefined || start >= boundary) continue;
-    sources.push(content.slice(start, end));
+    if (child.type === 'definition') visit(child, false);
+    else visit(child, true);
   }
-  return sources;
+  return { sources, uninjectable };
 }
 
 /** The injection block prepended to the tail source ('' when no defs). */
@@ -89,7 +119,7 @@ export interface SpliceInput {
  * every frame keep blockMemo's node-identity assumptions intact while
  * never mutating the previous frame's roots.
  */
-export function spliceTrees(input: SpliceInput): { mdast: MdastRoot; hast: HastRoot } {
+export function spliceTrees(input: SpliceInput): { mdast: MdastRoot; hast: HastRoot } | null {
   const { prevMdast, prevHast, tailMdast, tailHast, content, boundary, injectionPrefix } = input;
 
   const injectedLen = injectionPrefix.length;
@@ -109,6 +139,17 @@ export function spliceTrees(input: SpliceInput): { mdast: MdastRoot; hast: HastR
   for (let i = 0; i < prevHast.children.length && attrs[i] < boundary; i++) {
     prefixHast.push(prevHast.children[i]);
   }
+
+  // Wrap-separator bookkeeping is only sound when every wrap-visible prefix
+  // mdast child still has a hast output node: a sanitize-STRIPPED node
+  // (HTML comment, `<?…?>` bogus comment — probe-confirmed A6) leaves its
+  // wrap separators behind but no output, so the seam would need a
+  // stripped-node-position-aware separator count. Rather than model that,
+  // bail to a full parse for the frame (the default config removes
+  // comments at the mdast level, so this fallback is rare in practice).
+  const visiblePrefixCount = prefixMdast.filter((c) => c.type !== 'definition').length;
+  const outputCount = prefixHast.filter((c) => !isSeparatorText(c)).length;
+  if (visiblePrefixCount !== outputCount) return null;
 
   // --- tail: drop injected definitions, then re-base into document space ---
   const tailMdastChildren = tailMdast.children.filter((child) => {

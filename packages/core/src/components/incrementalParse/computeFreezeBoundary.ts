@@ -14,11 +14,13 @@
  * 1. **Raw-HTML balance** — an unclosed container tag (or `<!--` comment)
  *    before the candidate lets rehype-raw reparent later top-level siblings
  *    into it (the v1.5.1 swallow bug, commit a8e89ec). Tag balance is
- *    tracked outside fences; while any tag or comment is open, candidates
- *    are blocked.
+ *    tracked outside fences; while any tag, comment, or raw block
+ *    (`<?…?>` / `<!DECL…>` / `<![CDATA[…]]>` — CommonMark html block types
+ *    3–5) is open, candidates are blocked.
  * 2. **`$$` flow math** — remark-math's flow math swallows blank lines and
- *    runs to EOF when unclosed (verified empirically), so candidates inside
- *    an open `$$` block are blocked.
+ *    runs to EOF when unclosed (verified empirically); its closing fence
+ *    must sit at LINE START (a mid-line `$$` does not close it). Math
+ *    interiors are treated exactly like fence interiors: no candidates.
  * 3. **Continuation context** — CommonMark lists and footnote definitions
  *    are NOT terminated by blank lines; later indented lines can extend a
  *    block that "ended" before the candidate. With the definition-list
@@ -49,12 +51,26 @@
  * rates this is negligible next to parsing (measured in the experiment).
  * An incremental committed-state scanner is possible future work.
  *
- * Footnotes are NOT handled here: the caller (advanceIncrementalParse G2)
- * bypasses incremental parsing entirely when the content contains `[^`,
- * because single-doc footnote numbering is parse-local.
+ * Footnote syntax is DETECTED here (fence-aware — see FreezeScanResult)
+ * but not modeled: the caller bypasses splicing entirely while
+ * `hasFootnoteSyntax` is set, because single-doc footnote numbering is
+ * parse-local.
  */
 
 import { normalizeIdentifier } from 'micromark-util-normalize-identifier';
+
+export interface FreezeScanResult {
+  /** Largest freeze-safe boundary, or 0 when nothing can be frozen. */
+  boundary: number;
+  /** True when `[^` appears on a markdown TEXT line — fence and math
+   *  interiors are excluded, so a regex negated character class inside a
+   *  code block does NOT trip this (the old whole-string substring check
+   *  did, permanently disabling incremental parsing for exactly the
+   *  code-heavy documents that benefit most). Inline code spans still
+   *  over-match (safe direction, APPROX). The caller bypasses splicing
+   *  while this is true: single-doc footnote numbering is parse-local. */
+  hasFootnoteSyntax: boolean;
+}
 
 export interface FreezeBoundaryOptions {
   /** Whether remark-definition-list is in the active plugin chain (config
@@ -119,11 +135,9 @@ interface LineRec {
 interface Candidate {
   /** Freeze boundary: start of the line after this blank line. */
   offset: number;
-  /** Consecutive confirmed blank lines (outside fences) ending at this line. */
+  /** Consecutive confirmed blank lines (outside fences/math) ending at this line. */
   blankRun: number;
-  /** Blank line sits inside an unclosed `$$` flow-math block. */
-  inMath: boolean;
-  /** No unbalanced HTML container / unclosed comment before this point. */
+  /** No unbalanced HTML container / unclosed comment / open raw block before this point. */
   htmlBalanced: boolean;
   lineIndex: number;
 }
@@ -151,8 +165,12 @@ function normalizeLabel(label: string): string {
  *    across any number of blank lines)
  *  - non-marker block start at indent 0 → safe (a column-0 paragraph
  *    terminates any list context)
- *  - indent 1–3 non-marker, or indent ≥ 4 → ambiguous (could itself be
- *    list-item continuation / indented code inside an item) — keep walking
+ *  - indent ≥ 4 block start → hazard: an indented CODE BLOCK merges across
+ *    any number of blank lines with later indented lines (probe-confirmed
+ *    A1: `    a\n\n` + `    b` is ONE code block), and inside a list the
+ *    same shape is item continuation — either way later input can extend it
+ *  - indent 1–3 non-marker → ambiguous (could be list-item continuation) —
+ *    keep walking
  * Fence/math interior lines are skipped; their OPEN line is classified like
  * a normal block start (a column-0 fence also terminates a list context).
  */
@@ -162,7 +180,7 @@ function hasContinuationHazard(lines: LineRec[], candidateLineIndex: number, def
     if (ln.blank || ln.kind === 'fence-inner' || ln.kind === 'math-inner') continue;
     const isBlockStart = i === 0 || lines[i - 1].blank;
     if (!isBlockStart) continue;
-    if (ln.indent >= 4) continue;
+    if (ln.indent >= 4) return true;
     if (LIST_MARKER_RE.test(ln.text) || FOOTNOTE_DEF_RE.test(ln.text)) return true;
     if (defListEnabled && DEF_LIST_DD_RE.test(ln.text)) return true;
     if (ln.indent === 0) return false;
@@ -197,11 +215,26 @@ function earliestUnresolvedReference(lines: LineRec[], lastBlankStart: number): 
   const defs = new Map<string, number>(); // normalized label → def line end offset
   const footnoteDefs = new Map<string, number>();
 
-  for (const ln of lines) {
-    if (ln.kind !== 'text' || ln.blank) continue;
+  // A definition cannot interrupt a paragraph: the line must start a block
+  // (doc start / after a blank / after a non-text line such as a fence
+  // close) or directly follow another VALID definition line (consecutive
+  // defs stack without blanks). A `[x]: y` shape on a paragraph
+  // continuation line is literal text (probe-confirmed A2) — registering it
+  // would falsely settle references. A def whose title wraps to its own
+  // line breaks the chain for the NEXT def (over-blocking, safe direction).
+  let prevLineWasValidDef: boolean = false;
+  for (let i = 0; i < lines.length; i++) {
+    const ln = lines[i];
+    if (ln.kind !== 'text' || ln.blank) {
+      prevLineWasValidDef = false;
+      continue;
+    }
     const def = DEF_RE.exec(ln.text);
-    if (!def) continue;
-    const label = def[1];
+    const isBlockStart = i === 0 || lines[i - 1].blank || lines[i - 1].kind !== 'text';
+    const valid: boolean = def !== null && (isBlockStart || prevLineWasValidDef);
+    prevLineWasValidDef = valid;
+    if (!valid) continue;
+    const label = def![1];
     if (label.startsWith('^')) {
       const key = normalizeLabel(label.slice(1));
       if (key && !footnoteDefs.has(key)) footnoteDefs.set(key, ln.end);
@@ -257,7 +290,7 @@ function earliestUnresolvedReference(lines: LineRec[], lastBlankStart: number): 
  * settled check and reference settlement, which can only flip from
  * blocked to clear as more input arrives.
  */
-export function computeFreezeBoundary(text: string, options: FreezeBoundaryOptions): number {
+export function computeFreezeBoundary(text: string, options: FreezeBoundaryOptions): FreezeScanResult {
   const lines: LineRec[] = [];
   {
     let start = 0;
@@ -282,12 +315,30 @@ export function computeFreezeBoundary(text: string, options: FreezeBoundaryOptio
   const tagBalance = new Map<string, number>();
   let openTotal = 0;
   let commentOpen = false;
+  // CommonMark html block types 3–5 also swallow blank lines until their
+  // closer (probe-confirmed A6): `<?…?>`, `<!DECLARATION…>`, `<![CDATA[…]]>`.
+  let piOpen = false;
+  let declOpen = false;
+  let cdataOpen = false;
+  const applyTag = (tag: string, closing: boolean): void => {
+    if (closing) {
+      const count = tagBalance.get(tag) ?? 0;
+      if (count > 0) {
+        tagBalance.set(tag, count - 1);
+        openTotal -= 1;
+      }
+    } else {
+      tagBalance.set(tag, (tagBalance.get(tag) ?? 0) + 1);
+      openTotal += 1;
+    }
+  };
   let inFence = false;
   let fenceChar = '';
   let fenceLen = 0;
   let inMath = false;
   let blankRun = 0;
   let lastBlankStart = -1;
+  let hasFootnoteSyntax = false;
 
   for (let i = 0; i < lines.length; i++) {
     const ln = lines[i];
@@ -306,7 +357,13 @@ export function computeFreezeBoundary(text: string, options: FreezeBoundaryOptio
     }
     if (!inMath) {
       const open = FENCE_RE.exec(ln.text);
-      if (open) {
+      // A backtick fence's info string may not contain a backtick —
+      // ```a``` b is a PARAGRAPH with a code span, not a fence open
+      // (probe-confirmed A5: treating it as a fence masked the HTML
+      // balance tracking of everything until a phantom close).
+      if (open && open[1][0] === '`' && ln.text.slice(ln.text.indexOf(open[1]) + open[1].length).includes('`')) {
+        // fall through: plain text line
+      } else if (open) {
         inFence = true;
         fenceChar = open[1][0];
         fenceLen = open[1].length;
@@ -319,9 +376,13 @@ export function computeFreezeBoundary(text: string, options: FreezeBoundaryOptio
     // --- $$ flow-math state ---
     if (inMath) {
       ln.kind = 'math-inner';
-      if (ln.text.includes('$$')) inMath = false;
-      // Blank lines INSIDE math still produce candidates (flagged inMath)
-      // so the state machine can observe them; they are filtered below.
+      // micromark closes flow math only on a line-START `$$` fence
+      // (probe-confirmed A4: a mid-line `$$` such as `a $$` does NOT close
+      // the block — it keeps swallowing to EOF). Treat math interiors
+      // exactly like fence interiors: no candidates, run reset.
+      if (/^ {0,3}\$\$\s*$/.test(ln.text)) inMath = false;
+      blankRun = 0;
+      continue;
     } else if (MATH_FENCE_RE.test(ln.text)) {
       const rest = ln.text.slice(ln.text.indexOf('$$') + 2);
       if (!rest.includes('$$')) {
@@ -334,54 +395,90 @@ export function computeFreezeBoundary(text: string, options: FreezeBoundaryOptio
 
     // --- raw HTML balance (plain text lines outside fences/math only) ---
     if (ln.kind === 'text' && !ln.blank) {
-      TAG_OR_COMMENT_RE.lastIndex = 0;
-      let m: RegExpExecArray | null;
-      while ((m = TAG_OR_COMMENT_RE.exec(ln.text)) !== null) {
-        if (m[0] === '<!--') {
-          commentOpen = true;
+      if (!hasFootnoteSyntax && ln.text.includes('[^')) hasFootnoteSyntax = true;
+      // Raw-block (types 3–5) state machine runs FIRST. When a state is
+      // open at the line's start or end, tag counting for the line is
+      // skipped — the content is raw data, not markup. Tags on a line where
+      // a construct opens AND closes mid-line may be over-counted
+      // (permanent block: safe direction, APPROX).
+      const rawOpenAtStart = piOpen || declOpen || cdataOpen;
+      let pos = 0;
+      while (pos < ln.text.length) {
+        if (piOpen) {
+          const c = ln.text.indexOf('?>', pos);
+          if (c === -1) break;
+          piOpen = false;
+          pos = c + 2;
           continue;
         }
-        if (m[0] === '-->') {
-          commentOpen = false;
+        if (cdataOpen) {
+          const c = ln.text.indexOf(']]>', pos);
+          if (c === -1) break;
+          cdataOpen = false;
+          pos = c + 3;
           continue;
         }
-        if (commentOpen) continue;
-        const closing = m[1] === '/';
-        const tag = m[2].toLowerCase();
-        const selfClosing = m[3] !== undefined && /\/\s*$/.test(m[3]);
-        if (VOID_TAGS.has(tag) || selfClosing) continue;
-        if (closing) {
-          const count = tagBalance.get(tag) ?? 0;
-          if (count > 0) {
-            tagBalance.set(tag, count - 1);
-            openTotal -= 1;
-          }
+        if (declOpen) {
+          const c = ln.text.indexOf('>', pos);
+          if (c === -1) break;
+          declOpen = false;
+          pos = c + 1;
+          continue;
+        }
+        const pi = ln.text.indexOf('<?', pos);
+        const cd = ln.text.indexOf('<![CDATA[', pos);
+        // `<!` + letter = declaration; `<!--` (third char '-') and
+        // `<![CDATA[` (third char '[') never match this.
+        const dm = ln.text.slice(pos).search(/<![A-Za-z]/);
+        const decl = dm === -1 ? -1 : pos + dm;
+        const starts = [pi, cd, decl].filter((x) => x !== -1);
+        if (starts.length === 0) break;
+        const first = Math.min(...starts);
+        if (first === cd) {
+          cdataOpen = true;
+          pos = cd + 9;
+        } else if (first === pi) {
+          piOpen = true;
+          pos = pi + 2;
         } else {
-          tagBalance.set(tag, (tagBalance.get(tag) ?? 0) + 1);
-          openTotal += 1;
+          declOpen = true;
+          pos = decl + 2;
         }
       }
-      // Line-truncated tag start (see TRUNCATED_TAG_RE). Only meaningful
-      // when the trailing `<…` was not consumed by a complete tag above —
-      // anchor on the LAST `<` of the line.
-      if (!commentOpen) {
-        const lastLt = ln.text.lastIndexOf('<');
-        if (lastLt !== -1 && !ln.text.includes('>', lastLt)) {
-          const m2 = TRUNCATED_TAG_RE.exec(ln.text.slice(lastLt));
-          if (m2) {
-            const closing = m2[1] === '/';
-            const tag = m2[2].toLowerCase();
-            if (!VOID_TAGS.has(tag)) {
-              if (closing) {
-                const count = tagBalance.get(tag) ?? 0;
-                if (count > 0) {
-                  tagBalance.set(tag, count - 1);
-                  openTotal -= 1;
-                }
-              } else {
-                tagBalance.set(tag, (tagBalance.get(tag) ?? 0) + 1);
-                openTotal += 1;
-              }
+      const rawOpenAtEnd = piOpen || declOpen || cdataOpen;
+      // Tag scan is skipped while a raw construct spans this line — the
+      // content is data, not markup. (A tag BEFORE a still-open opener on
+      // the same line is missed — accepted edge, noted above.)
+      if (!rawOpenAtStart && !rawOpenAtEnd) {
+        TAG_OR_COMMENT_RE.lastIndex = 0;
+        let m: RegExpExecArray | null;
+        while ((m = TAG_OR_COMMENT_RE.exec(ln.text)) !== null) {
+          if (m[0] === '<!--') {
+            commentOpen = true;
+            continue;
+          }
+          if (m[0] === '-->') {
+            commentOpen = false;
+            continue;
+          }
+          if (commentOpen) continue;
+          const closing = m[1] === '/';
+          const tag = m[2].toLowerCase();
+          const selfClosing = m[3] !== undefined && /\/\s*$/.test(m[3]);
+          if (VOID_TAGS.has(tag) || selfClosing) continue;
+          applyTag(tag, closing);
+        }
+        // Line-truncated tag start (see TRUNCATED_TAG_RE). Only meaningful
+        // when the trailing `<…` was not consumed by a complete tag above —
+        // anchor on the LAST `<` of the line.
+        if (!commentOpen) {
+          const lastLt = ln.text.lastIndexOf('<');
+          if (lastLt !== -1 && !ln.text.includes('>', lastLt)) {
+            const m2 = TRUNCATED_TAG_RE.exec(ln.text.slice(lastLt));
+            if (m2) {
+              const closing = m2[1] === '/';
+              const tag = m2[2].toLowerCase();
+              if (!VOID_TAGS.has(tag)) applyTag(tag, closing);
             }
           }
         }
@@ -390,20 +487,20 @@ export function computeFreezeBoundary(text: string, options: FreezeBoundaryOptio
 
     // --- blank-run accounting + candidate emission ---
     if (ln.blank) {
+      // Math interiors never reach here (fence-like continue above), so
+      // every emitted candidate is genuinely outside fences AND math.
       blankRun += 1;
-      if (!inMath) lastBlankStart = ln.start;
+      lastBlankStart = ln.start;
       candidates.push({
         offset: Math.min(ln.end + 1, text.length),
         blankRun,
-        inMath,
-        htmlBalanced: openTotal === 0 && !commentOpen,
+        htmlBalanced: openTotal === 0 && !commentOpen && !piOpen && !declOpen && !cdataOpen,
         lineIndex: i,
       });
     } else {
       blankRun = 0;
     }
   }
-
   const earliestUnresolved = earliestUnresolvedReference(lines, lastBlankStart);
 
   /** Blocker 4: candidate at one blank must wait until the next block's
@@ -421,11 +518,11 @@ export function computeFreezeBoundary(text: string, options: FreezeBoundaryOptio
 
   for (let i = candidates.length - 1; i >= 0; i--) {
     const c = candidates[i];
-    if (c.inMath || !c.htmlBalanced) continue;
+    if (!c.htmlBalanced) continue;
     if (c.offset > earliestUnresolved) continue;
     if (!defListSettled(c)) continue;
     if (hasContinuationHazard(lines, c.lineIndex, options.defListEnabled)) continue;
-    return c.offset;
+    return { boundary: c.offset, hasFootnoteSyntax };
   }
-  return 0;
+  return { boundary: 0, hasFootnoteSyntax };
 }

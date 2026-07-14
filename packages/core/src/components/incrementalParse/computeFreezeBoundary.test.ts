@@ -8,7 +8,11 @@
 
 import { describe, expect, test } from 'vitest';
 
-import { computeFreezeBoundary } from './computeFreezeBoundary';
+import { computeFreezeBoundary as scanFreezeBoundary, type FreezeBoundaryOptions } from './computeFreezeBoundary';
+
+/** Most cases only assert the boundary; the footnote bit has its own tests. */
+const computeFreezeBoundary = (text: string, options: FreezeBoundaryOptions): number =>
+  scanFreezeBoundary(text, options).boundary;
 
 const OFF = { defListEnabled: false };
 const ON = { defListEnabled: true };
@@ -113,6 +117,44 @@ describe('computeFreezeBoundary — continuation blockers', () => {
   });
 });
 
+describe('computeFreezeBoundary — review-hardened blockers (A1/A2/A4/A5/A6)', () => {
+  test('A1: indented code blocks are continuation hazards', () => {
+    expect(computeFreezeBoundary('    a\n\n', OFF)).toBe(0);
+    const terminated = '    a\n\ncol zero\n\nzzz';
+    expect(computeFreezeBoundary(terminated, OFF)).toBe(terminated.indexOf('zzz'));
+  });
+
+  test('A2: a def-shaped paragraph continuation line is NOT a definition', () => {
+    // [a] ref + fake def on a continuation line → ref stays unresolved.
+    expect(computeFreezeBoundary('see [a]\n\npara\n[a]: /x\n\nfiller\n\n', OFF)).toBe(0);
+    // Consecutive defs chain without blanks (both valid).
+    const chained = '[a]: /x\n[b]: /y\n\nsee [a] and [b]\n\nzzz';
+    expect(computeFreezeBoundary(chained, OFF)).toBe(chained.indexOf('zzz'));
+  });
+
+  test('A4: a mid-line $$ does not close flow math', () => {
+    expect(computeFreezeBoundary('$$\na $$\n\nx\n', OFF)).toBe(0);
+    const closed = '$$\na $$\n$$\n\nzzz';
+    expect(computeFreezeBoundary(closed, OFF)).toBe(closed.indexOf('zzz'));
+  });
+
+  test('A5: a backtick run with a backtick in the info string is not a fence', () => {
+    // Paragraph, not fence — the <div> after it must be counted (blocked).
+    expect(computeFreezeBoundary('```a``` b <div>\n\nx\n', OFF)).toBe(0);
+    const plain = '```a``` b\n\nzzz';
+    expect(computeFreezeBoundary(plain, OFF)).toBe(plain.indexOf('zzz'));
+  });
+
+  test('A6: html block types 3-5 block until their closer', () => {
+    expect(computeFreezeBoundary('<?data\n\nx\n', OFF)).toBe(0);
+    expect(computeFreezeBoundary('<![CDATA[\n\nx\n', OFF)).toBe(0);
+    const piClosed = 'a <?x?> b\n\nzzz';
+    expect(computeFreezeBoundary(piClosed, OFF)).toBe(piClosed.indexOf('zzz'));
+    const declClosed = '<!DOCTYPE html>\n\nzzz';
+    expect(computeFreezeBoundary(declClosed, OFF)).toBe(declClosed.indexOf('zzz'));
+  });
+});
+
 describe('computeFreezeBoundary — reference taint', () => {
   test('an unresolved shortcut ref holds the boundary before it', () => {
     const text = 'see [spec] for details\n\nfiller one\n\nfiller two\n';
@@ -174,5 +216,21 @@ describe('computeFreezeBoundary — definition-list blockers (H3)', () => {
     expect(computeFreezeBoundary('Term\n\n  ', ON)).toBe(0); // spaces may still grow ': '
     expect(computeFreezeBoundary('Term\n\n:x', ON)).toBe(6); // ':x' can never match
     expect(computeFreezeBoundary('Term\n\n    code', ON)).toBe(6); // indent 4 can never match
+  });
+});
+
+describe('computeFreezeBoundary — fence-aware footnote detection', () => {
+  test('[^ on a text line sets the flag', () => {
+    expect(scanFreezeBoundary('a claim[^n] here\n\n', OFF).hasFootnoteSyntax).toBe(true);
+    expect(scanFreezeBoundary('[^n]: def body\n\n', OFF).hasFootnoteSyntax).toBe(true);
+  });
+
+  test('[^ inside a code fence or math block does NOT set the flag', () => {
+    expect(scanFreezeBoundary('```js\nconst re = /[^0-9]/;\n```\n\ntail\n\n', OFF).hasFootnoteSyntax).toBe(false);
+    expect(scanFreezeBoundary('$$\n[^x]\n$$\n\ntail\n\n', OFF).hasFootnoteSyntax).toBe(false);
+  });
+
+  test('plain content leaves the flag off', () => {
+    expect(scanFreezeBoundary('para one\n\npara two\n', OFF).hasFootnoteSyntax).toBe(false);
   });
 });

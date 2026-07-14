@@ -173,16 +173,19 @@ function PlaygroundRun({
   useEffect(() => {
     const codePoints = Array.from(payload);
     let cursor = 0;
-    const timer = setInterval(() => {
-      cursor += Math.max(1, chunkSize);
-      if (cursor >= codePoints.length) {
-        setContent(payload);
-        setDone(true);
-        clearInterval(timer);
-        return;
-      }
-      setContent(codePoints.slice(0, cursor).join(''));
-    }, Math.max(5, intervalMs));
+    const timer = setInterval(
+      () => {
+        cursor += Math.max(1, chunkSize);
+        if (cursor >= codePoints.length) {
+          setContent(payload);
+          setDone(true);
+          clearInterval(timer);
+          return;
+        }
+        setContent(codePoints.slice(0, cursor).join(''));
+      },
+      Math.max(5, intervalMs)
+    );
     return () => clearInterval(timer);
   }, [payload, chunkSize, intervalMs]);
 
@@ -197,12 +200,13 @@ function PlaygroundRun({
     setStats({ ...statsRef.current }); // display tracks every frame
   }, [content]);
 
-  // Mirror the ENGINE's decision, not just the detector's: G2 bypasses
-  // incremental parsing entirely once '[^' appears (the default playground
-  // payload ends with a footnote tail, so the bar visibly flips to
-  // fallback mid-stream — that is the honest behavior, not a bug).
-  const bypassed = content.includes('[^');
-  const boundary = content && !bypassed ? computeFreezeBoundary(content, { defListEnabled: true }) : 0;
+  // Mirror the ENGINE's decision: the scan itself reports fence-aware
+  // footnote syntax (the default playground payload ends with a footnote
+  // tail, so the bar visibly flips to fallback mid-stream — honest
+  // behavior, not a bug; a `[^` inside a code fence does NOT trip it).
+  const scan = content ? computeFreezeBoundary(content, { defListEnabled: true }) : null;
+  const bypassed = scan?.hasFootnoteSyntax ?? false;
+  const boundary = scan && !bypassed ? scan.boundary : 0;
   const frozenPct = content.length > 0 ? boundary / content.length : 0;
   const streamedPct = payload.length > 0 ? content.length / payload.length : 0;
   const equalityColor = stats.mismatches === 0 ? theme.good : theme.bad;
@@ -238,9 +242,13 @@ function PlaygroundRun({
           streamed {content.length}/{payload.length}
         </span>
         {bypassed ? (
-          <span style={{ ...mono, color: theme.warn }}>full-parse fallback — content contains {'"[^"'} (G2 footnote bypass)</span>
+          <span style={{ ...mono, color: theme.warn }}>
+            full-parse fallback — content contains {'"[^"'} (G2 footnote bypass)
+          </span>
         ) : (
-          <span style={{ ...mono, color: theme.good }}>frozen {(frozenPct * 100).toFixed(0)}% (offset {boundary})</span>
+          <span style={{ ...mono, color: theme.good }}>
+            frozen {(frozenPct * 100).toFixed(0)}% (offset {boundary})
+          </span>
         )}
         <span style={mono}>scans {stats.scans}</span>
         <span style={{ ...mono, color: equalityColor }}>
