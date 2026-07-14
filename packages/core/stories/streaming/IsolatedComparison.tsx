@@ -40,7 +40,15 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { DEFAULT_PAYLOAD, SCENARIO_KEYS, type ScenarioKey } from './scenarios';
 import { emptySnapshot, type RenderProfilerSnapshot } from './useRenderProfiler';
 import { controlStyles, getStreamingTheme, type ColorScheme } from './theme';
-import { BLOCK_MEMO_AXIS, BOOST_AXIS, INCREMENTAL_AXIS, computeSummary, RunHistory, SummaryBanner, VerdictBanner } from './BlockMemoComparison';
+import {
+  BLOCK_MEMO_AXIS,
+  BOOST_AXIS,
+  INCREMENTAL_AXIS,
+  computeSummary,
+  RunHistory,
+  SummaryBanner,
+  VerdictBanner,
+} from './BlockMemoComparison';
 import { PAYLOAD_SCALES, useComparisonRuns } from './useComparisonRuns';
 import { isProtocolMessage, SIDE_STORY_ID, type HostToSideMessage, type SideMode } from './isolatedProtocol';
 
@@ -317,6 +325,7 @@ export const IsolatedComparison = ({
     setRegistryEnabled,
     defsEnabled,
     setDefsEnabled,
+    setIncrementalEnabled,
     runs,
     clearRuns,
     sameConfigRuns,
@@ -339,6 +348,12 @@ export const IsolatedComparison = ({
     push,
     end,
   });
+
+  // Keep RunRecord.incremental truthful: on the incrementalParse/boost axes
+  // the enabled iframe genuinely runs incrementalParseEnabled (URL-driven).
+  useEffect(() => {
+    setIncrementalEnabled(axis !== 'blockMemo');
+  }, [axis, setIncrementalEnabled]);
 
   // URLs depend on topology + spy/scheme. Each iframe is keyed by its own
   // URL, so any change remounts it — and the effect below drops the stale
