@@ -79,9 +79,7 @@
  *
  * Footnote refs/defs participate in blockers 3 and 5 like their link
  * counterparts (separate label namespace); the engine splices across them
- * via injection replay (v2). `hasFootnoteSyntax` remains as a fence-aware,
- * mask-aware presence signal for diagnostics/stories — it no longer forces
- * a fallback.
+ * via injection replay (v2).
  */
 
 import { normalizeIdentifier } from 'micromark-util-normalize-identifier';
@@ -95,11 +93,6 @@ export interface FreezeBoundaryOptions {
 export interface FreezeScanResult {
   /** Largest freeze-safe boundary, or 0 when nothing can be frozen. */
   boundary: number;
-  /** True when `[^` appears on a markdown TEXT line outside fences, math,
-   *  and (provably intra-line) code spans. Diagnostics only since v2 —
-   *  footnotes splice via injection replay; the taint machinery (blocker 5,
-   *  footnote namespace) is what guards correctness. */
-  hasFootnoteSyntax: boolean;
   /** Opaque resume state — pass back on the next APPEND-ONLY call to skip
    *  re-lexing the confirmed prefix. Single-consumer; see module docs. */
   checkpoint: FreezeScanCheckpoint;
@@ -156,7 +149,6 @@ export interface FreezeScanCheckpoint {
   inMath: boolean;
   blankRun: number;
   lastBlankStart: number;
-  hasFootnoteSyntax: boolean;
   /** Rolling blocker-3 verdict ("nearest decisive block start so far"). */
   hazardVerdict: boolean;
   /** Previous confirmed line was blank (block-start detection). */
@@ -304,7 +296,6 @@ function freshCheckpoint(defListEnabled: boolean): FreezeScanCheckpoint {
     inMath: false,
     blankRun: 0,
     lastBlankStart: -1,
-    hasFootnoteSyntax: false,
     hazardVerdict: false,
     prevLineBlank: true, // doc start counts as a block start
     prevLineWasText: false,
@@ -352,16 +343,8 @@ export function computeFreezeBoundary(
     if (!confirmed) {
       // The partial line is never baked into the checkpoint: it emits no
       // candidates, and its tag/ref effects cannot reach candidates that
-      // all precede it. Only its footnote marker matters (monotone under
-      // appends — the characters already exist). Fence/math interiors are
-      // excluded by the current state.
+      // all precede it.
       tailLine = ln;
-      if (!cp.hasFootnoteSyntax && !cp.inFence && !cp.inMath && lineText.includes('[^')) {
-        // Respect masking-safety: if the paragraph might carry an open code
-        // span, treat `[^` as real (over-conservative, safe direction).
-        const { masked } = maskIntraLineCodeSpans(lineText, cp.paragraphHasUnpairedRun);
-        if ((masked ?? lineText).includes('[^')) cp.hasFootnoteSyntax = true;
-      }
       break;
     }
 
@@ -405,7 +388,7 @@ export function computeFreezeBoundary(
     break;
   }
 
-  return { boundary, hasFootnoteSyntax: cp.hasFootnoteSyntax, checkpoint: cp };
+  return { boundary, checkpoint: cp };
 }
 
 /** Bake one confirmed line into the checkpoint. */
@@ -523,8 +506,6 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
   const { masked, unpaired } = maskIntraLineCodeSpans(ln.text, cp.paragraphHasUnpairedRun);
   if (unpaired) cp.paragraphHasUnpairedRun = true;
   const scanText = masked ?? ln.text;
-
-  if (!cp.hasFootnoteSyntax && scanText.includes('[^')) cp.hasFootnoteSyntax = true;
 
   // Blocker 5: definitions (block-start or def-chain only — A2) and refs.
   const def = DEF_RE.exec(scanText);

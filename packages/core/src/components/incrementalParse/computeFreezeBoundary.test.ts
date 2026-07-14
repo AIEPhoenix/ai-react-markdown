@@ -219,19 +219,25 @@ describe('computeFreezeBoundary — definition-list blockers (H3)', () => {
   });
 });
 
-describe('computeFreezeBoundary — fence-aware footnote detection', () => {
-  test('[^ on a text line sets the flag', () => {
-    expect(scanFreezeBoundary('a claim[^n] here\n\n', OFF).hasFootnoteSyntax).toBe(true);
-    expect(scanFreezeBoundary('[^n]: def body\n\n', OFF).hasFootnoteSyntax).toBe(true);
+describe('computeFreezeBoundary — footnote taint (fence/mask aware)', () => {
+  // v2 removed the hasFootnoteSyntax flag (footnotes splice via injection
+  // replay); what remains load-bearing is the footnote-namespace reference
+  // taint — pinned here through the boundary itself.
+  test('an unresolved [^ref] pins the boundary below it', () => {
+    const payload = 'intro para.\n\na claim[^n] here\n\nafter.\n\n';
+    expect(computeFreezeBoundary(payload, OFF)).toBe(payload.indexOf('a claim'));
   });
 
-  test('[^ inside a code fence or math block does NOT set the flag', () => {
-    expect(scanFreezeBoundary('```js\nconst re = /[^0-9]/;\n```\n\ntail\n\n', OFF).hasFootnoteSyntax).toBe(false);
-    expect(scanFreezeBoundary('$$\n[^x]\n$$\n\ntail\n\n', OFF).hasFootnoteSyntax).toBe(false);
+  test('a settled footnote def releases the taint (whole doc freezable)', () => {
+    const payload = 'a claim[^n] here\n\n[^n]: def body\n\nafter para.\n\n';
+    expect(computeFreezeBoundary(payload, OFF)).toBe(payload.length);
   });
 
-  test('plain content leaves the flag off', () => {
-    expect(scanFreezeBoundary('para one\n\npara two\n', OFF).hasFootnoteSyntax).toBe(false);
+  test('[^ inside a code fence or math block does NOT taint', () => {
+    const fenced = '```js\nconst re = /[^0-9]/;\n```\n\ntail\n\n';
+    expect(computeFreezeBoundary(fenced, OFF)).toBe(fenced.length);
+    const math = '$$\n[^x]\n$$\n\ntail\n\n';
+    expect(computeFreezeBoundary(math, OFF)).toBe(math.length);
   });
 });
 
@@ -241,7 +247,8 @@ describe('computeFreezeBoundary — inline code-span masking (safe direction)', 
     expect(computeFreezeBoundary(html, OFF)).toBe(html.indexOf('zzz'));
     const ref = 'the `[x]` token\n\nzzz';
     expect(computeFreezeBoundary(ref, OFF)).toBe(ref.indexOf('zzz'));
-    expect(scanFreezeBoundary('regex `[^0-9]` inline\n\ntail\n\n', OFF).hasFootnoteSyntax).toBe(false);
+    const fnSpan = 'regex `[^0-9]` inline\n\ntail\n\n';
+    expect(computeFreezeBoundary(fnSpan, OFF)).toBe(fnSpan.length);
   });
 
   test('a paragraph with an unpaired run disables masking (cross-line span gate)', () => {
@@ -252,7 +259,7 @@ describe('computeFreezeBoundary — inline code-span masking (safe direction)', 
 
   test('resume-vs-fresh equivalence: chained checkpoints match fresh scans', () => {
     const payload =
-      'para `code` one\n\n- item\n\n    indented\n\n[a]: /x\n\nsee [a] and `<b>`\n\n```js\nx\n```\n\n<?pi?> done\n\ntail.\n';
+      'para `code` one\n\n- item\n\n    indented\n\n[a]: /x\n\nsee [a] and `<b>`\n\nnote[^f] here\n\n[^f]: body\n\n```js\nx\n```\n\n<?pi?> done\n\ntail.\n';
     let checkpoint: ReturnType<typeof scanFreezeBoundary>['checkpoint'] | null = null;
     for (let i = 1; i <= payload.length; i++) {
       const prefix = payload.slice(0, i);
@@ -260,7 +267,6 @@ describe('computeFreezeBoundary — inline code-span masking (safe direction)', 
       checkpoint = resumed.checkpoint;
       const fresh = scanFreezeBoundary(prefix, OFF);
       expect(resumed.boundary, `at length ${i}`).toBe(fresh.boundary);
-      expect(resumed.hasFootnoteSyntax, `fn at length ${i}`).toBe(fresh.hasFootnoteSyntax);
     }
   });
 });

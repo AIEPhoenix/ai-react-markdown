@@ -20,15 +20,14 @@ import AIMarkdown from '../../src/index';
 import { AIMarkdownDocuments } from '../../src/components/AIMarkdownDocuments';
 import { subscribeStageTimings } from '../../src/components/devStageTimings';
 import { computeFreezeBoundary } from '../../src/components/incrementalParse';
-import { buildChunkSources } from './CrossChunkIncrementalComparison';
-import { shortenDocumentId } from '../../src/components/shortenDocumentId';
+import { buildChunkSources, sliceChunkContents } from './crossChunkFixtures';
 import 'katex/dist/katex.min.css';
 import '../../src/components/typography/variants/all.scss';
 import { withThemedBackground } from '../decorators';
 import { getStreamingTheme } from './theme';
 import { DEFAULT_PAYLOAD, withDefs } from './scenarios';
 import { codePointSnapshots } from '../../src/components/incrementalParse/codePointSnapshots';
-import { useDomEqualityStats } from './useDomEqualityStats';
+import { normalizeClobberPrefix, useDomEqualityStats } from './useDomEqualityStats';
 
 /** Shared documentId so both sides emit identical clobber-prefixed ids. */
 const SMOKE_DOCUMENT_ID = 'ip-smoke';
@@ -130,11 +129,7 @@ function CrossChunkSmoke({ payload }: { payload: string }) {
   const chunkSources = useMemo(() => buildChunkSources(payload), [payload]);
   const fullDocument = useMemo(() => chunkSources.join(''), [chunkSources]);
   const normalize = useMemo(
-    () => (html: string, side: 'on' | 'off') =>
-      html.replaceAll(
-        `${encodeURIComponent(shortenDocumentId(side === 'on' ? XCK_ON_ID : XCK_OFF_ID))}-user-content-`,
-        '§doc§-user-content-'
-      ),
+    () => (html: string, side: 'on' | 'off') => normalizeClobberPrefix(html, side === 'on' ? XCK_ON_ID : XCK_OFF_ID),
     []
   );
   const { statsRef } = useDomEqualityStats(onRef, offRef, content, normalize);
@@ -165,16 +160,7 @@ function CrossChunkSmoke({ payload }: { payload: string }) {
     if (done) setFinalStats({ ...statsRef.current, scans: scansRef.current });
   }, [content, done, statsRef]);
 
-  const chunkContents = useMemo(() => {
-    const out: string[] = [];
-    let cursor = content.length;
-    for (const source of chunkSources) {
-      const take = Math.max(0, Math.min(cursor, source.length));
-      cursor -= take;
-      out.push(source.slice(0, take));
-    }
-    return out;
-  }, [chunkSources, content.length]);
+  const chunkContents = useMemo(() => sliceChunkContents(chunkSources, content.length), [chunkSources, content.length]);
 
   const side = (docId: string, config: typeof INCREMENTAL_ON | typeof INCREMENTAL_OFF) => (
     <AIMarkdownDocuments>
@@ -435,27 +421,33 @@ export const VerificationPlayground: StoryObj<typeof IncrementalParsePlayground>
   ),
 };
 
-const smokePlay: Story['play'] = async ({ canvasElement }) => {
-  const summary = await waitFor(
-    () => {
-      const el = canvasElement.querySelector('[data-testid="ip-smoke-summary"]');
-      if (!el || el.getAttribute('data-done') !== 'true') throw new Error('streaming not finished yet');
-      return el;
-    },
-    { timeout: 20_000 }
-  );
-  const frames = Number(summary.getAttribute('data-frames'));
-  const mismatches = Number(summary.getAttribute('data-mismatches'));
-  const scans = Number(summary.getAttribute('data-scans'));
-  expect(
-    mismatches,
-    `flag-on DOM diverged from flag-off (first at content length ${summary.getAttribute('data-first-mismatch-length')})`
-  ).toBe(0);
-  expect(frames).toBeGreaterThan(10);
-  // The incremental engine must have actually engaged — a silent
-  // permanent fallback would make the mismatch assertion vacuous.
-  expect(scans).toBeGreaterThan(0);
-};
+/** One assertion set for every smoke variant (final-review R4 — a
+ *  re-inlined copy had already appeared): equality must hold, AND the
+ *  engine must have engaged (frames/scans guards keep the mismatch
+ *  assertion from passing vacuously on a silent permanent fallback). */
+const makeSmokePlay =
+  (testId: string, timeout: number): Story['play'] =>
+  async ({ canvasElement }) => {
+    const summary = await waitFor(
+      () => {
+        const el = canvasElement.querySelector(`[data-testid="${testId}"]`);
+        if (!el || el.getAttribute('data-done') !== 'true') throw new Error('streaming not finished yet');
+        return el;
+      },
+      { timeout }
+    );
+    const frames = Number(summary.getAttribute('data-frames'));
+    const mismatches = Number(summary.getAttribute('data-mismatches'));
+    const scans = Number(summary.getAttribute('data-scans'));
+    expect(
+      mismatches,
+      `flag-on DOM diverged from flag-off (first at content length ${summary.getAttribute('data-first-mismatch-length')})`
+    ).toBe(0);
+    expect(frames).toBeGreaterThan(10);
+    expect(scans).toBeGreaterThan(0);
+  };
+
+const smokePlay = makeSmokePlay('ip-smoke-summary', 20_000);
 
 export const StreamingSmoke: Story = {
   render: () => <IncrementalParseSmoke payload={DEFAULT_PAYLOAD} />,
@@ -477,22 +469,5 @@ export const StreamingSmokeWithFootnotes: Story = {
  *  per frame (prefix-normalized). */
 export const CrossChunkStreamingSmoke: StoryObj<typeof CrossChunkSmoke> = {
   render: () => <CrossChunkSmoke payload={withDefs(DEFAULT_PAYLOAD)} />,
-  play: async ({ canvasElement }) => {
-    const summary = await waitFor(
-      () => {
-        const el = canvasElement.querySelector('[data-testid="xck-smoke-summary"]');
-        if (!el || el.getAttribute('data-done') !== 'true') throw new Error('streaming not finished yet');
-        return el;
-      },
-      { timeout: 30_000 }
-    );
-    expect(
-      Number(summary.getAttribute('data-mismatches')),
-      `coordinated flag-on DOM diverged from flag-off (first at content length ${summary.getAttribute(
-        'data-first-mismatch-length'
-      )})`
-    ).toBe(0);
-    expect(Number(summary.getAttribute('data-frames'))).toBeGreaterThan(10);
-    expect(Number(summary.getAttribute('data-scans'))).toBeGreaterThan(0);
-  },
+  play: makeSmokePlay('xck-smoke-summary', 30_000),
 };

@@ -7,8 +7,7 @@ import { useRenderProfiler } from './useRenderProfiler';
 import { ProfilerPanel } from './ProfilerPanel';
 import { controlStyles, getStreamingTheme, thinScrollbar, type ColorScheme } from './theme';
 import { PAYLOAD_SCALES, useComparisonRuns } from './useComparisonRuns';
-import { shortenDocumentId } from '../../src/components/shortenDocumentId';
-import { useDomEqualityStats } from './useDomEqualityStats';
+import { normalizeClobberPrefix, useDomEqualityStats } from './useDomEqualityStats';
 
 /**
  * Side-by-side A/B for `incrementalParseEnabled` — BOTH columns run the
@@ -29,10 +28,10 @@ import { useDomEqualityStats } from './useDomEqualityStats';
  *   two columns' live `innerHTML`. The mismatch counter must stay 0 — the
  *   flag is contractually invisible in output (splice equivalence). A
  *   non-zero count is a shipping bug, not a tuning concern.
- * - The `defs` toggle appends a footnote/link-definition tail; footnotes
- *   force the incremental side into its `[^` full-parse fallback — flip it
- *   ON to see the honest "feature disengages" behavior (stage numbers
- *   converge, equality still holds).
+ * - The `defs` toggle appends a footnote/link-definition tail. Since v2
+ *   footnotes SPLICE (injection replay) — flip it ON to measure the replay
+ *   against a plain payload (benchmark: 84% vs 83%, i.e. ≈free) and to
+ *   watch the reference taint hold the boundary until each def settles.
  */
 
 export type ComparisonVariant = 'incremental' | 'boost';
@@ -69,25 +68,6 @@ const VARIANTS = {
 } satisfies Record<ComparisonVariant, unknown>;
 
 const PIPELINE_STAGES_SHOWN = ['scan', 'parse', 'transform'] as const;
-
-/**
- * The two sides intentionally use DIFFERENT documentIds (that is what scopes
- * the stage channel per side) — and documentId feeds the clobber prefix that
- * rehype-sanitize/rehypeRebaseHashLinks stamp onto footnote ids and hash
- * hrefs. The moment a footnote reference renders, the raw innerHTML of the
- * two sides differs BY CONFIGURATION (`ipc-on-user-content-fn-1` vs
- * `ipc-off-user-content-fn-1`), not by any splice defect. Normalize both
- * prefixes to a shared token before comparing. Found in the field: a
- * footnote-bearing payload lit the mismatch counter at the exact offset the
- * first `[^` reference rendered, while the node-level arbiter proved the
- * engine byte-clean on the same payload.
- *
- * Built with the SAME derivation as src/context.tsx (shortenDocumentId +
- * encodeURIComponent), so renaming the docIds — even past the 16-char
- * hashing threshold — can never silently desynchronize the replace.
- */
-const normalizeClobberPrefix = (html: string, docId: string): string =>
-  html.replaceAll(`${encodeURIComponent(shortenDocumentId(docId))}-user-content-`, '§doc§-user-content-');
 
 interface IncrementalParseComparisonProps {
   colorScheme: ColorScheme;
@@ -278,9 +258,9 @@ export const IncrementalParseComparison = ({
           disabled={busy}
           onClick={() => setDefsEnabled(!defsEnabled)}
           style={controls.baseButton}
-          title="Appends a footnote/link-definition tail. Footnotes ([^…]) force the incremental side into its full-parse fallback — flip ON to watch the feature disengage honestly: stage numbers converge while DOM equality still holds."
+          title="Appends a footnote/link-definition tail. Since v2 footnotes splice (injection replay) — flip ON to measure the replay's overhead against a plain payload; DOM equality must still hold."
         >
-          defs: {defsEnabled ? 'ON (incremental will fall back)' : 'OFF'}
+          defs: {defsEnabled ? 'ON (footnotes splice via replay)' : 'OFF'}
         </button>
         <span style={controls.caption}>
           {payloadChars.toLocaleString()} chars / {payloadBlocks} blocks

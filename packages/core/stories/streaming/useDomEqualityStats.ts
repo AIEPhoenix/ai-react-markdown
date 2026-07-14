@@ -15,10 +15,29 @@
 
 import { useCallback, useEffect, useRef, type RefObject } from 'react';
 
+import { shortenDocumentId } from '../../src/components/shortenDocumentId';
+
 export interface DomEqualityStats {
   frames: number;
   mismatches: number;
   firstMismatchLength: number;
+}
+
+/**
+ * THE clobber-prefix normalizer for dual-instance comparisons (final-review
+ * R4 — three independent copies of this derivation had appeared).
+ *
+ * Comparison sides intentionally use DIFFERENT documentIds (that is what
+ * scopes the per-side stage channel), and documentId feeds the clobber
+ * prefix that rehype-sanitize/rehypeRebaseHashLinks stamp onto footnote ids
+ * and hash hrefs — so the raw innerHTML of the two sides differs BY
+ * CONFIGURATION the moment a footnote renders, not by any splice defect.
+ * Built with the SAME derivation as src/context.tsx (shortenDocumentId +
+ * encodeURIComponent), so renaming docIds — even past the 16-char hashing
+ * threshold — can never silently desynchronize the replace.
+ */
+export function normalizeClobberPrefix(html: string, docId: string): string {
+  return html.replaceAll(`${encodeURIComponent(shortenDocumentId(docId))}-user-content-`, '§doc§-user-content-');
 }
 
 const fresh = (): DomEqualityStats => ({ frames: 0, mismatches: 0, firstMismatchLength: -1 });

@@ -305,7 +305,7 @@ describe('byte-equivalence: incrementalParseEnabled toggle produces identical ou
     ['single block', baselineConfig, 'Hello'],
     ['multi-block prose', baselineConfig, 'Hello\n\nWorld\n\nAgain'],
     ['multi-root raw HTML (shared mdast)', baselineConfig, '<div>A</div><div>B</div>'],
-    ['footnote section (bypass path)', baselineConfig, 'See[^x].\n\n[^x]: hello'],
+    ['footnote section (splices via injection replay since v2)', baselineConfig, 'See[^x].\n\n[^x]: hello'],
     [
       'kitchen sink with all plugins',
       defaultConfig,

@@ -72,11 +72,11 @@ frozen prefix too, which the pre-implementation estimates did not count.
 
 ## Results — v2 regimes (footnotes, cross-chunk; 2026-07-15, single runs)
 
-| Comparison                                | Regime                                                   | Headline metric | Result                                                     |
-| ----------------------------------------- | -------------------------------------------------------- | --------------- | ----------------------------------------------------------- |
-| `IncrementalParseCompare`, 4×, `defs` ON  | footnote/link defs tail — **previously the `[^` fallback** | pipeline        | **421 ms vs 2,675 ms → 84% saved** (658 frames, 0 mismatches) |
-| `IncrementalParseCompare`, 4×, `defs` OFF | plain (regression check vs v1's 353 / 2,174 → 84%)       | pipeline        | 385 ms vs 2,254 ms → **83% — unchanged within noise**        |
-| `BoostCompare`, 4×                        | end-to-end (v1: 43%)                                     | commit total    | **2,026 ms vs 4,004 ms → 49% saved**                          |
+| Comparison                                | Regime                                                                | Headline metric | Result                                                        |
+| ----------------------------------------- | --------------------------------------------------------------------- | --------------- | ------------------------------------------------------------- |
+| `IncrementalParseCompare`, 4×, `defs` ON  | footnote/link defs tail — **previously the `[^` fallback**            | pipeline        | **421 ms vs 2,675 ms → 84% saved** (658 frames, 0 mismatches) |
+| `IncrementalParseCompare`, 4×, `defs` OFF | plain (regression check vs v1's 353 / 2,174 → 84%)                    | pipeline        | 385 ms vs 2,254 ms → **83% — unchanged within noise**         |
+| `BoostCompare`, 4×                        | end-to-end (v1: 43%)                                                  | commit total    | **2,026 ms vs 4,004 ms → 49% saved**                          |
 | `CrossChunkIncrementalCompare`, 1×        | coordinated, 3 chunks/side, phantom churn — **previously ineligible** | pipeline        | 104 ms vs 141 ms → **26% saved** (190 frames, 0 mismatches)   |
 
 The headline v2 fact: a defs-bearing payload now saves the SAME 84% as a

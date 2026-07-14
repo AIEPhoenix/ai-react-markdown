@@ -7,7 +7,7 @@ import rehypeRaw from 'rehype-raw';
 import rehypeSanitize from 'rehype-sanitize';
 import { visit } from 'unist-util-visit';
 import { buildCrossChunkHandlers } from './customMdastHandlers';
-import { augmentSourceWithPhantoms } from './remarkInjectPhantomDefs';
+import { buildPhantomSuffix } from './remarkInjectPhantomDefs';
 import { sanitizeSchema } from './sanitizeSchema';
 import type { Root as HastRoot, Element } from 'hast';
 import type { Root as MdastRoot } from 'mdast';
@@ -70,10 +70,12 @@ describe('customMdastHandlers — Direction A footnoteDefinition', () => {
 
 describe('customMdastHandlers — Direction B linkReference', () => {
   test('linkReference with phantom-injected def emits <cross-chunk-link>', () => {
-    const augmented = augmentSourceWithPhantoms('[click][X]', {
-      missingFootnotes: new Set(),
-      missingLinks: new Set(['X']),
-    });
+    const augmented =
+      '[click][X]' +
+      buildPhantomSuffix({
+        missingFootnotes: new Set(),
+        missingLinks: new Set(['X']),
+      });
     const hast = pipe(augmented, { phantomLinkLabels: new Set(['X']), documentId: 'msg-1' });
     const link = findTag(hast, 'cross-chunk-link');
     expect(link).toBeTruthy();
@@ -99,10 +101,12 @@ describe('customMdastHandlers — Direction B linkReference', () => {
 
 describe('customMdastHandlers — footnoteReference with phantom def', () => {
   test('emits <footnote-sup> with mdast folded identifier; does NOT add label to footer', () => {
-    const augmented = augmentSourceWithPhantoms('See [^X].', {
-      missingFootnotes: new Set(['X']),
-      missingLinks: new Set(),
-    });
+    const augmented =
+      'See [^X].' +
+      buildPhantomSuffix({
+        missingFootnotes: new Set(['X']),
+        missingLinks: new Set(),
+      });
     const hast = pipe(augmented, { phantomFootnoteLabels: new Set(['X']) });
     const sup = findTag(hast, 'footnote-sup');
     expect(sup).toBeTruthy();
@@ -178,10 +182,12 @@ describe('customMdastHandlers — footnoteReference with phantom def', () => {
       .use(remarkRehype, { handlers, ...opt } as Parameters<typeof remarkRehype>[0])
       .use(rehypeRaw, { passThrough: [] })
       .use(rehypeSanitize, sanitizeSchema);
-    const augmented = augmentSourceWithPhantoms('[click][missing]\n', {
-      missingFootnotes: new Set(),
-      missingLinks: new Set(['MISSING']),
-    });
+    const augmented =
+      '[click][missing]\n' +
+      buildPhantomSuffix({
+        missingFootnotes: new Set(),
+        missingLinks: new Set(['MISSING']),
+      });
     const mdast = processor.parse(augmented) as MdastRoot;
     const hast = processor.runSync(mdast) as HastRoot;
     const link = findTag(hast, 'cross-chunk-link');
