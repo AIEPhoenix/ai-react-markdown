@@ -38,6 +38,10 @@ methodology section tells you exactly which story and which toggles.
   corpora — while the `scan` stage itself dropped from 9.2 ms to 3.9 ms at
   4× and from 84 ms to 13 ms at 16× (the checkpoint scanner's O(document) →
   O(tail) effect).
+- **v2 re-run** (same day, single runs, after footnote injection replay +
+  cross-chunk phantom suffixes + stripped-node alignment landed): the plain
+  4× headline is unchanged within noise (385 ms vs 2,254 ms → 83%), and two
+  previously-fallback regimes now splice — see "Results — v2 regimes" below.
 
 Each comparison also runs the built-in **per-frame DOM-equality verifier**
 (clobber prefixes normalized): both sides' live `innerHTML` must be
@@ -65,6 +69,23 @@ Per-side stage breakdown (incremental axis, sums over ~560 frames):
 Note the **transform** (remark/rehype plugin chain) saving exceeds the
 parse saving itself — the tail-only run skips the plugin chain over the
 frozen prefix too, which the pre-implementation estimates did not count.
+
+## Results — v2 regimes (footnotes, cross-chunk; 2026-07-15, single runs)
+
+| Comparison                                | Regime                                                   | Headline metric | Result                                                     |
+| ----------------------------------------- | -------------------------------------------------------- | --------------- | ----------------------------------------------------------- |
+| `IncrementalParseCompare`, 4×, `defs` ON  | footnote/link defs tail — **previously the `[^` fallback** | pipeline        | **421 ms vs 2,675 ms → 84% saved** (658 frames, 0 mismatches) |
+| `IncrementalParseCompare`, 4×, `defs` OFF | plain (regression check vs v1's 353 / 2,174 → 84%)       | pipeline        | 385 ms vs 2,254 ms → **83% — unchanged within noise**        |
+| `BoostCompare`, 4×                        | end-to-end (v1: 43%)                                     | commit total    | **2,026 ms vs 4,004 ms → 49% saved**                          |
+| `CrossChunkIncrementalCompare`, 1×        | coordinated, 3 chunks/side, phantom churn — **previously ineligible** | pipeline        | 104 ms vs 141 ms → **26% saved** (190 frames, 0 mismatches)   |
+
+The headline v2 fact: a defs-bearing payload now saves the SAME 84% as a
+plain one — in v1 that toggle measured the `[^` full-parse fallback (stage
+numbers converged). The cross-chunk number is modest by construction:
+per-chunk documents are short (the 1× payload splits into ~330-char chunks)
+and every cross-chunk reference pins the boundary below it (the taint IS
+the correctness mechanism) — the win grows with chunk length, exactly like
+the standalone axis.
 
 ## Results — 16× payload (11,872 chars, ~2,220 frames, single runs)
 
@@ -127,9 +148,12 @@ memo-enabled baseline).
   table is the attribution-clean signal and commit Δ is noisy garnish; on
   the boost axis the legacy side emits no stage timings at all, so the
   commit total IS the headline.
-- **Footnote payloads disengage incremental parsing** (`[^` → full-parse
-  fallback, by design). A benchmark payload with a defs tail measures the
-  fallback, not the splice — that's what the `defs` toggle is for.
+- **The `defs` toggle no longer measures a fallback.** Since v2, footnote
+  payloads splice (injection replay) — flip it to measure the replay's
+  overhead against a plain payload (≈nil: 84% vs 83% above). What still
+  pins the boundary is an UNRESOLVED reference: content that opens with a
+  ref whose def arrives much later re-parses everything after the ref until
+  the def settles.
 
 ## Reproducing
 
@@ -138,7 +162,8 @@ pnpm storybook   # → http://localhost:6006
 ```
 
 Open `Core/AIMarkdown` → `BlockMemoCompare` / `IncrementalParseCompare` /
-`BoostCompare`; set payload scale, turn spies off, hit **Run ×3**; read the
-verdict banner (block-memo axis) or the summary strip (incremental/boost
-axes). For per-side browser-level metrics use the `*Isolated` variants from
-a loopback hostname on the dev machine.
+`BoostCompare` / `CrossChunkIncrementalCompare`; set payload scale, turn
+spies off, hit **Run ×3**; read the verdict banner (block-memo axis) or the
+summary strip (incremental/boost/cross-chunk axes). For per-side
+browser-level metrics use the `*Isolated` variants from a loopback hostname
+on the dev machine.
