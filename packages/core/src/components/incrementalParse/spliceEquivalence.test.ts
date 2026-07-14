@@ -95,10 +95,11 @@ describe('splice equivalence — corpora × plugin catalog', () => {
     });
 
     test(`llm-typical-with-defs [${config.label}]`, () => {
-      // withDefs appends footnote refs/defs → `[^` bypass kicks in once they
-      // arrive; earlier frames still splice.
+      // withDefs appends footnote refs/defs — v2 splices straight through
+      // them (injection replay); the old `[^` bypass would cap this at the
+      // pre-footnote frame count.
       const stats = assertStreamEquivalence('with-defs', chunkSnapshots(withDefs(DEFAULT_PAYLOAD), 64), config);
-      expect(stats.incrementalFrames).toBeGreaterThan(0);
+      expect(stats.incrementalFrames).toBeGreaterThan(stats.frames / 2);
     });
   }
 
@@ -242,10 +243,11 @@ describe('splice equivalence — adversarial fixtures', () => {
     assertStreamEquivalence('non-append', snapshots, BASELINE);
   });
 
-  test('[^ arriving mid-stream forces full path from that frame on', () => {
+  test('[^ arriving mid-stream keeps splicing (v2 replay)', () => {
     const payload = 'plain paragraph one.\n\nplain paragraph two.\n\na claim[^n] appears.\n\n[^n]: footnote body\n';
     for (const config of [BASELINE, ALL_ON]) {
-      assertStreamEquivalence('footnote-mid-stream', chunkSnapshots(payload, 8), config);
+      const stats = assertStreamEquivalence('footnote-mid-stream', chunkSnapshots(payload, 8), config);
+      expect(stats.incrementalFrames).toBeGreaterThan(0);
     }
   });
 
@@ -340,5 +342,140 @@ describe('splice equivalence — stripped-node prefixes', () => {
     }
     expect(last!.usedIncremental).toBe(true);
     expect(last!.boundary).toBeGreaterThan(payload.indexOf('-->') + 3);
+  });
+});
+
+// --- footnotes via injection replay (v2 Phase C) ------------------------------
+//
+// mdast-util-to-hast footnote state (footnoteOrder / footnoteCounts /
+// footnoteById) is whole-document and encounter-ordered; the engine replays
+// the prefix's event sequence at the tail head so the tail run regenerates
+// the complete footer and the tail's inline refs continue the numbering.
+// Every fixture runs the full catalog cross-product it names and asserts the
+// splice ENGAGED — before Phase C every `[^` payload silently degraded to
+// per-frame full parses. `settle` gives each payload a confirmed non-
+// continuation block after the defs so the boundary can pass them.
+
+describe('splice equivalence — footnote injection replay', () => {
+  const BASELINE = CATALOG[0];
+  const ALL_ON = CATALOG[1];
+  const NO_ORPHAN = CATALOG.find((c) => c.label === 'no-orphan')!;
+
+  const fixtures: Array<[string, string, number, CatalogConfig[]]> = [
+    [
+      'reuse-and-backrefs',
+      'Alpha[^a] beta[^a].\n\nGamma[^b].\n\n[^a]: A body\n\n[^b]: B body\n\nplain settles.\n\ntail re-ref [^a] and new [^c].\n\n[^c]: C body\n\nclosing paragraph here.\n',
+      11,
+      [BASELINE, ALL_ON, NO_ORPHAN],
+    ],
+    [
+      'orphan-def-ordering',
+      'Intro[^a].\n\n[^orph]: orphan body\n\n[^a]: A body\n\nMid[^b].\n\n[^b]: B body\n\nplain settles.\n\ntail new [^c].\n\n[^c]: C body\n',
+      9,
+      [BASELINE, NO_ORPHAN],
+    ],
+    [
+      'def-before-ref',
+      '[^a]: defined first\n\nThen referenced[^a] later.\n\nfiller paragraph.\n\ntail paragraph extends.\n',
+      8,
+      [BASELINE, ALL_ON],
+    ],
+    [
+      'ref-def-ref-interleave',
+      'One[^x].\n\n[^x]: x body\n\nTwo[^y] then[^x].\n\n[^y]: y body\n\nplain settles here.\n\ntail closes[^y] again.\n',
+      9,
+      [BASELINE],
+    ],
+    [
+      'duplicate-def-first-wins',
+      'Ref[^d] here.\n\n[^d]: first body\n\nfiller paragraph.\n\nplain settles.\n\n[^d]: second body ignored\n\ntail paragraph.\n',
+      8,
+      [BASELINE],
+    ],
+    [
+      'case-fold-labels',
+      'Weight[^SS] here.\n\n[^ß]: sharp body\n\nfiller paragraph settles.\n\ntail re-ref [^ss] again.\n',
+      7,
+      [BASELINE],
+    ],
+    [
+      // Taint holds the boundary at 0 while [^late] is unresolved; once the
+      // def settles (blank line after) the boundary may pass the ref and the
+      // closing frames splice. Without the settling paragraph this payload
+      // would (correctly) never splice at all.
+      'def-in-tail-ref-in-prefix',
+      'Early claim[^late] made.\n\nfiller one paragraph.\n\nfiller two paragraph.\n\n[^late]: arrives late\n\nsettled paragraph.\n\nclosing tail paragraph.\n',
+      9,
+      [BASELINE, ALL_ON],
+    ],
+    [
+      'multi-paragraph-def-body',
+      'Claim[^m] here.\n\n[^m]: first body paragraph\n\n    second indented paragraph\n\nplain col-zero settles.\n\ntail paragraph extends.\n',
+      9,
+      [BASELINE, ALL_ON],
+    ],
+    [
+      'indented-def-column-invariance',
+      'Claim[^i] here.\n\n  [^i]: two-space-indented def\n\nplain settles.\n\ntail paragraph extends further.\n',
+      8,
+      [BASELINE],
+    ],
+    [
+      'nested-ref-in-def-body',
+      'Outer[^o] claim.\n\n[^o]: body references [^inner] here\n\n[^inner]: inner body\n\nplain settles.\n\ntail paragraph extends.\n',
+      9,
+      [BASELINE, ALL_ON],
+    ],
+    [
+      'math-in-def-body',
+      'Claim[^k] here.\n\n[^k]: body with $$e^{i\\pi}$$ math\n\nplain settles.\n\ntail paragraph extends here.\n',
+      9,
+      [BASELINE],
+    ],
+    [
+      'ref-inside-blockquote',
+      '> quoted claim[^q] here.\n\n[^q]: q body\n\nplain settles.\n\ntail paragraph extends.\n',
+      8,
+      [BASELINE],
+    ],
+    [
+      'crlf-footnotes',
+      'Claim[^c] here.\r\n\r\n[^c]: c body\r\n\r\nplain settles.\r\n\r\ntail paragraph extends.\r\n',
+      9,
+      [BASELINE],
+    ],
+  ];
+
+  for (const [name, payload, chunk, configs] of fixtures) {
+    test(name, () => {
+      for (const config of configs) {
+        const stats = assertStreamEquivalence(name, chunkSnapshots(payload, chunk), config);
+        expect(stats.incrementalFrames, `${name} [${config.label}] must actually splice`).toBeGreaterThan(0);
+      }
+    });
+  }
+
+  test('blockquote-nested footnote def → uninjectable fallback (equivalence holds)', () => {
+    // Column fidelity cannot survive slicing a `> [^x]: …` def out of its
+    // container, so frames whose prefix holds one degrade to full parses.
+    const payload = '> [^bq]: quoted def\n\nRef[^bq] later.\n\nplain settles.\n\ntail paragraph extends.\n';
+    assertStreamEquivalence('bq-nested-footnote-def', chunkSnapshots(payload, 7), BASELINE);
+  });
+
+  test('splices on a frame whose FROZEN PREFIX contains the footnote region', () => {
+    // Pins that the replay path itself engaged: the final frame's boundary
+    // must sit PAST the defs (events replayed) while still splicing.
+    const payload =
+      'Alpha[^a] beta[^a].\n\n[^a]: A body\n\nplain settles the region.\n\nmore prose extends.\n\ntail re-ref [^a] closes.\n\nfinal paragraph of the document.\n';
+    const options = buildAdvanceOptions(BASELINE);
+    const snapshots = chunkSnapshots(payload, 10);
+    let state: IncrementalParseState | null = null;
+    let last: ReturnType<typeof advanceIncrementalParse> | null = null;
+    for (const snapshot of snapshots) {
+      last = advanceIncrementalParse(state, snapshot, options);
+      state = last.nextState;
+    }
+    expect(last!.usedIncremental).toBe(true);
+    expect(last!.boundary).toBeGreaterThan(payload.indexOf('[^a]: A body') + 12);
   });
 });

@@ -51,10 +51,14 @@ describe('advanceIncrementalParse — gates', () => {
     expect(result.usedIncremental).toBe(false);
   });
 
-  test('G2: footnote syntax anywhere → full path', () => {
+  test('footnote syntax no longer disengages splicing (v2: injection replay)', () => {
+    // The unresolved `[^n]` taints candidates PAST it, but the boundary
+    // before it stays valid — the frame splices with the ref in the tail.
     const prev = seed();
     const result = advanceIncrementalParse(prev, `${DOC}claim[^n] here.\n`, BASE());
-    expect(result.usedIncremental).toBe(false);
+    expect(result.usedIncremental).toBe(true);
+    expect(result.boundary).toBeGreaterThan(0);
+    expect(result.boundary).toBeLessThanOrEqual(DOC.length);
   });
 
   test('G3: zero boundary (single growing block) → full path', () => {
@@ -112,29 +116,21 @@ describe('advanceIncrementalParse — gates', () => {
     expect(stages).toEqual([]);
   });
 
-  test('sticky footnote flag: append frames after [^ detection skip the scan entirely', () => {
-    const stages: string[] = [];
-    const options = {
-      ...BASE(),
-      measure: <T>(stage: string, fn: () => T): T => {
-        stages.push(stage);
-        return fn();
-      },
-    };
-    const withFn = 'a claim[^n] here.\n\n';
-    const s1 = advanceIncrementalParse(null, withFn, options).nextState;
-    expect(s1.sawFootnote).toBe(true);
-    stages.length = 0;
-    const r2 = advanceIncrementalParse(s1, `${withFn}more.\n`, options);
-    expect(r2.usedIncremental).toBe(false);
-    expect(stages).toEqual(['parse', 'transform']); // no 'scan' — the E1 fix
-    expect(r2.nextState.sawFootnote).toBe(true);
+  test('settled footnote content splices with the def frozen into the prefix', () => {
+    // Once the def settles (blank line after) and prose confirms the block
+    // context, the boundary passes the whole footnote region — the splice
+    // must replay the events (arbiter owns output equality; this pins that
+    // the incremental path actually engages past a footnote).
+    const withFn = 'a claim[^n] here.\n\n[^n]: note body\n\nplain paragraph.\n\n';
+    const s1 = advanceIncrementalParse(null, withFn, BASE()).nextState;
+    const r2 = advanceIncrementalParse(s1, `${withFn}more prose.\n`, BASE());
+    expect(r2.usedIncremental).toBe(true);
+    expect(r2.boundary).toBeGreaterThan(withFn.indexOf('[^n]:'));
   });
 
   test('fence-guarded [^ does NOT disengage splicing (Alt2 fix)', () => {
     const code = '```js\nconst re = /[^0-9]/;\n```\n\npara one.\n\n';
     const prev = advanceIncrementalParse(null, code, BASE()).nextState;
-    expect(prev.sawFootnote).toBe(false);
     const r = advanceIncrementalParse(prev, `${code}para two.\n`, BASE());
     expect(r.usedIncremental).toBe(true);
     expect(r.boundary).toBeGreaterThan(0);

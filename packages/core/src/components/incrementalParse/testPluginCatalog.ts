@@ -33,13 +33,59 @@ export interface CatalogConfig {
   removeComments: boolean;
   smartypants: boolean;
   pangu: boolean;
+  /** `preserveOrphanReferences` OFF flips the standalone handlers memo to
+   *  `undefined` (no footnoteDefinition handler) AND `preserveOrphan: false`
+   *  — orphan defs then emit no footer `<li>`. The injection replay must be
+   *  exact under BOTH modes (it replays events; the handlers decide). */
+  preserveOrphan: boolean;
 }
 
 export const CATALOG: CatalogConfig[] = [
-  { label: 'baseline', highlight: false, defList: false, removeComments: false, smartypants: false, pangu: false },
-  { label: 'defaults-all-on', highlight: true, defList: true, removeComments: true, smartypants: true, pangu: true },
-  { label: 'def-list-only', highlight: false, defList: true, removeComments: false, smartypants: false, pangu: false },
-  { label: 'display-only', highlight: false, defList: false, removeComments: true, smartypants: true, pangu: true },
+  {
+    label: 'baseline',
+    highlight: false,
+    defList: false,
+    removeComments: false,
+    smartypants: false,
+    pangu: false,
+    preserveOrphan: true,
+  },
+  {
+    label: 'defaults-all-on',
+    highlight: true,
+    defList: true,
+    removeComments: true,
+    smartypants: true,
+    pangu: true,
+    preserveOrphan: true,
+  },
+  {
+    label: 'def-list-only',
+    highlight: false,
+    defList: true,
+    removeComments: false,
+    smartypants: false,
+    pangu: false,
+    preserveOrphan: true,
+  },
+  {
+    label: 'display-only',
+    highlight: false,
+    defList: false,
+    removeComments: true,
+    smartypants: true,
+    pangu: true,
+    preserveOrphan: true,
+  },
+  {
+    label: 'no-orphan',
+    highlight: false,
+    defList: false,
+    removeComments: false,
+    smartypants: false,
+    pangu: false,
+    preserveOrphan: false,
+  },
 ];
 
 const TEST_DOCUMENT_ID = 'ip';
@@ -48,18 +94,19 @@ const EMPTY_SET: ReadonlySet<string> = new Set();
 
 export function buildAdvanceOptions(config: CatalogConfig): AdvanceOptions {
   // Standalone default mode: preserveOrphanReferences=true → ONLY the
-  // footnoteDefinition handler (MarkdownContent.tsx `handlers` memo).
+  // footnoteDefinition handler; OFF → no custom footnote handler at all
+  // (MarkdownContent.tsx `handlers` memo).
   const { footnoteDefinition } = buildCrossChunkHandlers();
   const remarkRehypeOptions = {
     allowDangerousHtml: true,
     clobberPrefix: '',
     handlers: {
       ...(config.defList ? defListHastHandlers : {}),
-      footnoteDefinition,
+      ...(config.preserveOrphan ? { footnoteDefinition } : {}),
     },
     phantomFootnoteLabels: EMPTY_SET,
     phantomLinkLabels: EMPTY_SET,
-    preserveOrphan: true,
+    preserveOrphan: config.preserveOrphan,
     documentId: TEST_DOCUMENT_ID,
   };
 
