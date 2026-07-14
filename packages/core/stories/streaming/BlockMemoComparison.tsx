@@ -127,6 +127,8 @@ export const BlockMemoComparison = ({
     setRegistryEnabled,
     defsEnabled,
     setDefsEnabled,
+    incrementalEnabled,
+    setIncrementalEnabled,
     runs,
     clearRuns,
     sameConfigRuns,
@@ -155,7 +157,13 @@ export const BlockMemoComparison = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const enabledConfig = useMemo(() => ({ blockMemoEnabled: true }) as const, []);
+  // The incremental toggle applies to the ENABLED column only — incremental
+  // parsing lives inside the block-memo renderer (and auto-falls-back in
+  // registry mode, so combining the toggles measures that honestly too).
+  const enabledConfig = useMemo(
+    () => ({ blockMemoEnabled: true, incrementalParseEnabled: incrementalEnabled }) as const,
+    [incrementalEnabled]
+  );
   const disabledConfig = useMemo(() => ({ blockMemoEnabled: false }) as const, []);
 
   // Spy customComponents — count component-function invocations per side.
@@ -314,6 +322,14 @@ export const BlockMemoComparison = ({
           title="Appends a footnote/link-reference definitions tail (plus in-text references) to the scaled payload. The default payload has zero defs, so registry mode alone measures the def-label scanner on a best-case input. Note: the cross-chunk phantom path still doesn't run — each side is a single chunk."
         >
           defs: {defsEnabled ? 'ON (defs tail appended)' : 'OFF'}
+        </button>
+        <button
+          disabled={busy}
+          onClick={() => setIncrementalEnabled(!incrementalEnabled)}
+          style={controls.baseButton}
+          title="Enables incrementalParseEnabled (prefix-freeze parsing) on the block-memo side: streaming appends freeze the stable prefix and re-parse only the tail. Watch the scan/parse/transform stage panel — parse should drop to the tail's share. Auto-falls-back to full parses in registry mode and on payloads containing footnotes (defs ON appends [^…])."
+        >
+          incremental: {incrementalEnabled ? 'ON (prefix-freeze)' : 'OFF (full parse per frame)'}
         </button>
         <button disabled={busy} onClick={() => setSwapped((v) => !v)} style={controls.baseButton}>
           ⇄ swap sides
