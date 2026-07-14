@@ -17,8 +17,11 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, waitFor } from 'storybook/test';
 
 import AIMarkdown from '../../src/index';
+import { AIMarkdownDocuments } from '../../src/components/AIMarkdownDocuments';
 import { subscribeStageTimings } from '../../src/components/devStageTimings';
 import { computeFreezeBoundary } from '../../src/components/incrementalParse';
+import { buildChunkSources } from './CrossChunkIncrementalComparison';
+import { shortenDocumentId } from '../../src/components/shortenDocumentId';
 import 'katex/dist/katex.min.css';
 import '../../src/components/typography/variants/all.scss';
 import { withThemedBackground } from '../decorators';
@@ -101,6 +104,107 @@ function IncrementalParseSmoke({ payload }: { payload: string }) {
         </div>
         <div ref={offRef} data-testid="ip-smoke-off">
           <AIMarkdown content={content} streaming={!done} documentId={SMOKE_DOCUMENT_ID} config={INCREMENTAL_OFF} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Coordinated (cross-chunk) smoke: each side is an `<AIMarkdownDocuments>`
+ *  document of three sequentially-filled chunks sharing one documentId —
+ *  chunks 2/3 cross-reference chunk 1's defs, so the flag-on side streams
+ *  through phantom-suffix churn, registry version bumps, and the aggregate
+ *  footer. The sides intentionally use DIFFERENT documentIds (stage-channel
+ *  scoping), so the DOM comparison normalizes the clobber prefixes with the
+ *  same derivation as `IncrementalParseComparison`. */
+const XCK_ON_ID = 'xck-smoke-on';
+const XCK_OFF_ID = 'xck-smoke-off';
+
+function CrossChunkSmoke({ payload }: { payload: string }) {
+  const [content, setContent] = useState('');
+  const [done, setDone] = useState(false);
+  const [finalStats, setFinalStats] = useState<SmokeStats | null>(null);
+  const onRef = useRef<HTMLDivElement>(null);
+  const offRef = useRef<HTMLDivElement>(null);
+  const scansRef = useRef(0);
+  const chunkSources = useMemo(() => buildChunkSources(payload), [payload]);
+  const fullDocument = useMemo(() => chunkSources.join(''), [chunkSources]);
+  const normalize = useMemo(
+    () => (html: string, side: 'on' | 'off') =>
+      html.replaceAll(
+        `${encodeURIComponent(shortenDocumentId(side === 'on' ? XCK_ON_ID : XCK_OFF_ID))}-user-content-`,
+        '§doc§-user-content-'
+      ),
+    []
+  );
+  const { statsRef } = useDomEqualityStats(onRef, offRef, content, normalize);
+
+  useEffect(
+    () =>
+      subscribeStageTimings((stage, _ms, instanceId) => {
+        if (stage === 'scan' && instanceId === XCK_ON_ID) scansRef.current += 1;
+      }),
+    []
+  );
+
+  useEffect(() => {
+    const snapshots = codePointSnapshots(fullDocument, CHUNK_CODE_POINTS);
+    let idx = 0;
+    const timer = setInterval(() => {
+      setContent(snapshots[idx]);
+      if (idx === snapshots.length - 1) {
+        setDone(true);
+        clearInterval(timer);
+      }
+      idx += 1;
+    }, FRAME_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [fullDocument]);
+
+  useEffect(() => {
+    if (done) setFinalStats({ ...statsRef.current, scans: scansRef.current });
+  }, [content, done, statsRef]);
+
+  const chunkContents = useMemo(() => {
+    const out: string[] = [];
+    let cursor = content.length;
+    for (const source of chunkSources) {
+      const take = Math.max(0, Math.min(cursor, source.length));
+      cursor -= take;
+      out.push(source.slice(0, take));
+    }
+    return out;
+  }, [chunkSources, content.length]);
+
+  const side = (docId: string, config: typeof INCREMENTAL_ON | typeof INCREMENTAL_OFF) => (
+    <AIMarkdownDocuments>
+      {chunkContents.map((chunk, i) => (
+        <AIMarkdown key={i} content={chunk} streaming={!done} documentId={docId} config={config} />
+      ))}
+    </AIMarkdownDocuments>
+  );
+
+  return (
+    <div>
+      <div
+        data-testid="xck-smoke-summary"
+        data-done={finalStats ? 'true' : 'false'}
+        data-frames={finalStats?.frames ?? 0}
+        data-mismatches={finalStats?.mismatches ?? 0}
+        data-scans={finalStats?.scans ?? 0}
+        data-first-mismatch-length={finalStats?.firstMismatchLength ?? -1}
+        style={{ fontFamily: 'monospace', fontSize: 12, marginBottom: 12 }}
+      >
+        {finalStats
+          ? `done — frames=${finalStats.frames} mismatches=${finalStats.mismatches} scans=${finalStats.scans}`
+          : `streaming… ${content.length}/${fullDocument.length}`}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        <div ref={onRef} data-testid="xck-smoke-on">
+          {side(XCK_ON_ID, INCREMENTAL_ON)}
+        </div>
+        <div ref={offRef} data-testid="xck-smoke-off">
+          {side(XCK_OFF_ID, INCREMENTAL_OFF)}
         </div>
       </div>
     </div>
@@ -365,4 +469,30 @@ export const StreamingSmoke: Story = {
 export const StreamingSmokeWithFootnotes: Story = {
   render: () => <IncrementalParseSmoke payload={withDefs(DEFAULT_PAYLOAD)} />,
   play: smokePlay,
+};
+
+/** Coordinated documents through the REACT wiring: phantom-suffix churn,
+ *  registry bumps, aggregate footer, contribute/harvest — the whole
+ *  cross-chunk machinery with the flag on vs off must stay byte-identical
+ *  per frame (prefix-normalized). */
+export const CrossChunkStreamingSmoke: StoryObj<typeof CrossChunkSmoke> = {
+  render: () => <CrossChunkSmoke payload={withDefs(DEFAULT_PAYLOAD)} />,
+  play: async ({ canvasElement }) => {
+    const summary = await waitFor(
+      () => {
+        const el = canvasElement.querySelector('[data-testid="xck-smoke-summary"]');
+        if (!el || el.getAttribute('data-done') !== 'true') throw new Error('streaming not finished yet');
+        return el;
+      },
+      { timeout: 30_000 }
+    );
+    expect(
+      Number(summary.getAttribute('data-mismatches')),
+      `coordinated flag-on DOM diverged from flag-off (first at content length ${summary.getAttribute(
+        'data-first-mismatch-length'
+      )})`
+    ).toBe(0);
+    expect(Number(summary.getAttribute('data-frames'))).toBeGreaterThan(10);
+    expect(Number(summary.getAttribute('data-scans'))).toBeGreaterThan(0);
+  },
 };

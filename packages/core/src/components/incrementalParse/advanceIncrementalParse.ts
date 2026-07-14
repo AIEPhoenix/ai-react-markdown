@@ -52,8 +52,12 @@ import { computeFreezeBoundary, type FreezeScanCheckpoint } from './computeFreez
 import { buildInjectionPrefix, collectPrefixInjection, spliceTrees } from './spliceParse';
 
 export interface IncrementalParseState {
+  /** The CHUNK's own text — excludes the phantom suffix. */
   content: string;
-  /** Post-transform trees (transformStage mutates mdast in place; these are the settled shapes). */
+  /** The phantom suffix this state's trees were parsed with ('' standalone). */
+  phantomSuffix: string;
+  /** Post-transform trees (transformStage mutates mdast in place; these are
+   *  the settled shapes) — of `content + phantomSuffix`. */
   mdast: MdastRoot;
   hast: HastRoot;
   /** Scan boundary at the frame that produced these trees. */
@@ -77,6 +81,14 @@ export interface AdvanceOptions {
   depsKey: readonly unknown[];
   /** Whether remark-definition-list is active (config extraSyntaxSupported). */
   defListEnabled: boolean;
+  /** Cross-chunk phantom-definition suffix (coordinated mode) — appended to
+   *  the parse input but NEVER frozen: the append gate, boundary scan, and
+   *  prefix cut all see `content` alone, and the suffix re-parses with the
+   *  tail every frame. It may shrink/grow/reorder between frames (registry
+   *  label churn) without invalidating the frozen prefix — the reference
+   *  taint keeps every phantom-resolved ref in the tail (a phantom's def is
+   *  never IN `content`, so such refs never settle). '' when standalone. */
+  phantomSuffix?: string;
   /** Optional stage-timing wrapper (the component passes measureStage). */
   measure?: <T>(stage: IncrementalStage, fn: () => T) => T;
 }
@@ -116,11 +128,15 @@ export function advanceIncrementalParse(
   options: AdvanceOptions
 ): AdvanceResult {
   const measure = options.measure ?? identityMeasure;
+  const phantomSuffix = options.phantomSuffix ?? '';
   const sameDeps = prev !== null && depsKeyEqual(prev.depsKey, options.depsKey);
 
-  // Zero-scan short-circuit — identical content reuses the whole previous
-  // state verbatim (registry version bumps, unrelated re-renders).
-  if (sameDeps && content === prev!.content) {
+  // Zero-scan short-circuit — identical content AND suffix reuse the whole
+  // previous state verbatim (registry version bumps, unrelated re-renders).
+  // A suffix-only change falls through: the scan resume over unchanged
+  // content is ~free, and the tail (which always contains the suffix)
+  // re-parses with the new one.
+  if (sameDeps && content === prev!.content && phantomSuffix === prev!.phantomSuffix) {
     return {
       mdast: prev!.mdast,
       hast: prev!.hast,
@@ -149,6 +165,7 @@ export function advanceIncrementalParse(
     boundary,
     nextState: {
       content,
+      phantomSuffix,
       mdast,
       hast,
       stableBoundary: freshBoundary,
@@ -158,7 +175,7 @@ export function advanceIncrementalParse(
   });
 
   const fullPath = (): AdvanceResult => {
-    const { mdast, hast } = runPipeline(content, options);
+    const { mdast, hast } = runPipeline(content + phantomSuffix, options);
     return finish(mdast, hast, false, 0);
   };
 
@@ -181,7 +198,7 @@ export function advanceIncrementalParse(
   // take the full path this frame rather than splice without it (A3).
   if (plan.uninjectable) return fullPath();
   const injection = buildInjectionPrefix(plan.events);
-  const tailSource = injection.text + content.slice(boundary);
+  const tailSource = injection.text + content.slice(boundary) + phantomSuffix;
   const tail = runPipeline(tailSource, options);
   const spliced = spliceTrees({
     prevMdast: prev!.mdast,

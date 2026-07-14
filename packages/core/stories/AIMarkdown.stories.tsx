@@ -8,6 +8,7 @@ import { useStreamedContent } from './streamingHelpers';
 import { StreamingPlayground } from './streaming/StreamingPlayground';
 import { BlockMemoComparison } from './streaming/BlockMemoComparison';
 import { IncrementalParseComparison } from './streaming/IncrementalParseComparison';
+import { CrossChunkIncrementalComparison } from './streaming/CrossChunkIncrementalComparison';
 import { IsolatedComparison } from './streaming/IsolatedComparison';
 import { IsolatedSide } from './streaming/IsolatedSide';
 import { DEFAULT_PAYLOAD } from './streaming/scenarios';
@@ -201,6 +202,29 @@ export const IncrementalParseCompare: Story = {
     const currentTheme = context.globals.theme === 'dark' ? 'dark' : 'light';
     return (
       <IncrementalParseComparison
+        colorScheme={currentTheme}
+        initialScenario="randomTokens"
+        payload={args.content ?? DEFAULT_PAYLOAD}
+      />
+    );
+  },
+};
+
+/**
+ * Cross-chunk (coordinated) A/B for `incrementalParseEnabled` — each side is
+ * an `<AIMarkdownDocuments>` document rendered as three chunks sharing one
+ * documentId, streamed sequentially. Chunks 2/3 reference labels defined in
+ * chunk 1, so the flag-on side's parse inputs carry a registry-driven
+ * phantom suffix that churns mid-stream — the exact regime v1 excluded.
+ * Per-frame DOM equality between the sides (clobber prefixes normalized)
+ * must stay at 0 mismatches.
+ */
+export const CrossChunkIncrementalCompare: Story = {
+  ...comparisonStoryBase,
+  render: (args, context) => {
+    const currentTheme = context.globals.theme === 'dark' ? 'dark' : 'light';
+    return (
+      <CrossChunkIncrementalComparison
         colorScheme={currentTheme}
         initialScenario="randomTokens"
         payload={args.content ?? DEFAULT_PAYLOAD}
