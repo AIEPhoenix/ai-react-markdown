@@ -6,6 +6,16 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 ---
 
+## 1.6.x — Incremental parsing
+
+### 1.6.0 — Experimental prefix-freeze parsing for streaming
+
+- New `config.incrementalParseEnabled` (default `false`, requires `blockMemoEnabled`): during append-only streaming, the renderer freezes the stable prefix of the document at a verified-safe boundary, re-parses only the tail, and splices the previous frame's mdast/hast with the tail's — cutting the per-frame parse/transform cost to roughly the tail's share (~70–89% less stage time on the benchmark payloads; the freeze boundary covers ~73–87% of realistic LLM output). Block-memo cache keys are position-based, so the two optimizations compose: frozen blocks stay cache hits.
+- Safety is falsified, not assumed: a splice-equivalence suite asserts the spliced trees are deep-equal (positions included) to a full parse, per streaming frame, across the plugin-permutation catalog and adversarial fixtures (loose lists, rehype-raw swallow containers, open `$$` math, late reference/footnote definitions, definition-list term claims, Unicode case-folded labels, CRLF). A Storybook play test additionally pins the live-DOM equality of flag-on vs flag-off streams in a real browser.
+- Every frame re-checks a gate chain and silently falls back to the ordinary full parse when it can't prove safety: cross-chunk (`<AIMarkdownDocuments>`) mode, any `[^` in the content (single-doc footnote numbering is parse-local), non-append content changes, or no freeze-safe boundary yet. SSR always takes the full path. See the new "Incremental parse (prefix-freeze)" section in `docs/streaming-and-performance.md`.
+- Dev stage telemetry gains an `ai-markdown:stage:scan` measure (the boundary detector), and `parse`/`transform` now report tail-only time when a frame spliced. The `BlockMemoComparison` benchmark story gains an `incremental` toggle on the block-memo side.
+- The measurement study behind the design ships as `packages/core/src/experiments/prefixFreeze/` (ablation ladder L0–L4 with falsification tables — including why the double-blank-line rule that inspired this feature freezes 0% of typical single-blank LLM output).
+
 ## 1.5.x — Mantine 9
 
 ### 1.5.1 — Streaming robustness: raw-HTML swallow and mermaid lifecycle

@@ -92,6 +92,53 @@ In production for streaming workloads: **leave it on**.
 
 ---
 
+## Incremental parse (prefix-freeze) — experimental
+
+> `config.incrementalParseEnabled` — default `false`. Effective only when `blockMemoEnabled` is `true`.
+
+Block memoization removes re-*render* work, but `unified.parse` still runs over the **full document** every streaming frame — for long documents the parse/transform stages dominate the per-token budget (see Profiling below). Incremental parsing attacks exactly that: when content grows by appends (the normal streaming shape), the renderer freezes the **stable prefix** of the document at a verified-safe boundary, re-parses only the tail, and splices the previous frame's trees with the tail's.
+
+```tsx
+<AIMarkdown content={content} streaming={!done} config={{ incrementalParseEnabled: true }} />
+```
+
+### The freeze boundary
+
+A boundary is the last **confirmed blank line** (its terminating newline must exist — a trailing partial line may still receive characters) outside fenced code, additionally blocked by:
+
+- **Unbalanced raw HTML / open `<!--` comment** — an unclosed container makes rehype-raw reparent every later sibling into it (the v1.5.1 swallow class), so prefix *text* stability does not imply prefix *output* stability.
+- **Open `$$` flow math** — remark-math swallows blank lines until the closing delimiter.
+- **List / footnote-definition / definition-list continuation context** — CommonMark lists are not terminated by blank lines (not even two); later indented lines retroactively extend them. With `DEFINITION_LIST` enabled, a `: description` line can additionally claim the paragraph above it **across one blank line**, so a single-blank candidate only settles once the next line is confirmed unable to become a `: ` line.
+- **Reference taint** — micromark resolves reference-ness at parse time: a late `[label]:` definition retargets earlier literal `[text]`. Every reference-style candidate in the prefix must resolve against a *settled* definition (one already followed by a blank line). Labels match with micromark's own Unicode case folding.
+
+The splice runs the tail through the same plugin chain (prefix link/image definitions are re-injected in front of the tail so its references still resolve, then stripped from the output) and re-bases tail positions into document coordinates. The contract — enforced by a dedicated falsification suite (`spliceEquivalence.test.ts`), not assumed — is that the spliced `{mdast, hast}` is **deep-equal, positions included**, to a full parse of the same content. Block-memo cache keys are position-based, so the two optimizations compose: frozen blocks stay cache hits.
+
+### Automatic fallback (when the flag does nothing)
+
+Every frame re-checks a gate chain; any failure silently takes the ordinary full-parse path for that frame — output is always identical either way:
+
+| Condition                                                     | Why                                                                                        |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Inside `<AIMarkdownDocuments>` (cross-chunk mode)             | Coordinated parses use phantom-augmented sources and registry contributions — not modeled  |
+| Content contains `[^` anywhere                                | Single-doc footnote numbering is parse-local; correct incremental numbering needs registry-grade machinery |
+| Content change is not a pure append                           | Includes Stage-A preprocessor rewrites near the stream end (e.g. unclosed-`$$` truncation) |
+| No freeze-safe boundary yet                                   | e.g. one giant paragraph, or an open fence/container since the start                        |
+| Plugin arrays / handlers / `documentId` changed identity      | The engine's own deps check — wider than the block-memo cache flush                          |
+
+SSR always takes the full path (per-request state starts empty), so server output is untouched by the flag.
+
+### Measured effect
+
+On the Storybook benchmark payloads, the freeze boundary covers ~73–87% of realistic LLM streaming content, cutting the parse+transform stages to roughly the tail's share (~70–89% less stage time in the measurement study — see `packages/core/src/experiments/prefixFreeze/README.md` for the full methodology and falsification tables). Use the `BlockMemoComparison` story's `incremental` toggle and its pipeline-stage panel to measure your own payloads.
+
+### Footguns
+
+- **Boundary advancement lags one frame by design.** The splice boundary is `min(current, previous frame's)` — the previous boundary is the one whose stability the falsification property actually guarantees for the previous frame's trees. Don't "optimize" the `min` away: a shortcut reference rendered literal last frame must not be frozen the moment its definition arrives.
+- **Ref-heavy or footnote-heavy content sees little benefit.** The reference-taint blocker and the `[^` bypass are safety features, not bugs; tainted content re-parses fully, exactly as with the flag off.
+- The tail re-parse still costs O(tail); a document that never emits a blank line degrades gracefully to full parses.
+
+---
+
 ## Reference stability across props
 
 Block-memoization treats several props as cache dependencies. A new identity on any of them invalidates the entire document cache:
@@ -212,8 +259,11 @@ In development builds, the block-memo render path emits one
 entry per pipeline stage per content change, named:
 
 ```
-ai-markdown:stage:parse      # unified.parse over the full document
-ai-markdown:stage:transform  # remark/rehype transformer run
+ai-markdown:stage:scan       # incremental-parse boundary detector (only when
+                             # incrementalParseEnabled routes through the engine)
+ai-markdown:stage:parse      # unified.parse — full document, or TAIL-ONLY when
+                             # incremental parsing spliced this frame
+ai-markdown:stage:transform  # remark/rehype transformer run (same full/tail split)
 ai-markdown:stage:build      # block-plan construction
 ai-markdown:stage:render     # per-block render with cache lookup
 ```
