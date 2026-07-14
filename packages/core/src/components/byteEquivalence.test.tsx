@@ -147,12 +147,13 @@ function renderLegacy(md: string, config: PluginConfig): string {
   );
 }
 
-function renderNew(md: string, config: PluginConfig, blockMemoEnabled = true): string {
+function renderNew(md: string, config: PluginConfig, blockMemoEnabled = true, incrementalParseEnabled = false): string {
   const cfg: AIMarkdownRenderConfig = {
     extraSyntaxSupported: config.extras,
     displayOptimizeAbilities: config.display,
     blockMemoEnabled,
     preserveOrphanReferences: true,
+    incrementalParseEnabled,
   };
   return renderToStaticMarkup(
     <AIMarkdownRenderStateProvider
@@ -285,6 +286,37 @@ describe('byte-equivalence: blockMemoEnabled toggle produces identical output', 
       const enabled = renderNew(md, config, true);
       const disabled = renderNew(md, config, false);
       expect(enabled).toBe(disabled);
+    });
+  }
+});
+
+// ── incrementalParseEnabled toggle ─────────────────────────────────────────
+//
+// One-shot SSR renders can NEVER exercise the incremental splice path: the
+// per-instance state ref starts empty every render, so `advanceIncrementalParse`
+// takes its internal full path (that is also why SSR correctness is untouched
+// by the flag). This block therefore guards exactly one property: turning the
+// flag ON does not perturb one-shot output. Frame-by-frame splice correctness
+// is owned by `incrementalParse/spliceEquivalence.test.ts` (the arbiter) and
+// the streaming Storybook play test.
+
+describe('byte-equivalence: incrementalParseEnabled toggle produces identical output', () => {
+  const toggleCases: Array<[string, PluginConfig, string]> = [
+    ['single block', baselineConfig, 'Hello'],
+    ['multi-block prose', baselineConfig, 'Hello\n\nWorld\n\nAgain'],
+    ['multi-root raw HTML (shared mdast)', baselineConfig, '<div>A</div><div>B</div>'],
+    ['footnote section (bypass path)', baselineConfig, 'See[^x].\n\n[^x]: hello'],
+    [
+      'kitchen sink with all plugins',
+      defaultConfig,
+      '# Title\n\nIntro with ==mark==.\n\nTerm\n:   Definition.\n\nSee[^x].\n\n[^x]: footnote.',
+    ],
+  ];
+  for (const [label, config, md] of toggleCases) {
+    test(`${label} — incremental on === off`, () => {
+      const on = renderNew(md, config, true, true);
+      const off = renderNew(md, config, true, false);
+      expect(on).toBe(off);
     });
   }
 });
