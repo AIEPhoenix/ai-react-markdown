@@ -1,0 +1,178 @@
+/**
+ * Unit tests for the production freeze-boundary detector. The experiment's
+ * falsification suite (experiments/prefixFreeze) validated the L4 rule
+ * against the real pipeline; these tests pin the DETECTOR's own contract —
+ * blockers, settledness, monotonicity, and the config-aware definition-list
+ * blockers that the experiment did not cover (H3).
+ */
+
+import { describe, expect, test } from 'vitest';
+
+import { computeFreezeBoundary } from './computeFreezeBoundary';
+
+const OFF = { defListEnabled: false };
+const ON = { defListEnabled: true };
+
+describe('computeFreezeBoundary — basics', () => {
+  test('single blank line between paragraphs is a boundary', () => {
+    const text = 'para one\n\npara two\n\npara three';
+    // Last candidate wins: after 'para two\n\n'.
+    expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('para three'));
+  });
+
+  test('empty and single-block content freezes nothing', () => {
+    expect(computeFreezeBoundary('', OFF)).toBe(0);
+    expect(computeFreezeBoundary('just one paragraph', OFF)).toBe(0);
+  });
+
+  test('a trailing blank line is only a boundary once its newline exists', () => {
+    // 'para\n\n' — the blank line IS terminated (second \n present).
+    expect(computeFreezeBoundary('para\n\n', OFF)).toBe(6);
+    // 'para\n' — line 2 does not exist yet; nothing confirmed blank.
+    expect(computeFreezeBoundary('para\n', OFF)).toBe(0);
+    // 'para\n\n   ' — trailing spaces-only line is UNCONFIRMED, but the
+    // confirmed blank before it still counts.
+    expect(computeFreezeBoundary('para\n\n   ', OFF)).toBe(6);
+  });
+
+  test('boundary is monotonic across appends', () => {
+    const full =
+      'alpha\n\nbeta with **bold**\n\n```js\ncode block\n```\n\n- item\n- item two\n\ncol zero closes\n\nfinal paragraph\n';
+    let prev = 0;
+    for (let i = 1; i <= full.length; i++) {
+      const b = computeFreezeBoundary(full.slice(0, i), OFF);
+      expect(b, `regression at length ${i}`).toBeGreaterThanOrEqual(prev);
+      prev = b;
+    }
+  });
+});
+
+describe('computeFreezeBoundary — fence and math blockers', () => {
+  test('blank lines inside an open fence are not candidates', () => {
+    const text = 'para\n\n```js\nline\n\nmore\n';
+    expect(computeFreezeBoundary(text, OFF)).toBe(6);
+  });
+
+  test('closing the fence re-enables later candidates', () => {
+    const text = 'para\n\n```js\ncode\n```\n\nafter\n\ntail';
+    expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('tail'));
+  });
+
+  test('blank lines inside an open $$ block are blocked (math swallows blanks)', () => {
+    const text = 'para\n\n$$\na = 1\n\nb = 2\n';
+    expect(computeFreezeBoundary(text, OFF)).toBe(6);
+  });
+});
+
+describe('computeFreezeBoundary — raw HTML blockers', () => {
+  test('an unclosed container blocks candidates until it closes', () => {
+    const open = '<details>\n\npara one\n\npara two\n';
+    expect(computeFreezeBoundary(open, OFF)).toBe(0);
+    const closed = '<details>\n\npara\n\n</details>\n\ntail\n\nend';
+    expect(computeFreezeBoundary(closed, OFF)).toBe(closed.indexOf('end'));
+  });
+
+  test('an unclosed <!-- comment blocks; --> unblocks', () => {
+    expect(computeFreezeBoundary('<!-- note\n\npara\n\nmore\n', OFF)).toBe(0);
+    const closed = 'a\n\n<!-- note -->\n\ntail';
+    expect(computeFreezeBoundary(closed, OFF)).toBe(closed.indexOf('tail'));
+  });
+
+  test('line-truncated open tags block (multi-line tag syntax)', () => {
+    // `<div` + EOL opens a CommonMark html block; parse5 completes the tag
+    // across lines and the container swallows later siblings.
+    expect(computeFreezeBoundary('<div\n  class="x">\n\npara one\n\npara two\n', OFF)).toBe(0);
+    // Attributes continuing on the next line — the `>` is off-line too.
+    expect(computeFreezeBoundary('<div class="a"\n  data-x="y">\n\npara\n\nmore\n', OFF)).toBe(0);
+    // Truncated CLOSING tag balances a truncated open.
+    const closed = '<div\n>\ncontent\n</div\n>\n\ntail\n\nend';
+    expect(computeFreezeBoundary(closed, OFF)).toBe(closed.indexOf('end'));
+  });
+
+  test('void and self-closing tags do not block', () => {
+    const text = 'an image <img src="x"> and <br/> here\n\ntail';
+    expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('tail'));
+  });
+
+  test('autolinks are not treated as tags', () => {
+    const text = 'see <https://example.com> now\n\ntail';
+    expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('tail'));
+  });
+});
+
+describe('computeFreezeBoundary — continuation blockers', () => {
+  test('list context blocks even across a double blank; column-0 paragraph terminates it', () => {
+    const inList = '- item one\n\n\n- item two\n\n';
+    expect(computeFreezeBoundary(inList, OFF)).toBe(0);
+    const terminated = '- item one\n\ncol zero paragraph\n\ntail';
+    expect(computeFreezeBoundary(terminated, OFF)).toBe(terminated.indexOf('tail'));
+  });
+
+  test('footnote definition context blocks (defensive; caller bypasses [^ anyway)', () => {
+    expect(computeFreezeBoundary('[^n]: body\n\n', OFF)).toBe(0);
+  });
+});
+
+describe('computeFreezeBoundary — reference taint', () => {
+  test('an unresolved shortcut ref holds the boundary before it', () => {
+    const text = 'see [spec] for details\n\nfiller one\n\nfiller two\n';
+    expect(computeFreezeBoundary(text, OFF)).toBe(0);
+  });
+
+  test('a settled definition releases the taint', () => {
+    // NOTE: the closing word must not be a substring of earlier text
+    // ('tail' ⊂ 'details' bit us once).
+    const text = 'see [spec] for details\n\n[spec]: https://example.com\n\nzzz';
+    expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('zzz'));
+  });
+
+  test('an unsettled definition (no blank after) does not release', () => {
+    const text = 'see [spec] here\n\nfiller\n\n[spec]: https://example.com';
+    expect(computeFreezeBoundary(text, OFF)).toBe(0);
+  });
+
+  test('labels are matched with micromark case folding, not toLowerCase', () => {
+    // micromark's normalizeIdentifier folds 'ß' → 'SS' (toLowerCase would not),
+    // so the def below DOES resolve the ref and the boundary may advance.
+    const folded = 'see [ß] here\n\n[SS]: https://example.com\n\ntail';
+    expect(computeFreezeBoundary(folded, OFF)).toBe(folded.indexOf('tail'));
+  });
+
+  test('inline links and definitions themselves are not taint', () => {
+    const text = 'a [link](https://example.com) here\n\n[def]: https://example.com\n\ntail';
+    expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('tail'));
+  });
+});
+
+describe('computeFreezeBoundary — definition-list blockers (H3)', () => {
+  test("a single-blank candidate is blocked until the next line can't be a `: desc`", () => {
+    // No next line yet → the block above could still be claimed as a <dt>.
+    expect(computeFreezeBoundary('Term\n\n', ON)).toBe(0);
+    // Same text without the extension is freely freezable.
+    expect(computeFreezeBoundary('Term\n\n', OFF)).toBe(6);
+    // Next line confirmed non-`:` → settled.
+    const settled = 'Term\n\nnext paragraph\n\ntail';
+    expect(computeFreezeBoundary(settled, ON)).toBe(settled.indexOf('tail'));
+  });
+
+  test('a `: desc` line claims across ONE blank; two blanks are immune', () => {
+    // Candidate after 'Term\n\n' must not be selected when ': desc' follows.
+    const claimed = 'Term\n\n: desc\n\nsomething at col zero\n\ntail';
+    // The ': desc' both invalidates the Term candidate (dd line) and is a
+    // continuation context for the candidate after itself; the col-zero
+    // paragraph terminates, so the last candidate before 'tail' survives —
+    // but only once its own next-line check settles (it has: 'tail').
+    expect(computeFreezeBoundary(claimed, ON)).toBe(claimed.indexOf('tail'));
+    // Double blank: the backward scan cannot cross two blank lines.
+    const immune = 'Term\n\n\nnot claimed\n\ntail';
+    expect(computeFreezeBoundary(immune, ON)).toBe(immune.indexOf('tail'));
+  });
+
+  test('partial trailing lines settle only when they contradict `^ {0,3}:[ \\t]`', () => {
+    expect(computeFreezeBoundary('Term\n\nx', ON)).toBe(6); // 'x' can never become ': '
+    expect(computeFreezeBoundary('Term\n\n:', ON)).toBe(0); // ':' may still grow a space
+    expect(computeFreezeBoundary('Term\n\n  ', ON)).toBe(0); // spaces may still grow ': '
+    expect(computeFreezeBoundary('Term\n\n:x', ON)).toBe(6); // ':x' can never match
+    expect(computeFreezeBoundary('Term\n\n    code', ON)).toBe(6); // indent 4 can never match
+  });
+});
