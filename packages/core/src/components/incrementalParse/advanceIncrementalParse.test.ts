@@ -96,11 +96,11 @@ describe('advanceIncrementalParse — gates', () => {
     expect(spliced.nextState.stableBoundary).toBe(full.nextState.stableBoundary);
   });
 
-  test('measure hook sees scan on every call and parse/transform on parse work', () => {
+  test('measure hook: scan runs once per new content, zero-scan short-circuits skip it', () => {
     const stages: string[] = [];
     const options = {
       ...BASE(),
-      measure: <T,>(stage: string, fn: () => T): T => {
+      measure: <T>(stage: string, fn: () => T): T => {
         stages.push(stage);
         return fn();
       },
@@ -108,7 +108,35 @@ describe('advanceIncrementalParse — gates', () => {
     const prev = advanceIncrementalParse(null, DOC, options).nextState;
     expect(stages).toEqual(['scan', 'parse', 'transform']);
     stages.length = 0;
-    advanceIncrementalParse(prev, DOC, options); // equal-content short-circuit
-    expect(stages).toEqual(['scan']);
+    advanceIncrementalParse(prev, DOC, options); // equal-content: whole state reused, NO scan
+    expect(stages).toEqual([]);
+  });
+
+  test('sticky footnote flag: append frames after [^ detection skip the scan entirely', () => {
+    const stages: string[] = [];
+    const options = {
+      ...BASE(),
+      measure: <T>(stage: string, fn: () => T): T => {
+        stages.push(stage);
+        return fn();
+      },
+    };
+    const withFn = 'a claim[^n] here.\n\n';
+    const s1 = advanceIncrementalParse(null, withFn, options).nextState;
+    expect(s1.sawFootnote).toBe(true);
+    stages.length = 0;
+    const r2 = advanceIncrementalParse(s1, `${withFn}more.\n`, options);
+    expect(r2.usedIncremental).toBe(false);
+    expect(stages).toEqual(['parse', 'transform']); // no 'scan' — the E1 fix
+    expect(r2.nextState.sawFootnote).toBe(true);
+  });
+
+  test('fence-guarded [^ does NOT disengage splicing (Alt2 fix)', () => {
+    const code = '```js\nconst re = /[^0-9]/;\n```\n\npara one.\n\n';
+    const prev = advanceIncrementalParse(null, code, BASE()).nextState;
+    expect(prev.sawFootnote).toBe(false);
+    const r = advanceIncrementalParse(prev, `${code}para two.\n`, BASE());
+    expect(r.usedIncremental).toBe(true);
+    expect(r.boundary).toBeGreaterThan(0);
   });
 });

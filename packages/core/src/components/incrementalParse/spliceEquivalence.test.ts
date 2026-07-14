@@ -184,6 +184,27 @@ describe('splice equivalence — adversarial fixtures', () => {
     assertStreamEquivalence('loose-list', chunkSnapshots(payload, 6), BASELINE);
   });
 
+  test('review-confirmed detector corners A1-A6 (2026-07-15)', () => {
+    // Each of these once produced real splice/full divergence (probe
+    // MISMATCH) before its blocker landed; see the review record in the
+    // engine memory. A6 exercises the stripped-node fallback: a `<?…?>`
+    // becomes a parse5 bogus comment that sanitize strips, so the engine
+    // must decline to splice rather than mis-count wrap separators.
+    const corners: Array<[string, string, number]> = [
+      ['A1-indented-code-merge', '    a\n\n    b\n\ncol zero\n\ntail.\n', 3],
+      ['A2-def-on-continuation-line', '[a]\n\npara\n[a]: /x\n\nmore\n\n[a]: /y\n\nz [a]\n', 4],
+      ['A3-blockquote-nested-def', '> [a]: /url\n\ntext\n\n[a]\n\nafter.\n', 4],
+      ['A4-midline-math-close', '$$\na $$\nb\n$$\n\nafter math.\n', 3],
+      ['A5-fence-info-backtick', '```a``` b\n<div>\nc\n</div>\n\nafter.\n', 4],
+      ['A6-html-type3-pi', '<?data\n\nmore\n?>\n\nafter.\n', 3],
+    ];
+    for (const [name, payload, chunk] of corners) {
+      for (const config of [BASELINE, ALL_ON]) {
+        assertStreamEquivalence(name, chunkSnapshots(payload, chunk), config);
+      }
+    }
+  });
+
   test('multi-line open tag (line-truncated `<div`) swallow class', () => {
     // `<div` + EOL opens an html block whose tag completes on the NEXT line;
     // the single-line tag scan used to miss it (6 mismatching frames before
@@ -221,7 +242,8 @@ describe('splice equivalence — adversarial fixtures', () => {
   });
 
   test('CRLF line endings', () => {
-    const payload = 'para one.\r\n\r\npara two with **bold**.\r\n\r\n- item\r\n- item two\r\n\r\ncol zero.\r\n\r\ntail.\r\n';
+    const payload =
+      'para one.\r\n\r\npara two with **bold**.\r\n\r\n- item\r\n- item two\r\n\r\ncol zero.\r\n\r\ntail.\r\n';
     assertStreamEquivalence('crlf', chunkSnapshots(payload, 9), BASELINE);
   });
 

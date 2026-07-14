@@ -202,9 +202,8 @@ describe('prefix-freeze measurement', () => {
       });
     }
 
-     
     console.table(coverageRows);
-     
+
     console.table(costRows);
   }, 120_000);
 });
