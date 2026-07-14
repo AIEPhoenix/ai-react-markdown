@@ -79,7 +79,10 @@ const ENABLED: boolean =
     }
   })();
 
-type StageListener = (stage: PipelineStage, durationMs: number) => void;
+/** `instanceId` is the emitting `<AIMarkdown>`'s documentId — listeners on a
+ *  page with several instances (e.g. an A/B comparison where BOTH sides run
+ *  the block-memo path) filter by it; a page-wide aggregate ignores it. */
+type StageListener = (stage: PipelineStage, durationMs: number, instanceId?: string) => void;
 const stageListeners = new Set<StageListener>();
 
 /**
@@ -113,12 +116,12 @@ export function subscribeStageTimings(listener: StageListener): () => void {
  * module docs: `clearMeasures(name)` is O(page buffer), and React 19
  * dev's component tracks grow that buffer without bound.
  */
-export function measureStage<T>(stage: PipelineStage, fn: () => T): T {
+export function measureStage<T>(stage: PipelineStage, fn: () => T, instanceId?: string): T {
   if (!ENABLED) return fn();
   const start = performance.now();
   const result = fn();
   const end = performance.now();
-  for (const listener of stageListeners) listener(stage, end - start);
+  for (const listener of stageListeners) listener(stage, end - start, instanceId);
   // Probe-verified call — no per-call try/catch needed.
   performance.measure(STAGE_NAMES[stage], { start, end });
   return result;

@@ -7,6 +7,7 @@ import { withThemedBackground } from './decorators';
 import { useStreamedContent } from './streamingHelpers';
 import { StreamingPlayground } from './streaming/StreamingPlayground';
 import { BlockMemoComparison } from './streaming/BlockMemoComparison';
+import { IncrementalParseComparison } from './streaming/IncrementalParseComparison';
 import { IsolatedComparison } from './streaming/IsolatedComparison';
 import { IsolatedSide } from './streaming/IsolatedSide';
 import { DEFAULT_PAYLOAD } from './streaming/scenarios';
@@ -182,6 +183,43 @@ export const BlockMemoCompare: Story = {
     const currentTheme = context.globals.theme === 'dark' ? 'dark' : 'light';
     return (
       <BlockMemoComparison
+        colorScheme={currentTheme}
+        initialScenario="randomTokens"
+        payload={args.content ?? DEFAULT_PAYLOAD}
+      />
+    );
+  },
+};
+
+/**
+ * A/B for `incrementalParseEnabled` — BOTH columns run block-memo; the only
+ * difference is the incremental-parse flag. The attribution-clean signal is
+ * the per-side scan/parse/transform stage table (instance-scoped via the
+ * stage channel's documentId): with the flag on, parse should drop to the
+ * tail's share on append-heavy scenarios. A built-in verifier deep-compares
+ * the two columns' live DOM every streamed frame — the mismatch counter
+ * staying 0 is the splice-equivalence contract observed end-to-end. Flip
+ * `defs` ON to watch the footnote fallback disengage the feature honestly.
+ */
+export const IncrementalParseCompare: Story = {
+  args: {
+    content: DEFAULT_PAYLOAD,
+  },
+  argTypes: {
+    content: {
+      control: 'text',
+      description: 'Markdown payload streamed by every scenario. Edit to test your own content.',
+    },
+    streaming: { table: { disable: true } },
+  },
+  parameters: {
+    controls: { exclude: ['streaming'] },
+    layout: 'fullscreen',
+  },
+  render: (args, context) => {
+    const currentTheme = context.globals.theme === 'dark' ? 'dark' : 'light';
+    return (
+      <IncrementalParseComparison
         colorScheme={currentTheme}
         initialScenario="randomTokens"
         payload={args.content ?? DEFAULT_PAYLOAD}

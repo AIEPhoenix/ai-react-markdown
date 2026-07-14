@@ -171,11 +171,19 @@ export interface RenderProfilerOptions {
   /**
    * Aggregate the block-memo pipeline's stage timings into
    * `snapshot.stages` via devStageTimings' subscription channel. The
-   * channel is PAGE-WIDE — in a same-page comparison only ONE profiler
-   * (the block-memo side's) should subscribe, or both panels would
-   * display the same union. Default `false`.
+   * channel is PAGE-WIDE — in a same-page comparison either only ONE
+   * profiler (the block-memo side's) should subscribe, or each subscriber
+   * must scope itself with `stageInstanceId`. Default `false`.
    */
   observeStages?: boolean;
+  /**
+   * Scope `observeStages` to one `<AIMarkdown>` instance: only stage
+   * emissions whose instanceId (the instance's documentId) matches are
+   * aggregated. Required when BOTH comparison sides run the block-memo
+   * path (e.g. the incremental-parse A/B) — without it the two panels
+   * would display the same union.
+   */
+  stageInstanceId?: string;
 }
 
 export interface RenderProfilerHandle<T extends HTMLElement = HTMLElement> {
@@ -369,6 +377,7 @@ export function useRenderProfiler<T extends HTMLElement = HTMLElement>(
   const snapshotMs = opts?.snapshotIntervalMs ?? 100;
   const running = opts?.running ?? true;
   const observeStages = opts?.observeStages ?? false;
+  const stageInstanceId = opts?.stageInstanceId;
 
   // Lazy initialization to avoid calling `performance.now()` during render
   // (would trip React Compiler purity checks).
@@ -612,7 +621,8 @@ export function useRenderProfiler<T extends HTMLElement = HTMLElement>(
   // otherwise both panels would show the same union.
   useEffect(() => {
     if (!observeStages) return;
-    return subscribeStageTimings((stage, duration) => {
+    return subscribeStageTimings((stage, duration, instanceId) => {
+      if (stageInstanceId !== undefined && instanceId !== stageInstanceId) return;
       const acc = accumRef.current;
       if (!acc) return;
       const s = (acc.stages[stage] ??= { count: 0, total: 0, max: 0 });
@@ -620,7 +630,7 @@ export function useRenderProfiler<T extends HTMLElement = HTMLElement>(
       s.total += duration;
       if (duration > s.max) s.max = duration;
     });
-  }, [observeStages]);
+  }, [observeStages, stageInstanceId]);
 
   // PerformanceObserver longtask — main-thread blocks ≥ 50 ms, the kind
   // that produce visible jank. Page-wide (not per-side), so when two
