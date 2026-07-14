@@ -26,6 +26,44 @@ const fmtPct = (n: number) => (Number.isFinite(n) && !Number.isNaN(n) ? `${(n * 
 
 const fmtSigned = (n: number, digits = 1) => `${n >= 0 ? '+' : '−'}${fmt(Math.abs(n), digits)}`;
 
+/**
+ * Labels for the comparison axis. The verdict/summary/history components are
+ * measurement-generic (two snapshots in, prose out); these labels let the
+ * ISOLATED host reuse them for the incremental-parse A/B without forking
+ * the copy. Same-page BlockMemoComparison always uses the block-memo axis.
+ */
+export interface ComparisonAxisLabels {
+  /** Noun used in verdict prose. */
+  subject: string;
+  /** Column headers in the summary table. */
+  onLabel: string;
+  offLabel: string;
+  /** Hint for the element-renders row when spies are on. */
+  spyHint: string;
+  /** Hint for the DOM-mutations row. */
+  domHint: string;
+}
+
+export const BLOCK_MEMO_AXIS: ComparisonAxisLabels = {
+  subject: 'block-memo',
+  onLabel: 'blockMemo on',
+  offLabel: 'blockMemo off',
+  spyHint:
+    'spy customComponents count each invocation; block-memo skips invoking cached subtrees → the cleanest react-scan-style measure. NOTE: the spies themselves add cost proportional to this count, slightly inflating the legacy side’s commit times.',
+  domHint:
+    'expected to match — React’s reconciler already skips DOM for unchanged subtrees in BOTH paths. Block-memo saves the JS decision cost (commit ms), not the DOM op. Treat large divergence as a bug signal.',
+};
+
+export const INCREMENTAL_AXIS: ComparisonAxisLabels = {
+  subject: 'incremental parse',
+  onLabel: 'incremental on',
+  offLabel: 'incremental off',
+  spyHint:
+    'both sides run block-memo, so component invocation counts should MATCH — incremental parsing saves parse time, not render work. A persistent delta here is a bug signal, not a win.',
+  domHint:
+    'must match — the flag is contractually invisible in output (splice equivalence). Treat ANY divergence as a bug signal.',
+};
+
 interface SummaryStat {
   label: string;
   enabled: string;
@@ -433,7 +471,8 @@ export function computeSummary(
   sameConfigRuns: RunRecord[],
   /** True when the two sides run in separate processes (cross-site iframes):
    *  frame/jank signals are then genuinely per-side and get a winner. */
-  isolated = false
+  isolated = false,
+  axis: ComparisonAxisLabels = BLOCK_MEMO_AXIS
 ): ComparisonSummary {
   const bothActive = enabled.actual.count > 0 && disabled.actual.count > 0;
   const totalDelta = disabled.actual.total - enabled.actual.total;
@@ -493,9 +532,7 @@ export function computeSummary(
       disabled: spyEnabled ? String(disabled.elementRenders.total) : 'spy off',
       delta: spyEnabled ? deltaStr(enabled.elementRenders.total, disabled.elementRenders.total, 0) : '—',
       winner: spyEnabled ? pickWinner(enabled.elementRenders.total, disabled.elementRenders.total) : undefined,
-      hint: spyEnabled
-        ? 'spy customComponents count each invocation; block-memo skips invoking cached subtrees → the cleanest react-scan-style measure. NOTE: the spies themselves add cost proportional to this count, slightly inflating the legacy side’s commit times.'
-        : 'spies disabled — clean-timing mode. Re-enable to count component invocations.',
+      hint: spyEnabled ? axis.spyHint : 'spies disabled — clean-timing mode. Re-enable to count component invocations.',
     },
     {
       label: 'DOM mutations',
@@ -503,7 +540,7 @@ export function computeSummary(
       disabled: String(disabled.dom.total),
       delta: deltaStr(enabled.dom.total, disabled.dom.total, 0),
       // No winner: this metric SHOULD match between the two paths.
-      hint: 'expected to match — React’s reconciler already skips DOM for unchanged subtrees in BOTH paths. Block-memo saves the JS decision cost (commit ms), not the DOM op. Treat large divergence as a bug signal.',
+      hint: axis.domHint,
     },
     {
       label: 'slow frames (<30fps)',
@@ -554,6 +591,7 @@ export const VerdictBanner = memo(function VerdictBanner({
   spyEnabled,
   colorScheme,
   isolated = false,
+  axis = BLOCK_MEMO_AXIS,
 }: {
   summary: ComparisonSummary;
   sameConfigRuns: RunRecord[];
@@ -563,6 +601,7 @@ export const VerdictBanner = memo(function VerdictBanner({
   spyEnabled: boolean;
   colorScheme: ColorScheme;
   isolated?: boolean;
+  axis?: ComparisonAxisLabels;
 }) {
   const theme = getStreamingTheme(colorScheme);
   if (!summary.bothActive) return null;
@@ -576,7 +615,7 @@ export const VerdictBanner = memo(function VerdictBanner({
   const details: string[] = [];
 
   if (summary.withinNoise) {
-    headline = `两边基本打平：这轮 block-memo ${d >= 0 ? '快' : '慢'}了 ${fmt(Math.abs(d), 1)} ms（${pct}），在本机的运行波动（约 ±${noise} ms）之内 —— 这个差值说明不了谁快谁慢。`;
+    headline = `两边基本打平：这轮 ${axis.subject} ${d >= 0 ? '快' : '慢'}了 ${fmt(Math.abs(d), 1)} ms（${pct}），在本机的运行波动（约 ±${noise} ms）之内 —— 这个差值说明不了谁快谁慢。`;
     if (payloadScale === 1 && payloadChars < 4000) {
       details.push(
         `当前内容只有 ${payloadChars.toLocaleString()} 字符 / ${payloadBlocks} 个块。内容越短，可复用的渲染就越少，而缓存本身的记账成本不变 —— 小文档打平是预期行为，不是坏事。想看真实收益，切到 4× 或 16× payload 再跑。`
@@ -584,7 +623,7 @@ export const VerdictBanner = memo(function VerdictBanner({
     }
   } else if (d > 0) {
     accent = theme.good;
-    headline = `block-memo 赢了：整轮少花 ${fmt(d, 1)} ms（省 ${pct}），超出噪音带（±${noise} ms），是真实差距。`;
+    headline = `${axis.subject} 赢了：整轮少花 ${fmt(d, 1)} ms（省 ${pct}），超出噪音带（±${noise} ms），是真实差距。`;
     if (summary.deltaP95 > 0.5) {
       details.push(`最卡的那 5% 次提交快了 ${fmt(summary.deltaP95, 1)} ms —— 这对应用户能感觉到的卡顿改善。`);
     }
@@ -593,7 +632,7 @@ export const VerdictBanner = memo(function VerdictBanner({
     }
   } else {
     accent = theme.bad;
-    headline = `这轮 block-memo 确实更慢：多花 ${fmt(Math.abs(d), 1)} ms（${pct}），超出噪音带（±${noise} ms）。`;
+    headline = `这轮 ${axis.subject} 确实更慢：多花 ${fmt(Math.abs(d), 1)} ms（${pct}），超出噪音带（±${noise} ms）。`;
     if (payloadScale === 1) {
       details.push(
         `小 payload 下这通常仍是"固定记账成本 > 可省工作量"的体现。先切到 16× 复测：如果大 payload 也稳定为负，才值得当回归去查。`
@@ -614,7 +653,7 @@ export const VerdictBanner = memo(function VerdictBanner({
   const footnotes = [
     '毫秒数来自 React dev 构建，绝对值偏大；只有左右两侧的相对差有意义。',
     spyEnabled
-      ? '组件计数 spy 是开着的：它对渲染次数多的一侧（通常是 legacy）拖累更大，会略微夸大 block-memo 的优势。要最干净的计时，关掉 spy 再跑。'
+      ? `组件计数 spy 是开着的：它对渲染次数多的一侧拖累更大，可能略微影响 ${axis.subject} 的相对优势。要最干净的计时，关掉 spy 再跑。`
       : '组件计数 spy 已关闭 —— 当前是最干净的计时模式。',
     isolated
       ? '两栏跑在两个独立进程（跨站 iframe）：线程、GC、帧率互不影响，fps / slow frames / long tasks 是真·每侧指标；但 CPU 核心、内存带宽、GPU、温控仍是整机共享的。'
@@ -672,10 +711,12 @@ export const RunHistory = memo(function RunHistory({
   runs,
   onClear,
   colorScheme,
+  axis = BLOCK_MEMO_AXIS,
 }: {
   runs: RunRecord[];
   onClear: () => void;
   colorScheme: ColorScheme;
+  axis?: ComparisonAxisLabels;
 }) {
   const theme = getStreamingTheme(colorScheme);
   if (runs.length === 0) return null;
@@ -707,7 +748,7 @@ export const RunHistory = memo(function RunHistory({
         >
           run history
         </span>
-        <span style={{ ...mono, color: theme.textMuted }}>Δ &gt; 0 = block-memo faster</span>
+        <span style={{ ...mono, color: theme.textMuted }}>Δ &gt; 0 = {axis.subject} faster</span>
         <button
           onClick={onClear}
           style={{
@@ -764,9 +805,11 @@ export const RunHistory = memo(function RunHistory({
 export const SummaryBanner = memo(function SummaryBanner({
   summary,
   colorScheme,
+  axis = BLOCK_MEMO_AXIS,
 }: {
   summary: ComparisonSummary;
   colorScheme: ColorScheme;
+  axis?: ComparisonAxisLabels;
 }) {
   const theme = getStreamingTheme(colorScheme);
   const banner: CSSProperties = {
@@ -826,7 +869,7 @@ export const SummaryBanner = memo(function SummaryBanner({
   return (
     <div style={banner}>
       <div style={headlineStyle}>
-        <span>Total React commit time saved by block-memo:</span>
+        <span>Total React commit time saved by {axis.subject}:</span>
         <span style={{ ...headlineValueStyle, color: headlineColor }}>
           {summary.totalCommitSavingsMs >= 0 ? '+' : '−'}
           {fmt(Math.abs(summary.totalCommitSavingsMs), 1)} ms
@@ -840,8 +883,8 @@ export const SummaryBanner = memo(function SummaryBanner({
 
       <div style={rowStyle}>
         <span style={headerCell}>metric</span>
-        <span style={headerCell}>blockMemo on</span>
-        <span style={headerCell}>blockMemo off</span>
+        <span style={headerCell}>{axis.onLabel}</span>
+        <span style={headerCell}>{axis.offLabel}</span>
         <span style={headerCell}>delta (on vs off)</span>
         {summary.stats.map((s) => (
           <Row
