@@ -283,6 +283,16 @@ const BlockMemoizedRenderer = memo(
     // to the React Compiler purity check (rule renamed across react-hooks
     // plugin versions, so the previous block disable no longer suppresses
     // anything in v7+). See design `/tmp/phase5-block-memo-decisions.md` §4.
+    // Every stage measurement in this component MUST carry this instance's
+    // documentId — a stageInstanceId-scoped subscriber silently drops
+    // unattributed emissions (the panel then shows "0 ms ×0", which reads
+    // as "stage never ran"). The bound wrapper makes forgetting impossible
+    // at call sites; do not call the bare measureStage here.
+    const measureHere = useCallback(
+      <T,>(stage: Parameters<typeof measureStage>[0], fn: () => T): T => measureStage(stage, fn, documentId),
+      [documentId]
+    );
+
     const cacheRef = useRef<Cache>(createCache());
     // Incremental-parse state (previous frame's content + post-transform
     // trees + verified freeze boundary). Render-phase ref mutation, same
@@ -488,18 +498,15 @@ const BlockMemoizedRenderer = memo(
         // Dev-only stage telemetry (`ai-markdown:stage:*` performance
         // measures; no-op in production). Wraps only the stage calls — the
         // surrounding option assembly is trivial.
-        const parsed = measureStage(
-          'parse',
-          () =>
-            parseStage({
-              children: augmented,
-              remarkPlugins,
-              rehypePlugins,
-              remarkRehypeOptions: mergedRemarkRehypeOptions,
-            }),
-          documentId
+        const parsed = measureHere('parse', () =>
+          parseStage({
+            children: augmented,
+            remarkPlugins,
+            rehypePlugins,
+            remarkRehypeOptions: mergedRemarkRehypeOptions,
+          })
         );
-        const hastRoot = measureStage('transform', () => transformStage(parsed), documentId);
+        const hastRoot = measureHere('transform', () => transformStage(parsed));
         return { mdast: parsed.mdast, hast: hastRoot };
       }
 
@@ -513,7 +520,7 @@ const BlockMemoizedRenderer = memo(
         // any G3 field — e.g. a `preserveOrphanReferences` flip).
         depsKey: [remarkPlugins, rehypePlugins, remarkRehypeOptions, handlers, preserveForBodyHarvest, documentId],
         defListEnabled: config.extraSyntaxSupported.includes(AIMarkdownRenderExtraSyntax.DEFINITION_LIST),
-        measure: (stage, fn) => measureStage(stage, fn, documentId),
+        measure: measureHere,
       });
       incrementalStateRef.current = result.nextState;
       return { mdast: result.mdast, hast: result.hast };
@@ -529,13 +536,14 @@ const BlockMemoizedRenderer = memo(
       config.incrementalParseEnabled,
       config.extraSyntaxSupported,
       registry,
+      measureHere,
     ]);
 
     // Cut hast into per-block units indexed back to mdast for cache identity,
     // and compute the document-wide ctx digest for cross-block invalidation.
     const built = useMemo(
-      () => measureStage('build', () => buildBlocks(pipeline.mdast, pipeline.hast, content ?? ''), documentId),
-      [pipeline, content, documentId]
+      () => measureHere('build', () => buildBlocks(pipeline.mdast, pipeline.hast, content ?? '')),
+      [pipeline, content, measureHere]
     );
 
     const postOptions = useMemo<PostOptions>(
@@ -692,10 +700,8 @@ const BlockMemoizedRenderer = memo(
     // Unlike the three memoized stages above, this runs on EVERY render —
     // its 'render' measures therefore include the cheap all-cache-hit
     // re-renders, which is the honest shape of what block-memo saves.
-    const rendered = measureStage(
-      'render',
-      () => renderBlocksWithCache(cacheRef, built.plan, built.globalCtx, postOptions),
-      documentId
+    const rendered = measureHere('render', () =>
+      renderBlocksWithCache(cacheRef, built.plan, built.globalCtx, postOptions)
     );
 
     // Cross-chunk URL sanitization policy — read by `CrossChunkLink` and
