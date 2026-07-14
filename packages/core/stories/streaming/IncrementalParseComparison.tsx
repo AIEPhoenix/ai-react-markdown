@@ -44,6 +44,25 @@ const OFF_CONFIG = { blockMemoEnabled: true, incrementalParseEnabled: false } as
 
 const PIPELINE_STAGES_SHOWN = ['scan', 'parse', 'transform'] as const;
 
+/**
+ * The two sides intentionally use DIFFERENT documentIds (that is what scopes
+ * the stage channel per side) — and documentId feeds the clobber prefix that
+ * rehype-sanitize/rehypeRebaseHashLinks stamp onto footnote ids and hash
+ * hrefs. The moment a footnote reference renders, the raw innerHTML of the
+ * two sides differs BY CONFIGURATION (`ipc-on-user-content-fn-1` vs
+ * `ipc-off-user-content-fn-1`), not by any splice defect. Normalize both
+ * prefixes to a shared token before comparing. Found in the field: a
+ * footnote-bearing payload lit the mismatch counter at the exact offset the
+ * first `[^` reference rendered, while the node-level arbiter proved the
+ * engine byte-clean on the same payload.
+ *
+ * (documentIds ≤ 16 chars render literally in the prefix; if you rename
+ * them past that, shortenDocumentId hashing kicks in and this replace must
+ * be updated — keep them short.)
+ */
+const normalizeClobberPrefix = (html: string, docId: string): string =>
+  html.replaceAll(`${encodeURIComponent(docId)}-user-content-`, '§doc§-user-content-');
+
 interface IncrementalParseComparisonProps {
   colorScheme: ColorScheme;
   initialScenario?: ScenarioKey;
@@ -136,7 +155,9 @@ export const IncrementalParseComparison = ({
     if (!content || !onDomRef.current || !offDomRef.current) return;
     const eq = equalityRef.current;
     eq.frames += 1;
-    if (onDomRef.current.innerHTML !== offDomRef.current.innerHTML) {
+    const onHtml = normalizeClobberPrefix(onDomRef.current.innerHTML, ON_DOC_ID);
+    const offHtml = normalizeClobberPrefix(offDomRef.current.innerHTML, OFF_DOC_ID);
+    if (onHtml !== offHtml) {
       eq.mismatches += 1;
       if (eq.firstMismatchLength === -1) eq.firstMismatchLength = content.length;
     }
