@@ -17,12 +17,6 @@
  *  - G1 append — `content.startsWith(prev.content)`; equal content returns
  *    the previous trees unchanged. Non-append rewrites (including Stage-A
  *    preprocessor rewrites near the stream end) land here.
- *  - G2 footnote bypass — single-doc footnote numbering is parse-local
- *    (mdast-util-to-hast `footnoteOrder`), so `[^` on a markdown TEXT line
- *    forces the full path. Fence/math interiors are excluded (a regex
- *    negated character class in a code block no longer disables the
- *    feature), and the flag is sticky under appends so footnote streams
- *    skip the scan entirely after first detection.
  *  - G3 boundary — `b = min(computeFreezeBoundary(content), prev.stableBoundary)`
  *    must be > 0. The `min` with the PREVIOUS frame's boundary is
  *    load-bearing, not defensive: the freshly computed boundary proves
@@ -34,6 +28,18 @@
  *  - G4 straddle (defensive) — no prev top-level mdast child may cross the
  *    boundary; the detector's blockers should already prevent this.
  *
+ * (v1's G2 footnote bypass is GONE. Footnotes splice via INJECTION REPLAY:
+ * the prefix's footnote event sequence — defs and refs ×count, in document
+ * order, collected from prev.mdast — is prepended to the tail source, so
+ * the tail run's mdast-util-to-hast state (footnoteOrder / footnoteCounts /
+ * footnoteById) is seeded exactly and its footer regenerates the WHOLE
+ * document's section; the injected nodes are stripped from both trees and
+ * the footer's positions are rewritten by the dual rule in spliceParse.
+ * Prefix inline hast is naturally stable — numbering is first-reference
+ * order, which appends cannot change for the prefix. The detector's
+ * reference taint (footnote namespace) keeps unresolved `[^x]` out of the
+ * frozen prefix, C0-probe + arbiter verified.)
+ *
  * `nextState.stableBoundary` is written on BOTH paths from the same single
  * boundary computation.
  */
@@ -43,23 +49,18 @@ import type { Root as MdastRoot } from 'mdast';
 
 import { parseStage, transformStage, type Options as MarkdownOptions } from '../markdown';
 import { computeFreezeBoundary, type FreezeScanCheckpoint } from './computeFreezeBoundary';
-import { buildInjectionPrefix, collectPrefixDefSources, spliceTrees } from './spliceParse';
+import { buildInjectionPrefix, collectPrefixInjection, spliceTrees } from './spliceParse';
 
 export interface IncrementalParseState {
   content: string;
   /** Post-transform trees (transformStage mutates mdast in place; these are the settled shapes). */
   mdast: MdastRoot;
   hast: HastRoot;
-  /** Scan boundary at the frame that produced these trees (0 while footnotes present). */
+  /** Scan boundary at the frame that produced these trees. */
   stableBoundary: number;
-  /** Sticky under appends: once `[^` is seen on a markdown text line, every
-   *  later append still contains it — subsequent frames skip the scan
-   *  entirely and take the full path (the E1 dead-scan fix). Cleared by any
-   *  non-append change (G1 resets the whole state). */
-  sawFootnote: boolean;
   /** Detector resume state: append frames re-lex only past the confirmed
    *  prefix instead of the whole document (E2). Single-consumer mutable —
-   *  owned by this state lineage; null once footnotes disengage the scan. */
+   *  owned by this state lineage. */
   scanCheckpoint: FreezeScanCheckpoint | null;
   /** Identity tuple of every parse input beyond `content` (G0). */
   depsKey: readonly unknown[];
@@ -117,12 +118,8 @@ export function advanceIncrementalParse(
   const measure = options.measure ?? identityMeasure;
   const sameDeps = prev !== null && depsKeyEqual(prev.depsKey, options.depsKey);
 
-  // Zero-scan short-circuits — no boundary scan runs on these frames:
-  // - identical content: reuse the whole previous state verbatim;
-  // - sticky footnote: `[^` cannot disappear under appends, so once seen
-  //   every subsequent append frame goes straight to the full path
-  //   (previously each such frame paid a dead O(N) scan whose result was
-  //   never consumed — the E1 finding).
+  // Zero-scan short-circuit — identical content reuses the whole previous
+  // state verbatim (registry version bumps, unrelated re-renders).
   if (sameDeps && content === prev!.content) {
     return {
       mdast: prev!.mdast,
@@ -133,30 +130,9 @@ export function advanceIncrementalParse(
     };
   }
   const appendOnly = sameDeps && content.startsWith(prev!.content);
-  if (appendOnly && prev!.sawFootnote) {
-    const { mdast, hast } = runPipeline(content, options);
-    return {
-      mdast,
-      hast,
-      usedIncremental: false,
-      boundary: 0,
-      nextState: {
-        content,
-        mdast,
-        hast,
-        stableBoundary: 0,
-        sawFootnote: true,
-        scanCheckpoint: null,
-        depsKey: options.depsKey,
-      },
-    };
-  }
 
-  // Every remaining frame scans ONCE (fence-aware — a `[^` inside a code
-  // fence no longer disables splicing; the old whole-string substring
-  // check did, permanently, for exactly the code-heavy documents that
-  // benefit most). Full-path frames consume the scan on the NEXT frame
-  // via `prev.stableBoundary`.
+  // Every remaining frame scans ONCE (fence-aware). Full-path frames
+  // consume the scan on the NEXT frame via `prev.stableBoundary`.
   // Append frames resume the detector from its confirmed-prefix checkpoint
   // instead of re-lexing the whole document (E2); everything else scans
   // fresh. The checkpoint is mutable and single-consumer — this state
@@ -164,7 +140,7 @@ export function advanceIncrementalParse(
   const scan = measure('scan', () =>
     computeFreezeBoundary(content, { defListEnabled: options.defListEnabled }, appendOnly ? prev!.scanCheckpoint : null)
   );
-  const freshBoundary = scan.hasFootnoteSyntax ? 0 : scan.boundary;
+  const freshBoundary = scan.boundary;
 
   const finish = (mdast: MdastRoot, hast: HastRoot, usedIncremental: boolean, boundary: number): AdvanceResult => ({
     mdast,
@@ -176,8 +152,7 @@ export function advanceIncrementalParse(
       mdast,
       hast,
       stableBoundary: freshBoundary,
-      sawFootnote: scan.hasFootnoteSyntax,
-      scanCheckpoint: scan.hasFootnoteSyntax ? null : scan.checkpoint,
+      scanCheckpoint: scan.checkpoint,
       depsKey: options.depsKey,
     },
   });
@@ -189,8 +164,6 @@ export function advanceIncrementalParse(
 
   // G0 + G1 (scan already ran — its result seeds nextState either way)
   if (!appendOnly) return fullPath();
-  // G2 — footnote syntax on a markdown text line (fence-aware)
-  if (scan.hasFootnoteSyntax) return fullPath();
   // G3
   const boundary = Math.min(freshBoundary, prev!.stableBoundary);
   if (boundary <= 0) return fullPath();
@@ -203,12 +176,12 @@ export function advanceIncrementalParse(
     }
   }
 
-  const defs = collectPrefixDefSources(prev!.mdast, prev!.content, boundary);
-  // A nested multi-line definition cannot be re-injected verbatim — take
-  // the full path this frame rather than splice without it (A3).
-  if (defs.uninjectable) return fullPath();
-  const injectionPrefix = buildInjectionPrefix(defs.sources);
-  const tailSource = injectionPrefix + content.slice(boundary);
+  const plan = collectPrefixInjection(prev!.mdast, prev!.content, boundary);
+  // A nested definition/footnote-def that cannot be re-injected verbatim —
+  // take the full path this frame rather than splice without it (A3).
+  if (plan.uninjectable) return fullPath();
+  const injection = buildInjectionPrefix(plan.events);
+  const tailSource = injection.text + content.slice(boundary);
   const tail = runPipeline(tailSource, options);
   const spliced = spliceTrees({
     prevMdast: prev!.mdast,
@@ -217,10 +190,11 @@ export function advanceIncrementalParse(
     tailHast: tail.hast,
     content,
     boundary,
-    injectionPrefix,
+    injectionPrefix: injection.text,
+    injectedSegments: injection.segments,
   });
-  // null = the prefix contains a sanitize-stripped node whose wrap
-  // separators can't be reconstructed reliably — full parse this frame.
+  // null = the prefix/tail hast layout fell outside the alignment model —
+  // full parse this frame (safe, one-frame cost).
   if (spliced === null) return fullPath();
   return finish(spliced.mdast, spliced.hast, true, boundary);
 }

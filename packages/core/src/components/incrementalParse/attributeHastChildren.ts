@@ -42,14 +42,14 @@ export function attributeHastChildren(mdast: MdastRoot, hast: HastRoot, stopAt =
   // the splice consumer only reads the prefix, and top-level attribution
   // is non-decreasing (E5).
   const out: number[] = [];
-  for (const child of hast.children) {
-    const attr = attributeOne(child);
+  for (let i = 0; i < hast.children.length; i++) {
+    const attr = attributeOne(hast.children[i], hast.children[i + 1]);
     out.push(attr);
     if (attr >= stopAt) break;
   }
   return out;
 
-  function attributeOne(child: HastRoot['children'][number]): number {
+  function attributeOne(child: HastRoot['children'][number], next?: HastRoot['children'][number]): number {
     const start = child.position?.start?.offset;
     const end = child.position?.end?.offset;
     if (start !== undefined && start !== null) {
@@ -57,6 +57,10 @@ export function attributeHastChildren(mdast: MdastRoot, hast: HastRoot, stopAt =
       return start;
     }
     if (child.type === 'element' && isFootnoteSection(child)) return Infinity;
+    // The footer's PRECEDING '\n' is footer plumbing appended after wrap()
+    // (footer.js pushes `'\n', <section>`), not a wrap gap slot — pin it to
+    // the section's Infinity so the prefix cut never absorbs it.
+    if (child.type === 'text' && next?.type === 'element' && isFootnoteSection(next)) return Infinity;
     while (mdastIdx < mdastStarts.length && mdastStarts[mdastIdx] < cursor) mdastIdx += 1;
     return mdastIdx < mdastStarts.length ? mdastStarts[mdastIdx] : cursor;
   }

@@ -77,9 +77,11 @@
  * trailing partial line is UNCONFIRMED (the next chunk may append content
  * to it) and treating it as blank breaks boundary monotonicity.
  *
- * Footnote syntax is DETECTED here (fence-aware, mask-aware) but not
- * modeled: the caller bypasses splicing entirely while `hasFootnoteSyntax`
- * is set, because single-doc footnote numbering is parse-local.
+ * Footnote refs/defs participate in blockers 3 and 5 like their link
+ * counterparts (separate label namespace); the engine splices across them
+ * via injection replay (v2). `hasFootnoteSyntax` remains as a fence-aware,
+ * mask-aware presence signal for diagnostics/stories — it no longer forces
+ * a fallback.
  */
 
 import { normalizeIdentifier } from 'micromark-util-normalize-identifier';
@@ -94,8 +96,9 @@ export interface FreezeScanResult {
   /** Largest freeze-safe boundary, or 0 when nothing can be frozen. */
   boundary: number;
   /** True when `[^` appears on a markdown TEXT line outside fences, math,
-   *  and (provably intra-line) code spans. The caller bypasses splicing
-   *  while this is true: single-doc footnote numbering is parse-local. */
+   *  and (provably intra-line) code spans. Diagnostics only since v2 —
+   *  footnotes splice via injection replay; the taint machinery (blocker 5,
+   *  footnote namespace) is what guards correctness. */
   hasFootnoteSyntax: boolean;
   /** Opaque resume state — pass back on the next APPEND-ONLY call to skip
    *  re-lexing the confirmed prefix. Single-consumer; see module docs. */
