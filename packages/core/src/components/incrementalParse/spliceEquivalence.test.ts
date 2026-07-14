@@ -178,9 +178,10 @@ describe('splice equivalence — adversarial fixtures', () => {
   test('review-confirmed detector corners A1-A6 (2026-07-15)', () => {
     // Each of these once produced real splice/full divergence (probe
     // MISMATCH) before its blocker landed; see the review record in the
-    // engine memory. A6 exercises the stripped-node fallback: a `<?…?>`
-    // becomes a parse5 bogus comment that sanitize strips, so the engine
-    // must decline to splice rather than mis-count wrap separators.
+    // engine memory. A6's `<?…?>` becomes a parse5 bogus comment that
+    // sanitize strips — since the stripped-node alignment landed (v2 Phase
+    // B) the engine SPLICES across it; the dedicated stripped-node suite
+    // below asserts the splice actually engages.
     const corners: Array<[string, string, number]> = [
       ['A1-indented-code-merge', '    a\n\n    b\n\ncol zero\n\ntail.\n', 3],
       ['A2-def-on-continuation-line', '[a]\n\npara\n[a]: /x\n\nmore\n\n[a]: /y\n\nz [a]\n', 4],
@@ -258,5 +259,86 @@ describe('splice equivalence — adversarial fixtures', () => {
     const payload =
       '[a]: https://first.example\n\nuse [text][a] here.\n\nfiller paragraph.\n\n[a]: https://second.example\n\ntail.\n';
     assertStreamEquivalence('dup-label', chunkSnapshots(payload, 8), BASELINE);
+  });
+});
+
+// --- stripped-node prefixes (v2 Phase B) -------------------------------------
+//
+// Sanitize-stripped nodes (HTML comments, `<?…?>` bogus comments, <script>)
+// leave orphan wrap separators in the hast. The alignment cursor in
+// spliceParse must keep splicing across them — before Phase B every one of
+// these payloads silently degraded to per-frame full parses. BASELINE is the
+// config under test (no remove-comments: the comments reach sanitize as hast
+// nodes); the assertions demand the splice ENGAGED, not just equivalence.
+
+describe('splice equivalence — stripped-node prefixes', () => {
+  const BASELINE = CATALOG[0];
+  const ALL_ON = CATALOG[1];
+
+  const spliceFixtures: Array<[string, string, number]> = [
+    ['comment-mid-prefix', 'para one.\n\n<!-- gone -->\n\npara two.\n\npara three.\n\ntail paragraph.\n', 7],
+    ['comment-at-seam', 'para one.\n\npara two.\n\n<!-- seam adjacent -->\n\ntail paragraph follows here.\n', 7],
+    ['consecutive-comments', 'para one.\n\n<!-- x -->\n\n<!-- y -->\n\npara two.\n\nmore prose to stream after.\n', 7],
+    ['comment-first-child', '<!-- lead -->\n\npara one.\n\npara two.\n\ntail paragraph to stream.\n', 6],
+    ['comment-last-child', 'para one.\n\npara two.\n\nlong tail paragraph here.\n\n<!-- trailing -->', 7],
+    ['pi-mid-prefix', 'para one.\n\n<?php echo 1; ?>\n\npara two.\n\ntail paragraph to stream.\n', 7],
+    ['script-stripped', 'para one.\n\n<script>x()</script>\n\npara two.\n\ntail paragraph to stream.\n', 7],
+    [
+      'comment-before-table',
+      'para one.\n\n<!-- x -->\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\ntail paragraph to stream.\n',
+      9,
+    ],
+    [
+      'multi-element-html-block',
+      'para one.\n\n<div>a</div><div>b</div>\n\npara two.\n\ntail paragraph to stream.\n',
+      8,
+    ],
+    ['defs-only-tail-after-comment', 'para one.\n\n<!-- x -->\n\npara two.\n\n[a]: https://example.com\n', 7],
+  ];
+
+  for (const [name, payload, chunk] of spliceFixtures) {
+    test(name, () => {
+      const stats = assertStreamEquivalence(name, chunkSnapshots(payload, chunk), BASELINE);
+      expect(stats.incrementalFrames, `${name} must actually splice, not fall back`).toBeGreaterThan(0);
+    });
+  }
+
+  test('comment leading the tail must NOT merge into the seam separator', () => {
+    // Full parse keeps seam '\n' and the comment's gap slot as SEPARATE text
+    // nodes (the comment sat between them at reparse time); hoist text from
+    // a table merges. Both shapes in one payload.
+    const payload = 'para one.\n\npara two.\n\n<!-- tail leads -->\n\n| a |\n| - |\n| 1 |\n\nclosing paragraph.\n';
+    for (const config of [BASELINE, ALL_ON]) {
+      const stats = assertStreamEquivalence('comment-leading-tail', chunkSnapshots(payload, 6), config);
+      expect(stats.incrementalFrames).toBeGreaterThan(0);
+    }
+  });
+
+  test('A6 PI corner now splices (was: stripped-node fallback)', () => {
+    const stats = assertStreamEquivalence(
+      'a6-pi-splices',
+      chunkSnapshots('<?data\n\nmore\n?>\n\nafter.\n', 3),
+      BASELINE
+    );
+    expect(stats.incrementalFrames).toBeGreaterThan(0);
+  });
+
+  test('splices on a frame whose FROZEN PREFIX contains the stripped node', () => {
+    // `incrementalFrames > 0` alone could be satisfied by frames before the
+    // comment enters the prefix — this pins the alignment cursor itself:
+    // stream far enough that the boundary passes the comment, then assert
+    // the last append frame both spliced AND crossed it.
+    const payload =
+      'para one.\n\n<!-- gone -->\n\npara two.\n\npara three.\n\npara four extends the document.\n\nfinal tail paragraph.\n';
+    const options = buildAdvanceOptions(BASELINE);
+    const snapshots = chunkSnapshots(payload, 9);
+    let state: IncrementalParseState | null = null;
+    let last: ReturnType<typeof advanceIncrementalParse> | null = null;
+    for (const snapshot of snapshots) {
+      last = advanceIncrementalParse(state, snapshot, options);
+      state = last.nextState;
+    }
+    expect(last!.usedIncremental).toBe(true);
+    expect(last!.boundary).toBeGreaterThan(payload.indexOf('-->') + 3);
   });
 });
