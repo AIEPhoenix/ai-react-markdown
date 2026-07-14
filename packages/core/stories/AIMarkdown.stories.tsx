@@ -43,6 +43,26 @@ const meta: Meta<typeof AIMarkdown> = {
 export default meta;
 type Story = StoryObj<typeof AIMarkdown>;
 
+/** Shared scaffolding for the streaming comparison stories (eight use it) — args/argTypes/
+ *  parameters are identical by design (review finding S5); each story only
+ *  contributes its render. */
+const comparisonStoryBase = {
+  args: {
+    content: DEFAULT_PAYLOAD,
+  },
+  argTypes: {
+    content: {
+      control: 'text',
+      description: 'Markdown payload streamed by every scenario. Edit to test your own content.',
+    },
+    streaming: { table: { disable: true } },
+  },
+  parameters: {
+    controls: { exclude: ['streaming'] },
+    layout: 'fullscreen',
+  },
+} satisfies Partial<Story>;
+
 export const Default: Story = {
   args: {
     content: '',
@@ -127,20 +147,7 @@ export const StreamingStress: Story = {
 };
 
 export const StreamingProfiler: Story = {
-  args: {
-    content: DEFAULT_PAYLOAD,
-  },
-  argTypes: {
-    content: {
-      control: 'text',
-      description: 'Markdown payload streamed by every scenario. Edit to test your own content.',
-    },
-    streaming: { table: { disable: true } },
-  },
-  parameters: {
-    controls: { exclude: ['streaming'] },
-    layout: 'fullscreen',
-  },
+  ...comparisonStoryBase,
   render: (args, context) => {
     const currentTheme = context.globals.theme === 'dark' ? 'dark' : 'light';
     return (
@@ -165,20 +172,7 @@ export const StreamingProfiler: Story = {
  * is the most representative of real chat-UI rendering pressure.
  */
 export const BlockMemoCompare: Story = {
-  args: {
-    content: DEFAULT_PAYLOAD,
-  },
-  argTypes: {
-    content: {
-      control: 'text',
-      description: 'Markdown payload streamed by every scenario. Edit to test your own content.',
-    },
-    streaming: { table: { disable: true } },
-  },
-  parameters: {
-    controls: { exclude: ['streaming'] },
-    layout: 'fullscreen',
-  },
+  ...comparisonStoryBase,
   render: (args, context) => {
     const currentTheme = context.globals.theme === 'dark' ? 'dark' : 'light';
     return (
@@ -202,20 +196,7 @@ export const BlockMemoCompare: Story = {
  * `defs` ON to watch the footnote fallback disengage the feature honestly.
  */
 export const IncrementalParseCompare: Story = {
-  args: {
-    content: DEFAULT_PAYLOAD,
-  },
-  argTypes: {
-    content: {
-      control: 'text',
-      description: 'Markdown payload streamed by every scenario. Edit to test your own content.',
-    },
-    streaming: { table: { disable: true } },
-  },
-  parameters: {
-    controls: { exclude: ['streaming'] },
-    layout: 'fullscreen',
-  },
+  ...comparisonStoryBase,
   render: (args, context) => {
     const currentTheme = context.globals.theme === 'dark' ? 'dark' : 'light';
     return (
@@ -239,20 +220,7 @@ export const IncrementalParseCompare: Story = {
  * contracts at once: legacy ≡ block-memo ≡ spliced.
  */
 export const BoostCompare: Story = {
-  args: {
-    content: DEFAULT_PAYLOAD,
-  },
-  argTypes: {
-    content: {
-      control: 'text',
-      description: 'Markdown payload streamed by every scenario. Edit to test your own content.',
-    },
-    streaming: { table: { disable: true } },
-  },
-  parameters: {
-    controls: { exclude: ['streaming'] },
-    layout: 'fullscreen',
-  },
+  ...comparisonStoryBase,
   render: (args, context) => {
     const currentTheme = context.globals.theme === 'dark' ? 'dark' : 'light';
     return (
@@ -273,20 +241,7 @@ export const BoostCompare: Story = {
  * isolated stories.
  */
 export const BoostCompareIsolated: Story = {
-  args: {
-    content: DEFAULT_PAYLOAD,
-  },
-  argTypes: {
-    content: {
-      control: 'text',
-      description: 'Markdown payload streamed by every scenario. Edit to test your own content.',
-    },
-    streaming: { table: { disable: true } },
-  },
-  parameters: {
-    controls: { exclude: ['streaming'] },
-    layout: 'fullscreen',
-  },
+  ...comparisonStoryBase,
   render: (args, context) => {
     const currentTheme = context.globals.theme === 'dark' ? 'dark' : 'light';
     return (
@@ -310,20 +265,7 @@ export const BoostCompareIsolated: Story = {
  * requirements as {@link BlockMemoCompareIsolated}.
  */
 export const IncrementalParseCompareIsolated: Story = {
-  args: {
-    content: DEFAULT_PAYLOAD,
-  },
-  argTypes: {
-    content: {
-      control: 'text',
-      description: 'Markdown payload streamed by every scenario. Edit to test your own content.',
-    },
-    streaming: { table: { disable: true } },
-  },
-  parameters: {
-    controls: { exclude: ['streaming'] },
-    layout: 'fullscreen',
-  },
+  ...comparisonStoryBase,
   render: (args, context) => {
     const currentTheme = context.globals.theme === 'dark' ? 'dark' : 'light';
     return (
@@ -347,20 +289,7 @@ export const IncrementalParseCompareIsolated: Story = {
  * isolated = the only shape that answers per-side browser-level questions.
  */
 export const BlockMemoCompareIsolated: Story = {
-  args: {
-    content: DEFAULT_PAYLOAD,
-  },
-  argTypes: {
-    content: {
-      control: 'text',
-      description: 'Markdown payload streamed by every scenario. Edit to test your own content.',
-    },
-    streaming: { table: { disable: true } },
-  },
-  parameters: {
-    controls: { exclude: ['streaming'] },
-    layout: 'fullscreen',
-  },
+  ...comparisonStoryBase,
   render: (args, context) => {
     const currentTheme = context.globals.theme === 'dark' ? 'dark' : 'light';
     return (

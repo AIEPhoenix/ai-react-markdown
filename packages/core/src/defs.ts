@@ -112,9 +112,15 @@ export interface AIMarkdownRenderConfig {
    *
    * SSR always takes the full-parse path (per-request state starts empty).
    *
+   * Optional (unlike the stable flags) while experimental: adding a
+   * REQUIRED field to this interface in a minor release breaks downstream
+   * code that constructs complete `AIMarkdownRenderConfig` literals (e.g.
+   * sub-packages supplying `defaultConfig`). The deep-merge defaulting in
+   * the provider treats absence as `false`.
+   *
    * @default false
    */
-  readonly incrementalParseEnabled: boolean;
+  readonly incrementalParseEnabled?: boolean;
 }
 
 /**

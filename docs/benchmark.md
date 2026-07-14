@@ -31,7 +31,13 @@ methodology section tells you exactly which story and which toggles.
   **dev build** — absolute milliseconds run large; only the relative gap
   between the two columns of a comparison is meaningful.
 - **Date / version**: 2026-07-15, on the commit series introducing
-  incremental parsing (post-v1.5.1, pre-1.6.0).
+  incremental parsing (post-v1.5.1, pre-1.6.0). **Recalibrated the same day**
+  after the review-hardening pass (six added detector blockers, checkpoint
+  incremental scanning, inline code-span masking): headline percentages were
+  unchanged within noise — the tightened blockers cost nothing on these
+  corpora — while the `scan` stage itself dropped from 9.2 ms to 3.9 ms at
+  4× and from 84 ms to 13 ms at 16× (the checkpoint scanner's O(document) →
+  O(tail) effect).
 
 Each comparison also runs the built-in **per-frame DOM-equality verifier**
 (clobber prefixes normalized): both sides' live `innerHTML` must be
@@ -65,9 +71,9 @@ frozen prefix too, which the pre-implementation estimates did not count.
 | Comparison                | Headline metric | Result                                                                          |
 | ------------------------- | --------------- | ------------------------------------------------------------------------------- |
 | `BlockMemoCompare`        | commit-total Δ  | **4,094 ms saved (7.0%)**, beyond the ±2,347 ms noise band; p95 commit −12.4 ms |
-| `IncrementalParseCompare` | pipeline        | **1,780 ms vs 28,328 ms → 94% saved**; commit Δ +24,316 ms                      |
-| `BoostCompare`            | commit total    | **25,148 ms vs 56,608 ms → 31,460 ms saved (56%)**                              |
-| `BoostCompare`            | p50 commit      | **7.6 ms vs 33.1 ms (4.3×)** — typical frame back inside the 60 fps budget      |
+| `IncrementalParseCompare` | pipeline        | **1,706 ms vs 28,455 ms → 94% saved**; commit Δ +24,468 ms                      |
+| `BoostCompare`            | commit total    | **25,563 ms vs 57,353 ms → 31,790 ms saved (55%)**                              |
+| `BoostCompare`            | p50 commit      | **7.5 ms vs 32.4 ms (4.3×)** — typical frame back inside the 60 fps budget      |
 | `BoostCompare`            | p95 commit      | 71 ms vs 105 ms                                                                 |
 
 ## Correctness (all runs)
