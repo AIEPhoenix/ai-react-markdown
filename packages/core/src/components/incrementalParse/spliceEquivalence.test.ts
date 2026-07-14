@@ -26,6 +26,7 @@ import { DEFAULT_PAYLOAD, withDefs } from '../../../stories/streaming/scenarios'
 import { parseStage, transformStage } from '../markdown';
 import { advanceIncrementalParse, type IncrementalParseState } from './advanceIncrementalParse';
 import { buildAdvanceOptions, CATALOG, type CatalogConfig } from './testPluginCatalog';
+import { codePointSnapshots as chunkSnapshots } from './codePointSnapshots';
 
 function runFull(content: string, config: CatalogConfig): { mdast: unknown; hast: unknown } {
   const options = buildAdvanceOptions(config);
@@ -81,16 +82,6 @@ function assertStreamEquivalence(name: string, snapshots: string[], config: Cata
   });
 
   return { frames: snapshots.length, incrementalFrames };
-}
-
-function chunkSnapshots(payload: string, chunkSize: number): string[] {
-  const codePoints = Array.from(payload);
-  const snapshots: string[] = [];
-  for (let i = chunkSize; i < codePoints.length; i += chunkSize) {
-    snapshots.push(codePoints.slice(0, i).join(''));
-  }
-  snapshots.push(payload);
-  return snapshots;
 }
 
 // --- realistic corpora ------------------------------------------------------
@@ -201,6 +192,22 @@ describe('splice equivalence — adversarial fixtures', () => {
     for (const [name, payload, chunk] of corners) {
       for (const config of [BASELINE, ALL_ON]) {
         assertStreamEquivalence(name, chunkSnapshots(payload, chunk), config);
+      }
+    }
+  });
+
+  test('code-span masking corners: intra-line spans splice, cross-line spans over-block', () => {
+    // Intra-line `<div>`/`[x]` inside spans must not disengage splicing —
+    // and cross-line spans (unpaired run carrying into the next line) must
+    // fall back to raw scanning without ever unmasking real markup.
+    const payloads = [
+      'use `<div>` and `[x]` inline\n\npara two.\n\ntail.\n',
+      'a `x\n<div> y` b\n\nfiller one.\n\ntail.\n',
+      'mixed `code` and <em>real</em> tags\n\nafter.\n\nend.\n',
+    ];
+    for (const payload of payloads) {
+      for (const config of [BASELINE, ALL_ON]) {
+        assertStreamEquivalence('code-span-mask', chunkSnapshots(payload, 5), config);
       }
     }
   });
