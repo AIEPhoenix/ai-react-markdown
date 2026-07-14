@@ -37,8 +37,12 @@
 
 /** The stages of the block-memo render pipeline, in execution order.
  *  Single source of truth: the union type, the emitted measure names, and
- *  any display ordering (ProfilerPanel) all derive from this tuple. */
-export const PIPELINE_STAGES = ['parse', 'transform', 'build', 'render'] as const;
+ *  any display ordering (ProfilerPanel) all derive from this tuple.
+ *  `scan` is the incremental-parse boundary detector (emitted only when
+ *  `config.incrementalParseEnabled` routes through the incremental engine);
+ *  when incremental parsing splices, `parse`/`transform` cover the
+ *  TAIL-ONLY work — the honest per-frame cost, not the full-document one. */
+export const PIPELINE_STAGES = ['scan', 'parse', 'transform', 'build', 'render'] as const;
 export type PipelineStage = (typeof PIPELINE_STAGES)[number];
 
 /** Prefix for the emitted `performance.measure` entry names. */

@@ -91,6 +91,30 @@ export interface AIMarkdownRenderConfig {
    * unconditionally for all chunks under it.
    */
   readonly preserveOrphanReferences: boolean;
+  /**
+   * EXPERIMENTAL. Incremental (prefix-freeze) parsing for streaming
+   * content. When `true` and the content grows by appends (the normal
+   * streaming shape), the renderer freezes the stable prefix of the
+   * document at a verified-safe boundary, re-parses only the tail, and
+   * splices the two — cutting per-frame parse cost roughly to the tail's
+   * share. Output is deep-equal to a full parse (enforced by the
+   * splice-equivalence test suite).
+   *
+   * Effective only when `blockMemoEnabled` is `true` (the incremental
+   * engine lives in the block-memoized renderer). Every frame re-checks a
+   * gate chain and silently falls back to the full parse when any of these
+   * hold — behavior is then identical to the flag being off:
+   * - cross-chunk mode (the instance is inside `<AIMarkdownDocuments>`);
+   * - the content contains `[^` (footnote numbering is parse-local);
+   * - the content change is not a pure append (includes Stage-A
+   *   preprocessor rewrites near the stream end);
+   * - no freeze-safe boundary exists yet.
+   *
+   * SSR always takes the full-parse path (per-request state starts empty).
+   *
+   * @default false
+   */
+  readonly incrementalParseEnabled: boolean;
 }
 
 /**
@@ -110,6 +134,7 @@ export const defaultAIMarkdownRenderConfig = Object.freeze({
   ]),
   blockMemoEnabled: true,
   preserveOrphanReferences: true,
+  incrementalParseEnabled: false,
 }) satisfies AIMarkdownRenderConfig;
 
 /**
