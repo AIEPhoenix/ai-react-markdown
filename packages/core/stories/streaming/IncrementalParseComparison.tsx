@@ -33,14 +33,39 @@ import { PAYLOAD_SCALES, useComparisonRuns } from './useComparisonRuns';
  *   converge, equality still holds).
  */
 
-const ON_DOC_ID = 'ipc-on';
-const OFF_DOC_ID = 'ipc-off';
+export type ComparisonVariant = 'incremental' | 'boost';
 
 // Standalone mode (no <AIMarkdownDocuments>): explicit documentIds scope the
 // stage channel and keep both sides' clobber prefixes deterministic — the
-// innerHTML equality check depends on ids matching structurally per side.
-const ON_CONFIG = { blockMemoEnabled: true, incrementalParseEnabled: true } as const;
-const OFF_CONFIG = { blockMemoEnabled: true, incrementalParseEnabled: false } as const;
+// equality check normalizes the (intentionally different) prefixes away.
+// Keep docIds ≤ 16 chars (see normalizeClobberPrefix).
+const VARIANTS = {
+  /** incremental on vs off — BOTH sides block-memo; the stage table is the
+   *  attribution-clean signal, commit deltas are noise-dominated. */
+  incremental: {
+    onDocId: 'ipc-on',
+    offDocId: 'ipc-off',
+    onConfig: { blockMemoEnabled: true, incrementalParseEnabled: true } as const,
+    offConfig: { blockMemoEnabled: true, incrementalParseEnabled: false } as const,
+    onLabel: 'incrementalParseEnabled: true',
+    offLabel: 'incrementalParseEnabled: false',
+    /** Legacy never calls measureStage; both sides here are block-memo. */
+    offEmitsStages: true,
+  },
+  /** boost: EVERYTHING on vs EVERYTHING off — (block-memo + incremental)
+   *  vs the legacy full pipeline. The commit delta IS the headline here
+   *  (it is the end-to-end optimization), and the off side emits no stage
+   *  timings at all (legacy path has no instrumentation). */
+  boost: {
+    onDocId: 'boost-on',
+    offDocId: 'boost-off',
+    onConfig: { blockMemoEnabled: true, incrementalParseEnabled: true } as const,
+    offConfig: { blockMemoEnabled: false } as const,
+    onLabel: 'boost: block-memo + incremental (all on)',
+    offLabel: 'legacy: full pipeline every frame (all off)',
+    offEmitsStages: false,
+  },
+} satisfies Record<ComparisonVariant, unknown>;
 
 const PIPELINE_STAGES_SHOWN = ['scan', 'parse', 'transform'] as const;
 
@@ -70,6 +95,8 @@ interface IncrementalParseComparisonProps {
   autoStart?: boolean;
   /** Base markdown payload (multiplied by the payload scale). */
   payload?: string;
+  /** Which A/B to run — see VARIANTS. Default 'incremental'. */
+  variant?: ComparisonVariant;
 }
 
 const fmt = (n: number, digits = 1) => (Number.isFinite(n) && !Number.isNaN(n) ? n.toFixed(digits) : '—');
@@ -83,7 +110,9 @@ export const IncrementalParseComparison = ({
   initialScenario = 'randomTokens',
   autoStart = true,
   payload = DEFAULT_PAYLOAD,
+  variant = 'incremental',
 }: IncrementalParseComparisonProps) => {
+  const V = VARIANTS[variant];
   const [content, setContent] = useState('');
   const [running, setRunning] = useState(false);
   const theme = getStreamingTheme(colorScheme);
@@ -91,8 +120,8 @@ export const IncrementalParseComparison = ({
 
   // Both sides emit stage timings — scope each subscription to its own
   // instance, otherwise the two panels would show the same union.
-  const onProfiler = useRenderProfiler<HTMLDivElement>({ running, observeStages: true, stageInstanceId: ON_DOC_ID });
-  const offProfiler = useRenderProfiler<HTMLDivElement>({ running, observeStages: true, stageInstanceId: OFF_DOC_ID });
+  const onProfiler = useRenderProfiler<HTMLDivElement>({ running, observeStages: true, stageInstanceId: V.onDocId });
+  const offProfiler = useRenderProfiler<HTMLDivElement>({ running, observeStages: true, stageInstanceId: V.offDocId });
 
   // Per-frame DOM equality (the verification half of this story).
   const onDomRef = useRef<HTMLDivElement>(null);
@@ -155,14 +184,14 @@ export const IncrementalParseComparison = ({
     if (!content || !onDomRef.current || !offDomRef.current) return;
     const eq = equalityRef.current;
     eq.frames += 1;
-    const onHtml = normalizeClobberPrefix(onDomRef.current.innerHTML, ON_DOC_ID);
-    const offHtml = normalizeClobberPrefix(offDomRef.current.innerHTML, OFF_DOC_ID);
+    const onHtml = normalizeClobberPrefix(onDomRef.current.innerHTML, V.onDocId);
+    const offHtml = normalizeClobberPrefix(offDomRef.current.innerHTML, V.offDocId);
     if (onHtml !== offHtml) {
       eq.mismatches += 1;
       if (eq.firstMismatchLength === -1) eq.firstMismatchLength = content.length;
     }
     if (!running) setEquality({ ...eq });
-  }, [content, running]);
+  }, [content, running, V.onDocId, V.offDocId]);
 
   const onStages = onProfiler.snapshot.stages;
   const offStages = offProfiler.snapshot.stages;
@@ -262,21 +291,41 @@ export const IncrementalParseComparison = ({
 
       <div style={panel}>
         <div style={{ ...mono, display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'baseline' }}>
-          <span style={{ fontWeight: 600 }}>
-            pipeline (scan+parse+transform): {fmt(onPipelineMs)} ms vs {fmt(offPipelineMs)} ms
-            {offPipelineMs > 0 && (
-              <span style={{ color: pipelineSaving > 0 ? theme.good : theme.bad }}>
-                {' '}
-                → {(pipelineSaving * 100).toFixed(0)}% {pipelineSaving >= 0 ? 'saved' : 'REGRESSION'}
-              </span>
-            )}
-          </span>
+          {V.offEmitsStages ? (
+            <span style={{ fontWeight: 600 }}>
+              pipeline (scan+parse+transform): {fmt(onPipelineMs)} ms vs {fmt(offPipelineMs)} ms
+              {offPipelineMs > 0 && (
+                <span style={{ color: pipelineSaving > 0 ? theme.good : theme.bad }}>
+                  {' '}
+                  → {(pipelineSaving * 100).toFixed(0)}% {pipelineSaving >= 0 ? 'saved' : 'REGRESSION'}
+                </span>
+              )}
+            </span>
+          ) : (
+            <span style={{ fontWeight: 600 }}>
+              commit total: {fmt(onProfiler.snapshot.actual.total)} ms vs {fmt(offProfiler.snapshot.actual.total)} ms
+              {offProfiler.snapshot.actual.total > 0 && (
+                <span style={{ color: commitDelta > 0 ? theme.good : theme.bad }}>
+                  {' '}
+                  → Δ {fmt(commitDelta)} ms {commitDelta >= 0 ? 'saved' : 'REGRESSION'}
+                </span>
+              )}
+            </span>
+          )}
           <span style={{ color: theme.textMuted }}>
-            commit Δ {fmt(commitDelta)} ms (noisy — the stage numbers are the attribution-clean signal)
+            {V.offEmitsStages
+              ? `commit Δ ${fmt(commitDelta)} ms (noisy — the stage numbers are the attribution-clean signal)`
+              : `boost = the end-to-end saving; dev-build ms run large, only the relative gap matters`}
           </span>
         </div>
-        {stageRow('incremental ON', onStages)}
-        {stageRow('incremental OFF', offStages)}
+        {stageRow(V.offEmitsStages ? 'incremental ON' : 'boost ON', onStages)}
+        {V.offEmitsStages ? (
+          stageRow('incremental OFF', offStages)
+        ) : (
+          <div style={{ ...mono, color: theme.textMuted }}>
+            legacy side — no stage timings (the legacy path is uninstrumented); compare commit totals above
+          </div>
+        )}
         <div style={{ ...mono, color: equalityDone ? equalityColor : theme.textMuted }}>
           DOM equality: {equality.frames} frames, {equality.mismatches} mismatches
           {equalityDone &&
@@ -296,26 +345,26 @@ export const IncrementalParseComparison = ({
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <div style={column}>
           <div style={{ ...mono, color: theme.textMuted }}>
-            <span style={{ color: theme.good }}>● </span>incrementalParseEnabled: true
+            <span style={{ color: theme.good }}>● </span>{V.onLabel}
           </div>
           <ProfilerPanel snapshot={onProfiler.snapshot} colorScheme={colorScheme} compact />
           <Profiler id="ipc-on" onRender={onProfiler.onRender}>
             <div ref={onProfiler.targetRef}>
               <div ref={onDomRef} style={markdownBox}>
-                <AIMarkdown content={content} streaming={running} documentId={ON_DOC_ID} config={ON_CONFIG} colorScheme={colorScheme} />
+                <AIMarkdown content={content} streaming={running} documentId={V.onDocId} config={V.onConfig} colorScheme={colorScheme} />
               </div>
             </div>
           </Profiler>
         </div>
         <div style={column}>
           <div style={{ ...mono, color: theme.textMuted }}>
-            <span style={{ color: theme.warn }}>● </span>incrementalParseEnabled: false
+            <span style={{ color: theme.warn }}>● </span>{V.offLabel}
           </div>
           <ProfilerPanel snapshot={offProfiler.snapshot} colorScheme={colorScheme} compact />
           <Profiler id="ipc-off" onRender={offProfiler.onRender}>
             <div ref={offProfiler.targetRef}>
               <div ref={offDomRef} style={markdownBox}>
-                <AIMarkdown content={content} streaming={running} documentId={OFF_DOC_ID} config={OFF_CONFIG} colorScheme={colorScheme} />
+                <AIMarkdown content={content} streaming={running} documentId={V.offDocId} config={V.offConfig} colorScheme={colorScheme} />
               </div>
             </div>
           </Profiler>
