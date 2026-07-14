@@ -59,9 +59,9 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "peerDependencies": {
+    "katex": "^0.16.0 || ^0.17.0",
     "react": ">=19.0.0",
-    "react-dom": ">=19.0.0",
-    "katex": "^0.16.0 || ^0.17.0"
+    "react-dom": ">=19.0.0"
   },
   "peerDependenciesMeta": {
     "katex": {
@@ -73,6 +73,7 @@
     "hast-util-to-jsx-runtime": "^2.3.6",
     "html-url-attributes": "^3.0.1",
     "mdast-util-to-hast": "^13.2.1",
+    "micromark-util-normalize-identifier": "^2.0.1",
     "rehype-katex": "^7.0.1",
     "rehype-raw": "^7.0.0",
     "rehype-sanitize": "^6.0.0",
