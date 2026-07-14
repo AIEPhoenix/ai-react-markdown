@@ -117,13 +117,13 @@ The splice runs the tail through the same plugin chain (prefix link/image defini
 
 Every frame re-checks a gate chain; any failure silently takes the ordinary full-parse path for that frame — output is always identical either way:
 
-| Condition                                                | Why                                                                                                        |
-| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Inside `<AIMarkdownDocuments>` (cross-chunk mode)        | Coordinated parses use phantom-augmented sources and registry contributions — not modeled                  |
-| Content contains `[^` anywhere                           | Single-doc footnote numbering is parse-local; correct incremental numbering needs registry-grade machinery |
-| Content change is not a pure append                      | Includes Stage-A preprocessor rewrites near the stream end (e.g. unclosed-`$$` truncation)                 |
-| No freeze-safe boundary yet                              | e.g. one giant paragraph, or an open fence/container since the start                                       |
-| Plugin arrays / handlers / `documentId` changed identity | The engine's own deps check — wider than the block-memo cache flush                                        |
+| Condition                                                                                                                                                                                           | Why                                                                                                        |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Inside `<AIMarkdownDocuments>` (cross-chunk mode)                                                                                                                                                   | Coordinated parses use phantom-augmented sources and registry contributions — not modeled                  |
+| `[^` on a markdown TEXT line (fence/math/code-span aware — a regex like `/[^0-9]/` inside a code block does NOT trip it; sticky under appends, so footnote streams skip the boundary scan entirely) | Single-doc footnote numbering is parse-local; correct incremental numbering needs registry-grade machinery |
+| Content change is not a pure append                                                                                                                                                                 | Includes Stage-A preprocessor rewrites near the stream end (e.g. unclosed-`$$` truncation)                 |
+| No freeze-safe boundary yet                                                                                                                                                                         | e.g. one giant paragraph, or an open fence/container since the start                                       |
+| Plugin arrays / handlers / `documentId` changed identity                                                                                                                                            | The engine's own deps check — wider than the block-memo cache flush                                        |
 
 SSR always takes the full path (per-request state starts empty), so server output is untouched by the flag.
 
