@@ -148,7 +148,7 @@ export const ProfilerPanel = ({
       : [
           {
             title: 'Pipeline stages (dev-only)',
-            hint: 'per-execution timings from ai-markdown:stage:* performance measures, emitted by the block-memo path only. parse + transform run on every content change regardless of caching — they are the incremental-parse opportunity; render is where block-memo saves. render also fires on cache-hit-only re-renders, so its avg skews low by design.',
+            hint: 'per-execution timings from ai-markdown:stage:* performance measures, emitted by the block-memo path only. parse + transform run on every content change (with incrementalParseEnabled they cover the TAIL only on spliced frames — a scan row appears when the engine is engaged); render is where block-memo saves. render also fires on cache-hit-only re-renders, so its avg skews low by design.',
             fields: stages,
           },
         ]),

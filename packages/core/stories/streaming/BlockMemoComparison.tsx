@@ -30,7 +30,8 @@ const fmtSigned = (n: number, digits = 1) => `${n >= 0 ? '+' : '−'}${fmt(Math.
  * Labels for the comparison axis. The verdict/summary/history components are
  * measurement-generic (two snapshots in, prose out); these labels let the
  * ISOLATED host reuse them for the incremental-parse A/B without forking
- * the copy. Same-page BlockMemoComparison always uses the block-memo axis.
+ * the copy. Same-page BlockMemoComparison switches to the boost axis when
+ * its incremental toggle is ON (the enabled column is then memo+incremental).
  */
 export interface ComparisonAxisLabels {
   /** Noun used in verdict prose. */
@@ -42,9 +43,21 @@ export interface ComparisonAxisLabels {
   spyHint: string;
   /** Hint for the DOM-mutations row. */
   domHint: string;
+  /** Whether render-layer deltas (element renders, memo effectiveness) are
+   *  a WIN for this axis. False on the incremental axis: both sides run
+   *  block-memo, those metrics should MATCH, and a delta is a bug signal —
+   *  crowning a winner there contradicts the row's own hint. */
+  renderDeltasMeaningful: boolean;
+  /** Whether the block-memo cache-accounting prose in the verdict details
+   *  ("固定记账成本 > 可省工作量" etc.) applies. Only true when the OFF
+   *  side is the uncached legacy path AND the delta is attributable to the
+   *  block cache — i.e. the block-memo axis itself. */
+  blockMemoProse: boolean;
 }
 
 export const BLOCK_MEMO_AXIS: ComparisonAxisLabels = {
+  renderDeltasMeaningful: true,
+  blockMemoProse: true,
   subject: 'block-memo',
   onLabel: 'blockMemo on',
   offLabel: 'blockMemo off',
@@ -55,6 +68,8 @@ export const BLOCK_MEMO_AXIS: ComparisonAxisLabels = {
 };
 
 export const BOOST_AXIS: ComparisonAxisLabels = {
+  renderDeltasMeaningful: true,
+  blockMemoProse: false,
   subject: 'boost（双开）',
   onLabel: 'boost on (memo+incremental)',
   offLabel: 'legacy (all off)',
@@ -65,6 +80,8 @@ export const BOOST_AXIS: ComparisonAxisLabels = {
 };
 
 export const INCREMENTAL_AXIS: ComparisonAxisLabels = {
+  renderDeltasMeaningful: false,
+  blockMemoProse: false,
   subject: 'incremental parse',
   onLabel: 'incremental on',
   offLabel: 'incremental off',
@@ -233,9 +250,22 @@ export const BlockMemoComparison = ({
   // Recompute per snapshot tick, not per host render — the host re-renders
   // once per streamed chunk (setContent) on the same main thread both
   // measured sides share during the measurement window.
+  // With the incremental toggle ON the enabled column is memo+incremental
+  // vs legacy — the BOOST comparison. Attribute the verdict/summary/history
+  // accordingly, or a 16× win would be quoted as "block-memo saved X ms"
+  // while X contains the (dominant) parse-side saving.
+  const activeAxis = incrementalEnabled ? BOOST_AXIS : BLOCK_MEMO_AXIS;
   const summary = useMemo(
-    () => computeSummary(enabledProfiler.snapshot, disabledProfiler.snapshot, spyEnabled, sameConfigRuns),
-    [enabledProfiler.snapshot, disabledProfiler.snapshot, spyEnabled, sameConfigRuns]
+    () =>
+      computeSummary(
+        enabledProfiler.snapshot,
+        disabledProfiler.snapshot,
+        spyEnabled,
+        sameConfigRuns,
+        false,
+        activeAxis
+      ),
+    [enabledProfiler.snapshot, disabledProfiler.snapshot, spyEnabled, sameConfigRuns, activeAxis]
   );
   const scenarioConfig = scenarios[scenario];
 
@@ -423,13 +453,14 @@ export const BlockMemoComparison = ({
         payloadBlocks={payloadBlocks}
         spyEnabled={spyEnabled}
         colorScheme={colorScheme}
+        axis={activeAxis}
       />
 
-      <SummaryBanner summary={summary} colorScheme={colorScheme} />
+      <SummaryBanner summary={summary} colorScheme={colorScheme} axis={activeAxis} />
 
       <div style={splitStyle}>{swapped ? [disabledSide, enabledSide] : [enabledSide, disabledSide]}</div>
 
-      <RunHistory runs={runs} onClear={clearRuns} colorScheme={colorScheme} />
+      <RunHistory runs={runs} onClear={clearRuns} colorScheme={colorScheme} axis={activeAxis} />
     </div>
   );
 };
@@ -533,7 +564,9 @@ export function computeSummary(
             Math.abs(enabled.memoEffectiveness - disabled.memoEffectiveness)
           )}`
         : '—',
-      winner: pickWinner(enabled.memoEffectiveness, disabled.memoEffectiveness, false /* higher is better */),
+      winner: axis.renderDeltasMeaningful
+        ? pickWinner(enabled.memoEffectiveness, disabled.memoEffectiveness, false /* higher is better */)
+        : undefined,
       hint: '(base − actual) / base; how much memoization is saving on each side',
     },
     {
@@ -541,7 +574,10 @@ export function computeSummary(
       enabled: spyEnabled ? String(enabled.elementRenders.total) : 'spy off',
       disabled: spyEnabled ? String(disabled.elementRenders.total) : 'spy off',
       delta: spyEnabled ? deltaStr(enabled.elementRenders.total, disabled.elementRenders.total, 0) : '—',
-      winner: spyEnabled ? pickWinner(enabled.elementRenders.total, disabled.elementRenders.total) : undefined,
+      winner:
+        spyEnabled && axis.renderDeltasMeaningful
+          ? pickWinner(enabled.elementRenders.total, disabled.elementRenders.total)
+          : undefined,
       hint: spyEnabled ? axis.spyHint : 'spies disabled — clean-timing mode. Re-enable to count component invocations.',
     },
     {
@@ -628,7 +664,9 @@ export const VerdictBanner = memo(function VerdictBanner({
     headline = `两边基本打平：这轮 ${axis.subject} ${d >= 0 ? '快' : '慢'}了 ${fmt(Math.abs(d), 1)} ms（${pct}），在本机的运行波动（约 ±${noise} ms）之内 —— 这个差值说明不了谁快谁慢。`;
     if (payloadScale === 1 && payloadChars < 4000) {
       details.push(
-        `当前内容只有 ${payloadChars.toLocaleString()} 字符 / ${payloadBlocks} 个块。内容越短，可复用的渲染就越少，而缓存本身的记账成本不变 —— 小文档打平是预期行为，不是坏事。想看真实收益，切到 4× 或 16× payload 再跑。`
+        axis.blockMemoProse
+          ? `当前内容只有 ${payloadChars.toLocaleString()} 字符 / ${payloadBlocks} 个块。内容越短，可复用的渲染就越少，而缓存本身的记账成本不变 —— 小文档打平是预期行为，不是坏事。想看真实收益，切到 4× 或 16× payload 再跑。`
+          : `当前内容只有 ${payloadChars.toLocaleString()} 字符 / ${payloadBlocks} 个块 —— 小文档下差值容易被噪音吞没。想看真实收益，切到 4× 或 16× payload 再跑。`
       );
     }
   } else if (d > 0) {
@@ -637,18 +675,18 @@ export const VerdictBanner = memo(function VerdictBanner({
     if (summary.deltaP95 > 0.5) {
       details.push(`最卡的那 5% 次提交快了 ${fmt(summary.deltaP95, 1)} ms —— 这对应用户能感觉到的卡顿改善。`);
     }
-    if (summary.deltaElem !== null && summary.deltaElem > 0) {
+    if (axis.renderDeltasMeaningful && summary.deltaElem !== null && summary.deltaElem > 0) {
       details.push(`组件函数少执行了 ${summary.deltaElem.toLocaleString()} 次（缓存命中的块直接复用上一帧的结果）。`);
     }
   } else {
     accent = theme.bad;
     headline = `这轮 ${axis.subject} 确实更慢：多花 ${fmt(Math.abs(d), 1)} ms（${pct}），超出噪音带（±${noise} ms）。`;
-    if (payloadScale === 1) {
+    if (axis.blockMemoProse && payloadScale === 1) {
       details.push(
         `小 payload 下这通常仍是"固定记账成本 > 可省工作量"的体现。先切到 16× 复测：如果大 payload 也稳定为负，才值得当回归去查。`
       );
     } else {
-      details.push(`这是大 payload —— 稳定复现的话建议用 Run ×3 确认，然后查最近的热路径改动。`);
+      details.push(`稳定复现的话建议用 Run ×3 确认，然后查最近的热路径改动。`);
     }
   }
 
@@ -785,6 +823,7 @@ export const RunHistory = memo(function RunHistory({
             <th style={head}>spy</th>
             <th style={head}>reg</th>
             <th style={head}>defs</th>
+            <th style={head}>inc</th>
             <th style={head}>Δ total (ms)</th>
             <th style={head}>Δ p95 (ms)</th>
             <th style={head}>Δ element renders</th>
@@ -801,6 +840,7 @@ export const RunHistory = memo(function RunHistory({
               <td style={cell}>{r.spy ? 'on' : 'off'}</td>
               <td style={cell}>{r.registry ? 'on' : 'off'}</td>
               <td style={cell}>{r.defs ? 'on' : 'off'}</td>
+              <td style={cell}>{r.incremental ? 'on' : 'off'}</td>
               <td style={{ ...cell, color: deltaColor(r.deltaTotal) }}>{fmtSigned(r.deltaTotal)}</td>
               <td style={{ ...cell, color: deltaColor(r.deltaP95) }}>{fmtSigned(r.deltaP95)}</td>
               <td style={cell}>{r.deltaElem === null ? '—' : fmtSigned(r.deltaElem, 0)}</td>

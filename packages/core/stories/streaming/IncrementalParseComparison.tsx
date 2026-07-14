@@ -7,6 +7,7 @@ import { useRenderProfiler } from './useRenderProfiler';
 import { ProfilerPanel } from './ProfilerPanel';
 import { controlStyles, getStreamingTheme, thinScrollbar, type ColorScheme } from './theme';
 import { PAYLOAD_SCALES, useComparisonRuns } from './useComparisonRuns';
+import { shortenDocumentId } from '../../src/components/shortenDocumentId';
 
 /**
  * Side-by-side A/B for `incrementalParseEnabled` — BOTH columns run the
@@ -38,7 +39,6 @@ export type ComparisonVariant = 'incremental' | 'boost';
 // Standalone mode (no <AIMarkdownDocuments>): explicit documentIds scope the
 // stage channel and keep both sides' clobber prefixes deterministic — the
 // equality check normalizes the (intentionally different) prefixes away.
-// Keep docIds ≤ 16 chars (see normalizeClobberPrefix).
 const VARIANTS = {
   /** incremental on vs off — BOTH sides block-memo; the stage table is the
    *  attribution-clean signal, commit deltas are noise-dominated. */
@@ -81,12 +81,12 @@ const PIPELINE_STAGES_SHOWN = ['scan', 'parse', 'transform'] as const;
  * first `[^` reference rendered, while the node-level arbiter proved the
  * engine byte-clean on the same payload.
  *
- * (documentIds ≤ 16 chars render literally in the prefix; if you rename
- * them past that, shortenDocumentId hashing kicks in and this replace must
- * be updated — keep them short.)
+ * Built with the SAME derivation as src/context.tsx (shortenDocumentId +
+ * encodeURIComponent), so renaming the docIds — even past the 16-char
+ * hashing threshold — can never silently desynchronize the replace.
  */
 const normalizeClobberPrefix = (html: string, docId: string): string =>
-  html.replaceAll(`${encodeURIComponent(docId)}-user-content-`, '§doc§-user-content-');
+  html.replaceAll(`${encodeURIComponent(shortenDocumentId(docId))}-user-content-`, '§doc§-user-content-');
 
 interface IncrementalParseComparisonProps {
   colorScheme: ColorScheme;
@@ -152,6 +152,8 @@ export const IncrementalParseComparison = ({
     setPayloadScale,
     defsEnabled,
     setDefsEnabled,
+    setSpyEnabled,
+    setIncrementalEnabled,
     sameConfigRuns,
     clearRuns,
     payloadChars,
@@ -171,6 +173,15 @@ export const IncrementalParseComparison = ({
     begin,
     push,
   });
+
+  // Keep RunRecord fields truthful: the on-side always runs incremental in
+  // both variants, and this comparison installs NO spy components (the hook
+  // defaults would otherwise record spy:true + deltaElem:0, corrupting
+  // cross-run comparisons against records where those fields are real).
+  useEffect(() => {
+    setIncrementalEnabled(true);
+    setSpyEnabled(false);
+  }, [setIncrementalEnabled, setSpyEnabled]);
 
   useEffect(() => {
     if (!autoStart) return;
@@ -345,26 +356,40 @@ export const IncrementalParseComparison = ({
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <div style={column}>
           <div style={{ ...mono, color: theme.textMuted }}>
-            <span style={{ color: theme.good }}>● </span>{V.onLabel}
+            <span style={{ color: theme.good }}>● </span>
+            {V.onLabel}
           </div>
           <ProfilerPanel snapshot={onProfiler.snapshot} colorScheme={colorScheme} compact />
           <Profiler id="ipc-on" onRender={onProfiler.onRender}>
             <div ref={onProfiler.targetRef}>
               <div ref={onDomRef} style={markdownBox}>
-                <AIMarkdown content={content} streaming={running} documentId={V.onDocId} config={V.onConfig} colorScheme={colorScheme} />
+                <AIMarkdown
+                  content={content}
+                  streaming={running}
+                  documentId={V.onDocId}
+                  config={V.onConfig}
+                  colorScheme={colorScheme}
+                />
               </div>
             </div>
           </Profiler>
         </div>
         <div style={column}>
           <div style={{ ...mono, color: theme.textMuted }}>
-            <span style={{ color: theme.warn }}>● </span>{V.offLabel}
+            <span style={{ color: theme.warn }}>● </span>
+            {V.offLabel}
           </div>
           <ProfilerPanel snapshot={offProfiler.snapshot} colorScheme={colorScheme} compact />
           <Profiler id="ipc-off" onRender={offProfiler.onRender}>
             <div ref={offProfiler.targetRef}>
               <div ref={offDomRef} style={markdownBox}>
-                <AIMarkdown content={content} streaming={running} documentId={V.offDocId} config={V.offConfig} colorScheme={colorScheme} />
+                <AIMarkdown
+                  content={content}
+                  streaming={running}
+                  documentId={V.offDocId}
+                  config={V.offConfig}
+                  colorScheme={colorScheme}
+                />
               </div>
             </div>
           </Profiler>
