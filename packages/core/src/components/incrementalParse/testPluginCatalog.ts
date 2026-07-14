@@ -92,6 +92,33 @@ const TEST_DOCUMENT_ID = 'ip';
 const TEST_CLOBBER_PREFIX = `${encodeURIComponent(TEST_DOCUMENT_ID)}-user-content-`;
 const EMPTY_SET: ReadonlySet<string> = new Set();
 
+/** Coordinated-mode mirror: ALL FOUR cross-chunk handlers, non-empty
+ *  phantom label sets (labels pre-normalized/uppercased, as PASS 0.5
+ *  produces them), `preserveOrphan: true` (preserveForBodyHarvest is
+ *  always true once a chunk holds a registry Symbol). The corresponding
+ *  parse input is `content + buildPhantomSuffix(phantoms)`. */
+export function buildCrossChunkAdvanceOptions(
+  phantomFootnoteLabels: ReadonlySet<string>,
+  phantomLinkLabels: ReadonlySet<string>
+): AdvanceOptions {
+  const remarkRehypeOptions = {
+    allowDangerousHtml: true,
+    clobberPrefix: '',
+    handlers: buildCrossChunkHandlers(),
+    phantomFootnoteLabels,
+    phantomLinkLabels,
+    preserveOrphan: true,
+    documentId: TEST_DOCUMENT_ID,
+  };
+  return {
+    remarkPlugins: buildCoreRemarkPlugins([], []),
+    rehypePlugins: buildCoreRehypePlugins(sanitizeSchema, TEST_CLOBBER_PREFIX),
+    remarkRehypeOptions: remarkRehypeOptions as never,
+    depsKey: ['cross-chunk'],
+    defListEnabled: false,
+  };
+}
+
 export function buildAdvanceOptions(config: CatalogConfig): AdvanceOptions {
   // Standalone default mode: preserveOrphanReferences=true → ONLY the
   // footnoteDefinition handler; OFF → no custom footnote handler at all
