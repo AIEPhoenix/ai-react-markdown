@@ -39,25 +39,18 @@
 
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import remarkBreaks from 'remark-breaks';
-import remarkEmoji from 'remark-emoji';
-import remarkSqueezeParagraphs from 'remark-squeeze-paragraphs';
-import remarkCjkFriendly from 'remark-cjk-friendly';
-import remarkCjkFriendlyGfmStrikethrough from 'remark-cjk-friendly-gfm-strikethrough';
 import remarkRehype from 'remark-rehype';
-import rehypeRaw from 'rehype-raw';
-import rehypeSanitize from 'rehype-sanitize';
-import rehypeKatex from 'rehype-katex';
-import rehypeUnwrapImages from 'rehype-unwrap-images';
 import isEqual from 'lodash-es/isEqual';
 import type { Root } from 'hast';
 import type { Root as MdastRoot } from 'mdast';
 
-import rehypeRebaseHashLinks from '../../components/rehypeRebaseHashLinks';
-import rehypeFooterAdorn from '../../components/rehypeFooterAdorn';
 import { attributeHastChildren } from '../../components/incrementalParse';
+import { codePointSnapshots } from '../../components/incrementalParse/codePointSnapshots';
+import {
+  buildCoreRehypePlugins,
+  buildCoreRemarkPlugins,
+  buildCoreRemarkRehypeOptions,
+} from '../../components/pluginChain';
 import { sanitizeSchema } from '../../components/sanitizeSchema';
 import { detectFreezeBoundaries, FREEZE_TIERS, type FreezeTier } from './detectFreezeBoundaries';
 
@@ -69,25 +62,15 @@ export interface PipelineResult {
 /** The EXACT default-on plugin stack from `MarkdownContent.tsx` (kept in
  *  sync the same way `positionPropagation.test.ts` does). */
 export function runProductionPipeline(content: string): PipelineResult {
+  // Chains come from the production pluginChain module — the experiment's
+  // pipeline can no longer drift from the shipped order (it previously
+  // hand-mirrored it; the ONLY intentional difference is clobberPrefix '',
+  // matching the original harness's unprefixed output).
   const processor = unified()
     .use(remarkParse)
-    .use(remarkGfm)
-    .use(remarkMath, { singleDollarTextMath: false })
-    .use(remarkBreaks)
-    .use(remarkEmoji)
-    .use(remarkSqueezeParagraphs)
-    .use(remarkCjkFriendly)
-    .use(remarkCjkFriendlyGfmStrikethrough)
-    .use(remarkRehype, {
-      allowDangerousHtml: true,
-      clobberPrefix: '',
-    })
-    .use(rehypeRaw, { passThrough: [] })
-    .use(rehypeSanitize, sanitizeSchema)
-    .use(rehypeFooterAdorn)
-    .use(rehypeRebaseHashLinks)
-    .use(rehypeKatex)
-    .use(rehypeUnwrapImages);
+    .use(buildCoreRemarkPlugins([], []))
+    .use(remarkRehype, buildCoreRemarkRehypeOptions(false))
+    .use(buildCoreRehypePlugins(sanitizeSchema, ''));
 
   const mdast = processor.parse(content);
   // runSync mutates the mdast in place via remark transformers — same
@@ -146,12 +129,7 @@ export interface SimulationReport {
  */
 export function simulateStream(name: string, payload: string, chunkSize: number): SimulationReport {
   // Chunk by code points so a frame boundary never splits a surrogate pair.
-  const codePoints = Array.from(payload);
-  const snapshots: string[] = [];
-  for (let i = chunkSize; i < codePoints.length; i += chunkSize) {
-    snapshots.push(codePoints.slice(0, i).join(''));
-  }
-  snapshots.push(payload);
+  const snapshots = codePointSnapshots(payload, chunkSize);
 
   interface FrameRec {
     length: number;

@@ -18,27 +18,12 @@
  * original prefixFreeze experiment did not cover (hole H2).
  */
 
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import remarkBreaks from 'remark-breaks';
-import remarkEmoji from 'remark-emoji';
-import remarkSqueezeParagraphs from 'remark-squeeze-paragraphs';
-import remarkCjkFriendly from 'remark-cjk-friendly';
-import remarkCjkFriendlyGfmStrikethrough from 'remark-cjk-friendly-gfm-strikethrough';
-import { remarkMark as remarkMarkHighlight } from 'remark-mark-highlight';
-import { remarkDefinitionList, defListHastHandlers } from 'remark-definition-list';
-import remarkRemoveComments from 'remark-remove-comments';
-import remarkSmartypants from 'remark-smartypants';
-import remarkPangu from 'remark-pangu';
-import rehypeRaw from 'rehype-raw';
-import rehypeSanitize from 'rehype-sanitize';
-import rehypeKatex from 'rehype-katex';
-import rehypeUnwrapImages from 'rehype-unwrap-images';
+import { defListHastHandlers } from 'remark-definition-list';
 
 import { sanitizeSchema } from '../sanitizeSchema';
-import rehypeRebaseHashLinks from '../rehypeRebaseHashLinks';
-import rehypeFooterAdorn from '../rehypeFooterAdorn';
+import { buildCoreRehypePlugins, buildCoreRemarkPlugins } from '../pluginChain';
 import { buildCrossChunkHandlers } from '../customMdastHandlers';
+import { AIMarkdownRenderDisplayOptimizeAbility, AIMarkdownRenderExtraSyntax } from '../../defs';
 import type { AdvanceOptions } from './advanceIncrementalParse';
 
 export interface CatalogConfig {
@@ -78,29 +63,21 @@ export function buildAdvanceOptions(config: CatalogConfig): AdvanceOptions {
     documentId: TEST_DOCUMENT_ID,
   };
 
+  // The chains come from pluginChain.ts — the SAME builders MarkdownContent
+  // calls, so the arbiter can never drift from the shipped order (the axes
+  // here map onto the config enums the production memos consume).
+  const extras = [
+    ...(config.highlight ? [AIMarkdownRenderExtraSyntax.HIGHLIGHT] : []),
+    ...(config.defList ? [AIMarkdownRenderExtraSyntax.DEFINITION_LIST] : []),
+  ];
+  const display = [
+    ...(config.removeComments ? [AIMarkdownRenderDisplayOptimizeAbility.REMOVE_COMMENTS] : []),
+    ...(config.smartypants ? [AIMarkdownRenderDisplayOptimizeAbility.SMARTYPANTS] : []),
+    ...(config.pangu ? [AIMarkdownRenderDisplayOptimizeAbility.PANGU] : []),
+  ];
   const options: AdvanceOptions = {
-    remarkPlugins: [
-      remarkGfm,
-      [remarkMath, { singleDollarTextMath: false }],
-      ...(config.highlight ? [remarkMarkHighlight] : []),
-      ...(config.defList ? [remarkDefinitionList] : []),
-      remarkBreaks,
-      remarkEmoji,
-      remarkSqueezeParagraphs,
-      remarkCjkFriendly,
-      remarkCjkFriendlyGfmStrikethrough,
-      ...(config.removeComments ? [remarkRemoveComments] : []),
-      ...(config.smartypants ? [remarkSmartypants] : []),
-      ...(config.pangu ? [remarkPangu] : []),
-    ] as never,
-    rehypePlugins: [
-      [rehypeRaw, { passThrough: [] }],
-      [rehypeSanitize, { ...sanitizeSchema, clobberPrefix: TEST_CLOBBER_PREFIX }],
-      rehypeFooterAdorn,
-      [rehypeRebaseHashLinks, { prefix: TEST_CLOBBER_PREFIX }],
-      rehypeKatex,
-      rehypeUnwrapImages,
-    ] as never,
+    remarkPlugins: buildCoreRemarkPlugins(extras, display),
+    rehypePlugins: buildCoreRehypePlugins(sanitizeSchema, TEST_CLOBBER_PREFIX),
     remarkRehypeOptions: remarkRehypeOptions as never,
     depsKey: [config.label],
     defListEnabled: config.defList,
