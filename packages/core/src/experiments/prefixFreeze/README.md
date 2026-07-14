@@ -3,9 +3,18 @@
 **Status: PRODUCTIONIZED** — the shipped implementation lives in
 `src/components/incrementalParse/` (config flag `incrementalParseEnabled`);
 this directory stays frozen as the ablation record and falsification
-evidence behind it. The harness now imports the production
-`attributeHastChildren` so the two can never cut prefixes differently.
-Nothing here is imported by `src/index.tsx` or shipped.
+evidence behind it. The harness imports the production
+`attributeHastChildren` and `pluginChain` builders so prefixes and plugin
+order can never drift from production.
+
+**Known divergence (intentional)**: the shipped detector has grown
+STRICTER than the L4 tier recorded here (post-review blockers A1-A6,
+definition-list awareness, truncated tags, `normalizeIdentifier`). The
+directional pin `incrementalParse/detectorConsistency.test.ts` enforces
+`production boundary <= experiment L4` — the record stays valid as an
+upper envelope, and the freeze-coverage tables below read as upper bounds
+for the shipped rule. Nothing here is imported by `src/index.tsx` or
+shipped.
 
 ## Question
 

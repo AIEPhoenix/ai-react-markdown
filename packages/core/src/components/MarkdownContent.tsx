@@ -45,34 +45,13 @@ import Markdown, { parseStage, transformStage, defaultUrlTransform, type Options
 type RemarkPlugins = NonNullable<MarkdownOptions['remarkPlugins']>;
 type RehypePlugins = NonNullable<MarkdownOptions['rehypePlugins']>;
 type RemarkRehypeOptions = NonNullable<MarkdownOptions['remarkRehypeOptions']>;
-import rehypeKatex from 'rehype-katex';
-import rehypeRaw from 'rehype-raw';
-import rehypeUnwrapImages from 'rehype-unwrap-images';
-import rehypeSanitize from 'rehype-sanitize';
 import { sanitizeSchema } from './sanitizeSchema';
-import rehypeRebaseHashLinks from './rehypeRebaseHashLinks';
-import rehypeFooterAdorn from './rehypeFooterAdorn';
-import remarkBreaks from 'remark-breaks';
-import remarkCjkFriendly from 'remark-cjk-friendly';
-import remarkCjkFriendlyGfmStrikethrough from 'remark-cjk-friendly-gfm-strikethrough';
-import remarkEmoji from 'remark-emoji';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import { remarkDefinitionList, defListHastHandlers } from 'remark-definition-list';
-import { remarkMark as remarkMarkHighlight } from 'remark-mark-highlight';
-import remarkSqueezeParagraphs from 'remark-squeeze-paragraphs';
-import remarkSmartypants from 'remark-smartypants';
-import remarkPangu from 'remark-pangu';
-import remarkRemoveComments from 'remark-remove-comments';
 import { buildBlocks, createCache, renderBlocksWithCache, type Cache, type PostOptions } from './blockMemo';
+import { buildCoreRehypePlugins, buildCoreRemarkPlugins, buildCoreRemarkRehypeOptions } from './pluginChain';
 import { advanceIncrementalParse, type IncrementalParseState } from './incrementalParse';
 import { measureStage } from './devStageTimings';
 import { useAIMarkdownRenderState } from '../context';
-import {
-  AIMarkdownCustomComponents,
-  AIMarkdownRenderDisplayOptimizeAbility,
-  AIMarkdownRenderExtraSyntax,
-} from '../defs';
+import { AIMarkdownCustomComponents, AIMarkdownRenderExtraSyntax } from '../defs';
 import { collectDefLabels, createDefLabelScanner, type DefLabelScanner } from './collectDefLabels';
 import { useDocumentRegistry, usePreserveOrphanReferences } from './AIMarkdownDocuments';
 import type { RegistryInternal } from './documentRegistry';
@@ -93,19 +72,6 @@ import type { ElementContent as HastElementContent } from 'hast';
  *  every render would defeat the snapshot-stability guarantees the hook
  *  relies on). */
 const REGISTRY_SSR_SNAPSHOT = () => 0;
-
-/** Maps display optimization abilities to their corresponding remark plugins. */
-const DisplayOptimizeRemarkPluginMap = {
-  [AIMarkdownRenderDisplayOptimizeAbility.REMOVE_COMMENTS]: remarkRemoveComments,
-  [AIMarkdownRenderDisplayOptimizeAbility.SMARTYPANTS]: remarkSmartypants,
-  [AIMarkdownRenderDisplayOptimizeAbility.PANGU]: remarkPangu,
-};
-
-/** Maps extra syntax extensions to their corresponding remark plugins. */
-const ExtraSyntaxRemarkPluginMap = {
-  [AIMarkdownRenderExtraSyntax.HIGHLIGHT]: remarkMarkHighlight,
-  [AIMarkdownRenderExtraSyntax.DEFINITION_LIST]: remarkDefinitionList,
-};
 
 /** Stable empty object to avoid unnecessary re-renders when no custom components are given. */
 const DefaultCustomComponents: AIMarkdownCustomComponents = {};
@@ -813,18 +779,7 @@ const AIMarkdownContent = memo(
     // object every render — important for the rehypePlugins memo below.
     const usedSanitizeSchema = customSanitizeSchema ?? sanitizeSchema;
 
-    // Resolve extra-syntax remark plugins and check if definition list HAST handlers are needed.
-    const { extraSyntaxRemarkPlugins, enableDefinitionList } = useMemo(
-      () => ({
-        extraSyntaxRemarkPlugins: config.extraSyntaxSupported.map((syntax) => ExtraSyntaxRemarkPluginMap[syntax]),
-        enableDefinitionList: config.extraSyntaxSupported.includes(AIMarkdownRenderExtraSyntax.DEFINITION_LIST),
-      }),
-      [config.extraSyntaxSupported]
-    );
-
-    const displayOptimizeRemarkPlugins = useMemo(() => {
-      return config.displayOptimizeAbilities.map((ability) => DisplayOptimizeRemarkPluginMap[ability]);
-    }, [config.displayOptimizeAbilities]);
+    const enableDefinitionList = config.extraSyntaxSupported.includes(AIMarkdownRenderExtraSyntax.DEFINITION_LIST);
 
     const usedComponents = useMemo(() => {
       return customComponents ? { ...DefaultCustomComponents, ...customComponents } : DefaultCustomComponents;
@@ -834,72 +789,21 @@ const AIMarkdownContent = memo(
     // skip re-renders when only the parent re-rendered. The vendored
     // `parseStage` rebuilds the unified processor on every call regardless —
     // there is no internal processor cache to feed.
+    // Chain assembly lives in pluginChain.ts — the single source shared with
+    // the splice-equivalence arbiter and the prefixFreeze experiment harness,
+    // so verification suites can never drift from the shipped order.
     const remarkPlugins = useMemo<RemarkPlugins>(
-      () => [
-        // --- Core plugins (always active) ---
-        remarkGfm,
-        [
-          remarkMath,
-          {
-            // Disable single-dollar inline math to avoid conflicts with currency
-            // signs and other dollar usages; the preprocessor converts $...$ to $$...$$.
-            singleDollarTextMath: false,
-          },
-        ],
-        // --- Configurable extra syntax plugins ---
-        ...extraSyntaxRemarkPlugins,
-        // --- Formatting & normalization ---
-        remarkBreaks,
-        remarkEmoji,
-        remarkSqueezeParagraphs,
-        remarkCjkFriendly,
-        remarkCjkFriendlyGfmStrikethrough,
-        // --- Configurable display optimizations ---
-        ...displayOptimizeRemarkPlugins,
-      ],
-      [extraSyntaxRemarkPlugins, displayOptimizeRemarkPlugins]
+      () => buildCoreRemarkPlugins(config.extraSyntaxSupported, config.displayOptimizeAbilities),
+      [config.extraSyntaxSupported, config.displayOptimizeAbilities]
     );
 
     const rehypePlugins = useMemo<RehypePlugins>(
-      () => [
-        // Allow raw HTML through so rehype-sanitize can handle it.
-        [rehypeRaw, { passThrough: [] }],
-        // Sanitize HTML while allowing <mark> (highlight), KaTeX class names,
-        // and any extra protocols the caller permitted via the `sanitizeSchema`
-        // prop. Override `clobberPrefix` with the instance-scoped value so every
-        // id and clobberable attribute is namespaced to this `<AIMarkdown>`
-        // instance — the spread order is intentional: our prefix wins over any
-        // caller-supplied prefix on the schema.
-        [rehypeSanitize, { ...usedSanitizeSchema, clobberPrefix }],
-        // Normalize the auto-generated `<section data-footnotes>`: strip the
-        // sr-only `<h2>Footnotes</h2>` label and prepend `<hr>`. Keeps standalone
-        // single-doc rendering visually consistent with the cross-chunk aggregate
-        // footer (which builds the same shape from scratch).
-        rehypeFooterAdorn,
-        // Re-prefix intra-document hash hrefs so they match the ids that
-        // rehype-sanitize just clobbered. Must use the SAME prefix as the schema
-        // above — that's why both read from `clobberPrefix`.
-        [rehypeRebaseHashLinks, { prefix: clobberPrefix }],
-        rehypeKatex,
-        rehypeUnwrapImages,
-      ],
+      () => buildCoreRehypePlugins(usedSanitizeSchema, clobberPrefix),
       [clobberPrefix, usedSanitizeSchema]
     );
 
     const remarkRehypeOptions = useMemo<RemarkRehypeOptions>(
-      () => ({
-        allowDangerousHtml: true,
-        // Suppress mdast-util-to-hast's `user-content-` prefix on footnote
-        // ids/hrefs; rehype-sanitize will apply the same prefix downstream
-        // and `rehypeRebaseHashLinks` mirrors it onto matching hash hrefs.
-        // Without this, ids would end up double-prefixed
-        // (`user-content-user-content-fn-x`).
-        clobberPrefix: '',
-        handlers: {
-          // Inject definition-list HAST handlers when the extension is active.
-          ...(enableDefinitionList ? defListHastHandlers : {}),
-        },
-      }),
+      () => buildCoreRemarkRehypeOptions(enableDefinitionList),
       [enableDefinitionList]
     );
 
