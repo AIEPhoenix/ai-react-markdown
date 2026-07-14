@@ -25,6 +25,7 @@ import isEqual from 'lodash-es/isEqual';
 import { DEFAULT_PAYLOAD, withDefs } from '../../../stories/streaming/scenarios';
 import { parseStage, transformStage } from '../markdown';
 import { buildPhantomSuffix } from '../remarkInjectPhantomDefs';
+import { collectPrefixInjection, type InjectionEvent } from './spliceParse';
 import { advanceIncrementalParse, type AdvanceOptions, type IncrementalParseState } from './advanceIncrementalParse';
 import { buildAdvanceOptions, buildCrossChunkAdvanceOptions, CATALOG, type CatalogConfig } from './testPluginCatalog';
 import { codePointSnapshots as chunkSnapshots } from './codePointSnapshots';
@@ -344,6 +345,60 @@ describe('splice equivalence — stripped-node prefixes', () => {
     expect(last!.usedIncremental).toBe(true);
     expect(last!.boundary).toBeGreaterThan(payload.indexOf('-->') + 3);
   });
+
+  test('injection plan resume ≡ fresh walk (final-review R3)', () => {
+    // The cached plan appends only the children in [oldBoundary, boundary).
+    // Property: for every boundary pair b1 < b2, resuming from b1's plan
+    // yields the same EVENT STREAM as a fresh walk at b2. Refs-batch shapes
+    // may differ at the b1 junction (two refs events where a fresh walk
+    // merges one — state-seeding-identical), so compare the flattened
+    // (kind, payload) sequence, which is what seeds mdast-util-to-hast.
+    const payload = withDefs(DEFAULT_PAYLOAD);
+    const full = runFull(payload, BASELINE) as { mdast: Parameters<typeof collectPrefixInjection>[0] };
+    const flat = (events: InjectionEvent[]): Array<[string, string]> =>
+      events.flatMap((e): Array<[string, string]> =>
+        e.kind === 'refs' ? e.tokens.map((t): [string, string] => ['ref', t]) : [[e.kind, e.source]]
+      );
+    const boundaries: number[] = [];
+    for (let i = payload.indexOf('\n\n'); i !== -1; i = payload.indexOf('\n\n', i + 1)) boundaries.push(i + 2);
+    for (let i = 1; i < boundaries.length; i++) {
+      const b1 = boundaries[i - 1];
+      const b2 = boundaries[i];
+      const plan1 = collectPrefixInjection(full.mdast, payload, b1);
+      const resumed = collectPrefixInjection(full.mdast, payload, b2, { boundary: b1, ...plan1 });
+      const fresh = collectPrefixInjection(full.mdast, payload, b2);
+      expect(resumed.uninjectable).toBe(fresh.uninjectable);
+      expect(flat(resumed.events), `resume b1=${b1} → b2=${b2}`).toEqual(flat(fresh.events));
+    }
+    expect(boundaries.length).toBeGreaterThan(5);
+  });
+
+  test('document-LEADING table keeps splicing (final-review R2)', () => {
+    // rehype-raw foster-parents a table's internal whitespace to just before
+    // the <table>; when the table is the FIRST document child there is no
+    // preceding wrap slot to merge into, so the hast root LEADS with a bare
+    // position-less text node. The alignment cursor must classify it as
+    // hoist (kept verbatim), not as a leading stripped-child gap slot —
+    // misclassification made every frame fall back for the document's whole
+    // lifetime (probe: 0/11 incremental frames vs 7/11 before the alignment
+    // model landed).
+    const payload =
+      '| a | b |\n| - | - |\n| 1 | 2 |\n\npara one follows the table.\n\npara two extends.\n\nfinal tail paragraph here.\n';
+    for (const config of [BASELINE, ALL_ON]) {
+      const stats = assertStreamEquivalence('table-first', chunkSnapshots(payload, 11), config);
+      expect(stats.incrementalFrames, `table-first [${config.label}] must splice`).toBeGreaterThan(0);
+    }
+    // Pin: the final frame splices with the table INSIDE the frozen prefix.
+    const options = buildAdvanceOptions(BASELINE);
+    let state: IncrementalParseState | null = null;
+    let last: ReturnType<typeof advanceIncrementalParse> | null = null;
+    for (const snapshot of chunkSnapshots(payload, 11)) {
+      last = advanceIncrementalParse(state, snapshot, options);
+      state = last.nextState;
+    }
+    expect(last!.usedIncremental).toBe(true);
+    expect(last!.boundary).toBeGreaterThan(payload.indexOf('| 1 | 2 |') + 9);
+  });
 });
 
 // --- footnotes via injection replay (v2 Phase C) ------------------------------
@@ -455,6 +510,54 @@ describe('splice equivalence — footnote injection replay', () => {
       }
     });
   }
+
+  test('injection continuation leaks (final-review R1): footnoteDef-last + indented tail', () => {
+    // GFM footnote def bodies continue across blank lines into >=4-indented
+    // content. When the LAST injected block is a footnote def, the tail's
+    // leading indented line must not be absorbed into it (the injected node
+    // is stripped — absorbed content would VANISH). The injection terminator
+    // definition is the fix under test. Explicit 2-frame sequences pin the
+    // exact boundary alignment the finders' probes reproduced.
+    const shapes: Array<[string, string, string]> = [
+      [
+        'indent-code-after-def',
+        'Claim[^m] here.\n\n[^m]: note body\n\nplain paragraph settles.\n\n',
+        '    indented code arrives\n',
+      ],
+      [
+        'tab-code-after-def',
+        'Claim[^t] here.\n\n[^t]: note body\n\nplain paragraph settles.\n\n',
+        '\tindented code arrives\n',
+      ],
+      ['list-ending-def-body', '[^a]: note\n    - item one\n\npara settles here.\n\n', '    continued?\n'],
+      [
+        'blank-then-indent',
+        'Claim[^b] here.\n\n[^b]: note body\n\nplain paragraph settles.\n\n',
+        '\n    late indent\n',
+      ],
+    ];
+    for (const [name, frame0, appended] of shapes) {
+      for (const config of [BASELINE, ALL_ON]) {
+        // Third frame: defList's settled-check lags one confirmed line, so
+        // under defaults-all-on some shapes legitimately full-parse frame 1
+        // and splice from frame 2 — the splice assertion spans the run.
+        const frames = [frame0, frame0 + appended, `${frame0 + appended}\nclosing paragraph.\n`];
+        const stats = assertStreamEquivalence(name, frames, config);
+        expect(stats.incrementalFrames, `${name} [${config.label}] must splice within the run`).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  test('injection continuation leaks (final-review R1): defList `: desc` claim through the join', () => {
+    // The original document separates with TWO blank lines (blankRun>=2 is
+    // defList-claim-immune), but the injection joins to the tail with ONE —
+    // without a terminator the tail-leading ': desc' would claim the last
+    // injected block as a <dt> and get stripped with it.
+    const frame0 = '[^n]: note\n\nRef[^n] here.\n\nterm\n\n\n';
+    const frame1 = `${frame0}: desc\n\ntail.\n`;
+    const stats = assertStreamEquivalence('deflist-claim-through-join', [frame0, frame1], ALL_ON);
+    expect(stats.incrementalFrames).toBeGreaterThan(0);
+  });
 
   test('blockquote-nested footnote def → uninjectable fallback (equivalence holds)', () => {
     // Column fidelity cannot survive slicing a `> [^x]: …` def out of its

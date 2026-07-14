@@ -86,6 +86,20 @@ export const CATALOG: CatalogConfig[] = [
     pangu: false,
     preserveOrphan: false,
   },
+  // The realistic production shape of the flag-off mode: a user sets
+  // preserveOrphanReferences=false while keeping every DEFAULT plugin on
+  // (final-review R4 — without this cell, a replay regression that needs
+  // the default footer path COMBINED with text-mutating plugins would pass
+  // the whole catalog).
+  {
+    label: 'defaults-no-orphan',
+    highlight: true,
+    defList: true,
+    removeComments: true,
+    smartypants: true,
+    pangu: true,
+    preserveOrphan: false,
+  },
 ];
 
 const TEST_DOCUMENT_ID = 'ip';

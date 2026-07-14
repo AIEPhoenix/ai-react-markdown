@@ -63,6 +63,7 @@ Two defaults differ from stock `remend`, one overridable and one not:
 ### Footguns
 
 - **Create the preprocessor once** (module scope or `useMemo`). A fresh factory call per render defeats `contentPreprocessors`' stable-value memoization and re-runs the whole pipeline every frame.
+- **Cost is per frame over the WHOLE content, and superlinear on some inputs.** `remend` re-runs on every streamed chunk; internally it makes ~a dozen full-string passes, and its false-positive guards (single `~` between word characters, `>` in list items) re-lex from the string start once per match. A very long answer dense in such characters (shell paths, `~50%`, quoted comparisons) can spend tens of milliseconds per token frame in the preprocessor — before the pipeline the incremental engine optimizes even starts. Profile with the DevTools Performance panel if your payloads are large; the repairs themselves only ever concern the tail.
 - **Don't apply it to static content.** A document that legitimately ends inside an unterminated marker (a trailing lone `*`) gets it closed. Reserve it for streaming UIs, or swap it out when `streaming` flips false (see the streaming-state pattern below).
 - **Repair runs after `preprocessLaTeX`** (it lives in the caller slot). In the rare mid-stream frame where an unterminated code span contains currency (`` `$100 and… ``), the LaTeX pass may escape the `$` before the span is closed by the repair — a transient artifact on that frame only; it self-heals when the real closing backtick streams in.
 

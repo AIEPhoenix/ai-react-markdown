@@ -49,7 +49,7 @@ import type { Root as MdastRoot } from 'mdast';
 
 import { parseStage, transformStage, type Options as MarkdownOptions } from '../markdown';
 import { computeFreezeBoundary, type FreezeScanCheckpoint } from './computeFreezeBoundary';
-import { buildInjectionPrefix, collectPrefixInjection, spliceTrees } from './spliceParse';
+import { buildInjectionPrefix, collectPrefixInjection, spliceTrees, type CachedInjectionPlan } from './spliceParse';
 
 export interface IncrementalParseState {
   /** The CHUNK's own text — excludes the phantom suffix. */
@@ -66,6 +66,12 @@ export interface IncrementalParseState {
    *  prefix instead of the whole document (E2). Single-consumer mutable —
    *  owned by this state lineage. */
   scanCheckpoint: FreezeScanCheckpoint | null;
+  /** Injection-plan resume state: events derive from (content, positions)
+   *  alone, so within an append lineage only children past the cached
+   *  boundary need visiting (final-review R3 — without this the plan walk
+   *  re-visits the entire frozen prefix every splice frame). Null until the
+   *  first splice frame; carried verbatim across full-path append frames. */
+  injectionPlan: CachedInjectionPlan | null;
   /** Identity tuple of every parse input beyond `content` (G0). */
   depsKey: readonly unknown[];
 }
@@ -158,6 +164,10 @@ export function advanceIncrementalParse(
   );
   const freshBoundary = scan.boundary;
 
+  // Carried across full-path append frames; refreshed on splice frames
+  // (where the plan walk actually runs). Non-append lineages start over.
+  let injectionPlan: CachedInjectionPlan | null = appendOnly ? prev!.injectionPlan : null;
+
   const finish = (mdast: MdastRoot, hast: HastRoot, usedIncremental: boolean, boundary: number): AdvanceResult => ({
     mdast,
     hast,
@@ -170,6 +180,7 @@ export function advanceIncrementalParse(
       hast,
       stableBoundary: freshBoundary,
       scanCheckpoint: scan.checkpoint,
+      injectionPlan,
       depsKey: options.depsKey,
     },
   });
@@ -184,16 +195,19 @@ export function advanceIncrementalParse(
   // G3
   const boundary = Math.min(freshBoundary, prev!.stableBoundary);
   if (boundary <= 0) return fullPath();
-  // G4 (defensive)
+  // G4 (defensive) — children are position-ordered, so the walk ends at the
+  // first child starting at/past the boundary.
   for (const child of prev!.mdast.children) {
     const start = child.position?.start?.offset;
     const end = child.position?.end?.offset;
-    if (start !== undefined && end !== undefined && start < boundary && end > boundary) {
+    if (start !== undefined && start >= boundary) break;
+    if (start !== undefined && end !== undefined && end > boundary) {
       return fullPath();
     }
   }
 
-  const plan = collectPrefixInjection(prev!.mdast, prev!.content, boundary);
+  const plan = collectPrefixInjection(prev!.mdast, prev!.content, boundary, injectionPlan);
+  injectionPlan = { boundary, events: plan.events, uninjectable: plan.uninjectable };
   // A nested definition/footnote-def that cannot be re-injected verbatim —
   // take the full path this frame rather than splice without it (A3).
   if (plan.uninjectable) return fullPath();

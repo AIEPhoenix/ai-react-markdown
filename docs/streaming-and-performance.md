@@ -119,13 +119,13 @@ The splice runs the tail through the same plugin chain and re-bases tail positio
 
 Every frame re-checks a gate chain; any failure silently takes the ordinary full-parse path for that frame — output is always identical either way:
 
-| Condition                                                                | Why                                                                                                                    |
-| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| Content change is not a pure append                                      | Includes Stage-A preprocessor rewrites near the stream end (e.g. unclosed-`$$` truncation, or an active tail-repair preprocessor closing `**bold` — see [content preprocessors](./content-preprocessors.md)) |
-| No freeze-safe boundary yet                                              | e.g. one giant paragraph, an open fence/container since the start, or an unresolved reference pinning the taint         |
-| A definition nested in a container (`> [a]: /url`, `> [^x]: …`) spanning the prefix | Its source cannot be re-injected verbatim with column fidelity — the frame full-parses (`uninjectable`)                |
-| The prefix/tail hast layout falls outside the separator-alignment model  | Defensive escape hatch; the arbiter keeps the modeled set honest                                                        |
-| Plugin arrays / handlers / `documentId` changed identity                 | The engine's own deps check — wider than the block-memo cache flush                                                     |
+| Condition                                                                           | Why                                                                                                                                                                                                          |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Content change is not a pure append                                                 | Includes Stage-A preprocessor rewrites near the stream end (e.g. unclosed-`$$` truncation, or an active tail-repair preprocessor closing `**bold` — see [content preprocessors](./content-preprocessors.md)) |
+| No freeze-safe boundary yet                                                         | e.g. one giant paragraph, an open fence/container since the start, or an unresolved reference pinning the taint                                                                                              |
+| A definition nested in a container (`> [a]: /url`, `> [^x]: …`) spanning the prefix | Its source cannot be re-injected verbatim with column fidelity — the frame full-parses (`uninjectable`)                                                                                                      |
+| The prefix/tail hast layout falls outside the separator-alignment model             | Defensive escape hatch; the arbiter keeps the modeled set honest                                                                                                                                             |
+| Plugin arrays / handlers / `documentId` changed identity                            | The engine's own deps check — wider than the block-memo cache flush                                                                                                                                          |
 
 SSR always takes the full path (per-request state starts empty), so server output is untouched by the flag.
 

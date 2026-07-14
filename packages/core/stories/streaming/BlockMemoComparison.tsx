@@ -223,8 +223,9 @@ export const BlockMemoComparison = ({
   }, []);
 
   // The incremental toggle applies to the ENABLED column only — incremental
-  // parsing lives inside the block-memo renderer (and auto-falls-back in
-  // registry mode, so combining the toggles measures that honestly too).
+  // parsing lives inside the block-memo renderer (since v2 it splices in
+  // registry mode too, via always-tail phantom suffixes, so combining the
+  // toggles measures the real coordinated splice).
   const enabledConfig = useMemo(
     () => ({ blockMemoEnabled: true, incrementalParseEnabled: incrementalEnabled }) as const,
     [incrementalEnabled]
@@ -405,7 +406,7 @@ export const BlockMemoComparison = ({
           disabled={busy}
           onClick={() => setIncrementalEnabled(!incrementalEnabled)}
           style={controls.baseButton}
-          title="Enables incrementalParseEnabled (prefix-freeze parsing) on the block-memo side: streaming appends freeze the stable prefix and re-parse only the tail. Watch the scan/parse/transform stage panel — parse should drop to the tail's share. Auto-falls-back to full parses in registry mode and on payloads containing footnotes (defs ON appends [^…])."
+          title="Enables incrementalParseEnabled (prefix-freeze parsing) on the block-memo side: streaming appends freeze the stable prefix and re-parse only the tail. Watch the scan/parse/transform stage panel — parse should drop to the tail's share. Since v2 footnote payloads (defs ON) and registry mode splice too; unresolved references hold the boundary until their defs settle."
         >
           incremental: {incrementalEnabled ? 'ON (prefix-freeze)' : 'OFF (full parse per frame)'}
         </button>

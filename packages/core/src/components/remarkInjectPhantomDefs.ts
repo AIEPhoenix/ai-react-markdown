@@ -33,12 +33,3 @@ export function buildPhantomSuffix(phantoms: PhantomLabels): string {
   }
   return suffix;
 }
-
-/**
- * Compute the source string to feed to the full PASS 1 parser: original
- * content + appended phantom definitions for labels not locally defined.
- * The output is suitable as input to remark-parse with the standard pipeline.
- */
-export function augmentSourceWithPhantoms(source: string, phantoms: PhantomLabels): string {
-  return source + buildPhantomSuffix(phantoms);
-}
