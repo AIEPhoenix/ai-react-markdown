@@ -24,8 +24,9 @@ import isEqual from 'lodash-es/isEqual';
 
 import { DEFAULT_PAYLOAD, withDefs } from '../../../stories/streaming/scenarios';
 import { parseStage, transformStage } from '../markdown';
-import { advanceIncrementalParse, type IncrementalParseState } from './advanceIncrementalParse';
-import { buildAdvanceOptions, CATALOG, type CatalogConfig } from './testPluginCatalog';
+import { buildPhantomSuffix } from '../remarkInjectPhantomDefs';
+import { advanceIncrementalParse, type AdvanceOptions, type IncrementalParseState } from './advanceIncrementalParse';
+import { buildAdvanceOptions, buildCrossChunkAdvanceOptions, CATALOG, type CatalogConfig } from './testPluginCatalog';
 import { codePointSnapshots as chunkSnapshots } from './codePointSnapshots';
 
 function runFull(content: string, config: CatalogConfig): { mdast: unknown; hast: unknown } {
@@ -477,5 +478,134 @@ describe('splice equivalence — footnote injection replay', () => {
     }
     expect(last!.usedIncremental).toBe(true);
     expect(last!.boundary).toBeGreaterThan(payload.indexOf('[^a]: A body') + 12);
+  });
+});
+
+// --- cross-chunk phantom suffixes (v2 Phase D) --------------------------------
+//
+// Coordinated mode appends a phantom-definition suffix so refs to labels
+// defined in OTHER chunks parse as references. The engine takes the suffix
+// as a separate ALWAYS-TAIL input: the append gate and boundary scan see
+// `content` alone, so suffix churn (labels arriving/leaving/reordering as
+// the registry evolves) re-parses only the tail. Correctness backstop: a
+// phantom's def is never in `content`, so phantom-resolved refs never
+// settle — the reference taint keeps them out of the frozen prefix.
+// Reference = full parse of `content + suffix` with the SAME options.
+
+describe('splice equivalence — cross-chunk phantom suffixes', () => {
+  interface FramePair {
+    content: string;
+    footnotes: string[];
+    links: string[];
+  }
+
+  function runCrossChunk(
+    name: string,
+    frames: FramePair[],
+    optionsFor: (f: FramePair) => AdvanceOptions
+  ): { incrementalFrames: number; results: boolean[] } {
+    let state: IncrementalParseState | null = null;
+    let incrementalFrames = 0;
+    const results: boolean[] = [];
+    frames.forEach((frame, i) => {
+      const suffix = buildPhantomSuffix({
+        missingFootnotes: new Set(frame.footnotes),
+        missingLinks: new Set(frame.links),
+      });
+      const options = { ...optionsFor(frame), phantomSuffix: suffix };
+      const result = advanceIncrementalParse(state, frame.content, options);
+      state = result.nextState;
+      if (result.usedIncremental) incrementalFrames += 1;
+      results.push(result.usedIncremental);
+
+      const full = parseStage({
+        children: frame.content + suffix,
+        remarkPlugins: options.remarkPlugins,
+        rehypePlugins: options.rehypePlugins,
+        remarkRehypeOptions: options.remarkRehypeOptions,
+      });
+      const fullHast = transformStage(full);
+      const label = `${name} frame=${i} len=${frame.content.length} incremental=${result.usedIncremental}`;
+      if (!isEqual(result.hast, fullHast)) {
+        expect.fail(`${label} — hast mismatch: ${diffLocation(result.hast, fullHast as never)}`);
+      }
+      if (!isEqual(result.mdast, full.mdast)) {
+        expect.fail(`${label} — mdast mismatch: ${diffLocation(result.mdast, full.mdast as never)}`);
+      }
+    });
+    return { incrementalFrames, results };
+  }
+
+  const CHUNK_B = [
+    'Chunk B opens with plain prose.',
+    'Another settled paragraph here.',
+    'Now referencing [^A1] from chunk A and the [SPEC] link too.',
+    'Closing prose extends the chunk further.',
+  ].join('\n\n');
+
+  test('constant suffix: cross-refs resolve, prefix keeps splicing', () => {
+    const options = buildCrossChunkAdvanceOptions(new Set(['A1']), new Set(['SPEC']));
+    const frames = chunkSnapshots(`${CHUNK_B}\n`, 12).map((content) => ({
+      content,
+      footnotes: ['A1'],
+      links: ['SPEC'],
+    }));
+    const stats = runCrossChunk('constant-suffix', frames, () => options);
+    expect(stats.incrementalFrames).toBeGreaterThan(0);
+  });
+
+  test('suffix churn mid-stream (grow, shrink, reorder) re-parses only the tail', () => {
+    const base = chunkSnapshots(`${CHUNK_B}\n`, 16);
+    const mid = Math.floor(base.length / 2);
+    const frames: FramePair[] = base.map((content, i) => {
+      if (i < mid) return { content, footnotes: ['A1'], links: [] };
+      if (i === mid) return { content, footnotes: ['A1', 'A2'], links: ['SPEC'] }; // grow
+      if (i === mid + 1) return { content, footnotes: ['A2', 'A1'], links: ['SPEC'] }; // reorder
+      return { content, footnotes: ['A1'], links: ['SPEC'] }; // shrink
+    });
+    const stats = runCrossChunk('suffix-churn', frames, (f) =>
+      buildCrossChunkAdvanceOptions(new Set(f.footnotes), new Set(f.links))
+    );
+    // Churn frames must not disengage the splice (that was the entire v1
+    // reason for excluding coordinated mode).
+    expect(stats.incrementalFrames).toBeGreaterThan(frames.length / 2);
+  });
+
+  test('equal content + suffix-only change still splices (registry bump)', () => {
+    const options0 = buildCrossChunkAdvanceOptions(new Set(['A1']), new Set());
+    const done = `${CHUNK_B}\n`;
+    const frames: FramePair[] = [
+      { content: done, footnotes: ['A1'], links: [] },
+      { content: done, footnotes: ['A1', 'A2'], links: ['SPEC'] },
+    ];
+    const stats = runCrossChunk('suffix-only-change', frames, () => options0);
+    expect(stats.results[1]).toBe(true);
+  });
+
+  test('phantom→owned handover: content gains the def, suffix drops it', () => {
+    const before = 'Prose one settles.\n\nSee [^h] here.\n\nProse two settles.\n\n';
+    const after = `${before}[^h]: now defined locally\n\npost-def paragraph.\n`;
+    const frames: FramePair[] = [
+      { content: before, footnotes: ['H'], links: [] },
+      { content: after, footnotes: [], links: [] }, // append + suffix shrink in one frame
+      { content: `${after}\nfinal tail.\n`, footnotes: [], links: [] },
+    ];
+    const stats = runCrossChunk('handover', frames, (f) =>
+      buildCrossChunkAdvanceOptions(new Set(f.footnotes), new Set(f.links))
+    );
+    expect(stats.incrementalFrames).toBeGreaterThan(0);
+  });
+
+  test('own footnotes replay while cross-refs stay tainted in the tail', () => {
+    const payload =
+      'Own claim[^own] here.\n\n[^own]: own body\n\nplain settles.\n\ncross ref [^A1] appears.\n\nmore prose extends.\n';
+    const frames = chunkSnapshots(payload, 10).map((content) => ({
+      content,
+      footnotes: ['A1'],
+      links: [],
+    }));
+    const options = buildCrossChunkAdvanceOptions(new Set(['A1']), new Set());
+    const stats = runCrossChunk('own-plus-cross', frames, () => options);
+    expect(stats.incrementalFrames).toBeGreaterThan(0);
   });
 });

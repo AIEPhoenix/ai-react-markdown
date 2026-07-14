@@ -56,7 +56,7 @@ import { collectDefLabels, createDefLabelScanner, type DefLabelScanner } from '.
 import { useDocumentRegistry, usePreserveOrphanReferences } from './AIMarkdownDocuments';
 import type { RegistryInternal } from './documentRegistry';
 import type { SanitizeSchema } from './extendSanitizeSchema';
-import { augmentSourceWithPhantoms } from './remarkInjectPhantomDefs';
+import { buildPhantomSuffix } from './remarkInjectPhantomDefs';
 import { buildCrossChunkHandlers } from './customMdastHandlers';
 import { normalizeForMatch } from './normalizeId';
 import { crossChunkComponents } from './crossChunkPlaceholders';
@@ -433,7 +433,8 @@ const BlockMemoizedRenderer = memo(
     // reuses the frozen prefix of the previous frame's post-transform trees
     // and runs parse+transform over the tail only.
     const pipeline = useMemo(() => {
-      const augmented = augmentSourceWithPhantoms(content ?? '', targetPhantoms);
+      const phantomSuffix = buildPhantomSuffix(targetPhantoms);
+      const augmented = (content ?? '') + phantomSuffix;
       const baseHandlers = remarkRehypeOptions?.handlers ?? {};
       const mergedRemarkRehypeOptions = (
         handlers
@@ -454,12 +455,15 @@ const BlockMemoizedRenderer = memo(
             }
       ) as RemarkRehypeOptions;
 
-      // Incremental parsing is standalone-only in v1: coordinated (registry)
-      // mode parses phantom-augmented sources and contributes tree-derived
-      // data, both of which the splice engine does not model. When not
-      // eligible, the state is CLEARED — a later eligible frame must never
-      // splice against trees parsed under different conditions.
-      if (!config.incrementalParseEnabled || registry) {
+      // Coordinated (registry) mode is incremental-eligible since v2: the
+      // engine takes the phantom suffix as a separate always-tail input (its
+      // frame-to-frame churn re-parses only the tail — the reference taint
+      // keeps every phantom-resolved ref out of the frozen prefix), and the
+      // contribute effect's inputs are covered by splice equivalence (mdast)
+      // plus the replay-regenerated footer (hast). When the flag is off, the
+      // state is CLEARED — a later eligible frame must never splice against
+      // trees parsed under different conditions.
+      if (!config.incrementalParseEnabled) {
         incrementalStateRef.current = null;
         // Dev-only stage telemetry (`ai-markdown:stage:*` performance
         // measures; no-op in production). Wraps only the stage calls — the
@@ -476,16 +480,19 @@ const BlockMemoizedRenderer = memo(
         return { mdast: parsed.mdast, hast: hastRoot };
       }
 
-      const result = advanceIncrementalParse(incrementalStateRef.current, augmented, {
+      const result = advanceIncrementalParse(incrementalStateRef.current, content ?? '', {
         remarkPlugins,
         rehypePlugins,
         remarkRehypeOptions: mergedRemarkRehypeOptions,
         // Identity tuple over every parse input beyond the content itself.
         // Deliberately covers MORE than the G3 flush's 12 fields (handlers /
         // preserveForBodyHarvest / documentId can change without touching
-        // any G3 field — e.g. a `preserveOrphanReferences` flip).
+        // any G3 field — e.g. a `preserveOrphanReferences` flip). The
+        // phantom label sets are deliberately NOT here: their churn tracks
+        // the suffix (always re-parsed with the tail), never the prefix.
         depsKey: [remarkPlugins, rehypePlugins, remarkRehypeOptions, handlers, preserveForBodyHarvest, documentId],
         defListEnabled: config.extraSyntaxSupported.includes(AIMarkdownRenderExtraSyntax.DEFINITION_LIST),
+        phantomSuffix,
         measure: measureHere,
       });
       incrementalStateRef.current = result.nextState;
@@ -501,7 +508,6 @@ const BlockMemoizedRenderer = memo(
       documentId,
       config.incrementalParseEnabled,
       config.extraSyntaxSupported,
-      registry,
       measureHere,
     ]);
 
