@@ -463,7 +463,13 @@ const BlockMemoizedRenderer = memo(
       // plus the replay-regenerated footer (hast). When the flag is off, the
       // state is CLEARED — a later eligible frame must never splice against
       // trees parsed under different conditions.
-      if (!config.incrementalParseEnabled) {
+      //
+      // SSR takes this branch too: the engine's first-frame scan exists to
+      // seed the NEXT frame's checkpoint, and a per-request server render
+      // has no next frame — routing through the engine would pay a dead
+      // O(document) line-lex per request. Hydration is unaffected (the
+      // client's first frame rebuilds from null either way).
+      if (!config.incrementalParseEnabled || typeof window === 'undefined') {
         incrementalStateRef.current = null;
         // Dev-only stage telemetry (`ai-markdown:stage:*` performance
         // measures; no-op in production). Wraps only the stage calls — the
@@ -480,23 +486,47 @@ const BlockMemoizedRenderer = memo(
         return { mdast: parsed.mdast, hast: hastRoot };
       }
 
-      const result = advanceIncrementalParse(incrementalStateRef.current, content ?? '', {
-        remarkPlugins,
-        rehypePlugins,
-        remarkRehypeOptions: mergedRemarkRehypeOptions,
-        // Identity tuple over every parse input beyond the content itself.
-        // Deliberately covers MORE than the G3 flush's 12 fields (handlers /
-        // preserveForBodyHarvest / documentId can change without touching
-        // any G3 field — e.g. a `preserveOrphanReferences` flip). The
-        // phantom label sets are deliberately NOT here: their churn tracks
-        // the suffix (always re-parsed with the tail), never the prefix.
-        depsKey: [remarkPlugins, rehypePlugins, remarkRehypeOptions, handlers, preserveForBodyHarvest, documentId],
-        defListEnabled: config.extraSyntaxSupported.includes(AIMarkdownRenderExtraSyntax.DEFINITION_LIST),
-        phantomSuffix,
-        measure: measureHere,
-      });
-      incrementalStateRef.current = result.nextState;
-      return { mdast: result.mdast, hast: result.hast };
+      try {
+        const result = advanceIncrementalParse(incrementalStateRef.current, content ?? '', {
+          remarkPlugins,
+          rehypePlugins,
+          remarkRehypeOptions: mergedRemarkRehypeOptions,
+          // Identity tuple over every parse input beyond the content itself.
+          // Deliberately covers MORE than the G3 flush's 12 fields (handlers /
+          // preserveForBodyHarvest / documentId can change without touching
+          // any G3 field — e.g. a `preserveOrphanReferences` flip). The
+          // phantom label sets are deliberately NOT here: their churn tracks
+          // the suffix (always re-parsed with the tail), never the prefix.
+          depsKey: [remarkPlugins, rehypePlugins, remarkRehypeOptions, handlers, preserveForBodyHarvest, documentId],
+          defListEnabled: config.extraSyntaxSupported.includes(AIMarkdownRenderExtraSyntax.DEFINITION_LIST),
+          phantomSuffix,
+          measure: measureHere,
+        });
+        incrementalStateRef.current = result.nextState;
+        return { mdast: result.mdast, hast: result.hast };
+      } catch (error) {
+        // The engine mutates prev's scan checkpoint IN PLACE before the tail
+        // parse/splice — a throw mid-frame (an engine bug, or a plugin
+        // choking on the synthetic tail source) leaves the retained state's
+        // checkpoint describing content the state's trees do not. Clearing
+        // the ref restores the "state is CLEARED when unusable" discipline;
+        // the frame then renders via the ordinary full pipeline so one bad
+        // frame cannot take the surface down.
+        incrementalStateRef.current = null;
+        if (process.env.NODE_ENV !== 'production') {
+          console.error('[ai-react-markdown] incremental parse failed — full parse fallback for this frame:', error);
+        }
+        const parsed = measureHere('parse', () =>
+          parseStage({
+            children: augmented,
+            remarkPlugins,
+            rehypePlugins,
+            remarkRehypeOptions: mergedRemarkRehypeOptions,
+          })
+        );
+        const hastRoot = measureHere('transform', () => transformStage(parsed));
+        return { mdast: parsed.mdast, hast: hastRoot };
+      }
     }, [
       content,
       targetPhantoms,
