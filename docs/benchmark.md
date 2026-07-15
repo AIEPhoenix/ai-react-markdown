@@ -15,7 +15,7 @@ methodology section tells you exactly which story and which toggles.
 ## Methodology
 
 - **Harness**: the Storybook A/B stories under `Core/AIMarkdown` —
-  [`BlockMemoCompare`], [`IncrementalParseCompare`], [`BoostCompare`] (plus
+  `BlockMemoCompare`, `IncrementalParseCompare`, `BoostCompare` (plus
   `*Isolated` process-isolated variants, not used for this run — same-page
   is the fairest JS-layer A/B since both sides share one main thread and
   receive the same stream in the same commit).
@@ -124,7 +124,7 @@ memo-enabled baseline).
    large ones** (7% commit total, −12 ms p95 at 16×) — exactly the regime
    split its documentation describes. Its role is the render-layer
    guardrail and the host for incremental parsing.
-3. **The user-perceivable number is boost p50: 33 ms → 7.6 ms per commit at
+3. **The user-perceivable number is boost p50: 32.4 ms → 7.5 ms per commit at
    16×** — from consistently blowing the frame budget to comfortably inside
    it.
 

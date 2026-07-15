@@ -53,7 +53,8 @@ export type RemendPreprocessorOptions = Omit<RemendOptions, 'katex' | 'inlineKat
  * Build an {@link AIMDContentPreprocessor} that completes unterminated
  * markdown syntax at the streaming tail.
  *
- * Deviations from remend's own defaults, both overridable via `options`:
+ * Deviations from remend's own defaults — the first overridable, the
+ * second not:
  *
  * - `linkMode: 'text-only'` — remend's default (`'protocol'`) substitutes a
  *   `streamdown:incomplete-link` placeholder URL, but this pipeline's URL
