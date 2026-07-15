@@ -63,6 +63,11 @@ export interface PrefixInjectionPlan {
   /** True when an event exists that CANNOT be injected reliably — the caller
    *  must fall back to a full parse for this frame (safe, one-frame cost). */
   uninjectable: boolean;
+  /** False when the plan must NOT be cached for resume: a position-less
+   *  top-level child cannot be partitioned by the resume offset, so a
+   *  resumed walk would re-visit it and duplicate its events (round-2
+   *  review). Fresh walks stay correct — they just can't be incremental. */
+  cacheable?: boolean;
 }
 
 /** A plan cached in engine state: valid for any LATER boundary of the same
@@ -103,12 +108,18 @@ export function collectPrefixInjection(
   // frame to frame, so a cached plan only needs the children in
   // [resume.boundary, boundary) appended — without this the deep visit
   // re-walks the ENTIRE prefix every splice frame (the collectDefLabels
-  // O(stream²) shape). `uninjectable` is sticky: the offending node stays
-  // in the prefix for the lineage's lifetime.
-  if (resume && resume.uninjectable) return { events: resume.events, uninjectable: true };
-  const resumeAt = resume && resume.boundary <= boundary ? resume.boundary : 0;
+  // O(stream²) shape). Boundary validity gates EVERYTHING resumed —
+  // including the sticky-uninjectable short-circuit: the boundary is
+  // monotone within an append lineage today, but a regressed cache must
+  // degrade to a fresh walk, never to a stale verdict (round-2 review).
+  const resumeValid = resume != null && resume.boundary <= boundary;
+  // `uninjectable` is sticky: the offending node stays in the prefix for
+  // the lineage's lifetime.
+  if (resumeValid && resume!.uninjectable) return { events: resume!.events, uninjectable: true };
+  const resumeAt = resumeValid ? resume!.boundary : 0;
   const events: InjectionEvent[] = resumeAt > 0 ? cloneEventsForAppend(resume!.events) : [];
   let uninjectable = false;
+  let cacheable = true;
   const pushRef = (token: string): void => {
     const last = events[events.length - 1];
     if (last && last.kind === 'refs') last.tokens.push(token);
@@ -163,11 +174,22 @@ export function collectPrefixInjection(
     // boundary can contribute a prefix event (E5), and nothing before the
     // resume point needs re-visiting.
     const start = child.position?.start?.offset;
-    if (start !== undefined && start >= boundary) break;
-    if (start !== undefined && start < resumeAt) continue;
+    if (start === undefined) {
+      // A position-less top-level child cannot be partitioned by offset: a
+      // resumed walk would re-visit it and DUPLICATE its cached events.
+      // Restart fresh once (correct by construction) and mark the plan
+      // uncacheable. Unreachable with the shipped chain (the parser
+      // positions every top-level node); defense for plugin-shaped trees.
+      if (resumeAt > 0) return collectPrefixInjection(mdast, content, boundary, null);
+      cacheable = false;
+      visit(child, false);
+      continue;
+    }
+    if (start >= boundary) break;
+    if (start < resumeAt) continue;
     visit(child, false);
   }
-  return { events, uninjectable };
+  return { events, uninjectable, cacheable };
 }
 
 /** Cached plans are shared with the previous state — clone the array, and
@@ -200,10 +222,25 @@ export interface InjectionPrefix {
  *  A column-0 link definition neutralizes both: it terminates a footnote
  *  body (not >=4-indented), cannot be claimed as a <dt> (not a paragraph),
  *  emits zero hast and zero wrap-separator slots, and is stripped with the
- *  rest of the injected region. The sentinel label collides with real
- *  content only if a document defines the exact same label — the same
- *  accepted-risk class as the phantom sentinel URLs. */
-const INJECTION_TERMINATOR = '[__aimd_injection_terminator__]: __aimd_sentinel_link__';
+ *  rest of the injected region.
+ *
+ *  Unlike the phantom sentinel URLs (values — they can never change parse
+ *  SHAPE), a definition LABEL is resolvable by any `[label]` mention, so a
+ *  document that literally writes the sentinel label would have its tail
+ *  mentions resolve against the terminator (round-2 review, probe-
+ *  confirmed). {@link tailMentionsTerminator} closes that structurally:
+ *  such frames take the full path instead of splicing. */
+const TERMINATOR_LABEL = '__aimd_injection_terminator__';
+const INJECTION_TERMINATOR = `[${TERMINATOR_LABEL}]: __aimd_sentinel_link__`;
+
+/** True when the tail input could REFERENCE the terminator's label — the
+ *  one input class where the splice's synthetic definition would change how
+ *  the tail parses. Prefix mentions need no check: an unresolved mention is
+ *  reference-tainted (pinned into the tail), and a resolved one has a real
+ *  def that wins first-def-wins over the terminator. */
+export function tailMentionsTerminator(tailSource: string): boolean {
+  return tailSource.includes(`[${TERMINATOR_LABEL}`);
+}
 
 /** Build the injection text prepended to the tail source (with per-footnote-
  *  def coordinate segments). Blocks are '\n\n'-joined: a def line directly
@@ -342,12 +379,13 @@ export function spliceTrees(input: SpliceInput): { mdast: MdastRoot; hast: HastR
   const lineDelta = prefixLines - injectedLines;
 
   // --- prefix cuts (non-mutating reads of the previous frame's trees) ---
+  // Filter semantics (no ordered-children early break): together with G4's
+  // full straddle scan this keeps the cut correct-or-bailing even for
+  // disordered trees a plugin-shaped mdast could present (round-2 review).
   const prefixMdast: MdastContent[] = [];
   for (const child of prevMdast.children) {
-    // Position-ordered — the first child at/past the boundary ends the prefix.
     const start = child.position?.start?.offset;
-    if (start !== undefined && start >= boundary) break;
-    if (start !== undefined) prefixMdast.push(child);
+    if (start !== undefined && start < boundary) prefixMdast.push(child);
   }
   const attrs = attributeHastChildren(prevMdast, prevHast, boundary);
   const cutRegion: HastContent[] = [];
@@ -550,11 +588,13 @@ function alignPrefixCut(
         }
       }
       if (nextIdx === -1) return null;
-      // j slots belong to the j leading stripped children; the rest is hoist.
-      // Only the no-stripped shape is probe-verified (hoist merges into the
-      // last slot when slots exist) — mixed shapes beyond one hoist text are
-      // out of model.
-      if (sepBuffer.length - nextIdx > 1) return null;
+      // Excess leading texts beyond the stripped-child slots can only be
+      // hoist, and hoist exists as a SEPARATE node only when there is no
+      // slot to merge into (nextIdx === 0, probe-verified). Any excess in
+      // the presence of slots is out of model → bail (round-2 review
+      // tightened this from `excess > 1`).
+      const excess = sepBuffer.length - nextIdx;
+      if (excess > (nextIdx === 0 ? 1 : 0)) return null;
     } else {
       const stripped = sawContent ? sepBuffer.length - 1 : sepBuffer.length;
       if (stripped < 0) return null;

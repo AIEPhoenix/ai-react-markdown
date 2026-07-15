@@ -101,14 +101,18 @@ export interface AIMarkdownRenderConfig {
    * splice-equivalence test suite).
    *
    * Effective only when `blockMemoEnabled` is `true` (the incremental
-   * engine lives in the block-memoized renderer). Every frame re-checks a
+   * engine lives in the block-memoized renderer). Footnotes and cross-chunk
+   * (`<AIMarkdownDocuments>`) documents splice too. Every frame re-checks a
    * gate chain and silently falls back to the full parse when any of these
    * hold — behavior is then identical to the flag being off:
-   * - cross-chunk mode (the instance is inside `<AIMarkdownDocuments>`);
-   * - the content contains `[^` (footnote numbering is parse-local);
    * - the content change is not a pure append (includes Stage-A
-   *   preprocessor rewrites near the stream end);
-   * - no freeze-safe boundary exists yet.
+   *   preprocessor rewrites near the stream end, e.g. an active tail-repair
+   *   preprocessor);
+   * - no freeze-safe boundary exists yet (one growing block, an open
+   *   fence/container, or an unresolved reference pinning the taint);
+   * - a container-nested definition in the prefix can't be re-injected
+   *   verbatim, or the hast layout falls outside the splice's alignment
+   *   model (defensive escapes).
    *
    * SSR always takes the full-parse path (per-request state starts empty).
    *

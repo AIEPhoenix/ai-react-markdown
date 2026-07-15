@@ -49,7 +49,13 @@ import type { Root as MdastRoot } from 'mdast';
 
 import { parseStage, transformStage, type Options as MarkdownOptions } from '../markdown';
 import { computeFreezeBoundary, type FreezeScanCheckpoint } from './computeFreezeBoundary';
-import { buildInjectionPrefix, collectPrefixInjection, spliceTrees, type CachedInjectionPlan } from './spliceParse';
+import {
+  buildInjectionPrefix,
+  collectPrefixInjection,
+  spliceTrees,
+  tailMentionsTerminator,
+  type CachedInjectionPlan,
+} from './spliceParse';
 
 export interface IncrementalParseState {
   /** The CHUNK's own text — excludes the phantom suffix. */
@@ -195,24 +201,34 @@ export function advanceIncrementalParse(
   // G3
   const boundary = Math.min(freshBoundary, prev!.stableBoundary);
   if (boundary <= 0) return fullPath();
-  // G4 (defensive) — children are position-ordered, so the walk ends at the
-  // first child starting at/past the boundary.
+  // G4 (defensive) — deliberately a FULL scan, no ordered-children early
+  // break: this is the gate that catches ordering/straddle violations, so
+  // it must not share the assumption it defends against (round-2 review).
+  // O(top-level children) per frame is noise next to the tail parse.
   for (const child of prev!.mdast.children) {
     const start = child.position?.start?.offset;
     const end = child.position?.end?.offset;
-    if (start !== undefined && start >= boundary) break;
-    if (start !== undefined && end !== undefined && end > boundary) {
+    if (start !== undefined && end !== undefined && start < boundary && end > boundary) {
       return fullPath();
     }
   }
 
+  // The one input class where the injection's synthetic terminator label
+  // could change how the tail parses: the tail literally mentioning it.
+  // Checked on the PRE-injection tail (the injection itself contains the
+  // label). Pathological by construction — correctness over splice rate.
+  const tailAndSuffix = content.slice(boundary) + phantomSuffix;
+  if (tailMentionsTerminator(tailAndSuffix)) return fullPath();
+
   const plan = collectPrefixInjection(prev!.mdast, prev!.content, boundary, injectionPlan);
-  injectionPlan = { boundary, events: plan.events, uninjectable: plan.uninjectable };
+  if (plan.cacheable !== false) {
+    injectionPlan = { boundary, events: plan.events, uninjectable: plan.uninjectable };
+  }
   // A nested definition/footnote-def that cannot be re-injected verbatim —
   // take the full path this frame rather than splice without it (A3).
   if (plan.uninjectable) return fullPath();
   const injection = buildInjectionPrefix(plan.events);
-  const tailSource = injection.text + content.slice(boundary) + phantomSuffix;
+  const tailSource = injection.text + tailAndSuffix;
   const tail = runPipeline(tailSource, options);
   const spliced = spliceTrees({
     prevMdast: prev!.mdast,

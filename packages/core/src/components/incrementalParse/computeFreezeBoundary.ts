@@ -115,8 +115,12 @@ interface Candidate {
   htmlBalanced: boolean;
   /** Rolling continuation-hazard verdict at emission (blocker 3). */
   hazard: boolean;
-  /** Index into the checkpoint's confirmed-lines array. */
-  lineIndex: number;
+  /** Blocker-4 settle verdict, decided by the NEXT confirmed line (`null`
+   *  while that line hasn't confirmed — only the newest candidate can be
+   *  pending). Storing the verdict instead of the line lets the checkpoint
+   *  drop its lines array, which retained a full copy of the document
+   *  (round-2 review: ~2-3× doc size per mounted instance). */
+  defListSettled: boolean | null;
 }
 
 interface UnresolvedRef {
@@ -131,8 +135,6 @@ export interface FreezeScanCheckpoint {
   defListEnabled: boolean;
   /** Start offset of the first line NOT yet baked into this checkpoint. */
   confirmedOffset: number;
-  /** 1-based count guard: text.length the checkpoint was last advanced on. */
-  lines: LineRec[];
   candidates: Candidate[];
   defs: Map<string, number>; // normalized label → def line end offset
   footnoteDefs: Map<string, number>;
@@ -279,7 +281,6 @@ function freshCheckpoint(defListEnabled: boolean): FreezeScanCheckpoint {
   return {
     defListEnabled,
     confirmedOffset: 0,
-    lines: [],
     candidates: [],
     defs: new Map(),
     footnoteDefs: new Map(),
@@ -365,14 +366,12 @@ export function computeFreezeBoundary(
   let earliestUnresolved = Infinity;
   for (const ref of cp.unresolvedRefs) earliestUnresolved = Math.min(earliestUnresolved, ref.offset);
 
-  // ── blocker 4: defList settled check (looks FORWARD from a candidate) ──
+  // ── blocker 4: defList settled check (decided by the NEXT line) ──
   const defListSettled = (c: Candidate): boolean => {
     if (!options.defListEnabled || c.blankRun >= 2) return true;
-    for (let i = c.lineIndex + 1; i < cp.lines.length; i++) {
-      const ln = cp.lines[i];
-      if (ln.blank) return true; // a second blank makes the run ≥ 2 — the backward scan cannot cross it
-      return !canBecomeDdLine(ln.text, true);
-    }
+    // Confirmed next lines settle candidates eagerly in processConfirmedLine;
+    // only the newest candidate can still be pending here.
+    if (c.defListSettled !== null) return c.defListSettled;
     if (tailLine) return !canBecomeDdLine(tailLine.text, false);
     return false; // no next line yet — a future `: desc` could still claim the block above
   };
@@ -393,7 +392,13 @@ export function computeFreezeBoundary(
 
 /** Bake one confirmed line into the checkpoint. */
 function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: string): void {
-  cp.lines.push(ln);
+  // Blocker-4 eager settle: this line is the "next confirmed line" of the
+  // newest candidate. The verdict uses the RAW line exactly like the old
+  // lines-array lookback did (fence/math state deliberately not consulted).
+  const newest = cp.candidates[cp.candidates.length - 1];
+  if (newest && newest.defListSettled === null) {
+    newest.defListSettled = ln.blank ? true : !canBecomeDdLine(ln.text, true);
+  }
   const isBlockStart = cp.prevLineBlank;
   const applyTag = (tag: string, closing: boolean): void => {
     if (closing) {
@@ -484,7 +489,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
       blankRun: cp.blankRun,
       htmlBalanced: cp.openTotal === 0 && !cp.commentOpen && !cp.piOpen && !cp.declOpen && !cp.cdataOpen,
       hazard: cp.hazardVerdict,
-      lineIndex: cp.lines.length - 1,
+      defListSettled: null,
     });
     cp.paragraphHasUnpairedRun = false;
     cp.prevLineBlank = true;
