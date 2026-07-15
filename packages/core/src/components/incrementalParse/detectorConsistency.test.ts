@@ -2,16 +2,22 @@
  * Drift pin between the SHIPPED freeze detector and the prefixFreeze
  * experiment's L4 tier (the ablation record the benchmark docs cite).
  *
- * The two implementations share their ancestry but evolve one-way: every
- * post-review blocker (A1-A6, defList, truncated tags, normalizeIdentifier)
- * lands in production only. That is fine — production may only get
- * STRICTER — so the enforceable invariant is directional:
+ * The two implementations share their ancestry but evolve independently:
+ * post-review blockers (A1-A6, defList, truncated tags,
+ * normalizeIdentifier) land in production only (stricter), while inline
+ * code-span MASKING makes production LOOSER than L4 on inputs whose code
+ * spans carry brackets/tags (L4 counts them as taint; production masks
+ * them — probe-verified divergence). The enforceable invariant is
+ * therefore directional ON THESE CORPORA, which contain no such spans:
  *
- *   production boundary ≤ experiment L4 boundary, for every prefix.
+ *   production boundary ≤ experiment L4 boundary, for every prefix
+ *   of the corpora below.
  *
- * A violation means production started allowing something the falsified
- * record never validated — exactly the drift this pin exists to catch.
- * (The reverse gap merely costs freeze coverage and is expected.)
+ * A violation still means production started allowing something the
+ * falsified record never validated on realistic content — the drift this
+ * pin exists to catch. Do NOT add bracket-bearing code spans to these
+ * corpora; the masking divergence is expected and its safety is owned by
+ * the splice-equivalence arbiter (which HAS such fixtures).
  */
 
 import { describe, expect, test } from 'vitest';

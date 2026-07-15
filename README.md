@@ -388,23 +388,23 @@ The README covers the 90% case. For deep customization — replacing element ren
 
 The full list with all subtleties lives in [`@ai-react-markdown/core` README](./packages/core/README.md). Quick reference:
 
-| Prop                   | Type                             | Default                         | Purpose                                                                                           |
-| ---------------------- | -------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `content`              | `string`                         | **required**                    | Raw markdown to render                                                                            |
-| `streaming`            | `boolean`                        | `false`                         | Propagated via context for streaming-aware renderers                                              |
-| `fontSize`             | `number \| string`               | `'0.9375rem'`                   | Base font size (numbers → px). Anchors `--aim-font-size-root`                                     |
-| `variant`              | `AIMarkdownVariant`              | `'default'`                     | Typography variant name                                                                           |
-| `colorScheme`          | `AIMarkdownColorScheme`          | `'light'`                       | `'light'`, `'dark'`, or custom                                                                    |
-| `config`               | `PartialDeep<TConfig>`           | —                               | Partial render config, deep-merged with defaults                                                  |
-| `defaultConfig`        | `TConfig`                        | `defaultAIMarkdownRenderConfig` | Base config (sub-packages can override)                                                           |
-| `metadata`             | `TRenderData`                    | —                               | Arbitrary data for custom components (separate context)                                           |
-| `contentPreprocessors` | `AIMDContentPreprocessor[]`      | `[]`                            | Extra string transforms applied after the LaTeX preprocessor                                      |
-| `customComponents`     | `AIMarkdownCustomComponents`     | —                               | `react-markdown` component overrides                                                              |
-| `Typography`           | `AIMarkdownTypographyComponent`  | `DefaultTypography`             | Typography wrapper                                                                                |
-| `ExtraStyles`          | `AIMarkdownExtraStylesComponent` | —                               | Optional wrapper between typography and content                                                   |
-| `documentId`           | `string`                         | auto via `useId()`              | Stable id namespace for clobberable attributes; share across chunks for cross-chunk coordination  |
-| `urlTransform`         | `UrlTransform \| null`           | `defaultUrlTransform`           | Second sanitization gate — per-attribute URL rewriter (runs at render time)                       |
-| `sanitizeSchema`       | `SanitizeSchema`                 | library default                 | First gate — `rehype-sanitize` schema, per-protocol allowlist (build with `extendSanitizeSchema`) |
+| Prop                   | Type                             | Default                         | Purpose                                                                                                                                                                                                       |
+| ---------------------- | -------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `content`              | `string`                         | **required**                    | Raw markdown to render                                                                                                                                                                                        |
+| `streaming`            | `boolean`                        | `false`                         | Propagated via context for streaming-aware renderers                                                                                                                                                          |
+| `fontSize`             | `number \| string`               | `'0.9375rem'`                   | Base font size (numbers → px). Anchors `--aim-font-size-root`                                                                                                                                                 |
+| `variant`              | `AIMarkdownVariant`              | `'default'`                     | Typography variant name                                                                                                                                                                                       |
+| `colorScheme`          | `AIMarkdownColorScheme`          | `'light'`                       | `'light'`, `'dark'`, or custom                                                                                                                                                                                |
+| `config`               | `PartialDeep<TConfig>`           | —                               | Partial render config, deep-merged with defaults                                                                                                                                                              |
+| `defaultConfig`        | `TConfig`                        | `defaultAIMarkdownRenderConfig` | Base config (sub-packages can override)                                                                                                                                                                       |
+| `metadata`             | `TRenderData`                    | —                               | Arbitrary data for custom components (separate context)                                                                                                                                                       |
+| `contentPreprocessors` | `AIMDContentPreprocessor[]`      | `[]`                            | Extra string transforms applied after the LaTeX preprocessor. Ships an optional `createRemendPreprocessor()` factory for streaming tail repair — see [Content Preprocessors](./docs/content-preprocessors.md) |
+| `customComponents`     | `AIMarkdownCustomComponents`     | —                               | `react-markdown` component overrides                                                                                                                                                                          |
+| `Typography`           | `AIMarkdownTypographyComponent`  | `DefaultTypography`             | Typography wrapper                                                                                                                                                                                            |
+| `ExtraStyles`          | `AIMarkdownExtraStylesComponent` | —                               | Optional wrapper between typography and content                                                                                                                                                               |
+| `documentId`           | `string`                         | auto via `useId()`              | Stable id namespace for clobberable attributes; share across chunks for cross-chunk coordination                                                                                                              |
+| `urlTransform`         | `UrlTransform \| null`           | `defaultUrlTransform`           | Second sanitization gate — per-attribute URL rewriter (runs at render time)                                                                                                                                   |
+| `sanitizeSchema`       | `SanitizeSchema`                 | library default                 | First gate — `rehype-sanitize` schema, per-protocol allowlist (build with `extendSanitizeSchema`)                                                                                                             |
 
 > The Mantine package extends this with `codeBlock.*` config options. See its [props table](./packages/mantine/README.md#props-api-reference).
 
@@ -429,10 +429,11 @@ The full list with all subtleties lives in [`@ai-react-markdown/core` README](./
 
 ### Other config fields
 
-| Field                      | Type      | Default | Purpose                                                                                                          |
-| -------------------------- | --------- | ------- | ---------------------------------------------------------------------------------------------------------------- |
-| `blockMemoEnabled`         | `boolean` | `true`  | Per-block memoization. Output is byte-identical when disabled; set `false` only for debugging                    |
-| `preserveOrphanReferences` | `boolean` | `true`  | Protect orphan `[^x]: …` defs from being silently dropped during streaming when the reference hasn't arrived yet |
+| Field                      | Type      | Default | Purpose                                                                                                                                                                                                                                                                 |
+| -------------------------- | --------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `blockMemoEnabled`         | `boolean` | `true`  | Per-block memoization. Output is byte-identical when disabled; set `false` only for debugging                                                                                                                                                                           |
+| `incrementalParseEnabled`  | `boolean` | `false` | EXPERIMENTAL. Prefix-freeze incremental parsing: append-only streaming re-parses only the tail (84–94% less pipeline stage time on the benchmark payloads). Output stays deep-equal to a full parse; see [Streaming & Performance](./docs/streaming-and-performance.md) |
+| `preserveOrphanReferences` | `boolean` | `true`  | Protect orphan `[^x]: …` defs from being silently dropped during streaming when the reference hasn't arrived yet                                                                                                                                                        |
 
 The Mantine package additionally surfaces:
 

@@ -75,7 +75,9 @@ export interface AIMarkdownProps<
   content: string;
   /**
    * Additional preprocessors to run on the raw markdown before rendering.
-   * These run *after* the built-in LaTeX preprocessor.
+   * These run *after* the built-in LaTeX preprocessor. The package ships an
+   * optional streaming tail-repair factory for this slot —
+   * {@link createRemendPreprocessor} (see docs/content-preprocessors.md).
    */
   contentPreprocessors?: AIMDContentPreprocessor[];
   /**
