@@ -3,8 +3,9 @@
  *
  * Production port of the "L4" rule validated by the measurement study in
  * `src/experiments/prefixFreeze/` (see its README for the ablation ladder,
- * the falsification results, and the intentional divergence note — the
- * shipped rule is strictly TIGHTER, pinned by detectorConsistency.test.ts).
+ * the falsification results, and the intentional two-way divergence note —
+ * stricter blockers AND looser code-span masking; the corpus-scoped
+ * directional pin lives in detectorConsistency.test.ts).
  *
  * The boundary is the largest source offset `b` such that, for ANY future
  * append to `text`, the markdown blocks that begin before `b` parse

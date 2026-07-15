@@ -7,13 +7,18 @@ evidence behind it. The harness imports the production
 `attributeHastChildren` and `pluginChain` builders so prefixes and plugin
 order can never drift from production.
 
-**Known divergence (intentional)**: the shipped detector has grown
-STRICTER than the L4 tier recorded here (post-review blockers A1-A6,
-definition-list awareness, truncated tags, `normalizeIdentifier`). The
-directional pin `incrementalParse/detectorConsistency.test.ts` enforces
-`production boundary <= experiment L4` — the record stays valid as an
-upper envelope, and the freeze-coverage tables below read as upper bounds
-for the shipped rule. Nothing here is imported by `src/index.tsx` or
+**Known divergence (intentional)**: the shipped detector evolved past the
+L4 tier recorded here in BOTH directions. Stricter: post-review blockers
+A1-A6, definition-list awareness, truncated tags, `normalizeIdentifier`.
+Looser: inline code-span MASKING — this record counts `` `[x]` ``/`` `<div>` ``
+inside code spans as taint/markup, production (correctly) masks them and
+can freeze past inputs L4 pins at 0. The directional pin
+`incrementalParse/detectorConsistency.test.ts` therefore holds
+`production boundary <= experiment L4` only ON ITS CORPORA (which carry no
+bracket/tag-bearing code spans), not universally — and the freeze-coverage
+tables below are indicative for the shipped rule, not bounds. Safety
+authority for the shipped detector is the production splice-equivalence
+arbiter, not this record. Nothing here is imported by `src/index.tsx` or
 shipped.
 
 ## Question
