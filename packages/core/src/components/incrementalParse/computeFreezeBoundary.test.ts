@@ -112,7 +112,7 @@ describe('computeFreezeBoundary — continuation blockers', () => {
     expect(computeFreezeBoundary(terminated, OFF)).toBe(terminated.indexOf('tail'));
   });
 
-  test('footnote definition context blocks (defensive; caller bypasses [^ anyway)', () => {
+  test('footnote definition context blocks (LOAD-BEARING since v2: defs splice via replay)', () => {
     expect(computeFreezeBoundary('[^n]: body\n\n', OFF)).toBe(0);
   });
 });

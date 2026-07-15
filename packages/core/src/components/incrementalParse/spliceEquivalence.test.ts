@@ -548,6 +548,23 @@ describe('splice equivalence — footnote injection replay', () => {
     }
   });
 
+  test('tail mentioning the terminator label falls back instead of mis-resolving (round-2)', () => {
+    // The injection's terminator is a synthetic DEFINITION — a tail-side
+    // `[label]` mention would resolve against it while the full parse
+    // renders literal text. The engine must take the full path for such
+    // frames (pathological input; correctness over splice rate). The
+    // shortcut-, full-, and image-reference forms are all covered.
+    const mentions = [
+      'see [__aimd_injection_terminator__] maybe.\n',
+      'see [text][__aimd_injection_terminator__] maybe.\n',
+      'see ![alt][__aimd_injection_terminator__] maybe.\n',
+    ];
+    for (const mention of mentions) {
+      const frame0 = 'note[^q] first.\n\n[^q]: def body\n\nplain settles.\n\n';
+      assertStreamEquivalence('terminator-mention', [frame0, frame0 + mention], BASELINE);
+    }
+  });
+
   test('injection continuation leaks (final-review R1): defList `: desc` claim through the join', () => {
     // The original document separates with TWO blank lines (blankRun>=2 is
     // defList-claim-immune), but the injection joins to the tail with ONE —
