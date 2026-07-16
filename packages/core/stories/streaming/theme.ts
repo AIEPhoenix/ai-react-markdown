@@ -42,15 +42,15 @@ export const thinScrollbar = (theme: StreamingTheme): { scrollbarWidth: 'thin'; 
  * the theme it derives from — so the comparison variants can't drift apart
  * visually one copy at a time.
  */
-export const controlStyles = (
-  theme: StreamingTheme
-): {
+export interface ControlStyles {
   layout: CSSProperties;
   buttonRow: CSSProperties;
   baseButton: CSSProperties;
   primaryButton: CSSProperties;
   caption: CSSProperties;
-} => {
+}
+
+export const controlStyles = (theme: StreamingTheme): ControlStyles => {
   const baseButton: CSSProperties = {
     background: 'transparent',
     border: `1px solid ${theme.buttonBorder}`,

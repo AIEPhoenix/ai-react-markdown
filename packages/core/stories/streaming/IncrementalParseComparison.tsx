@@ -2,11 +2,13 @@
 
 import { Profiler, useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import AIMarkdown from '../../src/index';
+import { ScenarioRow, PayloadScaleRow } from './ComparisonControls';
 import { DEFAULT_PAYLOAD, type ScenarioKey } from './scenarios';
 import { useRenderProfiler } from './useRenderProfiler';
+import { AXIS_HEADINGS, AXIS_SIDES, sideConfig, type ComparisonAxis } from './isolatedProtocol';
 import { ProfilerPanel } from './ProfilerPanel';
 import { controlStyles, getStreamingTheme, thinScrollbar, type ColorScheme } from './theme';
-import { PAYLOAD_SCALES, useComparisonRuns } from './useComparisonRuns';
+import { useComparisonRuns } from './useComparisonRuns';
 import { normalizeClobberPrefix, useDomEqualityStats } from './useDomEqualityStats';
 
 /**
@@ -34,22 +36,39 @@ import { normalizeClobberPrefix, useDomEqualityStats } from './useDomEqualitySta
  *   watch the reference taint hold the boundary until each def settles.
  */
 
-export type ComparisonVariant = 'incremental' | 'boost';
+/** Which axes this same-page comparison can run — every axis except
+ *  blockMemo (that A/B has its own page, BlockMemoComparison, with the
+ *  spy/registry machinery this one deliberately omits). */
+export type ComparisonVariant = Exclude<ComparisonAxis, 'blockMemo'>;
 
 // Standalone mode (no <AIMarkdownDocuments>): explicit documentIds scope the
 // stage channel and keep both sides' clobber prefixes deterministic — the
 // equality check normalizes the (intentionally different) prefixes away.
-const VARIANTS = {
+// Side configs and headings come from the axis single source
+// (AXIS_SIDES / AXIS_HEADINGS in isolatedProtocol.ts).
+const VARIANTS: Record<
+  ComparisonVariant,
+  {
+    onDocId: string;
+    offDocId: string;
+    onConfig: ReturnType<typeof sideConfig>;
+    offConfig: ReturnType<typeof sideConfig>;
+    onLabel: string;
+    offLabel: string;
+    /** Whether the off side emits stage timings (the legacy path never
+     *  calls measureStage). */
+    offEmitsStages: boolean;
+  }
+> = {
   /** incremental on vs off — BOTH sides block-memo; the stage table is the
    *  attribution-clean signal, commit deltas are noise-dominated. */
-  incremental: {
+  incrementalParse: {
     onDocId: 'ipc-on',
     offDocId: 'ipc-off',
-    onConfig: { blockMemoEnabled: true, incrementalParseEnabled: true } as const,
-    offConfig: { blockMemoEnabled: true, incrementalParseEnabled: false } as const,
-    onLabel: 'incrementalParseEnabled: true',
-    offLabel: 'incrementalParseEnabled: false',
-    /** Legacy never calls measureStage; both sides here are block-memo. */
+    onConfig: sideConfig(AXIS_SIDES.incrementalParse.on),
+    offConfig: sideConfig(AXIS_SIDES.incrementalParse.off),
+    onLabel: AXIS_HEADINGS.incrementalParse.on,
+    offLabel: AXIS_HEADINGS.incrementalParse.off,
     offEmitsStages: true,
   },
   /** boost: EVERYTHING on vs EVERYTHING off — (block-memo + incremental)
@@ -59,13 +78,13 @@ const VARIANTS = {
   boost: {
     onDocId: 'boost-on',
     offDocId: 'boost-off',
-    onConfig: { blockMemoEnabled: true, incrementalParseEnabled: true } as const,
-    offConfig: { blockMemoEnabled: false } as const,
-    onLabel: 'boost: block-memo + incremental (all on)',
-    offLabel: 'legacy: full pipeline every frame (all off)',
+    onConfig: sideConfig(AXIS_SIDES.boost.on),
+    offConfig: sideConfig(AXIS_SIDES.boost.off),
+    onLabel: AXIS_HEADINGS.boost.on,
+    offLabel: AXIS_HEADINGS.boost.off,
     offEmitsStages: false,
   },
-} satisfies Record<ComparisonVariant, unknown>;
+};
 
 const PIPELINE_STAGES_SHOWN = ['scan', 'parse', 'transform'] as const;
 
@@ -76,7 +95,7 @@ interface IncrementalParseComparisonProps {
   autoStart?: boolean;
   /** Base markdown payload (multiplied by the payload scale). */
   payload?: string;
-  /** Which A/B to run — see VARIANTS. Default 'incremental'. */
+  /** Which A/B to run — see VARIANTS. Default 'incrementalParse'. */
   variant?: ComparisonVariant;
 }
 
@@ -91,7 +110,7 @@ export const IncrementalParseComparison = ({
   initialScenario = 'randomTokens',
   autoStart = true,
   payload = DEFAULT_PAYLOAD,
-  variant = 'incremental',
+  variant = 'incrementalParse',
 }: IncrementalParseComparisonProps) => {
   const V = VARIANTS[variant];
   const [content, setContent] = useState('');
@@ -230,30 +249,22 @@ export const IncrementalParseComparison = ({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={controls.buttonRow}>
-        <span style={controls.caption}>scenario</span>
-        {Object.entries(scenarios).map(([key, s]) => (
-          <button
-            key={key}
-            disabled={busy}
-            onClick={() => setScenario(key as ScenarioKey)}
-            style={scenario === key ? controls.primaryButton : controls.baseButton}
-            title={s.description}
-          >
-            {key}
-          </button>
-        ))}
-        <span style={{ ...controls.caption, marginLeft: 8 }}>payload</span>
-        {PAYLOAD_SCALES.map((s) => (
-          <button
-            key={s}
-            disabled={busy}
-            onClick={() => setPayloadScale(s)}
-            style={payloadScale === s ? controls.primaryButton : controls.baseButton}
-          >
-            {s}×
-          </button>
-        ))}
+      <ScenarioRow
+        scenarios={scenarios}
+        scenario={scenario}
+        onSelect={setScenario}
+        disabled={busy}
+        controls={controls}
+      />
+
+      <PayloadScaleRow
+        payloadScale={payloadScale}
+        onSelect={setPayloadScale}
+        payloadChars={payloadChars}
+        payloadBlocks={payloadBlocks}
+        disabled={busy}
+        controls={controls}
+      >
         <button
           disabled={busy}
           onClick={() => setDefsEnabled(!defsEnabled)}
@@ -262,10 +273,7 @@ export const IncrementalParseComparison = ({
         >
           defs: {defsEnabled ? 'ON (footnotes splice via replay)' : 'OFF'}
         </button>
-        <span style={controls.caption}>
-          {payloadChars.toLocaleString()} chars / {payloadBlocks} blocks
-        </span>
-      </div>
+      </PayloadScaleRow>
 
       <div style={controls.buttonRow}>
         <button onClick={running ? stop : start} style={controls.primaryButton}>
