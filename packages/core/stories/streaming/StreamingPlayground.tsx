@@ -2,7 +2,8 @@
 
 import { Profiler, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import AIMarkdown from '../../src/index';
-import { buildScenarios, DEFAULT_PAYLOAD, SCENARIO_KEYS, type ScenarioKey } from './scenarios';
+import { ScenarioRow } from './ComparisonControls';
+import { buildScenarios, DEFAULT_PAYLOAD, type ScenarioKey } from './scenarios';
 import { useRenderProfiler } from './useRenderProfiler';
 import { ProfilerPanel } from './ProfilerPanel';
 import { ChunkPanel } from './ChunkPanel';
@@ -95,18 +96,13 @@ export const StreamingPlayground = ({
 
   return (
     <div style={controls.layout}>
-      <div style={controls.buttonRow}>
-        {SCENARIO_KEYS.map((key) => (
-          <button
-            key={key}
-            disabled={running}
-            onClick={() => setScenario(key)}
-            style={scenario === key ? controls.primaryButton : controls.baseButton}
-          >
-            {scenarios[key].label}
-          </button>
-        ))}
-      </div>
+      <ScenarioRow
+        scenarios={scenarios}
+        scenario={scenario}
+        onSelect={setScenario}
+        disabled={running}
+        controls={controls}
+      />
 
       <div style={controls.buttonRow}>
         <button onClick={running ? stop : start} style={controls.primaryButton}>
