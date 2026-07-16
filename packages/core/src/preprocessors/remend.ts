@@ -53,19 +53,18 @@ export type RemendPreprocessorOptions = Omit<RemendOptions, 'katex' | 'inlineKat
  * Build an {@link AIMDContentPreprocessor} that completes unterminated
  * markdown syntax at the streaming tail.
  *
- * Deviations from remend's own defaults — the first overridable, the
- * second not:
+ * Deviations from remend's own defaults:
  *
- * - `linkMode: 'text-only'` — remend's default (`'protocol'`) substitutes a
- *   `streamdown:incomplete-link` placeholder URL, but this pipeline's URL
- *   sanitizer strips unknown protocols, which would leave a dead `<a>` for
- *   the duration of the stream. Rendering the link text plainly until the
- *   real URL arrives looks better under our sanitize defaults.
- *
- * Math completion cannot be re-enabled: `katex`/`inlineKatex` are forced off
- * because the built-in LaTeX preprocessor (which runs first) already rewrites
- * and truncates `$`/`$$` constructs — two writers on the same delimiters
- * would fight.
+ * - `linkMode: 'text-only'` (overridable) — remend's default (`'protocol'`)
+ *   substitutes a `streamdown:incomplete-link` placeholder URL, but this
+ *   pipeline's URL sanitizer strips unknown protocols, which would leave a
+ *   dead `<a>` for the duration of the stream. Rendering the link text
+ *   plainly until the real URL arrives looks better under our sanitize
+ *   defaults.
+ * - `katex`/`inlineKatex` forced off (NOT overridable — removed from the
+ *   option type) — the built-in LaTeX preprocessor (which runs first)
+ *   already rewrites and truncates `$`/`$$` constructs; two writers on the
+ *   same delimiters would fight.
  */
 export function createRemendPreprocessor(options?: RemendPreprocessorOptions): AIMDContentPreprocessor {
   return (content) =>
