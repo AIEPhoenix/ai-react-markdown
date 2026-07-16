@@ -28,6 +28,7 @@ jobs:
           - typecheck
           - test
           - build
+          - browser-smoke
 
     steps:
       - name: Checkout
@@ -60,7 +61,7 @@ jobs:
       # matrix tasks run in isolated jobs. Build core first so dependents
       # check against the real built artifact (what npm consumers get).
       - name: Build core (dependents resolve its dist)
-        if: matrix.task == 'typecheck' || matrix.task == 'test'
+        if: matrix.task == 'typecheck' || matrix.task == 'test' || matrix.task == 'browser-smoke'
         run: pnpm --filter @ai-react-markdown/core build
 
       - name: Typecheck (all packages)
@@ -81,3 +82,15 @@ jobs:
       - name: Build (all packages)
         if: matrix.task == 'build'
         run: pnpm build
+
+      # The root vitest config's `storybook` project renders every story in
+      # headless Chromium (via @storybook/addon-vitest) — the only gate that
+      # exercises real browser DOM. `pnpm -r test` never reaches it because
+      # the project lives at the workspace root, so it gets its own task.
+      - name: Install Playwright Chromium
+        if: matrix.task == 'browser-smoke'
+        run: pnpm exec playwright install chromium --with-deps
+
+      - name: Browser smokes (storybook stories)
+        if: matrix.task == 'browser-smoke'
+        run: pnpm vitest run --project=storybook
