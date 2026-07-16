@@ -37,20 +37,20 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { DEFAULT_PAYLOAD, SCENARIO_KEYS, type ScenarioKey } from './scenarios';
+import { ScenarioRow, PayloadScaleRow } from './ComparisonControls';
+import { DEFAULT_PAYLOAD, type ScenarioKey } from './scenarios';
 import { emptySnapshot, type RenderProfilerSnapshot } from './useRenderProfiler';
 import { controlStyles, getStreamingTheme, type ColorScheme } from './theme';
+import { AXIS_LABELS, computeSummary, RunHistory, SummaryBanner, VerdictBanner } from './BlockMemoComparison';
+import { useComparisonRuns } from './useComparisonRuns';
 import {
-  BLOCK_MEMO_AXIS,
-  BOOST_AXIS,
-  INCREMENTAL_AXIS,
-  computeSummary,
-  RunHistory,
-  SummaryBanner,
-  VerdictBanner,
-} from './BlockMemoComparison';
-import { PAYLOAD_SCALES, useComparisonRuns } from './useComparisonRuns';
-import { isProtocolMessage, SIDE_STORY_ID, type HostToSideMessage, type SideMode } from './isolatedProtocol';
+  AXIS_SIDES,
+  isProtocolMessage,
+  SIDE_STORY_ID,
+  type AxisSideSpec,
+  type ComparisonAxis,
+  type HostToSideMessage,
+} from './isolatedProtocol';
 
 interface IsolatedComparisonProps {
   colorScheme: ColorScheme;
@@ -58,7 +58,8 @@ interface IsolatedComparisonProps {
   /** Base markdown payload (multiplied by the payload scale). */
   payload?: string;
   /**
-   * Which A/B this host runs. 'blockMemo' (default): memo vs legacy.
+   * Which A/B this host runs (see AXIS_SIDES in isolatedProtocol.ts).
+   * 'blockMemo' (default): memo vs legacy.
    * 'incrementalParse': BOTH sides run block-memo and differ only in
    * `incrementalParseEnabled` — process isolation makes the per-side stage
    * panels trustworthy without instance scoping (each side owns its page's
@@ -66,7 +67,7 @@ interface IsolatedComparisonProps {
    * same-page variant's per-frame DOM-equality verifier cannot exist here:
    * the frames are cross-origin by design.
    */
-  axis?: 'blockMemo' | 'incrementalParse' | 'boost';
+  axis?: ComparisonAxis;
 }
 
 interface SideState {
@@ -124,7 +125,7 @@ function pickSideHosts(ipv6Available: boolean): SideHosts {
  *  params configure the side itself. */
 function buildSideUrl(
   host: string,
-  side: { mode: SideMode; axis: 'blockMemo' | 'incrementalParse' | 'boost'; incremental: boolean },
+  side: AxisSideSpec & { axis: ComparisonAxis },
   spy: boolean,
   registry: boolean,
   scheme: ColorScheme
@@ -175,7 +176,7 @@ export const IsolatedComparison = ({
   payload = DEFAULT_PAYLOAD,
   axis = 'blockMemo',
 }: IsolatedComparisonProps) => {
-  const axisLabels = axis === 'incrementalParse' ? INCREMENTAL_AXIS : axis === 'boost' ? BOOST_AXIS : BLOCK_MEMO_AXIS;
+  const axisLabels = AXIS_LABELS[axis];
   const [running, setRunning] = useState(false);
   const [memoSide, setMemoSide] = useState<SideState>(initialSideState);
   const [legacySide, setLegacySide] = useState<SideState>(initialSideState);
@@ -352,7 +353,7 @@ export const IsolatedComparison = ({
   // Keep RunRecord.incremental truthful: on the incrementalParse/boost axes
   // the enabled iframe genuinely runs incrementalParseEnabled (URL-driven).
   useEffect(() => {
-    setIncrementalEnabled(axis !== 'blockMemo');
+    setIncrementalEnabled(AXIS_SIDES[axis].on.incremental);
   }, [axis, setIncrementalEnabled]);
 
   // URLs depend on topology + spy/scheme. Each iframe is keyed by its own
@@ -363,18 +364,17 @@ export const IsolatedComparison = ({
     () =>
       sideHosts
         ? {
-            // on-side: memo always; incremental for the incremental AND boost
-            // axes. off-side: legacy for blockMemo/boost, memo for incremental.
+            // Side wiring comes from the axis single source (AXIS_SIDES).
             memo: buildSideUrl(
               sideHosts.memo,
-              { mode: 'memo', axis, incremental: axis !== 'blockMemo' },
+              { axis, ...AXIS_SIDES[axis].on },
               spyEnabled,
               registryEnabled,
               colorScheme
             ),
             legacy: buildSideUrl(
               sideHosts.legacy,
-              { mode: axis === 'incrementalParse' ? 'memo' : 'legacy', axis, incremental: false },
+              { axis, ...AXIS_SIDES[axis].off },
               spyEnabled,
               registryEnabled,
               colorScheme
@@ -421,35 +421,22 @@ export const IsolatedComparison = ({
 
   return (
     <div style={controls.layout}>
-      <div style={controls.buttonRow}>
-        {SCENARIO_KEYS.map((key) => (
-          <button
-            key={key}
-            disabled={busy}
-            onClick={() => setScenario(key)}
-            style={scenario === key ? controls.primaryButton : controls.baseButton}
-          >
-            {scenarios[key].label}
-          </button>
-        ))}
-      </div>
+      <ScenarioRow
+        scenarios={scenarios}
+        scenario={scenario}
+        onSelect={setScenario}
+        disabled={busy}
+        controls={controls}
+      />
 
-      <div style={controls.buttonRow}>
-        <span style={controls.caption}>payload</span>
-        {PAYLOAD_SCALES.map((s) => (
-          <button
-            key={s}
-            disabled={busy}
-            onClick={() => setPayloadScale(s)}
-            style={payloadScale === s ? controls.primaryButton : controls.baseButton}
-          >
-            {s}×
-          </button>
-        ))}
-        <span style={controls.caption}>
-          {payloadChars.toLocaleString()} chars / {payloadBlocks} blocks
-        </span>
-        <span style={{ ...controls.caption, marginLeft: 8 }}>·</span>
+      <PayloadScaleRow
+        payloadScale={payloadScale}
+        onSelect={setPayloadScale}
+        payloadChars={payloadChars}
+        payloadBlocks={payloadBlocks}
+        disabled={busy}
+        controls={controls}
+      >
         <button
           disabled={busy}
           onClick={() => setSpyEnabled(!spyEnabled)}
@@ -474,7 +461,7 @@ export const IsolatedComparison = ({
         >
           defs: {defsEnabled ? 'ON (defs tail appended)' : 'OFF'}
         </button>
-      </div>
+      </PayloadScaleRow>
 
       <div style={controls.buttonRow}>
         <button onClick={running ? stop : start} disabled={!running && !bothReady} style={controls.primaryButton}>

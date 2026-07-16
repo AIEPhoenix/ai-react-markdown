@@ -9,11 +9,11 @@
  * plain params dodge the args URL-encoding quirks and keep the host's URL
  * builder trivial):
  *   - `bmcMode`:     'memo' | 'legacy' → blockMemoEnabled true/false
- *   - `bmcAxis`:     'blockMemo' | 'incrementalParse' | 'boost' → which A/B
- *                    this side belongs to; the incremental axis forces
- *                    blockMemo on and differentiates via `bmcIncremental`;
- *                    the boost axis is (memo+incremental) vs legacy
- *   - `bmcIncremental`: 'on' | 'off'   → incrementalParseEnabled (incremental axis)
+ *   - `bmcAxis`:     one of COMPARISON_AXES → which A/B this side belongs
+ *                    to (heading copy + on/off attribution); the engine
+ *                    wiring itself arrives pre-derived via bmcMode /
+ *                    bmcIncremental, which the host reads off AXIS_SIDES
+ *   - `bmcIncremental`: 'on' | 'off'   → incrementalParseEnabled
  *   - `bmcSpy`:      'on' | 'off'      → wrap tags in counting spies
  *   - `bmcRegistry`: 'on' | 'off'      → wrap in AIMarkdownDocuments
  *                    (coordinated mode: per-token PASS 0 def-label scan)
@@ -33,11 +33,20 @@ import { useRenderProfiler } from './useRenderProfiler';
 import { ProfilerPanel } from './ProfilerPanel';
 import { createSpyComponents } from './spyComponents';
 import { getStreamingTheme, thinScrollbar, type ColorScheme } from './theme';
-import { isProtocolMessage, type SideMode, type SideToHostMessage } from './isolatedProtocol';
+import {
+  AXIS_HEADINGS,
+  AXIS_SIDES,
+  isProtocolMessage,
+  parseComparisonAxis,
+  sideConfig,
+  type ComparisonAxis,
+  type SideMode,
+  type SideToHostMessage,
+} from './isolatedProtocol';
 
 function readParams(): {
   mode: SideMode;
-  axis: 'blockMemo' | 'incrementalParse' | 'boost';
+  axis: ComparisonAxis;
   incremental: boolean;
   spy: boolean;
   registry: boolean;
@@ -46,12 +55,9 @@ function readParams(): {
   const params = new URLSearchParams(window.location.search);
   return {
     mode: params.get('bmcMode') === 'legacy' ? 'legacy' : 'memo',
-    axis:
-      params.get('bmcAxis') === 'incrementalParse'
-        ? 'incrementalParse'
-        : params.get('bmcAxis') === 'boost'
-          ? 'boost'
-          : 'blockMemo',
+    // Throws on an unrecognized value — a silently-wrong axis would render
+    // a plausible-looking side that measures the wrong thing.
+    axis: parseComparisonAxis(params.get('bmcAxis')),
     incremental: params.get('bmcIncremental') === 'on',
     spy: params.get('bmcSpy') !== 'off',
     registry: params.get('bmcRegistry') === 'on',
@@ -89,19 +95,12 @@ export const IsolatedSide = () => {
     };
   }, [scrollbarWidth, scrollbarColor]);
 
-  // Incremental axis: BOTH sides run block-memo; the flag differentiates.
-  // (In registry mode the incremental side auto-falls-back — honest measure.)
-  // General form across all three axes: the incremental axis pins blockMemo
-  // on for both sides; blockMemo/boost differentiate memo via mode, and the
-  // boost on-side additionally enables incremental (host URL sets the flag).
-  const config = useMemo(
-    () =>
-      ({
-        blockMemoEnabled: axis === 'incrementalParse' ? true : mode === 'memo',
-        incrementalParseEnabled: incremental,
-      }) as const,
-    [axis, incremental, mode]
-  );
+  // The host derives mode/incremental from AXIS_SIDES when building this
+  // page's URL; the mode→flag translation lives in sideConfig, next to that
+  // table.
+  const config = useMemo(() => sideConfig({ mode, incremental }), [incremental, mode]);
+  // Which side of the axis this page is — drives the dot color and heading.
+  const isOn = mode === AXIS_SIDES[axis].on.mode && incremental === AXIS_SIDES[axis].on.incremental;
   const spyComponents = useMemo(
     () => (spy ? createSpyComponents(recordElementRender) : undefined),
     [spy, recordElementRender]
@@ -187,18 +186,8 @@ export const IsolatedSide = () => {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 12 }}>
       <h4 style={headerStyle}>
-        <span
-          style={{ color: (axis === 'incrementalParse' ? incremental : mode === 'memo') ? theme.good : theme.warn }}
-        >
-          ●{' '}
-        </span>
-        {axis === 'incrementalParse'
-          ? `incrementalParseEnabled: ${incremental ? 'true' : 'false'}`
-          : axis === 'boost'
-            ? mode === 'memo'
-              ? 'boost: block-memo + incremental (all on)'
-              : 'legacy: full pipeline every frame (all off)'
-            : `blockMemoEnabled: ${mode === 'memo' ? 'true (default)' : 'false (legacy)'}`}
+        <span style={{ color: isOn ? theme.good : theme.warn }}>● </span>
+        {isOn ? AXIS_HEADINGS[axis].on : AXIS_HEADINGS[axis].off}
         <span
           style={{
             color: theme.textMuted,

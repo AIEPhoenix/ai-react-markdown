@@ -2,13 +2,15 @@
 
 import { Profiler, memo, useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import AIMarkdown from '../../src/index';
+import { ScenarioRow, PayloadScaleRow } from './ComparisonControls';
 import { MaybeCoordinated } from './MaybeCoordinated';
 import { DEFAULT_PAYLOAD, SCENARIO_KEYS, type ScenarioKey } from './scenarios';
 import { useRenderProfiler, type RenderProfilerSnapshot } from './useRenderProfiler';
+import { AXIS_HEADINGS, type ComparisonAxis } from './isolatedProtocol';
 import { ProfilerPanel } from './ProfilerPanel';
 import { createSpyComponents } from './spyComponents';
 import { controlStyles, getStreamingTheme, thinScrollbar, type ColorScheme } from './theme';
-import { PAYLOAD_SCALES, useComparisonRuns, type PayloadScale, type RunRecord } from './useComparisonRuns';
+import { useComparisonRuns, type PayloadScale, type RunRecord } from './useComparisonRuns';
 
 interface BlockMemoComparisonProps {
   colorScheme: ColorScheme;
@@ -89,6 +91,16 @@ export const INCREMENTAL_AXIS: ComparisonAxisLabels = {
     'both sides run block-memo, so component invocation counts should MATCH — incremental parsing saves parse time, not render work. A persistent delta here is a bug signal, not a win.',
   domHint:
     'must match — the flag is contractually invisible in output (splice equivalence). Treat ANY divergence as a bug signal.',
+};
+
+/** Axis → verdict/summary labels, keyed by the axis union from
+ *  isolatedProtocol.ts — hosts look labels up here instead of hand-mapping
+ *  the union (which is how a fourth axis could silently get the wrong
+ *  copy). */
+export const AXIS_LABELS: Record<ComparisonAxis, ComparisonAxisLabels> = {
+  blockMemo: BLOCK_MEMO_AXIS,
+  incrementalParse: INCREMENTAL_AXIS,
+  boost: BOOST_AXIS,
 };
 
 interface SummaryStat {
@@ -322,7 +334,8 @@ export const BlockMemoComparison = ({
   const enabledSide = (
     <div key="enabled" style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
       <h4 style={panelHeaderStyle}>
-        <span style={{ color: theme.good }}>● </span>blockMemoEnabled: true (default)
+        <span style={{ color: theme.good }}>● </span>
+        {AXIS_HEADINGS.blockMemo.on}
       </h4>
       <div style={renderSurfaceStyle} ref={enabledProfiler.targetRef}>
         <Profiler id="comparison-enabled" onRender={enabledProfiler.onRender}>
@@ -336,7 +349,8 @@ export const BlockMemoComparison = ({
   const disabledSide = (
     <div key="disabled" style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
       <h4 style={panelHeaderStyle}>
-        <span style={{ color: theme.warn }}>● </span>blockMemoEnabled: false (legacy)
+        <span style={{ color: theme.warn }}>● </span>
+        {AXIS_HEADINGS.blockMemo.off}
       </h4>
       <div style={renderSurfaceStyle} ref={disabledProfiler.targetRef}>
         <Profiler id="comparison-disabled" onRender={disabledProfiler.onRender}>
@@ -349,35 +363,22 @@ export const BlockMemoComparison = ({
 
   return (
     <div style={controls.layout}>
-      <div style={controls.buttonRow}>
-        {SCENARIO_KEYS.map((key) => (
-          <button
-            key={key}
-            disabled={busy}
-            onClick={() => setScenario(key)}
-            style={scenario === key ? controls.primaryButton : controls.baseButton}
-          >
-            {scenarios[key].label}
-          </button>
-        ))}
-      </div>
+      <ScenarioRow
+        scenarios={scenarios}
+        scenario={scenario}
+        onSelect={setScenario}
+        disabled={busy}
+        controls={controls}
+      />
 
-      <div style={controls.buttonRow}>
-        <span style={controls.caption}>payload</span>
-        {PAYLOAD_SCALES.map((s) => (
-          <button
-            key={s}
-            disabled={busy}
-            onClick={() => setPayloadScale(s)}
-            style={payloadScale === s ? controls.primaryButton : controls.baseButton}
-          >
-            {s}×
-          </button>
-        ))}
-        <span style={controls.caption}>
-          {payloadChars.toLocaleString()} chars / {payloadBlocks} blocks
-        </span>
-        <span style={{ ...controls.caption, marginLeft: 8 }}>·</span>
+      <PayloadScaleRow
+        payloadScale={payloadScale}
+        onSelect={setPayloadScale}
+        payloadChars={payloadChars}
+        payloadBlocks={payloadBlocks}
+        disabled={busy}
+        controls={controls}
+      >
         <button
           disabled={busy}
           onClick={() => setSpyEnabled((v) => !v)}
@@ -413,7 +414,7 @@ export const BlockMemoComparison = ({
         <button disabled={busy} onClick={() => setSwapped((v) => !v)} style={controls.baseButton}>
           ⇄ swap sides
         </button>
-      </div>
+      </PayloadScaleRow>
 
       <div style={controls.buttonRow}>
         <button onClick={running ? stop : start} style={controls.primaryButton}>
