@@ -131,7 +131,7 @@ SSR always takes the full path (per-request state starts empty), so server outpu
 
 ### Measured effect
 
-On the Storybook benchmark payloads, the freeze boundary covers ~73–87% of realistic LLM streaming content, cutting the parse+transform stages to roughly the tail's share. Measured in a real browser (see [Benchmark](./benchmark.md) for full tables and methodology): **84–94% less pipeline stage time** — footnote-bearing payloads included since v2 (84% with the defs tail on, identical to plain payloads) — and with both flags on, 16×-payload p50 commit time drops from 32.4 ms to 7.5 ms. Coordinated documents measure smaller (26% at 1× — short per-chunk documents, cross-references pinned by design) and scale the same way. Use the `IncrementalParseCompare` / `BoostCompare` / `CrossChunkIncrementalCompare` stories to measure your own payloads.
+On the Storybook benchmark payloads, the freeze boundary covers ~73–87% of realistic LLM streaming content, cutting the parse+transform stages to roughly the tail's share. Measured in a real browser (see [Benchmark](./benchmark.md) for full tables and methodology): **83–94% less pipeline stage time** — footnote-bearing payloads included since v2 (84% with the defs tail on, identical to plain payloads) — and with both flags on, 16×-payload p50 commit time drops from 32.4 ms to 7.5 ms. Coordinated documents measure smaller (26% at 1× — short per-chunk documents, cross-references pinned by design) and scale the same way. Use the `IncrementalParseCompare` / `BoostCompare` / `CrossChunkIncrementalCompare` stories to measure your own payloads.
 
 ### Footguns
 
