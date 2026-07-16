@@ -75,11 +75,17 @@ jobs:
       - name: Typecheck
         run: pnpm -r typecheck
 
-      # Per-package unit suites, matching the CI gate. The root `vitest run`
-      # additionally spins up the storybook browser project, which needs
-      # playwright browsers the runner doesn't have.
+      # Per-package unit suites, matching the CI gate.
       - name: Test
         run: pnpm -r test
+
+      # Browser smokes, matching CI's browser-smoke task: the root vitest
+      # config's `storybook` project renders every story in headless Chromium.
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install chromium --with-deps
+
+      - name: Browser smokes (storybook stories)
+        run: pnpm vitest run --project=storybook
 
       # pnpm delegates the actual upload to the npm CLI, and the OIDC token
       # exchange happens there — npm 10.x (bundled with Node 22) predates
