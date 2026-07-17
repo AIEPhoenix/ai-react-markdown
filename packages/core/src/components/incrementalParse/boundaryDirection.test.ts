@@ -1,0 +1,121 @@
+/**
+ * DIRECTION BATTERY — turns the detector's "over-block only" claim from a
+ * comment into a tested property.
+ *
+ * The freeze contract: for a boundary b on prefix P, the top-level hast
+ * children attributed before b must be UNCHANGED under ANY future append.
+ * The five documented APPROX approximations are all argued to err toward
+ * smaller b (over-block, performance-only); the one accepted under-count
+ * edge ("same-line tag before an unclosed raw opener") is argued harmless.
+ * This suite bombards both arguments: for fuzz-generated prefixes it takes
+ * the detector's boundary and appends every known hazard-class future —
+ * late definitions (link + footnote), closing tags for swallow reparenting,
+ * raw-construct terminators, def-list claims, indented continuations, math
+ * closers, list items, glue text — asserting the frozen region's output is
+ * byte-stable (positions included) against a fresh full parse of P+future.
+ *
+ * This is boundary-level verification, independent of the splice machinery
+ * (spliceFuzz covers that); a failure here is a DETECTOR under-block.
+ *
+ * Deterministic; scale via FUZZ_RUNS/FUZZ_SEED like spliceFuzz.
+ */
+
+import { describe, expect, test } from 'vitest';
+import fc from 'fast-check';
+import isEqual from 'lodash-es/isEqual';
+
+import { attributeHastChildren } from './attributeHastChildren';
+import { computeFreezeBoundary } from './computeFreezeBoundary';
+import { CATALOG, buildAdvanceOptions } from './testPluginCatalog';
+import { runFull, testEnv } from './spliceArbiterHarness';
+import { benignDocArb, hazardDocArb, type FuzzDoc } from './fuzzGenerators';
+
+const RUNS = Number(testEnv('FUZZ_RUNS') ?? 80);
+const SEED = Number(testEnv('FUZZ_SEED') ?? 20260717);
+const TIMEOUT_MS = Math.max(300_000, RUNS * 600);
+
+/** Hazard-class futures, including RAW GLUE (no leading newline) so the
+ *  append lands mid-line — the regime the trailing-partial-line rules are
+ *  about. Labels intentionally collide with the generator's pool. */
+const FUTURES = [
+  'x',
+  ' tail prose',
+  '\nglued line\n',
+  '\n\nnew paragraph\n',
+  '[a]: /retarget\n',
+  '\n[a]: /retarget "title"\n',
+  '\n\n[a]: /retarget\n',
+  '[^a]: late body\n',
+  '\n\n[^a]: late body\n',
+  '</details>\n',
+  '</div>\n',
+  '-->\n',
+  '?>\n',
+  ']]>\n',
+  '\n:   late description\n',
+  '\n    indented continuation\n',
+  '$$\n',
+  '`\n',
+  '\n- item\n',
+  '\n===\n',
+] as const;
+
+interface Frozen {
+  count: number;
+  children: unknown[];
+}
+
+function frozenRegion(doc: string, boundary: number, config: (typeof CATALOG)[number]): Frozen {
+  const { mdast, hast } = runFull(doc, config) as never as {
+    mdast: Parameters<typeof attributeHastChildren>[0];
+    hast: Parameters<typeof attributeHastChildren>[1];
+  };
+  const attrs = attributeHastChildren(mdast, hast, boundary);
+  const children: Array<{ position?: unknown }> = [];
+  for (let i = 0; i < hast.children.length && attrs[i] < boundary; i++) {
+    children.push(hast.children[i] as { position?: unknown });
+  }
+  // TRAILING position-less nodes (wrap separators, merged literal seams)
+  // are SEAM-owned: the splice rebuilds them per-frame from the current
+  // tail, and their existence legitimately depends on what follows the
+  // boundary. The freeze contract covers everything before them.
+  while (children.length > 0 && children[children.length - 1].position === undefined) {
+    children.pop();
+  }
+  return { count: children.length, children };
+}
+
+describe(`boundary direction battery (runs=${RUNS} seed=${SEED}, futures=${FUTURES.length})`, () => {
+  test('frozen output is stable under every hazard future', { timeout: TIMEOUT_MS }, () => {
+    let boundaries = 0;
+    fc.assert(
+      fc.property(fc.oneof(benignDocArb, hazardDocArb), fc.integer({ min: 1, max: 7 }), (fuzz: FuzzDoc, cutDenom) => {
+        const config = CATALOG[fuzz.configIndex % CATALOG.length];
+        const { defListEnabled } = buildAdvanceOptions(config);
+        // A prefix mid-stream (not just the finished doc) — cut at a
+        // code-point-safe offset.
+        let cut = Math.max(1, Math.floor(fuzz.doc.length / cutDenom));
+        const cc = fuzz.doc.charCodeAt(cut - 1);
+        if (cc >= 0xd800 && cc <= 0xdbff) cut += 1;
+        const prefix = fuzz.doc.slice(0, cut);
+
+        const boundary = computeFreezeBoundary(prefix, { defListEnabled }).boundary;
+        if (boundary === 0) return;
+        boundaries += 1;
+
+        const base = frozenRegion(prefix, boundary, config);
+        for (const future of FUTURES) {
+          const extended = frozenRegion(prefix + future, boundary, config);
+          if (extended.count !== base.count || !isEqual(extended.children, base.children)) {
+            expect.fail(
+              `UNDER-BLOCK: boundary=${boundary} prefix=${JSON.stringify(prefix)} future=${JSON.stringify(future)} — frozen region changed (${base.count} → ${extended.count} children)`
+            );
+          }
+        }
+      }),
+      { numRuns: RUNS, seed: SEED }
+    );
+    // The battery must have tested real boundaries, not skipped everything.
+    expect(boundaries).toBeGreaterThan(RUNS / 8);
+  });
+});
