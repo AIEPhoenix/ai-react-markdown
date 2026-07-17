@@ -11,6 +11,53 @@ import './styles.scss';
 const PRE_STYLE = { cursor: 'pointer', overflow: 'auto', width: '100%', padding: '0.5rem' } as const;
 
 /**
+ * What the component currently shows. One value instead of separate
+ * `hasRendered`/`renderError`/`chartType` fields whose combinations had to
+ * be kept coherent by hand:
+ * - `source`: warm-up / SSR fallback — raw code as a plain code block
+ *   (nothing rendered yet this generation).
+ * - `diagram`: the last successful SVG is up.
+ * - `error`: the error tab — only a post-stream corrective failure or a
+ *   never-rendered static failure can enter this state.
+ *
+ * The user's source toggle (`showOriginalCode`) is deliberately NOT a
+ * phase: it overlays any view and flipping it back must restore the prior
+ * one unchanged.
+ */
+type MermaidView = { kind: 'source' } | { kind: 'diagram'; chartType: string } | { kind: 'error' };
+
+/** Equality used to skip no-op view updates — repeat mid-stream successes
+ *  of the same chart type must not re-render the host per chunk. */
+const sameView = (a: MermaidView, b: MermaidView): boolean =>
+  a.kind === 'diagram' && b.kind === 'diagram' ? a.chartType === b.chartType : a.kind === b.kind;
+
+/** Theme mermaid.initialize was last called with. mermaid's config is a
+ *  module-level singleton, so re-asserting an unchanged theme before every
+ *  render attempt (each streamed chunk re-runs the effect) is pure waste —
+ *  but instances under providers with DIFFERENT schemes must each
+ *  re-assert before their own render, so the cache is module-level and
+ *  checked per attempt rather than hoisted into a per-instance effect. */
+let initializedTheme: 'dark' | 'light' | null = null;
+
+const ensureMermaidInitialized = (isDark: boolean) => {
+  const theme = isDark ? 'dark' : 'light';
+  if (initializedTheme === theme) return;
+  mermaid.initialize({
+    startOnLoad: false,
+    securityLevel: 'strict',
+    theme: isDark ? 'dark' : 'base',
+    darkMode: isDark,
+    // Without a svgContainingElement, a draw-phase throw (an error that
+    // got past mermaid.parse) leaves mermaid's temp element orphaned in
+    // document.body — its error path only cleans up when this flag is
+    // set. We render our own error tab anyway, so mermaid's built-in
+    // error diagram is dead weight here regardless.
+    suppressErrorRendering: true,
+  });
+  initializedTheme = theme;
+};
+
+/**
  * Generate a unique ID for mermaid SVG rendering.
  * Combines a timestamp with a random suffix to avoid collisions when
  * multiple mermaid diagrams render concurrently.
@@ -101,9 +148,9 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
 
   const ref = useRef<HTMLPreElement>(null);
   const renderVersionRef = useRef(0);
-  /** Mirrors `hasRendered` for reads inside the async render closure —
-   *  state reads there can be stale when deps change mid-flight. */
-  const hasRenderedRef = useRef(false);
+  /** Mirrors `view` for reads inside the async render closure — state reads
+   *  there can be stale when deps change mid-flight. */
+  const viewRef = useRef<MermaidView>({ kind: 'source' });
   /** Previous `streaming` value, for edge detection in the effect. */
   const prevStreamingRef = useRef(false);
   /** Armed on the streaming→false edge: the next completed render attempt is
@@ -111,12 +158,24 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
    *  a rendered diagram. Consumed (reset) by that attempt's success OR
    *  surfaced failure, so later unrelated failures can't clobber the SVG. */
   const needsCorrectiveRef = useRef(false);
-  const [hasRendered, setHasRendered] = useState(false);
+  /** Inputs of the render whose SVG currently sits in the host `<pre>`.
+   *  When the effect re-runs with the same (code, theme) pair — the
+   *  post-stream corrective flip on an already-final diagram, or returning
+   *  from the source view — the DOM already holds that exact render, so
+   *  the attempt (and its parse + temp-element render) is skipped. */
+  const lastSuccessRef = useRef<{ code: string; isDark: boolean } | null>(null);
+  const [view, setViewState] = useState<MermaidView>({ kind: 'source' });
   const [showOriginalCode, setShowOriginalCode] = useState(false);
-  const [renderError, setRenderError] = useState(false);
-  const [chartType, setChartType] = useState('unknown');
 
   useEffect(() => {
+    // View updates funnel through here so the ref mirror can't desync from
+    // the state, and no-op updates are dropped (repeat mid-stream successes
+    // and idempotent edge resets must not re-render the host per chunk).
+    const applyView = (next: MermaidView) => {
+      viewRef.current = next;
+      setViewState((prev) => (sameView(prev, next) ? prev : next));
+    };
+
     // Streaming edge detection MUST run before any early return — the first
     // chunk of a new stream can arrive while the code is still empty.
     if (streaming && !prevStreamingRef.current) {
@@ -125,14 +184,9 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
       // Reset all per-generation state so warm-up shows the incoming source,
       // not the previous generation's stale diagram or error tab. Everything
       // here is idempotent — a StrictMode double-run is harmless.
-      hasRenderedRef.current = false;
       needsCorrectiveRef.current = false;
-      // Deliberate state reset on an input edge (same pattern as a
-      // key-less "derived reset"); all three are no-ops when already at
-      // their initial values, so steady-state chunks don't re-render.
-      setHasRendered(false);
-      setRenderError(false);
-      setChartType('unknown');
+      lastSuccessRef.current = null;
+      applyView({ kind: 'source' });
       if (ref.current) {
         ref.current.innerHTML = '';
       }
@@ -145,23 +199,22 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
       return;
     }
 
+    // The SVG in the DOM already came from exactly this (code, theme) pair —
+    // nothing to recompute. This also SATISFIES a pending corrective
+    // obligation: the identical successful render IS the verdict on the
+    // final source, so the obligation is consumed, not left armed for some
+    // later unrelated failure to inherit.
+    if (lastSuccessRef.current?.code === props.code && lastSuccessRef.current.isDark === isDark) {
+      needsCorrectiveRef.current = false;
+      return;
+    }
+
     const renderVersion = ++renderVersionRef.current;
     let cancelled = false;
 
     const renderMermaid = async () => {
       try {
-        mermaid.initialize({
-          startOnLoad: false,
-          securityLevel: 'strict',
-          theme: isDark ? 'dark' : 'base',
-          darkMode: isDark,
-          // Without a svgContainingElement, a draw-phase throw (an error that
-          // got past mermaid.parse) leaves mermaid's temp element orphaned in
-          // document.body — its error path only cleans up when this flag is
-          // set. We render our own error tab anyway, so mermaid's built-in
-          // error diagram is dead weight here regardless.
-          suppressErrorRendering: true,
-        });
+        ensureMermaidInitialized(isDark);
         const parseResult = await mermaid.parse(props.code);
         if (!parseResult) {
           throw new Error('Failed to parse mermaid code');
@@ -188,11 +241,9 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
 
         ref.current.innerHTML = svg;
         bindFunctions?.(ref.current);
-        hasRenderedRef.current = true;
         needsCorrectiveRef.current = false;
-        setHasRendered(true);
-        setChartType(diagramType);
-        setRenderError(false);
+        lastSuccessRef.current = { code: props.code, isDark };
+        applyView({ kind: 'diagram', chartType: diagramType });
       } catch {
         if (cancelled || renderVersion !== renderVersionRef.current) {
           return;
@@ -208,17 +259,15 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
         // the obligation so later unrelated failures don't inherit it.
         if (needsCorrectiveRef.current) {
           needsCorrectiveRef.current = false;
-          setChartType('unknown');
-          setRenderError(true);
+          applyView({ kind: 'error' });
           return;
         }
         // Static rule: never clobber a rendered diagram (theme-flip
         // re-renders, un-flagged code updates from static consumers).
-        if (hasRenderedRef.current) {
+        if (viewRef.current.kind === 'diagram') {
           return;
         }
-        setChartType('unknown');
-        setRenderError(true);
+        applyView({ kind: 'error' });
       }
     };
 
@@ -242,7 +291,7 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
   // diagram container below stays MOUNTED throughout — merely hidden — so
   // `ref` is always available for mermaid to render into; unmounting it would
   // make the effect's `!ref.current` guard bail forever.
-  const showSourceFallback = showOriginalCode || renderError || !hasRendered;
+  const showSourceFallback = showOriginalCode || view.kind !== 'diagram';
 
   return (
     <>
@@ -253,7 +302,7 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
           w="100%"
           code={[
             {
-              fileName: renderError ? 'Mermaid Render Error' : 'mermaid',
+              fileName: view.kind === 'error' ? 'Mermaid Render Error' : 'mermaid',
               code: props.code,
               language: 'mermaid',
             },
@@ -269,10 +318,10 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
             // The "Render Mermaid" control only makes sense as the way back
             // from the user-toggled source view. In the error and warm-up
             // fallbacks `showOriginalCode` is already false, so the control
-            // would be a no-op — hide it there. (No `!renderError` conjunct:
-            // the toggle is only reachable from the visible diagram view,
-            // and while the source view is open the effect early-returns,
-            // so showOriginalCode && renderError is unreachable.)
+            // would be a no-op — hide it there. (No view-kind conjunct: the
+            // toggle is only reachable from the visible diagram view, and
+            // while the source view is open the effect early-returns, so
+            // showOriginalCode && view.kind === 'error' is unreachable.)
             showOriginalCode
               ? [
                   <CodeHighlightControl
@@ -304,7 +353,7 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
         }
       >
         <div className="chart-header">
-          <div className="chart-type-tag">{chartType}</div>
+          <div className="chart-type-tag">{view.kind === 'diagram' ? view.chartType : 'unknown'}</div>
           <Flex align="center" justify="flex-end" gap={0}>
             <Tooltip label="Show Mermaid Code">
               <ActionIcon
