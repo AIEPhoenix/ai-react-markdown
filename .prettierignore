@@ -3,3 +3,5 @@ node_modules
 .impeccable
 pnpm-lock.yaml
 storybook-static
+.stryker-tmp
+reports
