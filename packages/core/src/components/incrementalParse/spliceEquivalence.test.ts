@@ -253,6 +253,16 @@ describe('splice equivalence — fuzz-found regressions', () => {
     // Same rule, other face: non-title garbage AFTER the destination also
     // invalidates the def — the line is a paragraph with live `[x]` refs.
     ['def-shape-trailing-garbage', '[x]: /u[x]: /u\n\n[x]: /u', [17, 6], 0],
+    // Math flow fences carry a LENGTH like code fences: `$$$$` opens a
+    // 4-dollar fence that swallows everything until a ≥4-dollar close —
+    // treating it as same-line open+close froze a math block that the real
+    // parse extends with each append (K=4 sharded census).
+    ['math-fence-length', '$$$$\n\na', [6, 4], 0],
+    ['math-fence-length-multi', '$$$$\n\n---', [3, 6], 0],
+    // A def title left OPEN at EOL may be invalidated by garbage after its
+    // close on the CONTINUATION line — registering at the opener line was
+    // premature. Multi-line titles now never register (A2 edge).
+    ['def-title-closed-then-garbage', '[x]: /u "t\nt2"a\n\n[x]: /u', [17, 5], 0],
   ];
 
   for (const [name, payload, sizes, configIdx] of FUZZ_CASES) {

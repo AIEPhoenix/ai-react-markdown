@@ -154,6 +154,8 @@ export interface FreezeScanCheckpoint {
   fenceChar: string;
   fenceLen: number;
   inMath: boolean;
+  /** Opening dollar-run length while inMath — the close run must match it. */
+  mathFenceLen: number;
   blankRun: number;
   lastBlankStart: number;
   /** Rolling blocker-3 verdict ("nearest decisive block start so far"). */
@@ -202,8 +204,12 @@ const DEF_LIST_DD_RE = /^ {0,3}:[ \t]/;
 /** Any link/footnote reference definition at block indent. */
 const DEF_RE = /^ {0,3}\[((?:[^[\]\\]|\\.)+)\]:/;
 const FENCE_RE = /^ {0,3}(`{3,}|~{3,})/;
-const MATH_FENCE_RE = /^ {0,3}\$\$/;
-const MATH_CLOSE_RE = /^ {0,3}\$\$\s*$/;
+/** Leading dollar RUN at block indent — math flow fences carry a LENGTH
+ *  like code fences (`$$$$` opens a fence only ≥4 dollars can close;
+ *  K=4 census counterexample), and the meta after the run may not contain
+ *  `$` (a rest with any `$` is inline math / literal text, NOT a flow
+ *  open). */
+const MATH_RUN_RE = /^ {0,3}(\$\$+)/;
 /** Opening/closing tags (name must be followed by attr/close syntax, which
  *  excludes autolinks like `<https://…>`), plus comment delimiters. */
 const TAG_OR_COMMENT_RE = /<(\/?)([A-Za-z][A-Za-z0-9-]*)(?=[\s/>])([^>]*)>|<!--|-->/g;
@@ -308,6 +314,7 @@ function freshCheckpoint(defListEnabled: boolean): FreezeScanCheckpoint {
     fenceChar: '',
     fenceLen: 0,
     inMath: false,
+    mathFenceLen: 0,
     blankRun: 0,
     lastBlankStart: -1,
     hazardVerdict: false,
@@ -322,10 +329,14 @@ function freshCheckpoint(defListEnabled: boolean): FreezeScanCheckpoint {
 /**
  * Rest-of-line check for a link definition after `[label]:`: a non-empty
  * destination (angle-bracketed or a bare non-whitespace run), then nothing
- * or a title OPENER (`"` `'` `(`). Anything else after the destination
- * invalidates the definition per CommonMark — the line is a paragraph.
- * Unterminated `<` destinations are rejected too (conservative: rejection
- * only over-blocks; registering a ghost def under-blocks).
+ * or a title that CLOSES on this line with nothing after it. Everything
+ * else — no destination, non-title garbage, garbage after a closed title
+ * (`"t"a`), or a title left OPEN at EOL (its continuation line may append
+ * garbage that invalidates the whole def: `"t\nt2"a`, K=4 census) — is
+ * rejected: the line is (or may become) a paragraph whose `[label]` stays
+ * a live ref. Rejecting a real def only over-blocks (refs stay tainted);
+ * registering a ghost under-blocks. Multi-line titles therefore never
+ * register — the documented A2 conservative edge.
  */
 function isPlausibleLinkDefRest(rest: string): boolean {
   const t = rest.trim();
@@ -340,7 +351,20 @@ function isPlausibleLinkDefRest(rest: string): boolean {
     destEnd = ws === -1 ? t.length : ws;
   }
   const after = t.slice(destEnd).trim();
-  return after === '' || after.startsWith('"') || after.startsWith("'") || after.startsWith('(');
+  if (after === '') return true;
+  const opener = after[0];
+  if (opener !== '"' && opener !== "'" && opener !== '(') return false;
+  const closer = opener === '(' ? ')' : opener;
+  // Find the UNESCAPED closing delimiter; the def is valid only when it
+  // exists on this line and nothing but whitespace follows it.
+  for (let i = 1; i < after.length; i++) {
+    if (after[i] === '\\') {
+      i += 1;
+      continue;
+    }
+    if (after[i] === closer) return after.slice(i + 1).trim() === '';
+  }
+  return false; // title still open at EOL
 }
 
 /** Blocker-3 classification of a block-START line (raw text; markers are
@@ -498,9 +522,15 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     }
   }
 
-  // --- $$ flow-math state (fence-like: no candidates, close at line start) ---
+  // --- $$ flow-math state (fence-like: no candidates, close at line start;
+  // the closing run must be at least as long as the opening one, with
+  // nothing but whitespace after) ---
   if (cp.inMath) {
-    if (MATH_CLOSE_RE.test(ln.text)) cp.inMath = false;
+    const close = MATH_RUN_RE.exec(ln.text);
+    if (close && close[1].length >= cp.mathFenceLen && ln.text.trim() === close[1]) {
+      cp.inMath = false;
+      cp.mathFenceLen = 0;
+    }
     cp.blankRun = 0;
     cp.paragraphHasUnpairedRun = false;
     cp.prevLineBlank = false;
@@ -514,14 +544,19 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
   // rehype-raw parses as REAL markup (fuzz counterexample: a fence glued
   // to `</details>` hiding a quoted `<div>`). Falling through to the
   // plain-text branch keeps those lines tag-scanned (over-block safe).
-  if (!cp.htmlFlowSinceBlank && !rawOpenAtLineStart && MATH_FENCE_RE.test(ln.text)) {
-    const rest = ln.text.slice(ln.text.indexOf('$$') + 2);
-    if (!rest.includes('$$')) {
+  const mathRun = !cp.htmlFlowSinceBlank && !rawOpenAtLineStart ? MATH_RUN_RE.exec(ln.text) : null;
+  if (mathRun) {
+    const rest = ln.text.slice(ln.text.indexOf(mathRun[1]) + mathRun[1].length);
+    // A `$` anywhere in the rest disqualifies the flow open (meta may not
+    // contain `$`): `$$x$$` is inline math, `$$x$` a plain paragraph —
+    // both self-contained lines, no state either way.
+    if (!rest.includes('$')) {
       if (isBlockStart) {
         const verdict = classifyBlockStart(ln.text, ln.indent, cp.defListEnabled);
         if (verdict !== null) cp.hazardVerdict = verdict;
       }
       cp.inMath = true;
+      cp.mathFenceLen = mathRun[1].length;
       cp.blankRun = 0;
       cp.paragraphHasUnpairedRun = false;
       cp.prevLineBlank = false;
