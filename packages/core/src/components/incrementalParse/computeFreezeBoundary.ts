@@ -319,6 +319,30 @@ function freshCheckpoint(defListEnabled: boolean): FreezeScanCheckpoint {
   };
 }
 
+/**
+ * Rest-of-line check for a link definition after `[label]:`: a non-empty
+ * destination (angle-bracketed or a bare non-whitespace run), then nothing
+ * or a title OPENER (`"` `'` `(`). Anything else after the destination
+ * invalidates the definition per CommonMark — the line is a paragraph.
+ * Unterminated `<` destinations are rejected too (conservative: rejection
+ * only over-blocks; registering a ghost def under-blocks).
+ */
+function isPlausibleLinkDefRest(rest: string): boolean {
+  const t = rest.trim();
+  if (t === '') return false; // destination-less
+  let destEnd: number;
+  if (t.startsWith('<')) {
+    const close = t.indexOf('>');
+    if (close === -1) return false;
+    destEnd = close + 1;
+  } else {
+    const ws = t.search(/[ \t]/);
+    destEnd = ws === -1 ? t.length : ws;
+  }
+  const after = t.slice(destEnd).trim();
+  return after === '' || after.startsWith('"') || after.startsWith("'") || after.startsWith('(');
+}
+
 /** Blocker-3 classification of a block-START line (raw text; markers are
  *  never inside code spans at block indent). Returns the new rolling
  *  verdict, or null when the line is ambiguous (verdict unchanged). */
@@ -588,7 +612,19 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
   // inject a definition the real parse does not have (fuzz-arbiter
   // counterexample). Refs stay extracted regardless: extra candidates only
   // over-taint.
-  const def = inRawText ? null : DEF_RE.exec(scanText);
+  const defShaped = inRawText ? null : DEF_RE.exec(scanText);
+  // micromark requires a NON-EMPTY destination followed by nothing but an
+  // optional TITLE for a link definition. A bare `[label]:` line, or one
+  // with non-title garbage after the destination (`[x]: /u[x]: /u` — K=4
+  // census counterexamples), is a PARAGRAPH whose `[label]` stays a live
+  // shortcut ref that a LATER real def can retarget. Rejecting a real def
+  // here only over-blocks (refs stay tainted); registering a ghost
+  // under-blocks. Footnote defs legitimately have empty bodies.
+  const def =
+    defShaped !== null &&
+    (defShaped[1].startsWith('^') || isPlausibleLinkDefRest(scanText.slice(defShaped.index + defShaped[0].length)))
+      ? defShaped
+      : null;
   const defLineStart = isBlockStart || !cp.prevLineWasText || cp.prevLineWasValidDef;
   const validDef = def !== null && defLineStart;
   if (validDef) {
