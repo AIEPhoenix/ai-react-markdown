@@ -119,6 +119,62 @@ Takeaways:
    (unconfirmed lines break monotonicity); x-markdown-mini's scanner treats
    EOF as a line boundary and can commit prematurely.
 
+## Verification stack upgrade (2026-07-17): fuzz + exhaustive + direction battery
+
+The fixture arbiter (`incrementalParse/spliceEquivalence.test.ts`) was
+generalized into a four-layer machine-driven verification stack, all built
+on the shared oracle in `incrementalParse/spliceArbiterHarness.ts`:
+
+| layer       | file                         | guarantee                                                                                                                                                                 |
+| ----------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| generative  | `spliceFuzz.test.ts`         | grammar-composed docs × append schedules × config rotation; splice ≡ full parse per frame + checkpoint-resume ≡ fresh scan; APPROX-biased generators with coverage meters |
+| exhaustive  | `spliceExhaustive.test.ts`   | EVERY ≤K-token sequence over a 24-token markdown-hot alphabet × 2/3-cut schedules (census, not sampling, within the bound)                                                |
+| directional | `boundaryDirection.test.ts`  | the "detector only over-blocks" claim as a tested property: frozen output stable under a 20-future hazard battery                                                         |
+| sensitivity | `arbiterSensitivity.test.ts` | planted faults (historical under-block boundary, gutted checkpoint, single-node corruption) MUST fail — the suite that tests the suite                                    |
+
+Soak / deep runs (all deterministic, seed-controlled):
+
+```sh
+FUZZ_RUNS=50000 FUZZ_SEED=<n> pnpm --filter @ai-react-markdown/core fuzz:splice
+EXHAUSTIVE_K=4 EXHAUSTIVE_STRIDE=1 pnpm --filter @ai-react-markdown/core exec vitest --run src/components/incrementalParse/spliceExhaustive.test.ts
+```
+
+Counterexample workflow: fast-check shrinks every failure to a minimal
+doc + schedule; freeze it verbatim (schedule included — failures are
+frame-alignment-sensitive) into `spliceEquivalence.test.ts`'s
+`FUZZ_CASES`, fix, and reverse-verify (checkout the pre-fix engine, the
+new fixture must fail).
+
+**Day-one findings — 11 engine bugs, all fixed + fixture-pinned** (the
+fixture corpus embeds each one; see the FUZZ_CASES comments for
+mechanisms): 2 detector UNDER-BLOCKS (code-span masking inside html-flow
+continuation lines; stale blocker-3 verdict when a list interrupts a
+paragraph / follows a closed fence-math line), 2 ghost-def registrations
+(html-flow continuation def lines; footnote defs wrongly chaining), 1
+under-taint (def-shaped paragraph-continuation line skipping its live
+`[label]` ref), and 6 splice-layer divergences around hast-util-raw's
+less-traveled output shapes (root-position anchoring, html-block trailing
+literals' position lifecycle, seam merges around tokenizer-dropped raw
+constructs and footer-only tails). None were reachable by the shipped
+default (`incrementalParseEnabled: false`); all were real under the flag.
+
+Mutation audit (`stryker.conf.json`, one-off 2026-07-17, not in CI):
+killer suite = the fast arbiter set (`stryker.vitest.config.ts`). Score:
+**64.55% total** (1061 killed, 19 timeout, 566 survived, 27 no-coverage,
+0 errors; per file — advanceIncrementalParse 76.7%, computeFreezeBoundary
+67.3%, spliceParse 60.6%; HTML report: `reports/mutation/`).
+
+Reading the score honestly: an EQUIVALENCE arbiter cannot kill mutants
+that only push the detector toward MORE conservatism — a mutant that
+rejects extra candidates or extends a blocker changes freeze RATE, not
+output, and surviving that way is the safe direction the whole design
+leans on. A large share of the 566 survivors are expected to be of this
+class (plus bail-path mutants whose only effect is a full-parse
+fallback). Survivor-by-survivor disposition is follow-up material; the
+sensitivity meta-suite (`arbiterSensitivity.test.ts`) already pins the
+classes that MUST die (under-block boundary, checkpoint corruption,
+output corruption).
+
 ## Footguns for a future production implementation
 
 - Freezing must happen at the PARSE level to pay off; the frozen prefix's
