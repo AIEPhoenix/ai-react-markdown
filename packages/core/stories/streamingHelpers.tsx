@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useReducer, useState } from 'react';
+import { useEffect, useReducer, useState, type CSSProperties, type ReactNode } from 'react';
 
 export interface UseStreamedContentOptions {
   chunkSizeMin?: number;
@@ -49,6 +49,38 @@ export const useStreamedContent = (
     streaming: position < fullText.length,
     restart,
   };
+};
+
+/**
+ * Shared shell for the streaming demo stories (core and mantine): a replay
+ * button above the streamed markdown. Each package styles its own button
+ * (`renderButton`) and renders its own markdown component (`children`) —
+ * what's shared is the hook wiring and the button-over-content layout, and,
+ * because this is a real component (not a story `render` slot calling hooks
+ * directly), consumers don't need a rules-of-hooks suppression.
+ */
+export const StreamingReplay = ({
+  text,
+  options,
+  style,
+  renderButton,
+  children,
+}: {
+  /** Full markdown document to stream. */
+  text: string;
+  options?: UseStreamedContentOptions;
+  /** Style for the wrapping div (e.g. theme text color). */
+  style?: CSSProperties;
+  renderButton: (streaming: boolean, restart: () => void) => ReactNode;
+  children: (content: string, streaming: boolean) => ReactNode;
+}) => {
+  const { content, streaming, restart } = useStreamedContent(text, options);
+  return (
+    <div style={style}>
+      {renderButton(streaming, restart)}
+      {children(content, streaming)}
+    </div>
+  );
 };
 
 export const STREAMING_DEMO_CONTENT = `# Streaming Demo

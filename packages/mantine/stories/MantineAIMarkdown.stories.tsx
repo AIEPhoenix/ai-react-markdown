@@ -4,7 +4,7 @@ import { Button } from '@mantine/core';
 import MantineAIMarkdown from '../src/index';
 import 'katex/dist/katex.min.css';
 import { withMantineProvider } from './decorators';
-import { useStreamedContent } from '../../core/stories/streamingHelpers';
+import { StreamingReplay } from '../../core/stories/streamingHelpers';
 
 const meta: Meta<typeof MantineAIMarkdown> = {
   title: 'Mantine/MantineAIMarkdown',
@@ -118,20 +118,16 @@ export const Streaming: Story = {
   parameters: {
     controls: { exclude: ['streaming'] },
   },
-  render: (args) => {
-    // Storybook `render` is a function-typed slot, not a React component named
-    // with an uppercase or `use*` identifier — but Storybook calls it inside a
-    // component context, so Hook usage is legitimate. Suppress the false
-    // positive from rules-of-hooks for this pattern.
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    const { content, streaming, restart } = useStreamedContent(args.content ?? '');
-    return (
-      <div>
+  render: (args) => (
+    <StreamingReplay
+      text={args.content ?? ''}
+      renderButton={(streaming, restart) => (
         <Button size="xs" variant={streaming ? 'default' : 'filled'} onClick={restart} mb={12}>
           {streaming ? 'Streaming…' : 'Restart'}
         </Button>
-        <MantineAIMarkdown {...args} content={content} streaming={streaming} />
-      </div>
-    );
-  },
+      )}
+    >
+      {(content, streaming) => <MantineAIMarkdown {...args} content={content} streaming={streaming} />}
+    </StreamingReplay>
+  ),
 };
