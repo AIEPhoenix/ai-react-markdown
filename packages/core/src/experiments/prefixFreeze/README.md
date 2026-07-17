@@ -145,18 +145,39 @@ frame-alignment-sensitive) into `spliceEquivalence.test.ts`'s
 `FUZZ_CASES`, fix, and reverse-verify (checkout the pre-fix engine, the
 new fixture must fail).
 
-**Day-one findings — 11 engine bugs, all fixed + fixture-pinned** (the
+**Campaign findings — 18 engine bugs, all fixed + fixture-pinned** (the
 fixture corpus embeds each one; see the FUZZ_CASES comments for
-mechanisms): 2 detector UNDER-BLOCKS (code-span masking inside html-flow
+mechanisms): 4 detector UNDER-BLOCKS (code-span masking inside html-flow
 continuation lines; stale blocker-3 verdict when a list interrupts a
-paragraph / follows a closed fence-math line), 2 ghost-def registrations
-(html-flow continuation def lines; footnote defs wrongly chaining), 1
-under-taint (def-shaped paragraph-continuation line skipping its live
-`[label]` ref), and 6 splice-layer divergences around hast-util-raw's
-less-traveled output shapes (root-position anchoring, html-block trailing
-literals' position lifecycle, seam merges around tokenizer-dropped raw
-constructs and footer-only tails). None were reachable by the shipped
-default (`incrementalParseEnabled: false`); all were real under the flag.
+paragraph / follows a closed fence-math line; a sticky flow flag
+suppressing a real `$$` open after `-->` / after an ambiguous non-type-6
+tag; math fences' LENGTH semantics — `$$$$` opens a 4-dollar fence that
+swallows to a ≥4-dollar close, and meta may not contain `$`), 5
+ghost-def registrations (html-flow continuation def lines; footnote defs
+wrongly chaining; destination-less `[label]:`; non-title garbage after
+the destination; and titles left OPEN at EOL, whose continuation line
+can invalidate the whole def — multi-line titles now never register,
+the documented A2 conservative edge), 1 under-taint (def-shaped
+paragraph-continuation line skipping its live `[label]` ref), and 8
+splice-layer divergences around hast-util-raw's less-traveled output
+shapes (root-position anchoring, html-block trailing literals' position
+lifecycle, seam merges around tokenizer-dropped raw constructs,
+footer-only tails, and merged raw-remnant whitespace — the last two now
+bail to a full parse rather than model the parse5 tokenizer). None were
+reachable by the shipped default (`incrementalParseEnabled: false`);
+all were real under the flag.
+
+Soak record (2026-07-17..20): 8 seeds × 1.5-2.5k samples; 50k samples
+(seed 20260750); 20k direction-battery prefixes (CLEAN — the over-block
+claim held under bombardment); full K=3 census; K=4 stride-2 census,
+finally landed CLEAN across all 12 shards after surfacing the last six
+findings. Operations notes, learned the hard way: (1) run soaks under
+`caffeinate` — a sleeping laptop inflates WALL-CLOCK past the vitest
+per-test timeout, and a timed-out soak reports a failure with NO
+counterexample; rerun awake before treating one as a finding. (2) the
+census is ONE vitest test = one core; use `EXHAUSTIVE_SHARD=i/N` with N
+parallel processes (12-way ≈ 8 min for K=4 on 16 cores vs 1-2 h and two
+sleep-killed attempts single-core).
 
 Mutation audit (`stryker.conf.json`, one-off 2026-07-17, not in CI):
 killer suite = the fast arbiter set (`stryker.vitest.config.ts`). Score:
