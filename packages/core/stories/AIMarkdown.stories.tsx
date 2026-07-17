@@ -4,7 +4,7 @@ import AIMarkdown from '../src/index';
 import 'katex/dist/katex.min.css';
 import '../src/components/typography/variants/all.scss';
 import { withThemedBackground } from './decorators';
-import { useStreamedContent } from './streamingHelpers';
+import { StreamingReplay } from './streamingHelpers';
 import { StreamingPlayground } from './streaming/StreamingPlayground';
 import { BlockMemoComparison } from './streaming/BlockMemoComparison';
 import { IncrementalParseComparison } from './streaming/IncrementalParseComparison';
@@ -85,36 +85,32 @@ export const Streaming: Story = {
   render: (args, context) => {
     const currentTheme = context.globals.theme === 'dark' ? 'dark' : 'light';
     const theme = getStreamingTheme(currentTheme);
-    // Storybook `render` is a function-typed slot, not a React component named
-    // with an uppercase or `use*` identifier — but Storybook calls it inside a
-    // component context, so Hook usage is legitimate. Suppress the false
-    // positive from rules-of-hooks for this pattern.
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    const { content, streaming, restart } = useStreamedContent(args.content ?? '', {
-      chunkSizeMin: 2,
-      chunkSizeMax: 8,
-      chunkDelayMin: 15,
-      chunkDelayMax: 60,
-    });
     return (
-      <div style={{ color: theme.text }}>
-        <button
-          onClick={restart}
-          style={{
-            background: streaming ? 'transparent' : theme.primaryBg,
-            border: `1px solid ${streaming ? theme.buttonBorder : theme.primaryBg}`,
-            borderRadius: 6,
-            color: streaming ? theme.buttonText : theme.primaryText,
-            cursor: 'pointer',
-            font: 'inherit',
-            marginBottom: 12,
-            padding: '4px 12px',
-          }}
-        >
-          {streaming ? 'Streaming…' : 'Restart'}
-        </button>
-        <AIMarkdown {...args} content={content} streaming={streaming} colorScheme={currentTheme} />
-      </div>
+      <StreamingReplay
+        text={args.content ?? ''}
+        style={{ color: theme.text }}
+        renderButton={(streaming, restart) => (
+          <button
+            onClick={restart}
+            style={{
+              background: streaming ? 'transparent' : theme.primaryBg,
+              border: `1px solid ${streaming ? theme.buttonBorder : theme.primaryBg}`,
+              borderRadius: 6,
+              color: streaming ? theme.buttonText : theme.primaryText,
+              cursor: 'pointer',
+              font: 'inherit',
+              marginBottom: 12,
+              padding: '4px 12px',
+            }}
+          >
+            {streaming ? 'Streaming…' : 'Restart'}
+          </button>
+        )}
+      >
+        {(content, streaming) => (
+          <AIMarkdown {...args} content={content} streaming={streaming} colorScheme={currentTheme} />
+        )}
+      </StreamingReplay>
     );
   },
 };
