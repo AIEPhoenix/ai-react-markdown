@@ -56,7 +56,8 @@
     "build:css": "sass src/components/typography/variants/:dist/typography/ && postcss dist/typography/*.css --replace",
     "build": "pnpm run build:js && pnpm run build:css",
     "test": "vitest --run",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "fuzz:splice": "vitest --run src/components/incrementalParse/spliceFuzz.test.ts"
   },
   "peerDependencies": {
     "katex": "^0.16.0 || ^0.17.0",
@@ -73,6 +74,7 @@
     "hast-util-to-jsx-runtime": "^2.3.6",
     "html-url-attributes": "^3.0.1",
     "mdast-util-to-hast": "^13.2.1",
+    "micromark-util-html-tag-name": "^2.0.1",
     "micromark-util-normalize-identifier": "^2.0.1",
     "rehype-katex": "^7.0.1",
     "rehype-raw": "^7.0.0",
@@ -98,11 +100,14 @@
     "vfile": "^6.0.3"
   },
   "devDependencies": {
+    "@stryker-mutator/core": "^9.6.1",
+    "@stryker-mutator/vitest-runner": "^9.6.1",
     "@types/hast": "^3.0.5",
     "@types/lodash-es": "^4.17.12",
     "@types/mdast": "^4.0.4",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
+    "fast-check": "^4.9.0",
     "hast-util-sanitize": "^5.0.2",
     "hastscript": "^9.0.1",
     "lodash-es": "^4.18.0",

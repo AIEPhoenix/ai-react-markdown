@@ -20,71 +20,14 @@
  */
 
 import { describe, expect, test } from 'vitest';
-import isEqual from 'lodash-es/isEqual';
 
 import { DEFAULT_PAYLOAD, withDefs } from '../../../stories/streaming/scenarios';
-import { parseStage, transformStage } from '../markdown';
-import { buildPhantomSuffix } from '../remarkInjectPhantomDefs';
 import { collectPrefixInjection, type InjectionEvent } from './spliceParse';
-import { advanceIncrementalParse, type AdvanceOptions, type IncrementalParseState } from './advanceIncrementalParse';
+import { advanceIncrementalParse, type IncrementalParseState } from './advanceIncrementalParse';
 import { buildAdvanceOptions, buildCrossChunkAdvanceOptions, CATALOG, type CatalogConfig } from './testPluginCatalog';
 import { codePointSnapshots as chunkSnapshots } from './codePointSnapshots';
-
-function runFull(content: string, config: CatalogConfig): { mdast: unknown; hast: unknown } {
-  const options = buildAdvanceOptions(config);
-  const parsed = parseStage({
-    children: content,
-    remarkPlugins: options.remarkPlugins,
-    rehypePlugins: options.rehypePlugins,
-    remarkRehypeOptions: options.remarkRehypeOptions,
-  });
-  const hast = transformStage(parsed);
-  return { mdast: parsed.mdast, hast };
-}
-
-/** Locate the first differing top-level child for a debuggable message. */
-function diffLocation(actual: { children: unknown[] }, expected: { children: unknown[] }): string {
-  const max = Math.max(actual.children.length, expected.children.length);
-  for (let i = 0; i < max; i++) {
-    if (!isEqual(actual.children[i], expected.children[i])) {
-      return `first differing top-level child index=${i} actual=${JSON.stringify(actual.children[i])?.slice(0, 300)} expected=${JSON.stringify(expected.children[i])?.slice(0, 300)}`;
-    }
-  }
-  return 'roots differ outside children (position/data)';
-}
-
-interface StreamStats {
-  frames: number;
-  incrementalFrames: number;
-}
-
-/**
- * Chain the state machine across snapshots, asserting per-frame equivalence
- * against a fresh full parse. Returns how often the incremental path ran so
- * fixtures can assert they exercised what they claim to exercise.
- */
-function assertStreamEquivalence(name: string, snapshots: string[], config: CatalogConfig): StreamStats {
-  const options = buildAdvanceOptions(config);
-  let state: IncrementalParseState | null = null;
-  let incrementalFrames = 0;
-
-  snapshots.forEach((snapshot, frame) => {
-    const result = advanceIncrementalParse(state, snapshot, options);
-    state = result.nextState;
-    if (result.usedIncremental) incrementalFrames += 1;
-
-    const expected = runFull(snapshot, config);
-    const label = `${name} [${config.label}] frame=${frame} len=${snapshot.length} boundary=${result.boundary} incremental=${result.usedIncremental}`;
-    if (!isEqual(result.hast, expected.hast)) {
-      expect.fail(`${label} — hast mismatch: ${diffLocation(result.hast, expected.hast as never)}`);
-    }
-    if (!isEqual(result.mdast, expected.mdast)) {
-      expect.fail(`${label} — mdast mismatch: ${diffLocation(result.mdast, expected.mdast as never)}`);
-    }
-  });
-
-  return { frames: snapshots.length, incrementalFrames };
-}
+import { scheduleSnapshots } from './fuzzGenerators';
+import { assertStreamEquivalence, runCrossChunk, runFull, type FramePair } from './spliceArbiterHarness';
 
 // --- realistic corpora ------------------------------------------------------
 
@@ -117,6 +60,190 @@ describe('splice equivalence — corpora × plugin catalog', () => {
     const stats = assertStreamEquivalence('cjk-mixed', chunkSnapshots(payload, 13), CATALOG[1]);
     expect(stats.incrementalFrames).toBeGreaterThan(0);
   });
+});
+
+// --- fuzz-found regressions ---------------------------------------------------
+//
+// Shrunk counterexamples from spliceFuzz.test.ts, frozen verbatim (schedule
+// included — the failures are frame-alignment-sensitive). Each pinned a real
+// engine bug on the fuzz arbiter's first day; see the fix commits for the
+// mechanism notes.
+
+describe('splice equivalence — fuzz-found regressions', () => {
+  const FUZZ_CASES: Array<[string, string, number[], number]> = [
+    // Root position on empty-output docs: hast-util-raw leaves the rebuilt
+    // root's position undefined when its reparse consumed no tokens
+    // (defs-only prefix + partially-streamed footnote def). Fixed by the
+    // empty-spliced-output bail in spliceTrees.
+    [
+      'empty-output-root-position',
+      '[a]: https://example.com/a\n\n[^a]: body text\n\n[a]: https://example.com/a\n\n> a quoted line\n',
+      [4, 1, 8, 5, 4, 4, 4, 4],
+      4,
+    ],
+    // Same rule crossed from the other side: removeComments turns a
+    // comment-only prefix into zero raw tokens while the tail's unterminated
+    // `<?` opener is tokenizer-dropped.
+    [
+      'empty-output-remove-comments',
+      '<!--\ninner prose\n-->\n\n<?instr <b> ?> after the pi\n\n- tight one\n- tight two\n\nsee [a] maybe, or [a][a] even ![a]\n\n[^a]: body text\n\n[^a]: body text\n',
+      [4, 4, 4, 4, 4, 1, 1, 4],
+      1,
+    ],
+    // Code-span masking inside an html FLOW block (no blank line after
+    // `</details>`): micromark does no inline parsing there, so the masked
+    // `<div>` was a REAL unclosed tag — an under-block (correctness) hole.
+    // Fixed by htmlFlowSinceBlank in computeFreezeBoundary.
+    [
+      'masking-in-html-flow',
+      '[a]: https://example.com/a\n\n<details>\n<summary>t</summary>\nbody prose\n</details>\ninline `<div>` stays code\n\n> a quoted line\n\n<b>x</b> <!-- trailing opener\n\n$$\ne = mc^2\n\n',
+      [4, 4, 4, 4, 1, 4, 4, 4],
+      0,
+    ],
+    // Raw trailing literal of an html block (unblanked text line after the
+    // closing tag) is position-less and attributed FORWARD — the prefix cut
+    // dropped it and resynthesized a bare separator. Fixed by the
+    // trailing-literal handling in the cut + alignPrefixCut seam merge.
+    [
+      'html-block-trailing-literal',
+      '<details>\n<summary>t</summary>\nbody prose\n</details>\n> a quoted line\n\ninline `<div>` stays code\n\ninline `<div>` stays code\n',
+      [4, 4, 4, 4, 4, 4, 4, 4],
+      0,
+    ],
+    // Seam separators around a tokenizer-DROPPED unterminated `<?` opener
+    // merge in a full parse (nothing sat between them at raw time) but kept
+    // two nodes in the splice. Fixed by the three-valued seam verdict
+    // (tailLeadingTextIsHoist) + the remnantMerged proof from the injection
+    // gap.
+    [
+      'dropped-pi-seam-merge',
+      '[^a]: body text\n\n> a quoted line\n\n<?instr <b> ?> after the pi\n\n> a quoted line\n\n[a]: https://example.com/a\n\nTerm line\n\n:   description body\n\n<embed\n  src="x"\n/>\n',
+      [1, 4, 4, 4, 4, 4, 4, 4],
+      0,
+    ],
+    // A bullet glued under a paragraph INTERRUPTS it (new list block), and
+    // freezing at the blank inside `- loose one\n\n- loose two` cut ONE
+    // loose list in half. Fixed by the mid-run marker classification in
+    // computeFreezeBoundary (blocker 3).
+    [
+      'list-interrupts-paragraph',
+      '- tight one\n- tight two\n\nplain prose keeps flowing here\n- loose one\n\n- loose two\n\n```\nconst x = "[a]<div>";\n\n```\n\nsee [a] maybe, or [a][a] even ![a]\n\n> a quoted line\n',
+      [1, 4, 4, 9, 6, 1, 1, 4],
+      0,
+    ],
+    // Same stale-verdict hole after a just-closed `$$` line: the glued
+    // ordered item starts a list whose blank-straddling continuation (the
+    // indented line) must block the candidate.
+    [
+      'math-close-glued-list',
+      '$$\ne = mc^2\n$$\n1. ordered\n2. items\n\n    <details>[a] scanned literal\n\nplain prose keeps flowing here\n',
+      [4, 19, 5, 4, 4, 4, 4, 4],
+      0,
+    ],
+    // A def-shaped line on an html-flow continuation line is raw text —
+    // registering it released footnote taint AND replayed a definition the
+    // real parse never had. Fixed by gating DEF_RE on htmlFlowSinceBlank.
+    [
+      'ghost-footnote-def-in-flow',
+      '<details>\n<summary>t</summary>\nbody prose\n</details>\n[^a]: body text\n\n\nprose with [a] used\n\nplain prose keeps flowing here\n\n[^a]: body text\n',
+      [4, 4, 6, 1, 4, 4, 4, 1],
+      0,
+    ],
+    // The raw trailing literal keeps hast-util-raw's SOURCE position while
+    // document-final and loses it when merged with following content — the
+    // cut must re-drop / reconstruct the position per the CURRENT layout.
+    [
+      'literal-position-lifecycle',
+      '- tight one\n- tight two\n\n<details>\n<summary>t</summary>\nbody prose\n</details>\n> a quoted line\n\n```\nconst x = "[a]<div>";\n```\n\n> a quoted line\n\n- tight one\n- tight two\n',
+      [1, 1, 12, 14, 1, 27, 14, 11],
+      0,
+    ],
+    // Footer-only tails (all-invisible mdast, orphan footnote def) still
+    // emit the footer separator, which the full parse merges into the
+    // trailing literal — the join's literal-seam branch.
+    [
+      'literal-footer-seam',
+      'inline `<div>` stays code\n\n<details>\n<summary>t</summary>\nbody prose\n</details>\n[a]: https://example.com/a\n\n[^a]: body text\n\n<details>\ninner prose\n</details>\n\n> a quoted line\n',
+      [4, 4, 10, 1, 4, 4, 4, 4],
+      0,
+    ],
+    // Table hoist newlines merged into the trailing literal GROW with the
+    // streaming tail — every trailing '\n' on the cut literal is a previous
+    // frame's artifact and must be rebuilt from the current tail.
+    [
+      'literal-table-hoist-growth',
+      '- tight one\n- tight two\n\n<details>\n<summary>t</summary>\nbody prose\n</details>\n[a]: https://example.com/a\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\n> a quoted line\n\n```\nconst x = "[a]<div>";\n```\n\n> a quoted line\n\n- tight one\n- tight two\n',
+      [1, 1, 8, 4, 1, 4, 4, 4],
+      0,
+    ],
+    // A ``` line glued to `</details>` is raw text, not a fence — entering
+    // fence state skipped tag extraction on a line rehype-raw parses as a
+    // REAL `<div>`. Fence/math opens now gate on htmlFlowSinceBlank.
+    [
+      'fence-glued-to-details',
+      'inline `<div>` stays code\n\n<details>\n<summary>t</summary>\nbody prose\n</details>\n```\nconst x = "[a]<div>";\n```\n\n[a]: https://example.com/a\n\n[^a]: body text\n\n<details>\ninner prose\n</details>\n\n> a quoted line\n',
+      [4, 4, 4, 4, 4, 1, 4, 4],
+      0,
+    ],
+    // `[a]: url` glued under a paragraph line is literal text where `[a]`
+    // is still a live shortcut reference — the def-shaped skip in ref
+    // extraction under-tainted it and a later real def retargeted frozen
+    // output.
+    [
+      'def-shaped-paragraph-continuation',
+      '[注一]: https://example.com/注一\n\n[注一]: https://example.com/注一\n\nTerm line\n\n:   description body\n[a]: https://example.com/a\n\nprose with [a] used\n\nsee [a] maybe, or [a][a] even ![a]\n\n[a]: https://example.com/a\n\nTerm line\n\n:   description body\n',
+      [4, 4, 4, 4, 4, 4, 4, 4],
+      0,
+    ],
+    // Doc-final literal position reconstruction: a literal that lost its
+    // position to an earlier merge regains [prev element end, owner html
+    // node end] when the document ends with an invisible tail.
+    [
+      'literal-position-reconstruction',
+      '<details>\n<summary>t</summary>\nbody prose\n</details>\n> a quoted line\n\n[a]: https://example.com/a\n\nprose with [a] used\n\nTerm line\n\n:   description body\n',
+      [4, 1, 4, 1, 4, 4, 4, 4],
+      0,
+    ],
+    // A footnote def does NOT chain (its unindented next line lazily
+    // continues the BODY): a def-shaped glued line was a ghost def.
+    [
+      'footnote-def-no-chain',
+      '[^a]: body text\n[a]: https://example.com/a\n\n[spec]: https://example.com/spec\n\n- tight one\n- tight two\n\n[a]: https://example.com/a\n\n[^a]: body text\n',
+      [4, 1, 4, 4, 4, 4, 4, 4],
+      0,
+    ],
+    // Type 2-5 raw constructs end at their TERMINATOR's line, not at a
+    // blank: a sticky html-flow flag set by `<!--` suppressed the REAL `$$`
+    // open right after `-->`, and the blank inside the math block became a
+    // candidate that split the math. rawOpenAtLineStart now scopes those
+    // interiors exactly.
+    [
+      'comment-terminator-then-math',
+      'a ref `[x]` in a span, plain prose keeps flowing here\n<!--\ninner prose\n-->\n$$\ne = mc^2\n\n$$\n\n```\nconst x = "[a]<div>";\n\n```\n\n> a quoted line\n\n$$\ne = mc^2\n\n$$\n\n> a quoted line\n',
+      [16, 9, 12, 1, 17, 16, 1, 32],
+      0,
+    ],
+    // `<embed` is NOT a type-6 tag name and (truncated) fails type 7 — the
+    // "html block" is really a PARAGRAPH, and the glued `$$` a REAL math
+    // open interrupting it. The ambiguous-tag run now poisons the hazard
+    // verdict (pure over-block) instead of suppressing the math open.
+    [
+      'ambiguous-tag-glued-math',
+      '<embed\n  src="x"\n/>\n\n<embed\n  src="x"\n/>\n$$\ne = mc^2\n\n$$\n\n<![CDATA[<div>data</div>]]> trailing prose\n\n<![CDATA[<div>data</div>]]> trailing prose\n\n[^a]: body text\n\n> a quoted line\n',
+      [4, 4, 4, 4, 4, 30, 4, 4],
+      0,
+    ],
+  ];
+
+  for (const [name, payload, sizes, configIdx] of FUZZ_CASES) {
+    test(name, () => {
+      // Frame-alignment matters: replay BOTH the exact failing schedule and
+      // its reverse, matching the fuzz driver's coverage.
+      for (const schedule of [sizes, [...sizes].reverse()]) {
+        assertStreamEquivalence(name, scheduleSnapshots(payload, schedule), CATALOG[configIdx]);
+      }
+    });
+  }
 });
 
 // --- adversarial fixtures ----------------------------------------------------
@@ -613,49 +740,6 @@ describe('splice equivalence — footnote injection replay', () => {
 // Reference = full parse of `content + suffix` with the SAME options.
 
 describe('splice equivalence — cross-chunk phantom suffixes', () => {
-  interface FramePair {
-    content: string;
-    footnotes: string[];
-    links: string[];
-  }
-
-  function runCrossChunk(
-    name: string,
-    frames: FramePair[],
-    optionsFor: (f: FramePair) => AdvanceOptions
-  ): { incrementalFrames: number; results: boolean[] } {
-    let state: IncrementalParseState | null = null;
-    let incrementalFrames = 0;
-    const results: boolean[] = [];
-    frames.forEach((frame, i) => {
-      const suffix = buildPhantomSuffix({
-        missingFootnotes: new Set(frame.footnotes),
-        missingLinks: new Set(frame.links),
-      });
-      const options = { ...optionsFor(frame), phantomSuffix: suffix };
-      const result = advanceIncrementalParse(state, frame.content, options);
-      state = result.nextState;
-      if (result.usedIncremental) incrementalFrames += 1;
-      results.push(result.usedIncremental);
-
-      const full = parseStage({
-        children: frame.content + suffix,
-        remarkPlugins: options.remarkPlugins,
-        rehypePlugins: options.rehypePlugins,
-        remarkRehypeOptions: options.remarkRehypeOptions,
-      });
-      const fullHast = transformStage(full);
-      const label = `${name} frame=${i} len=${frame.content.length} incremental=${result.usedIncremental}`;
-      if (!isEqual(result.hast, fullHast)) {
-        expect.fail(`${label} — hast mismatch: ${diffLocation(result.hast, fullHast as never)}`);
-      }
-      if (!isEqual(result.mdast, full.mdast)) {
-        expect.fail(`${label} — mdast mismatch: ${diffLocation(result.mdast, full.mdast as never)}`);
-      }
-    });
-    return { incrementalFrames, results };
-  }
-
   const CHUNK_B = [
     'Chunk B opens with plain prose.',
     'Another settled paragraph here.',
