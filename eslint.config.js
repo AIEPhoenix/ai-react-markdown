@@ -15,6 +15,10 @@ export default defineConfig(
       // config. Linting bundled JS produces tens of thousands of false-
       // positive errors against minified code.
       '**/storybook-static/**',
+      // Stryker mutation-audit working copy + report output (one-off audit,
+      // see packages/core/stryker.conf.json).
+      '**/.stryker-tmp/**',
+      '**/reports/mutation/**',
     ],
   },
   {

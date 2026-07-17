@@ -1,6 +1,8 @@
 node_modules/
 dist/
 storybook-static/
+.stryker-tmp/
+**/reports/mutation/
 
 *.log
 *.tsbuildinfo
