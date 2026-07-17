@@ -83,7 +83,11 @@
  * via injection replay (v2).
  */
 
+import { htmlBlockNames } from 'micromark-util-html-tag-name';
 import { normalizeIdentifier } from 'micromark-util-normalize-identifier';
+
+/** CommonMark type-6 block tag names (micromark's own list), lowercase. */
+const TYPE6_NAMES = new Set(htmlBlockNames);
 
 export interface FreezeBoundaryOptions {
   /** Whether remark-definition-list is in the active plugin chain (config
@@ -163,6 +167,14 @@ export interface FreezeScanCheckpoint {
   /** An earlier line of the current paragraph left an unpaired backtick
    *  run — masking is disabled until the paragraph ends (safety gate). */
   paragraphHasUnpairedRun: boolean;
+  /** A line since the last blank started with `<` at block indent — an html
+   *  FLOW block is (approximately) running, and it only ends at a blank
+   *  line. micromark does no inline parsing there: backtick runs are
+   *  literal text, so code-span masking would hide REAL tags from the
+   *  balance scan (under-block — fuzz counterexample: `</details>` followed
+   *  by an unblanked `` `<div>` `` line). While set, masking is skipped —
+   *  which can only over-block (safe direction). */
+  htmlFlowSinceBlank: boolean;
 }
 
 const VOID_TAGS = new Set([
@@ -303,6 +315,7 @@ function freshCheckpoint(defListEnabled: boolean): FreezeScanCheckpoint {
     prevLineWasText: false,
     prevLineWasValidDef: false,
     paragraphHasUnpairedRun: false,
+    htmlFlowSinceBlank: false,
   };
 }
 
@@ -414,6 +427,13 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     }
   };
 
+  // A type 2-5 raw construct (comment/PI/decl/CDATA) open at the START of
+  // this line makes the whole line html-block content — the construct's
+  // block ends WITH the line carrying its terminator, so even that line's
+  // remainder is raw text. Gates fence/math opens, masking, and def
+  // registration below, alongside the tag-block flag (htmlFlowSinceBlank).
+  const rawOpenAtLineStart = cp.commentOpen || cp.piOpen || cp.declOpen || cp.cdataOpen;
+
   // --- fence state (interiors are candidate-free; paragraph resets) ---
   if (cp.inFence) {
     const close = FENCE_RE.exec(ln.text);
@@ -429,7 +449,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     cp.prevLineWasValidDef = false;
     return;
   }
-  if (!cp.inMath) {
+  if (!cp.inMath && !cp.htmlFlowSinceBlank && !rawOpenAtLineStart) {
     const open = FENCE_RE.exec(ln.text);
     // A backtick fence's info string may not contain a backtick —
     // ```a``` b is a PARAGRAPH with a code span, not a fence open (A5).
@@ -464,7 +484,13 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     cp.prevLineWasValidDef = false;
     return;
   }
-  if (MATH_FENCE_RE.test(ln.text)) {
+  // Fence/math OPENS are gated on !htmlFlowSinceBlank (matching the fence
+  // branch above): inside an html flow run a ``` or $$ line is raw text —
+  // entering fence state there would skip tag extraction on lines that
+  // rehype-raw parses as REAL markup (fuzz counterexample: a fence glued
+  // to `</details>` hiding a quoted `<div>`). Falling through to the
+  // plain-text branch keeps those lines tag-scanned (over-block safe).
+  if (!cp.htmlFlowSinceBlank && !rawOpenAtLineStart && MATH_FENCE_RE.test(ln.text)) {
     const rest = ln.text.slice(ln.text.indexOf('$$') + 2);
     if (!rest.includes('$$')) {
       if (isBlockStart) {
@@ -493,6 +519,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
       defListSettled: null,
     });
     cp.paragraphHasUnpairedRun = false;
+    cp.htmlFlowSinceBlank = false;
     cp.prevLineBlank = true;
     cp.prevLineWasText = false;
     cp.prevLineWasValidDef = false;
@@ -505,16 +532,63 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
   if (isBlockStart) {
     const verdict = classifyBlockStart(ln.text, ln.indent, cp.defListEnabled);
     if (verdict !== null) cp.hazardVerdict = verdict;
+  } else if (
+    LIST_MARKER_RE.test(ln.text) ||
+    FOOTNOTE_DEF_RE.test(ln.text) ||
+    (cp.defListEnabled && DEF_LIST_DD_RE.test(ln.text))
+  ) {
+    // A marker line NOT sitting after a blank still begins a block: lists
+    // interrupt paragraphs, and anything starts fresh after a just-closed
+    // fence/math line. Without this, the verdict stays stale and a
+    // candidate right after freezes HALF a loose list (fuzz-arbiter
+    // counterexamples: paragraph + glued bullet, `$$` close + glued
+    // ordered item). Inside an html flow run the marker is raw text and
+    // no hazard exists — turning the verdict on anyway only over-blocks.
+    cp.hazardVerdict = true;
   }
+
+  // Masking is only valid where micromark parses INLINE content. A line
+  // starting with a TAG at block indent (approximately) opens an html FLOW
+  // block of type 1/6/7 — those run until a blank line with NO inline
+  // parsing: backtick runs in it (and in its continuation lines) are
+  // literal text, and masking them would hide REAL tags from the balance
+  // scan. Sticky until the next blank, like the unpaired-run gate. `<!`/
+  // `<?` starters (types 2-5) are NOT sticky — they end at their
+  // terminator's line, which rawOpenAtLineStart already tracks; making
+  // them sticky suppressed a REAL `$$` open right after `-->` and let a
+  // candidate split the math block (fuzz counterexample).
+  //
+  // Tag names OUTSIDE the type-6 list are AMBIGUOUS: `<embed` (truncated,
+  // name not in the list) fails type 7's lone-complete-tag condition and
+  // is really a PARAGRAPH — where a glued `$$` is a REAL math open that
+  // interrupts it. Suppressing that open put a candidate inside the math
+  // (fuzz counterexample). Classifying type 7 exactly means parsing
+  // attribute quoting, so ambiguous starters POISON the hazard verdict
+  // instead: candidates near the run are rejected outright (pure
+  // over-block), which is correct whichever construct micromark chooses.
+  const tagStart = ln.indent <= 3 ? /^<\/?([A-Za-z][A-Za-z0-9-]*)/.exec(ln.text.trimStart()) : null;
+  if (tagStart) {
+    cp.htmlFlowSinceBlank = true;
+    if (!TYPE6_NAMES.has(tagStart[1].toLowerCase())) cp.hazardVerdict = true;
+  }
+  const inRawText = cp.htmlFlowSinceBlank || rawOpenAtLineStart;
 
   // Same-line code-span masking for HTML/ref/footnote extraction. A null
   // mask means "unsafe to mask here" — scan the raw text (over-blocking).
-  const { masked, unpaired } = maskIntraLineCodeSpans(ln.text, cp.paragraphHasUnpairedRun);
+  const { masked, unpaired } = inRawText
+    ? { masked: null, unpaired: false }
+    : maskIntraLineCodeSpans(ln.text, cp.paragraphHasUnpairedRun);
   if (unpaired) cp.paragraphHasUnpairedRun = true;
   const scanText = masked ?? ln.text;
 
   // Blocker 5: definitions (block-start or def-chain only — A2) and refs.
-  const def = DEF_RE.exec(scanText);
+  // Inside an html flow run a def-shaped line is RAW TEXT — micromark never
+  // registers it. Registering a ghost def is the UNSAFE direction twice
+  // over: it releases reference taint early AND makes the footnote replay
+  // inject a definition the real parse does not have (fuzz-arbiter
+  // counterexample). Refs stay extracted regardless: extra candidates only
+  // over-taint.
+  const def = inRawText ? null : DEF_RE.exec(scanText);
   const defLineStart = isBlockStart || !cp.prevLineWasText || cp.prevLineWasValidDef;
   const validDef = def !== null && defLineStart;
   if (validDef) {
@@ -528,11 +602,19 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     }
   }
   if (scanText.includes('[')) {
+    // `[label]:` is only definition-shaped when THIS line registers it as a
+    // def (the label bracket of validDef). On a paragraph CONTINUATION line
+    // the same bytes are literal text where micromark still parses `[label]`
+    // as a shortcut reference — skipping it there under-taints and lets a
+    // later definition retarget frozen output (fuzz counterexample: a def
+    // line glued under a paragraph). Extra candidates only over-taint.
+    const defBracket = validDef ? def!.index + def![0].indexOf('[') : -1;
     REF_RE.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = REF_RE.exec(scanText)) !== null) {
       const follow = scanText[m.index + m[0].length];
-      if (follow === '(' || follow === ':') continue; // inline link/image or definition
+      if (follow === '(') continue; // inline link/image
+      if (follow === ':' && m.index === defBracket) continue; // the def's own label
       const inner = m[1];
       let label: string;
       let footnote = false;
@@ -637,5 +719,11 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
   cp.blankRun = 0;
   cp.prevLineBlank = false;
   cp.prevLineWasText = true;
-  cp.prevLineWasValidDef = validDef;
+  // Def CHAINS (A2) are a link-definition affordance: one def line can be
+  // followed directly by another. A FOOTNOTE def does NOT chain — its
+  // unindented next line lazily continues the footnote BODY, so a
+  // def-shaped line glued under it is literal body text and registering it
+  // would be a ghost def (fuzz counterexample). Refs on that line stay
+  // extracted (footnote bodies parse inline content).
+  cp.prevLineWasValidDef = validDef && !def![1].startsWith('^');
 }

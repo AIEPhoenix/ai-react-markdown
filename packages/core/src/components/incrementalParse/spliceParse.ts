@@ -389,8 +389,23 @@ export function spliceTrees(input: SpliceInput): { mdast: MdastRoot; hast: HastR
   }
   const attrs = attributeHastChildren(prevMdast, prevHast, boundary);
   const cutRegion: HastContent[] = [];
-  for (let i = 0; i < prevHast.children.length && attrs[i] < boundary; i++) {
-    cutRegion.push(prevHast.children[i]);
+  for (let i = 0; i < prevHast.children.length; i++) {
+    if (attrs[i] < boundary) {
+      cutRegion.push(prevHast.children[i]);
+      continue;
+    }
+    // Raw trailing literal of a frozen html block (fuzz counterexample):
+    // `</tag>` followed by an unblanked text line makes rehype-raw emit the
+    // line as a POSITION-LESS non-whitespace text after the element. Being
+    // position-less it is attributed FORWARD (to the first tail block), but
+    // its bytes live before the boundary — it must freeze with its owner,
+    // the preceding included node. Whitespace-only texts stay excluded:
+    // those are separators/foster-hoist, owned by the model below.
+    const node = prevHast.children[i];
+    if (i > 0 && attrs[i - 1] < boundary && isTrailingLiteralText(node)) {
+      cutRegion.push(node);
+    }
+    break;
   }
 
   // wrap() emits separators per mdast-child ADJACENCY, before sanitize
@@ -416,8 +431,9 @@ export function spliceTrees(input: SpliceInput): { mdast: MdastRoot; hast: HastR
   if (hastChildren === null) return null;
 
   // --- tail: strip the injected region's hast, then re-base ---
-  const strippedTailHast = stripInjectedHast(tailMdast, tailHast, injectedLen, tailWrapVisible);
-  if (strippedTailHast === null) return null;
+  const stripResult = stripInjectedHast(tailMdast, tailHast, injectedLen, tailWrapVisible);
+  if (stripResult === null) return null;
+  const strippedTailHast = stripResult.rest;
   for (const child of tailMdastChildren) rebaseTree(child, offsetDelta, lineDelta);
   for (const child of strippedTailHast) rebaseTreeDual(child, injectedSegments, offsetDelta, lineDelta);
 
@@ -441,36 +457,53 @@ export function spliceTrees(input: SpliceInput): { mdast: MdastRoot; hast: HastR
   //   parse keeps as a separate node (the comment sat between them at
   //   reparse time), so merging would be wrong there.
   const mdastChildren = prefixMdast.concat(tailMdastChildren);
-  const seamMergeAllowed = tailLeadingTextIsHoist(tailMdastChildren, strippedTailHast);
+  // Layout-driven verdict when the injection gap proved it (see
+  // stripInjectedHast docs); the classification covers uninjected tails and
+  // bails to a full parse when the seam is genuinely ambiguous.
+  const seamMergeVerdict = stripResult.remnantMerged ?? tailLeadingTextIsHoist(tailMdastChildren, strippedTailHast);
+  if (seamMergeVerdict === null) return null;
+  const seamMergeAllowed = seamMergeVerdict;
   let firstTailChild = true;
   for (const child of strippedTailHast) {
     const tailEnd = hastChildren[hastChildren.length - 1];
-    if (
-      firstTailChild &&
-      seamMergeAllowed &&
-      tailEnd &&
-      tailEnd.type === 'text' &&
-      tailEnd.position === undefined &&
-      child.type === 'text' &&
-      child.position === undefined
-    ) {
-      // Adjacent position-less text at the seam — the full parse would have
-      // merged these during rehype-raw's reparse. Replace (don't mutate) the
-      // seam node: it may be a reference into the previous frame's tree.
-      hastChildren[hastChildren.length - 1] = { ...tailEnd, value: tailEnd.value + child.value };
-      firstTailChild = false;
-      continue;
+    if (firstTailChild && tailEnd && tailEnd.type === 'text' && child.type === 'text' && child.position === undefined) {
+      // A trailing html-block literal absorbs adjacent tail text the same
+      // way (footer separator of an all-invisible tail — no wrap slot sat
+      // between them at reparse time), and the merge drops the source
+      // position, matching hast-util-raw's merged-text output.
+      const literalSeam = tailEnd.value.trim() !== '' && !tailWrapVisible;
+      if (seamMergeAllowed || literalSeam) {
+        // Adjacent text at the seam — the full parse would have merged
+        // these during rehype-raw's reparse. Replace (don't mutate) the
+        // seam node: it may be a reference into the previous frame's tree.
+        hastChildren[hastChildren.length - 1] = { type: 'text', value: tailEnd.value + child.value };
+        firstTailChild = false;
+        continue;
+      }
     }
     firstTailChild = false;
     hastChildren.push(child);
   }
 
+  // No POSITIONED top-level output → bail (fuzz + exhaustive-sweep
+  // finding). hast-util-raw anchors the rebuilt root's position on its
+  // positioned output nodes: a sanitize-stripped comment still anchored it
+  // (positioned pre-sanitize), while a defs-only doc, a tokenizer-dropped
+  // `<?…` opener, or a stray `</d>` end tag (dropped, leaving only a bare
+  // position-less wrap separator behind) do not — and removeComments
+  // shifts the comment case across that line. Reconstructing the verdict
+  // for position-less-only output means re-modeling the parse5 tokenizer
+  // per child; such frames are tiny by construction, so a full parse costs
+  // nothing.
+  if (!hastChildren.some((child) => child.position !== undefined)) return null;
+
   // Root positions must match a full parse: start of document to end of
   // document. The re-based tail MDAST root end IS the document end. The
   // tail HAST root's position is NOT source-based after rehype-raw's
   // reparse (hast-util-raw rewrites it in serialized-HTML coordinates), so
-  // it cannot be re-based — but a full parse leaves the hast root position
-  // equal to the mdast root position (arbiter-verified), so reuse that.
+  // it cannot be re-based — but a full parse with POSITIONED output (the
+  // other case bailed above) leaves the hast root position equal to the
+  // mdast root position (arbiter-verified), so reuse that.
   const docStart = { line: 1, column: 1, offset: 0 };
   const mdastRootPosition = tailMdast.position
     ? { start: docStart, end: rebasePoint(tailMdast.position.end, offsetDelta, lineDelta) }
@@ -563,6 +596,15 @@ function alignPrefixCut(
       out.push(node);
       continue;
     }
+    if (sawContent && isTrailingLiteralText(node)) {
+      // Raw trailing literal of the SAME html block (position-less,
+      // non-whitespace — cannot be foster-parenting hoist, which is
+      // whitespace-only). Serialized adjacent to its element output, so no
+      // separator may intervene; the pairing cursor stays put.
+      if (sepBuffer.length !== 0) return null;
+      out.push(node);
+      continue;
+    }
     // New pairing: the separator run before this node covers the gap from
     // the previous content node (1 separator) plus one per stripped child.
     //
@@ -619,8 +661,47 @@ function alignPrefixCut(
   // so it is discarded and rebuilt for the current tail.
   const trailingStripped = visibles.length - (pairIdx + 1);
   const trailingGaps = sawContent ? trailingStripped : Math.max(0, visibles.length - 1);
-  if (sepBuffer.length !== trailingGaps && sepBuffer.length !== trailingGaps + 1) return null;
   const seam = visibles.length > 0 && tailWrapVisible ? 1 : 0;
+
+  // Trailing-literal seam merge: when the cut ends in an html block's raw
+  // trailing literal, the full parse MERGES the wrap separator into that
+  // text node (adjacent text at reparse time) instead of keeping a bare
+  // '\n' — and the merge DROPS the text's source position (an unmerged
+  // document-final literal keeps hast-util-raw's position; the same
+  // literal followed by wrap-visible content comes out position-less,
+  // fuzz-verified both ways). The literal's intrinsic value never ends
+  // with '\n' (an html node's source ends at line content), so EVERY
+  // trailing '\n' on the cut node is a previous frame's merged artifact —
+  // seam separator, footer separator, or table hoist (which GROWS with the
+  // streaming tail and must never be carried forward). Shed them all, then
+  // re-merge (and re-drop the position) for the CURRENT tail's layout — the
+  // join merges the tail's own leading text back in. Stripped children
+  // after a trailing literal are out of model — bail to the full parse.
+  const last = out[out.length - 1];
+  if (last !== undefined && last.type === 'text' && last.value.trim() !== '') {
+    if (trailingGaps > 0 || sepBuffer.length > 0) return null;
+    const body = last.value.replace(/\n+$/, '');
+    if (seam > 0) {
+      out[out.length - 1] = { type: 'text', value: `${body}\n` };
+    } else {
+      // Document-final literal (nothing wrap-visible follows): hast-util-raw
+      // keeps its SOURCE position — [previous element's end, owner html
+      // node's end]. A literal that got merged in an earlier frame lost its
+      // position, so reconstruct it from the neighbors; bail when they
+      // don't carry the needed points. (If the current tail still appends a
+      // footer, the join's literal-seam merge re-drops the position — the
+      // same order a full parse resolves it in.)
+      const prevEl = out.length >= 2 ? out[out.length - 2] : undefined;
+      const owner = pairIdx >= 0 ? visibles[pairIdx] : undefined;
+      const start = prevEl?.type === 'element' ? prevEl.position?.end : undefined;
+      const end = owner?.position?.end;
+      if (!start || !end) return null;
+      out[out.length - 1] = { type: 'text', value: body, position: { start, end } };
+    }
+    return out;
+  }
+
+  if (sepBuffer.length !== trailingGaps && sepBuffer.length !== trailingGaps + 1) return null;
   for (let i = 0; i < trailingGaps + seam; i++) {
     out.push({ type: 'text', value: '\n' });
   }
@@ -638,9 +719,17 @@ function alignPrefixCut(
  *
  * where k = injected wrap-visible children and gapSep (present only when
  * the REAL tail has wrap-visible children) is the injected|tail gap slot.
- * gapSep's value beyond its wrap '\n' is rehype-raw HOIST text belonging to
- * the tail's first element (a table) — retained as a leading text node so
- * the seam-merge reproduces the full parse's layout.
+ * gapSep's value beyond its wrap '\n' is text the raw reparse MERGED into
+ * the slot — rehype-raw hoist ahead of a table, or the orphan separator of
+ * an opener the tokenizer dropped outright (an unterminated `<?`/`<!`, fuzz
+ * counterexample) — retained as a leading text node.
+ *
+ * `remnantMerged` carries the seam verdict that merge PROVES: the injected
+ * region occupies the same serialized-adjacency position inside the tail
+ * parse that the frozen prefix occupies in a full parse, so "the tail's raw
+ * pass merged the gap with what follows" ⇔ "a full parse merges the seam
+ * separator there too". Null when no gap was consumed (no injection): the
+ * caller falls back to the hoist heuristic.
  *
  * Returns null on any layout surprise (caller falls back to a full parse).
  */
@@ -649,13 +738,13 @@ function stripInjectedHast(
   tailHast: HastRoot,
   injectedLen: number,
   tailWrapVisible: boolean
-): HastContent[] | null {
-  if (injectedLen === 0) return tailHast.children.slice();
+): { rest: HastContent[]; remnantMerged: boolean | null } | null {
+  if (injectedLen === 0) return { rest: tailHast.children.slice(), remnantMerged: null };
   const injectedVisibleCount = tailMdast.children.filter((c) => {
     const start = c.position?.start?.offset;
     return start !== undefined && start < injectedLen && !isWrapInvisible(c);
   }).length;
-  if (injectedVisibleCount === 0) return tailHast.children.slice();
+  if (injectedVisibleCount === 0) return { rest: tailHast.children.slice(), remnantMerged: null };
 
   const children = tailHast.children;
   let idx = 0;
@@ -676,15 +765,17 @@ function stripInjectedHast(
   if (consumed < injectedVisibleCount) return null;
 
   let remnant = '';
+  let remnantMerged: boolean | null = null;
   if (tailWrapVisible) {
     const gap = children[idx];
     if (!gap || !isSeparatorText(gap)) return null;
     remnant = (gap as { value: string }).value.slice(1);
+    remnantMerged = remnant !== '';
     idx += 1;
   }
   const rest = children.slice(idx);
   if (remnant !== '') rest.unshift({ type: 'text', value: remnant });
-  return rest;
+  return { rest, remnantMerged };
 }
 
 /**
@@ -695,34 +786,66 @@ function stripInjectedHast(
  * content node). If that child was stripped (leading comment), the leading
  * text is a gap SLOT the full parse keeps as a separate node.
  *
- * Classification exhaustiveness under the SHIPPED plugin chain (this is the
- * one seam decision without a null→full-parse escape, so the false branch
- * must be provably correct wherever the evidence is ambiguous): every
- * "cannot positively classify" case returns false, and false is right for
- * each — no first content node ⇒ the leading texts are stripped-child slots
- * (comment-only tail); position-less first content ⇒ KaTeX output, which no
- * foster-parenting element precedes (hoist comes only from positioned
- * tables). A consumer rehype plugin emitting novel root-level position-less
- * text could defeat this — such a plugin changes depsKey/G3 identity and is
- * outside the arbiter's modeled chain, like every other plugin-behavior
- * assumption in this file.
+ * Three-valued (fuzz-arbiter finding — the old boolean version claimed
+ * "false is provably right wherever evidence is ambiguous", and fuzz
+ * disproved it): a tail whose first wrap-visible child VANISHES at raw time
+ * (an unterminated `<?`/`<!` opener the tokenizer drops outright) leaves
+ * the same post-sanitize shape as one stripped at sanitize time (a
+ * complete comment), but the full parse MERGES the seam in the first case
+ * and keeps it separate in the second. Positive classifications:
+ * - `true`  — hoist: first content is positioned inside the first visible
+ *   child (table foster-parenting), merge;
+ * - `false` — the vanished/position-less output is positively attributable:
+ *   math (KaTeX emits its own output, never dropped) or a COMPLETE
+ *   comment/PI/decl/CDATA html child (a raw-time node existed; sanitize
+ *   stripped it, so the slots stay separate);
+ * - `null`  — cannot classify (unterminated raw constructs, mixed html
+ *   values): caller falls back to a full parse for the frame.
  */
-function tailLeadingTextIsHoist(tailMdastChildren: MdastContent[], tailHastChildren: HastContent[]): boolean {
+function tailLeadingTextIsHoist(tailMdastChildren: MdastContent[], tailHastChildren: HastContent[]): boolean | null {
   const firstText = tailHastChildren[0];
   if (!firstText || !isSeparatorText(firstText)) return false;
   const firstVisible = tailMdastChildren.find((c) => !isWrapInvisible(c));
   if (!firstVisible) return false;
   const firstContent = tailHastChildren.find((c) => !isSeparatorText(c));
-  const start = firstContent?.position?.start?.offset;
-  const vStart = firstVisible.position?.start?.offset;
-  const vEnd = firstVisible.position?.end?.offset;
-  if (start === undefined || vStart === undefined || vEnd === undefined) return false;
-  return start >= vStart && start < vEnd;
+  if (firstContent) {
+    const start = firstContent.position?.start?.offset;
+    const vStart = firstVisible.position?.start?.offset;
+    const vEnd = firstVisible.position?.end?.offset;
+    if (start !== undefined && vStart !== undefined && vEnd !== undefined) {
+      if (start >= vStart && start < vEnd) return true; // hoist
+      // First visible's output vanished; classify by the child itself below.
+    }
+  }
+  if (firstVisible.type === 'math') return false; // KaTeX output, never dropped
+  if (firstVisible.type === 'html' && isCompleteRawConstruct(firstVisible.value)) return false;
+  return null;
+}
+
+/** Single complete comment / PI / declaration / CDATA — raw-time node
+ *  guaranteed (sanitize strips it later, so its separator slots stay
+ *  separate). Anything unterminated or mixed → not classifiable here. */
+function isCompleteRawConstruct(value: string): boolean {
+  const v = value.trim();
+  return (
+    (v.startsWith('<!--') && v.endsWith('-->')) ||
+    (v.startsWith('<?') && v.endsWith('?>')) ||
+    (v.startsWith('<![CDATA[') && v.endsWith(']]>')) ||
+    (/^<![A-Za-z]/.test(v) && v.endsWith('>'))
+  );
 }
 
 /** Position-less whitespace-only root text — wrap()/rehype-raw separator runs. */
 function isSeparatorText(node: HastContent): boolean {
   return node.type === 'text' && node.position === undefined && node.value.trim() === '';
+}
+
+/** Position-less NON-whitespace text at the top level — the raw reparse's
+ *  literal trailing output of an html block (an unblanked text line after
+ *  the block's closing tag). Distinct from separators and foster-parenting
+ *  hoist, which are whitespace-only. */
+function isTrailingLiteralText(node: HastContent): boolean {
+  return node.type === 'text' && node.position === undefined && node.value.trim() !== '';
 }
 
 /** Newlines in `text` before `end` (defaults to the whole string) — the
