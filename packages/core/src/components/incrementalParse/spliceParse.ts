@@ -466,6 +466,15 @@ export function spliceTrees(input: SpliceInput): { mdast: MdastRoot; hast: HastR
   let firstTailChild = true;
   for (const child of strippedTailHast) {
     const tailEnd = hastChildren[hastChildren.length - 1];
+    if (firstTailChild && child.type === 'text' && child.position !== undefined) {
+      // The tail LEADS with a positioned bare text — a raw literal whose
+      // preceding construct vanished at the tokenizer (stray end tag's
+      // trailing spaces, deep-soak counterexample). A full parse merges it
+      // into the seam separator (or keeps it apart when the vanished thing
+      // was sanitize-stripped) — classifying which means modeling the
+      // tokenizer. Bail to a full parse.
+      return null;
+    }
     if (firstTailChild && tailEnd && tailEnd.type === 'text' && child.type === 'text' && child.position === undefined) {
       // A trailing html-block literal absorbs adjacent tail text the same
       // way (footer separator of an all-invisible tail — no wrap slot sat
@@ -701,6 +710,12 @@ function alignPrefixCut(
     return out;
   }
 
+  // A trailing separator whose value is not a PLAIN '\n' carries a merged
+  // raw remnant (a dropped construct's whitespace, a prior merged gap) —
+  // rebuilding it as bare '\n' silently drops those bytes (deep-soak
+  // counterexample: a stripped comment's preceding ' ' merged into ' \n').
+  // Out of the plain-slot model — bail to a full parse.
+  if (sepBuffer.some((s) => s.type !== 'text' || s.value !== '\n')) return null;
   if (sepBuffer.length !== trailingGaps && sepBuffer.length !== trailingGaps + 1) return null;
   for (let i = 0; i < trailingGaps + seam; i++) {
     out.push({ type: 'text', value: '\n' });

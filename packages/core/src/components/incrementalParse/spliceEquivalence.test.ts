@@ -233,6 +233,18 @@ describe('splice equivalence — fuzz-found regressions', () => {
       [4, 4, 4, 4, 4, 30, 4, 4],
       0,
     ],
+    // Deep-soak pair (50k fuzz / K=4 census): merged raw-remnant whitespace
+    // around dropped/stripped constructs is out of the plain-slot seam
+    // model — a trailing separator that is not exactly '\n', or a tail
+    // LEADING with positioned bare text, now bails to a full parse instead
+    // of silently dropping the remnant bytes.
+    [
+      'undercount-composed-remnant-space',
+      '<details>\n<summary>t</summary>\nbody prose\n</details>\n<b>x</b> <!-- trailing opener\n<details>\ninner prose\n</details>\n\n<!-- a closed comment -->\n\n[a]: https://example.com/a\n\n> a quoted line\n\n$$\ne = mc^2\n\n',
+      [4, 4, 4, 4, 4, 4, 4, 4],
+      0,
+    ],
+    ['end-tag-trailing-spaces', 'a\n\n</d>    ', [3, 8], 0],
   ];
 
   for (const [name, payload, sizes, configIdx] of FUZZ_CASES) {
