@@ -245,6 +245,14 @@ describe('splice equivalence — fuzz-found regressions', () => {
       0,
     ],
     ['end-tag-trailing-spaces', 'a\n\n</d>    ', [3, 8], 0],
+    // micromark requires a NON-EMPTY destination for a link definition: a
+    // bare `[x]: ` line is a paragraph whose `[x]` stays a live shortcut
+    // ref — registering it as a def released the taint and let the later
+    // real def retarget frozen output (K=4 census counterexample).
+    ['destination-less-def-shape', '[x]: \n\n[x]: /u', [7, 4], 0],
+    // Same rule, other face: non-title garbage AFTER the destination also
+    // invalidates the def — the line is a paragraph with live `[x]` refs.
+    ['def-shape-trailing-garbage', '[x]: /u[x]: /u\n\n[x]: /u', [17, 6], 0],
   ];
 
   for (const [name, payload, sizes, configIdx] of FUZZ_CASES) {
