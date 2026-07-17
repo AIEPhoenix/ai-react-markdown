@@ -62,6 +62,24 @@ const MAX_K = Number(testEnv('EXHAUSTIVE_K') ?? 3);
 /** Cut-schedule stride: CI samples every 3rd cut at K=3 (≈40 s); deep runs
  *  set EXHAUSTIVE_STRIDE=1 for the full census. K≤2 is always full. */
 const CUT_STRIDE = Number(testEnv('EXHAUSTIVE_STRIDE') ?? (MAX_K >= 3 ? 3 : 1));
+/**
+ * Deep-run parallelism: a census is ONE vitest test — one worker, one
+ * core. `EXHAUSTIVE_SHARD=i/N` makes this process drive only every Nth
+ * document (odometer order), so N shard processes launched side by side
+ * cover the space in ~1/N wall-clock:
+ *   for i in $(seq 0 11); do EXHAUSTIVE_K=4 EXHAUSTIVE_SHARD=$i/12 … & done
+ * The doc/schedule counters still count the whole space walk, so the
+ * sanity floors scale by TOTAL below.
+ */
+const [SHARD_INDEX, SHARD_TOTAL] = (() => {
+  const raw = testEnv('EXHAUSTIVE_SHARD');
+  if (!raw) return [0, 1];
+  const m = /^(\d+)\/(\d+)$/.exec(raw);
+  if (!m) throw new Error(`EXHAUSTIVE_SHARD must be i/N, got ${JSON.stringify(raw)}`);
+  const [i, n] = [Number(m[1]), Number(m[2])];
+  if (n < 1 || i >= n) throw new Error(`EXHAUSTIVE_SHARD out of range: ${raw}`);
+  return [i, n];
+})();
 const BASELINE = CATALOG[0];
 const DEF_LIST = CATALOG.find((c) => c.label === 'def-list-only')!;
 /** Scale the vitest timeout with K — K=4 is ~24× K=3. */
@@ -109,8 +127,19 @@ describe(`splice exhaustive sweep (K=${MAX_K}, alphabet=${TOKENS.length})`, () =
     for (let k = 1; k <= MAX_K; k++) {
       const idx = new Array<number>(k).fill(0);
       for (;;) {
-        const doc = idx.map((i) => TOKENS[i]).join('');
         docs += 1;
+        if (docs % SHARD_TOTAL !== SHARD_INDEX) {
+          // Not this shard's document — advance the odometer without even
+          // building the string.
+          let s = k - 1;
+          while (s >= 0 && ++idx[s] === TOKENS.length) {
+            idx[s] = 0;
+            s -= 1;
+          }
+          if (s < 0) break;
+          continue;
+        }
+        const doc = idx.map((i) => TOKENS[i]).join('');
         const configs = doc.includes(': ') ? [BASELINE, DEF_LIST] : [BASELINE];
         for (const config of configs) {
           // 2-cut schedules: every interior cut point (strided in CI; the
@@ -136,8 +165,9 @@ describe(`splice exhaustive sweep (K=${MAX_K}, alphabet=${TOKENS.length})`, () =
       }
     }
     // The sweep must actually have swept (guards against a silent early-out
-    // if the odometer or alphabet is refactored).
+    // if the odometer or alphabet is refactored). `docs` counts the whole
+    // walk; `schedules` counts only this shard's driven work.
     expect(docs).toBeGreaterThanOrEqual(TOKENS.length ** MAX_K);
-    expect(schedules).toBeGreaterThan(docs);
+    expect(schedules * SHARD_TOTAL).toBeGreaterThan(docs);
   });
 });
