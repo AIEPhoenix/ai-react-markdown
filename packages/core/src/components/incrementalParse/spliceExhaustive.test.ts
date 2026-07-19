@@ -82,8 +82,11 @@ const [SHARD_INDEX, SHARD_TOTAL] = (() => {
 })();
 const BASELINE = CATALOG[0];
 const DEF_LIST = CATALOG.find((c) => c.label === 'def-list-only')!;
-/** Scale the vitest timeout with K — K=4 is ~24× K=3. */
-const TIMEOUT_MS = Math.max(120_000, 90_000 * 24 ** Math.max(0, MAX_K - 3));
+/** Scale the vitest timeout with K — K=4 is ~24× K=3. The floor carries a
+ *  generous margin over the ~50 s local strided K=3 run: GitHub's shared
+ *  runners are 2-3× slower (a 150 s run tripped a 120 s floor in CI while
+ *  two earlier runs squeaked under — flaky by margin, not by content). */
+const TIMEOUT_MS = Math.max(600_000, 90_000 * 24 ** Math.max(0, MAX_K - 3));
 
 /** Code-point-safe cut: never split a surrogate pair. */
 const alignCut = (doc: string, at: number): number => {
