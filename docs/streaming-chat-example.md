@@ -29,7 +29,7 @@ The simplest pattern. Works for the 95% case where you control content assembly 
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import AIMarkdown from '@ai-react-markdown/core';
+import AIMarkdown, { AIMarkdownStreamingCursor } from '@ai-react-markdown/core';
 import 'katex/dist/katex.min.css';
 import '@ai-react-markdown/core/typography/default.css';
 
@@ -97,7 +97,12 @@ export function ChatMessage({ id, prompt }: ChatMessageProps) {
 
   return (
     <div className="chat-message">
-      <AIMarkdown content={content} documentId={id} streaming={status === 'streaming'} />
+      <AIMarkdown
+        content={content}
+        documentId={id}
+        streaming={status === 'streaming'}
+        streamingCursor={AIMarkdownStreamingCursor}
+      />
       {status === 'error' && <div className="chat-error">Failed to load</div>}
     </div>
   );
@@ -108,7 +113,8 @@ export function ChatMessage({ id, prompt }: ChatMessageProps) {
 
 - **Single `<AIMarkdown>` instance**, growing `content` string. No `<AIMarkdownDocuments>` wrapper needed — there's only one renderer instance per message.
 - **Block-level memoization** keeps re-render cost proportional to the _delta_ between renders. Adding a token to the tail of a 100-block document doesn't re-render the first 99 blocks.
-- **`streaming` prop** is the signal for downstream renderers — a custom `pre` can show a streaming cursor, a custom `a` can defer prefetching, etc. See [Custom components](./custom-components.md) for adapting components to the streaming flag.
+- **`streaming` prop** is the signal for downstream renderers — a custom `pre` can adapt its chrome, a custom `a` can defer prefetching, etc. See [Custom components](./custom-components.md) for adapting components to the streaming flag.
+- **`streamingCursor={AIMarkdownStreamingCursor}`** renders the built-in inline cursor after the last rendered character while streaming — it stays visible (pure-CSS blink) through token stalls, so the user can tell "still generating" from "stuck" even when no new content arrives. See [Streaming & Performance → Variant: streaming cursor](./streaming-and-performance.md#variant-streaming-cursor).
 - **`documentId={id}`** keeps the per-document namespace for `id="…"` / `href="#…"` attributes stable across the message lifetime; if the user scrolls away and back, footnote anchors still resolve.
 
 ---
