@@ -236,16 +236,9 @@ function StreamingMessage({ content, done }: { content: string; done: boolean })
 }
 ```
 
-The `streamingCursor` slot renders the given component after the content while `streaming === true` and unmounts it when streaming ends. The built-in `AIMarkdownStreamingCursor` positions an indicator right after the **last rendered character** — detection and positioning happen at the DOM layer (a whitelist walk to the last text node, Range measurement of its last character, `transform` translation, kept in sync by a pre-paint MutationObserver). The markdown source, the parse pipeline, and the block-memo cache are untouched, so incremental parsing keeps its append gate and no block is invalidated by the cursor.
+The `streamingCursor` slot renders the given component after the content while `streaming === true` and unmounts it when streaming ends. The built-in `AIMarkdownStreamingCursor` positions an indicator right after the **last rendered character**, entirely at the DOM layer — the markdown source, the parse pipeline, and the block-memo cache are untouched, so incremental parsing keeps its append gate and no block is invalidated by the cursor.
 
-Behavior notes:
-
-- The default indicator is a blinking circle sized to the current line (taller on headings). After 5 s without content mutations it cross-fades into a rotating ring (spinner) — "still alive, but the stream looks stalled" — and returns to the filled circle when tokens resume. The animation is pure CSS, so it keeps moving during stalls with zero re-renders.
-- When the document tail can't anchor a cursor (fenced code, KaTeX output, rendered mermaid, raw HTML, void elements — or `content` still empty before the first token), the cursor hides for those frames and reappears once a text tail returns. If you want a placeholder before the first token, render your own component next to `<AIMarkdown>`.
-- Custom visual: bind an indicator at module scope — `const MyCursor = () => <AIMarkdownStreamingCursor indicator={MyIndicator} />;` then `streamingCursor={MyCursor}`. The indicator receives `{ width, height, lastMutationAt }` (see `AIMarkdownStreamingIndicatorProps`).
-- Like `Typography`, `streamingCursor` is compared by identity — define it at module scope.
-- Under `prefers-reduced-motion: reduce`, the blink/spin animations and state transitions are disabled; the static dot vs. ring still distinguishes streaming from stalled.
-- Chunked mode (`<AIMarkdownDocuments>`): pass `streamingCursor` only to the actively-appending chunk (typically the last). The slot renders wherever `streaming === true` — setting the flag on a non-final chunk would draw a cursor mid-document at that chunk's tail.
+**Full documentation: [Streaming cursor](./streaming-cursor.md)** — hide conditions, the custom-indicator contract, stall behavior, RTL/SSR/chunked-mode details, known boundaries, and footguns. What matters for _this_ document is the performance contract: the slot component is compared by identity (define it at module scope, like `Typography`), and the cursor adds zero work to the parse/memoization pipeline.
 
 > ⚠️ **Do not append a cursor character to `content`** (the `content + '▍'` pattern previously documented here). It defeats incremental parsing on every frame — `c1 + '▍'` → `c1 + delta + '▍'` is never a pure append, so the engine silently falls back to a full parse — and the character can land inside unclosed math or mermaid fences, corrupting their source.
 

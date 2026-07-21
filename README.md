@@ -39,6 +39,7 @@ This library is opinionated around those problems. Out of the box you get safe L
 | **Syntax highlighting**      | language-labelled tabs, expand/collapse, optional `highlight.js` auto-detection for unlabelled blocks (in `@ai-react-markdown/mantine`)                                                                                                           |
 | **CJK-friendly**             | proper line breaking for Chinese / Japanese / Korean text plus optional [pangu](https://github.com/vinta/pangu.js) auto-spacing between CJK and half-width characters                                                                             |
 | **Streaming-aware**          | `streaming` flag is propagated via context; custom renderers can show cursors, skip animations, or disable copy buttons during streaming                                                                                                          |
+| **Streaming cursor**         | built-in `streamingCursor` slot renders a "still generating" indicator after the last streamed character — visible through token stalls, pure-CSS animation, zero impact on the parse pipeline                                                    |
 | **Cross-chunk coordination** | `<AIMarkdownDocuments>` wrapper lets chunked chat messages share a `documentId` so footnotes / link refs / image refs resolve across chunks                                                                                                       |
 | **Block-level memoization**  | each markdown block is memoized by source identity; unchanged blocks skip `toJsxRuntime` and React reconcile work during streaming. Output is byte-identical to the disabled path                                                                 |
 | **Emoji shortcodes**         | `:smile:` → 😄 via `remark-emoji`                                                                                                                                                                                                                 |
@@ -204,11 +205,20 @@ export default function App() {
 
 ### Stream from an LLM
 
-The `streaming` flag is just a context boolean — pass `true` while tokens are still arriving so descendants can adapt (cursors, deferred copy buttons, etc.). The renderer itself remains stable across re-renders thanks to block-level memoization.
+The `streaming` flag is just a context boolean — pass `true` while tokens are still arriving so descendants can adapt (deferred copy buttons, skipped animations, etc.). The renderer itself remains stable across re-renders thanks to block-level memoization. Add `streamingCursor` for a built-in "still generating" indicator that tracks the last streamed character and stays visible through token stalls ([docs](./docs/streaming-cursor.md)):
 
 ```tsx
+import AIMarkdown, { AIMarkdownStreamingCursor } from '@ai-react-markdown/core';
+
 function ChatMessage({ message }: { message: { content: string; pending: boolean } }) {
-  return <AIMarkdown content={message.content} streaming={message.pending} colorScheme="dark" />;
+  return (
+    <AIMarkdown
+      content={message.content}
+      streaming={message.pending}
+      streamingCursor={AIMarkdownStreamingCursor}
+      colorScheme="dark"
+    />
+  );
 }
 ```
 
