@@ -32,6 +32,11 @@ export default defineConfig({
         ],
         test: {
           name: 'storybook',
+          // Streaming smokes legitimately wait through multi-second windows
+          // (e.g. the streaming cursor's 5 s stall threshold plus recovery).
+          // The browser-mode default of 15 s would kill those runs with an
+          // opaque runner timeout instead of the failing waitFor's message.
+          testTimeout: 30_000,
           browser: {
             enabled: true,
             headless: true,
