@@ -29,7 +29,7 @@
  * @module components/streamingCursor
  */
 
-import { useEffect, useRef, useState, type ComponentType, type CSSProperties } from 'react';
+import { useEffect, useInsertionEffect, useRef, useState, type ComponentType, type CSSProperties } from 'react';
 import { detectAnchorTextNode } from './detectAnchor';
 
 /** Props the shell injects into the indicator (the actual visual layer). */
@@ -95,12 +95,39 @@ const HOLDER_STYLE: CSSProperties = {
   pointerEvents: 'none',
 };
 
+const STYLE_MARKER = 'data-aimd-streaming-cursor-style';
+
 const CURSOR_KEYFRAMES =
   '@keyframes aimd-streaming-cursor-blink{0%,100%{opacity:1}50%{opacity:.15}}' +
   '@keyframes aimd-streaming-cursor-spin{to{transform:rotate(360deg)}}' +
   // Reduced motion: freeze blink/spin and state transitions. The static
   // dot/ring still convey streaming vs stalled without movement.
   '@media (prefers-reduced-motion:reduce){[data-aimd-streaming-indicator] span,[data-aimd-streaming-indicator]{animation:none!important;transition:none!important}}';
+
+/**
+ * Injects the cursor keyframes into `document.head` once per document.
+ * `useInsertionEffect` runs before layout effects (and never on the
+ * server), so the rules exist before anything measures. The tag is
+ * deliberately never removed on unmount: orphan keyframes are inert, and
+ * refcounting unmounts buys nothing (standard CSS-in-JS practice).
+ *
+ * Trade-off vs the previous inline `<style>`-per-instance: N concurrent
+ * streaming messages now share ONE tag instead of N duplicates. Known
+ * boundaries: a Shadow DOM host doesn't see `document.head` styles, and a
+ * component portaled into an iframe injects into the PARENT document's
+ * head (module-global `document`), not the iframe's — in either case,
+ * mount a self-styled custom indicator (the shell itself is style-free).
+ */
+function useCursorKeyframes() {
+  useInsertionEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (document.head.querySelector(`style[${STYLE_MARKER}]`)) return;
+    const tag = document.createElement('style');
+    tag.setAttribute(STYLE_MARKER, '');
+    tag.textContent = CURSOR_KEYFRAMES;
+    document.head.appendChild(tag);
+  }, []);
+}
 
 interface AnchorMeasure {
   rect: DOMRect;
@@ -169,6 +196,7 @@ function DefaultStreamingIndicator({ height, lastMutationAt }: AIMarkdownStreami
   // active streaming. A newer mutation always un-stalls without any state
   // write (and without a synchronous setState in the effect body, which
   // react-hooks forbids).
+  useCursorKeyframes();
   const [stalledSince, setStalledSince] = useState<number | null>(null);
   const stalled = stalledSince !== null && stalledSince >= lastMutationAt + STALL_MS;
   useEffect(() => {
@@ -229,69 +257,66 @@ function DefaultStreamingIndicator({ height, lastMutationAt }: AIMarkdownStreami
     borderWidth: ringWidth,
   };
   return (
-    <>
-      <style data-aimd-streaming-cursor-style="">{CURSOR_KEYFRAMES}</style>
+    <span
+      data-aimd-streaming-indicator=""
+      data-stalled={stalled ? '' : undefined}
+      style={{
+        display: 'block',
+        position: 'relative',
+        width: size + 2 * sideGap,
+        height: size,
+        marginTop: Math.round((height - size) / 2),
+        userSelect: 'none',
+      }}
+    >
       <span
-        data-aimd-streaming-indicator=""
-        data-stalled={stalled ? '' : undefined}
         style={{
-          display: 'block',
-          position: 'relative',
-          width: size + 2 * sideGap,
+          position: 'absolute',
+          left: sideGap,
+          top: 0,
+          width: size,
           height: size,
-          marginTop: Math.round((height - size) / 2),
-          userSelect: 'none',
         }}
       >
         <span
           style={{
             position: 'absolute',
-            left: sideGap,
-            top: 0,
-            width: size,
-            height: size,
+            inset: 0,
+            borderRadius: '50%',
+            backgroundColor: 'currentColor',
+            opacity: stalled ? 0 : 1,
+            transition: 'opacity 300ms ease',
+            animation: stalled ? 'none' : 'aimd-streaming-cursor-blink 900ms ease-in-out infinite',
+          }}
+        />
+        <span
+          style={{
+            position: 'absolute',
+            inset: -ringGrow,
+            opacity: stalled ? 1 : 0,
+            transform: stalled ? 'scale(1)' : `scale(${ringRestScale})`,
+            transition: 'opacity 300ms ease, transform 300ms ease',
           }}
         >
           <span
             style={{
-              position: 'absolute',
-              inset: 0,
-              borderRadius: '50%',
-              backgroundColor: 'currentColor',
-              opacity: stalled ? 0 : 1,
-              transition: 'opacity 300ms ease',
-              animation: stalled ? 'none' : 'aimd-streaming-cursor-blink 900ms ease-in-out infinite',
+              ...ringLayer,
+              borderColor: 'currentColor',
+              opacity: 0.25,
             }}
           />
           <span
+            data-aimd-streaming-indicator-ring=""
             style={{
-              position: 'absolute',
-              inset: -ringGrow,
-              opacity: stalled ? 1 : 0,
-              transform: stalled ? 'scale(1)' : `scale(${ringRestScale})`,
-              transition: 'opacity 300ms ease, transform 300ms ease',
+              ...ringLayer,
+              borderColor: 'transparent',
+              borderTopColor: 'currentColor',
+              animation: stalled ? 'aimd-streaming-cursor-spin 800ms linear infinite' : 'none',
             }}
-          >
-            <span
-              style={{
-                ...ringLayer,
-                borderColor: 'currentColor',
-                opacity: 0.25,
-              }}
-            />
-            <span
-              data-aimd-streaming-indicator-ring=""
-              style={{
-                ...ringLayer,
-                borderColor: 'transparent',
-                borderTopColor: 'currentColor',
-                animation: stalled ? 'aimd-streaming-cursor-spin 800ms linear infinite' : 'none',
-              }}
-            />
-          </span>
+          />
         </span>
       </span>
-    </>
+    </span>
   );
 }
 
