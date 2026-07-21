@@ -6,6 +6,17 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 ---
 
+## 1.7.x — Streaming cursor
+
+### 1.7.0 — Inline streaming cursor
+
+- New `streamingCursor` slot on `<AIMarkdown>` plus an exported `AIMarkdownStreamingCursor` shell: while `streaming === true`, an indicator renders right after the **last streamed character** and stays visibly alive through token stalls — the user can tell "still generating" from "stuck" even when no new content arrives. Everything happens at the DOM layer (a whitelist walk to the last text node, Range measurement of its final character — surrogate-pair aware — and an imperative `transform` kept in sync by a pre-paint MutationObserver plus ResizeObserver/`fonts.ready`), so the content string, the parse pipeline, and the block-memo cache are untouched: incremental parsing keeps its append gate, pinned by a dedicated browser regression story. The previously documented `content + '▍'` pattern is retired for exactly that reason — it silently forced a full parse every frame.
+- The default indicator is a blinking dot sized to the current line that cross-fades into a two-tone spinner ring after 5 s of silence and springs back when tokens resume — pure CSS (opacity/transform only, no layout properties), `prefers-reduced-motion` aware, `aria-hidden`, copy-safe (never inside the text flow), with keyframes deduped into one `document.head` tag via `useInsertionEffect`. Custom visuals plug in through the `indicator` contract (`{ width, height, lastMutationAt }`). Un-anchorable tails (code fences, KaTeX output, SVG, raw HTML, void elements — or empty content before the first token) hide the cursor for those frames; it reappears when a text tail returns. RTL anchors on the correct side, ancestor `transform: scale` is compensated, and SSR emits only an inert wrapper (no hydration jump).
+- Hardened by three review rounds before merge: an RTL overlap, a layout snap from the typography `:last-child` margin trim (the rule is now a separate Baseline-2023-safe ruleset in core and mantine so the last real block stays margin-free while the zero-height cursor wrapper is mounted), and a sub-millisecond Chromium timer early-fire that could permanently suppress the stall state (found via a flaky story, fixed by re-check-and-re-arm with deadline stamping) were all closed; an empirical browser torture pass (concurrent instances, morphing tails, 1 ms streams, mid-stream resets) found no further defects. Seven browser smokes ship as permanent regression fixtures alongside the node-environment suites.
+- Docs: `docs/streaming-and-performance.md`'s "Variant: streaming cursor" section now documents the built-in slot (with a warning on why appending a cursor character breaks incremental parsing), and the end-to-end chat example adopts it.
+
+---
+
 ## 1.6.x — Incremental parsing
 
 ### 1.6.1 — Incremental-parse verification campaign, CI browser gate
