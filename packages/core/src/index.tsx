@@ -21,7 +21,7 @@
 
 'use client';
 
-import { useMemo, memo, type CSSProperties } from 'react';
+import { useMemo, memo, type ComponentType, type CSSProperties } from 'react';
 import AIMarkdownRenderStateProvider, {
   AIMarkdownMetadataProvider,
   AIMarkdownRenderStateProviderProps,
@@ -89,12 +89,19 @@ export interface AIMarkdownProps<
   /**
    * Typography wrapper component. Receives `fontSize`, `variant`, and `colorScheme`.
    * Defaults to the built-in {@link DefaultTypography}.
+   *
+   * `children` may be a Fragment (the rendered content plus the optional
+   * `streamingCursor` slot) — implementations must render `children`
+   * verbatim; `Children.only` / `cloneElement`-style handling will break.
    */
   Typography?: AIMarkdownTypographyComponent;
   /**
    * Optional extra style wrapper component rendered between the typography
    * wrapper and the markdown content. Useful for injecting additional
    * CSS scope or theme providers.
+   *
+   * Same `children` contract as `Typography`: may be a Fragment; render it
+   * verbatim.
    */
   ExtraStyles?: AIMarkdownExtraStylesComponent;
   /** Typography variant name. Defaults to `'default'`. */
@@ -216,6 +223,28 @@ export interface AIMarkdownProps<
    * `rehype-sanitize` shape and may change with its major versions.
    */
   sanitizeSchema?: SanitizeSchema;
+  /**
+   * Streaming cursor slot. While `streaming === true`, the given component
+   * is rendered after the markdown content — inside the typography wrapper
+   * and both providers — and unmounted when `streaming` is `false` or the
+   * prop is omitted. No props are injected; the slot only controls WHEN and
+   * WHERE the component renders.
+   *
+   * Pass the exported {@link AIMarkdownStreamingCursor} for the built-in
+   * inline self-positioning cursor (optionally wrapped at module scope to
+   * bind a custom `indicator`):
+   *
+   * ```tsx
+   * import AIMarkdown, { AIMarkdownStreamingCursor } from '@ai-react-markdown/core';
+   *
+   * <AIMarkdown content={content} streaming={!done} streamingCursor={AIMarkdownStreamingCursor} />
+   * ```
+   *
+   * **Reference stability matters.** Like `Typography`, this is compared by
+   * identity in the memo wrapper — define the component at module scope, not
+   * inline.
+   */
+  streamingCursor?: ComponentType;
 }
 
 /**
@@ -241,6 +270,7 @@ const AIMarkdownComponent = <
   documentId,
   urlTransform,
   sanitizeSchema,
+  streamingCursor: StreamingCursor,
 }: AIMarkdownProps<TConfig, TRenderData>) => {
   // Normalize fontSize: number -> px string, undefined -> default rem value.
   // Branch on `undefined` (not truthiness) so `fontSize={0}` resolves to `'0px'`.
@@ -298,6 +328,22 @@ const AIMarkdownComponent = <
   // breaks on every parent render even when the font-size hasn't changed.
   const typographyStyle = useMemo(() => ({ '--aim-font-size-root': usedFontSize }) as CSSProperties, [usedFontSize]);
 
+  // The streaming-cursor slot must be a DOM sibling of the rendered blocks
+  // (its shell finds the content root via `parentElement`), so it renders
+  // inside the same JSX parent as the content — the ExtraStyles wrapper when
+  // present, the typography root otherwise.
+  const contentBody = (
+    <>
+      <AIMarkdownContent
+        content={usedContent}
+        customComponents={stableCustomComponents}
+        urlTransform={urlTransform ?? undefined}
+        sanitizeSchema={stableSanitizeSchema}
+      />
+      {streaming && StreamingCursor ? <StreamingCursor /> : null}
+    </>
+  );
+
   return (
     <AIMarkdownMetadataProvider<TRenderData> metadata={metadata}>
       <AIMarkdownRenderStateProvider<TConfig>
@@ -319,23 +365,7 @@ const AIMarkdownComponent = <
           // See AIMarkdownTypographyProps.style JSDoc for the full variable list.
           style={typographyStyle}
         >
-          {ExtraStyles ? (
-            <ExtraStyles>
-              <AIMarkdownContent
-                content={usedContent}
-                customComponents={stableCustomComponents}
-                urlTransform={urlTransform ?? undefined}
-                sanitizeSchema={stableSanitizeSchema}
-              />
-            </ExtraStyles>
-          ) : (
-            <AIMarkdownContent
-              content={usedContent}
-              customComponents={stableCustomComponents}
-              urlTransform={urlTransform ?? undefined}
-              sanitizeSchema={stableSanitizeSchema}
-            />
-          )}
+          {ExtraStyles ? <ExtraStyles>{contentBody}</ExtraStyles> : contentBody}
         </Typography>
       </AIMarkdownRenderStateProvider>
     </AIMarkdownMetadataProvider>
@@ -423,6 +453,15 @@ export { defaultUrlTransform } from './components/markdown';
 export type { UrlTransform } from './components/markdown';
 export { extendSanitizeSchema } from './components/extendSanitizeSchema';
 export type { SanitizeSchema } from './components/extendSanitizeSchema';
+
+// Streaming cursor — positioner shell for the `streamingCursor` slot, plus
+// the indicator contract for custom visuals.
+export { AIMarkdownStreamingCursor } from './components/streamingCursor';
+export type {
+  AIMarkdownStreamingCursorProps,
+  AIMarkdownStreamingIndicatorProps,
+  AIMarkdownStreamingIndicatorComponent,
+} from './components/streamingCursor';
 
 // Cross-chunk coordination wrapper + hook
 export { AIMarkdownDocuments, useDocumentRegistry } from './components/AIMarkdownDocuments';

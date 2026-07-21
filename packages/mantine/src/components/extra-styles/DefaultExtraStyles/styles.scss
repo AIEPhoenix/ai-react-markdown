@@ -41,6 +41,15 @@
     margin-bottom: 0;
   }
 
+  /* Keep the real last block margin-free while the zero-height
+     streaming-cursor wrapper sits after it (core ships the same rule in
+     typography/variants/default.scss). Separate ruleset on purpose:
+     `:nth-child(… of …)` is Baseline 2023 and a comma-joined list would be
+     dropped whole on older engines, taking `:last-child` down with it. */
+  :nth-last-child(1 of :not([data-aimd-streaming-cursor])) {
+    margin-bottom: 0;
+  }
+
   ul,
   ol {
     list-style-position: outside;
@@ -79,6 +88,11 @@
     margin-bottom: calc(var(--aim-font-size-mantine-base) * 0.5);
 
     &:last-child {
+      margin-bottom: 0;
+    }
+
+    /* Separate ruleset — see the note on the top-level rule above. */
+    &:nth-last-child(1 of :not([data-aimd-streaming-cursor])) {
       margin-bottom: 0;
     }
   }
