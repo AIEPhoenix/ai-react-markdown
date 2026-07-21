@@ -402,6 +402,32 @@ export const RtlFollow: Story = {
   },
 };
 
+export const StyleDedup: Story = {
+  // Three concurrent instances must share ONE injected keyframes tag in
+  // document.head (useInsertionEffect dedup) — previously each indicator
+  // rendered its own inline <style> duplicate.
+  render: () => (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+      <CursorSmoke payload="First instance streaming plain prose." finish={false} />
+      <CursorSmoke payload="Second instance with a bit more text to stream." finish={false} />
+      <CursorSmoke payload="Third instance, also held open while streaming." finish={false} />
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    await waitFor(
+      () => {
+        const count = canvasElement.querySelectorAll('[data-aimd-streaming-indicator]').length;
+        if (count < 3) throw new Error(`only ${count}/3 indicators visible yet`);
+      },
+      { timeout: 10_000 }
+    );
+    const styleTags = document.head.querySelectorAll('style[data-aimd-streaming-cursor-style]');
+    expect(styleTags.length).toBe(1);
+    // And none of the instances renders an inline duplicate anymore.
+    expect(canvasElement.querySelectorAll('style[data-aimd-streaming-cursor-style]').length).toBe(0);
+  },
+};
+
 export const IncrementalParseRegression: Story = {
   // Pins the proposal's founding motivation: unlike the old `content + '▍'`
   // hack, the cursor must coexist with the incremental (prefix-freeze)
