@@ -80,10 +80,21 @@ const INCREMENTAL_CONFIG: AIMarkdownProps['config'] = { incrementalParseEnabled:
 const recordedHeights: number[] = [];
 const RecordingIndicator: AIMarkdownStreamingIndicatorComponent = ({ height }) => {
   recordedHeights.push(height);
+  // The shell top-aligns the holder to the character box; a sub-height
+  // visual must center itself within `height` (same rule as the default
+  // indicator) or it visibly hugs the top of the line.
+  const size = 6;
   return (
     <span
       data-aimd-streaming-indicator=""
-      style={{ display: 'block', width: 6, height: 6, borderRadius: '50%', backgroundColor: 'currentColor' }}
+      style={{
+        display: 'block',
+        width: size,
+        height: size,
+        marginTop: Math.round((height - size) / 2),
+        borderRadius: '50%',
+        backgroundColor: 'currentColor',
+      }}
     />
   );
 };
