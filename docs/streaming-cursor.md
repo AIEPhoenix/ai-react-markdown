@@ -82,6 +82,7 @@ const MyCursor = () => <AIMarkdownStreamingCursor indicator={MyIndicator} />;
 Contract semantics:
 
 - `height` / `width` — rendered size of the anchor character, equality-short-circuited: they only change when the anchor enters a different font-size context (e.g. a heading), so size-only re-renders are rare.
+- **Vertical centering is the indicator's job.** The shell top-aligns its holder to the anchor character's box; an indicator shorter than `height` renders at the top of the line unless it centers itself — e.g. `marginTop: Math.round((height - size) / 2)` for a `size`-tall dot (exactly what the default indicator does). Full-`height` visuals (like the bar in the example above) need nothing.
 - `lastMutationAt` — updates once per mutation batch, meaning the indicator re-renders once per token. It's a leaf component, so this is negligible — and it's what lets a plain `useEffect` implement stall timers with no subscription machinery.
 - Position (x/y) is **not** in the contract. It changes every token and must land in the same frame as the content change, so the shell applies it imperatively. Indicators never need to know where they are.
 
