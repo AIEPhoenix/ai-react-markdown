@@ -92,14 +92,15 @@ In production for streaming workloads: **leave it on**.
 
 ---
 
-## Incremental parse (prefix-freeze) — experimental
+## Incremental parse (prefix-freeze)
 
-> `config.incrementalParseEnabled` — default `false`. Effective only when `blockMemoEnabled` is `true`.
+> `config.incrementalParseEnabled` — default `true` since v1.8.0 (opt-in and experimental before that). Effective only when `blockMemoEnabled` is `true`.
 
 Block memoization removes re-_render_ work, but `unified.parse` still runs over the **full document** every streaming frame — for long documents the parse/transform stages dominate the per-token budget (see Profiling below). Incremental parsing attacks exactly that: when content grows by appends (the normal streaming shape), the renderer freezes the **stable prefix** of the document at a verified-safe boundary, re-parses only the tail, and splices the previous frame's trees with the tail's.
 
 ```tsx
-<AIMarkdown content={content} streaming={!done} config={{ incrementalParseEnabled: true }} />
+// On by default — pass `false` only as an escape hatch:
+<AIMarkdown content={content} streaming={!done} config={{ incrementalParseEnabled: false }} />
 ```
 
 ### The freeze boundary
