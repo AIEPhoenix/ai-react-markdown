@@ -164,8 +164,9 @@ shapes (root-position anchoring, html-block trailing literals' position
 lifecycle, seam merges around tokenizer-dropped raw constructs,
 footer-only tails, and merged raw-remnant whitespace — the last two now
 bail to a full parse rather than model the parse5 tokenizer). None were
-reachable by the shipped default (`incrementalParseEnabled: false`);
-all were real under the flag.
+reachable by the then-shipped default (`incrementalParseEnabled: false`,
+the default until v1.8.0 flipped it to `true`); all were real under the
+flag.
 
 Soak record (2026-07-17..20): 8 seeds × 1.5-2.5k samples; 50k samples
 (seed 20260750); 20k direction-battery prefixes (CLEAN — the over-block

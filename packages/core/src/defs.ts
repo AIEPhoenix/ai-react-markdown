@@ -92,13 +92,18 @@ export interface AIMarkdownRenderConfig {
    */
   readonly preserveOrphanReferences: boolean;
   /**
-   * EXPERIMENTAL. Incremental (prefix-freeze) parsing for streaming
-   * content. When `true` and the content grows by appends (the normal
-   * streaming shape), the renderer freezes the stable prefix of the
-   * document at a verified-safe boundary, re-parses only the tail, and
-   * splices the two — cutting per-frame parse cost roughly to the tail's
-   * share. Output is deep-equal to a full parse (enforced by the
-   * splice-equivalence test suite).
+   * Incremental (prefix-freeze) parsing for streaming content. When `true`
+   * and the content grows by appends (the normal streaming shape), the
+   * renderer freezes the stable prefix of the document at a verified-safe
+   * boundary, re-parses only the tail, and splices the two — cutting
+   * per-frame parse cost roughly to the tail's share. Output is deep-equal
+   * to a full parse (enforced by the splice-equivalence test suite).
+   *
+   * Default `true` since v1.8.0. Previously experimental and default
+   * `false`; promoted after the machine-driven verification campaign and
+   * the 2026-07 soak record (50k-sample fuzz, 20k direction-battery
+   * prefixes, exhaustive K=4 census — all clean; see
+   * `src/experiments/prefixFreeze/README.md` for the full record).
    *
    * Effective only when `blockMemoEnabled` is `true` (the incremental
    * engine lives in the block-memoized renderer). Footnotes and cross-chunk
@@ -116,13 +121,17 @@ export interface AIMarkdownRenderConfig {
    *
    * SSR always takes the full-parse path (per-request state starts empty).
    *
-   * Optional (unlike the stable flags) while experimental: adding a
-   * REQUIRED field to this interface in a minor release breaks downstream
-   * code that constructs complete `AIMarkdownRenderConfig` literals (e.g.
-   * sub-packages supplying `defaultConfig`). The deep-merge defaulting in
-   * the provider treats absence as `false`.
+   * Optional (unlike the stable flags) for source compatibility: the field
+   * was added in a minor release, and making it REQUIRED would break
+   * downstream code that constructs complete `AIMarkdownRenderConfig`
+   * literals (e.g. sub-packages supplying `defaultConfig`). Absence is
+   * still treated as `false` at the engine gate — a custom `defaultConfig`
+   * that omits the field therefore opts out of incremental parsing; set it
+   * to `true` explicitly to opt back in. (The shipped
+   * {@link defaultAIMarkdownRenderConfig} sets it to `true`, so consumers
+   * who don't pass a custom `defaultConfig` get the engine by default.)
    *
-   * @default false
+   * @default true
    */
   readonly incrementalParseEnabled?: boolean;
 }
@@ -144,7 +153,7 @@ export const defaultAIMarkdownRenderConfig = Object.freeze({
   ]),
   blockMemoEnabled: true,
   preserveOrphanReferences: true,
-  incrementalParseEnabled: false,
+  incrementalParseEnabled: true,
 }) satisfies AIMarkdownRenderConfig;
 
 /**

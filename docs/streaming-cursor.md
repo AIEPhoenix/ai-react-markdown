@@ -18,7 +18,7 @@ While `streaming === true`, the built-in cursor tracks the tail of the rendered 
 
 The obvious approach — `content={content + '▍'}` while streaming — used to be documented here and is now actively harmful:
 
-1. **It defeats incremental parsing on every frame.** The [prefix-freeze engine](./streaming-and-performance.md#incremental-parse-prefix-freeze--experimental)'s append gate requires each frame's content to be a pure append of the previous frame's. `c1 + '▍'` → `c1 + delta + '▍'` is never a pure append (the `▍` is removed and re-added), so every frame silently falls back to a full parse.
+1. **It defeats incremental parsing on every frame.** The [prefix-freeze engine](./streaming-and-performance.md#incremental-parse-prefix-freeze)'s append gate requires each frame's content to be a pure append of the previous frame's. `c1 + '▍'` → `c1 + delta + '▍'` is never a pure append (the `▍` is removed and re-added), so every frame silently falls back to a full parse.
 2. **The character lands inside source-sensitive constructs.** Inside an unclosed `$$` block it breaks the KaTeX parse; inside a streaming mermaid fence it corrupts the diagram source (text-extracting renderers see it).
 3. **It invalidates the last block's memo cache every frame**, even when the real content didn't change.
 

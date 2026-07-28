@@ -439,11 +439,11 @@ The full list with all subtleties lives in [`@ai-react-markdown/core` README](./
 
 ### Other config fields
 
-| Field                      | Type      | Default | Purpose                                                                                                                                                                                                                                                                 |
-| -------------------------- | --------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `blockMemoEnabled`         | `boolean` | `true`  | Per-block memoization. Output is byte-identical when disabled; set `false` only for debugging                                                                                                                                                                           |
-| `incrementalParseEnabled`  | `boolean` | `false` | EXPERIMENTAL. Prefix-freeze incremental parsing: append-only streaming re-parses only the tail (83–94% less pipeline stage time on the benchmark payloads). Output stays deep-equal to a full parse; see [Streaming & Performance](./docs/streaming-and-performance.md) |
-| `preserveOrphanReferences` | `boolean` | `true`  | Protect orphan `[^x]: …` defs from being silently dropped during streaming when the reference hasn't arrived yet                                                                                                                                                        |
+| Field                      | Type      | Default | Purpose                                                                                                                                                                                                                                                                                |
+| -------------------------- | --------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `blockMemoEnabled`         | `boolean` | `true`  | Per-block memoization. Output is byte-identical when disabled; set `false` only for debugging                                                                                                                                                                                          |
+| `incrementalParseEnabled`  | `boolean` | `true`  | Prefix-freeze incremental parsing: append-only streaming re-parses only the tail (83–94% less pipeline stage time on the benchmark payloads). Output stays deep-equal to a full parse; see [Streaming & Performance](./docs/streaming-and-performance.md). Default `true` since v1.8.0 |
+| `preserveOrphanReferences` | `boolean` | `true`  | Protect orphan `[^x]: …` defs from being silently dropped during streaming when the reference hasn't arrived yet                                                                                                                                                                       |
 
 The Mantine package additionally surfaces:
 
@@ -684,7 +684,7 @@ Issues and pull requests are welcome. For non-trivial changes, please open an is
 
 Reporting a bug helps most when it includes:
 
-- The package and version (`@ai-react-markdown/core@1.7.0` …)
+- The package and version (`@ai-react-markdown/core@1.8.0` …)
 - The relevant `<AIMarkdown>` / `<MantineAIMarkdown>` props
 - A minimal markdown sample that reproduces the issue
 - For streaming-related bugs: the chunk sequence (one string per chunk)
