@@ -6,6 +6,17 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 ---
 
+## 1.8.x — Incremental parsing by default
+
+### 1.8.0 — `incrementalParseEnabled` defaults to `true`
+
+- `config.incrementalParseEnabled` flips from opt-in to on-by-default, and drops its EXPERIMENTAL label. The promotion criteria were met by the 1.6.1 verification campaign and its soak record (50k fuzz samples, 20k direction-battery prefixes, exhaustive K=4 census — all clean): append-only streaming now freezes the stable document prefix and re-parses only the tail out of the box, cutting per-frame parse/transform cost by 83–94% on the benchmark payloads.
+- No rendered output changes. The engine's contract — spliced trees deep-equal to a full parse, positions included — is enforced per-frame by the splice-equivalence suite, and every unsafe frame still silently falls back to the ordinary full parse (non-append changes, no freeze-safe boundary, container-nested definitions, SSR).
+- Opting out: pass `config={{ incrementalParseEnabled: false }}`. Note for sub-package authors: the field stays optional in `AIMarkdownRenderConfig`, and a custom `defaultConfig` that omits it still resolves to `false` at the engine gate — set it explicitly to `true` to match the new library default.
+- Docs updated throughout (READMEs, `docs/streaming-and-performance.md`, `docs/benchmark.md`); historical entries below keep their original default-`false` wording.
+
+---
+
 ## 1.7.x — Streaming cursor
 
 ### 1.7.0 — Inline streaming cursor
