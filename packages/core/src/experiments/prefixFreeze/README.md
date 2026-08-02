@@ -180,6 +180,27 @@ census is ONE vitest test = one core; use `EXHAUSTIVE_SHARD=i/N` with N
 parallel processes (12-way ≈ 8 min for K=4 on 16 cores vs 1-2 h and two
 sleep-killed attempts single-core).
 
+Post-release finding (2026-07-31, fixed 2026-08-03): the direction
+battery — running against a fuzz-generator pool that had grown since the
+July soak — surfaced one detector UNDER-BLOCK reachable in shipped
+v1.8.0 (verified by counterexample replay on a clean 0fb574d worktree):
+an html-flow run that swallows non-tag lines (a `$$` math fence glued
+under `</details>`) leaves BALANCED floating remnant text whose
+rehype-raw seam shape (positioned vs seam-owned position-less, trailing
+newline ownership) depends on whether a sibling node follows — so a tail
+block flipping between definition (no hast output) and paragraph
+reshaped the frozen region retroactively. Fix: blocker 6 (raw-remnant
+seam) — the candidate adjacent to such a run is rejected until a later
+confirmed content line pins the seam from the frozen side; construct-
+consumed bytes (PI/CDATA/decl spans, comment content) are exempt from
+the remnant test, and the comment-tail exemption applies only when a
+comment was open at line start (a stray `-->` must not hide remnant —
+that would be the under-block direction). Pins live in
+`computeFreezeBoundary.test.ts` ("raw-remnant seam (blocker 6)"). The
+full three-leg soak (50k-sample fuzz seed 20260750; 20k direction
+prefixes; K=4 stride-2 census, 12/12 shards) was re-run CLEAN on the
+fixed detector (2026-08-03).
+
 Mutation audit (`stryker.conf.json`, one-off 2026-07-17, not in CI):
 killer suite = the fast arbiter set (`stryker.vitest.config.ts`). Score:
 **64.55% total** (1061 killed, 19 timeout, 566 survived, 27 no-coverage,
