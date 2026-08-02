@@ -11,6 +11,7 @@
 import { PropsWithChildren, createContext, useContext, useId, useMemo, useRef, type Context, type FC } from 'react';
 import { AIMarkdownMetadata, AIMarkdownVariant, AIMarkdownColorScheme } from './defs';
 import { shortenDocumentId } from './components/shortenDocumentId';
+import useReferenceFlipWarning from './hooks/useReferenceFlipWarning';
 
 const AIMarkdownMetadataContext = createContext<AIMarkdownMetadata | undefined>(undefined);
 
@@ -121,6 +122,13 @@ function createAdditiveContext<TCore extends object, TGroups extends object>(
 
   const Provider: FC<PropsWithChildren<{ value: TGroups }>> = ({ value, children }) => {
     const outer = useContext(Ctx);
+    // Dev flip-rate probe (WARN_ONLY tier of the firewall, applied to the
+    // one object input that does not pass through `useStableRecord`): an
+    // inline `value` re-minted every parent render re-mints the merged
+    // context value and wakes EVERY subscriber of this context on every
+    // unrelated re-render — the exact storm the prop-side firewall guards
+    // against.
+    useReferenceFlipWarning(value, `${providerName} value`);
     // Warn once per provider instance — core-key misuse is a static coding
     // error, not a per-render condition worth spamming about. State lives as
     // a property of a lazily-initialized ref object (same discipline as
@@ -210,6 +218,21 @@ function requireContext<T>(value: T | null, hookName: string): T {
 }
 
 /**
+ * Throw-guard for the ADDITIVE contexts: a stacked public Provider outside
+ * `<AIMarkdown>` makes the context value non-null without the core keys
+ * (only `CoreProvider` supplies them), so presence of a core key — not
+ * non-nullness — is the "under <AIMarkdown>" signal. Without this check the
+ * hook would silently return `undefined` for fields its type declares as
+ * present.
+ */
+function requireCoreContext<T extends object>(value: T | null, coreKey: string, hookName: string): T {
+  if (value == null || !(coreKey in value)) {
+    throw new Error(`${hookName} must be used within an <AIMarkdown /> component.`);
+  }
+  return value;
+}
+
+/**
  * Document-system narrow hook: resolved `documentId`, the
  * `documentIdExplicit` coordination signal, and the canonical
  * `clobberPrefix`. Payload is derived invariants — this context is closed
@@ -227,12 +250,12 @@ export function useAIMarkdownTheme(): AIMarkdownThemeInfo {
 /**
  * State-system narrow hook. `streaming` is the most frequently flipping
  * field in the library — this hook's subscribers are the ONLY components
- * that re-render on a flip (after M4 removes the legacy context).
+ * that re-render on a flip.
  * Extension state groups contributed via {@link AIMarkdownStateProvider}
  * appear as additional keys, typed `object | undefined`.
  */
 export function useAIMarkdownState(): AIMarkdownStateCore & AIMarkdownExtensionGroups {
-  return requireContext(useContext(stateCell.Ctx), 'useAIMarkdownState');
+  return requireCoreContext(useContext(stateCell.Ctx), 'streaming', 'useAIMarkdownState');
 }
 
 /**
@@ -243,7 +266,7 @@ export function useAIMarkdownState(): AIMarkdownStateCore & AIMarkdownExtensionG
  * apply group defaults inside.
  */
 export function useAIMarkdownBehaviors(): AIMarkdownBehaviorsCore & AIMarkdownExtensionGroups {
-  return requireContext(useContext(behaviorsCell.Ctx), 'useAIMarkdownBehaviors');
+  return requireCoreContext(useContext(behaviorsCell.Ctx), 'blockMemo', 'useAIMarkdownBehaviors');
 }
 
 /** Aggregate payload returned by {@link useAIMarkdown}. */
