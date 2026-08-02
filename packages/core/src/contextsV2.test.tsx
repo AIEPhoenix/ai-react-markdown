@@ -132,6 +132,31 @@ describe('additive Providers — extension-group transport', () => {
     expect(warn.mock.calls[0][0]).toContain('core key');
   });
 
+  test('narrow hooks still throw under a stacked Provider OUTSIDE <AIMarkdown> (guard is core-key presence, not non-null)', () => {
+    const BareState = () => {
+      useAIMarkdownState();
+      return null;
+    };
+    expect(() =>
+      renderToString(
+        <AIMarkdownStateProvider value={{ toolCall: { inProgress: true } }}>
+          <BareState />
+        </AIMarkdownStateProvider>
+      )
+    ).toThrow('useAIMarkdownState must be used within');
+    const BareBehaviors = () => {
+      useAIMarkdownBehaviors();
+      return null;
+    };
+    expect(() =>
+      renderToString(
+        <AIMarkdownBehaviorsProvider value={{ codeBlock: CODE_BLOCK }}>
+          <BareBehaviors />
+        </AIMarkdownBehaviorsProvider>
+      )
+    ).toThrow('useAIMarkdownBehaviors must be used within');
+  });
+
   test('type-level core-key lock', () => {
     // @ts-expect-error — `blockMemo` is a locked core key of the behaviors context.
     <AIMarkdownBehaviorsProvider value={{ blockMemo: { on: true } }}>x</AIMarkdownBehaviorsProvider>;
