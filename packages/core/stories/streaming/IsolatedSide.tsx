@@ -175,7 +175,7 @@ export const IsolatedSide = () => {
       content={content}
       streaming={running}
       colorScheme={scheme}
-      config={config}
+      {...config}
       customComponents={spyComponents}
       documentId={
         registry ? `bmc-side-${axis === 'incrementalParse' ? (incremental ? 'inc' : 'full') : mode}` : undefined

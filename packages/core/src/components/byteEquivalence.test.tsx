@@ -9,7 +9,7 @@
  *   elements (the `\n` between `<p>`s, the leading spaces of indented HTML)
  *   MUST be preserved by the `inline` items in the render plan.
  * - All extra-syntax and display-optimize plugins enabled by
- *   `defaultAIMarkdownRenderConfig` (mark highlight, definition list,
+ *   the default engine plugin set (mark highlight, definition list,
  *   super/subscript, remove-comments, smartypants, pangu) MUST run on the
  *   same content as the legacy bare `<Markdown>` reference.
  *
@@ -37,7 +37,7 @@ import Markdown from './markdown';
 import AIMarkdownContent from './MarkdownContent';
 import AIMarkdown from '../index';
 import { AIMarkdownDocuments } from './AIMarkdownDocuments';
-import AIMarkdownRenderStateProvider from '../context';
+import AIMarkdownProvider from '../context';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
 import remarkEmoji from 'remark-emoji';
@@ -57,26 +57,22 @@ import rehypeUnwrapImages from 'rehype-unwrap-images';
 import { sanitizeSchema } from './sanitizeSchema';
 import rehypeRebaseHashLinks from './rehypeRebaseHashLinks';
 import rehypeFooterAdorn from './rehypeFooterAdorn';
-import {
-  AIMarkdownRenderExtraSyntax,
-  AIMarkdownRenderDisplayOptimizeAbility,
-  type AIMarkdownRenderConfig,
-} from '../defs';
+import { highlight, definitionList, removeComments, smartypants, pangu } from '../plugins/catalog';
+
+type ExtraSyntaxName = 'highlight' | 'definitionList';
+type DisplayOptimizeName = 'removeComments' | 'smartypants' | 'pangu';
 
 interface PluginConfig {
-  extras: AIMarkdownRenderExtraSyntax[];
-  display: AIMarkdownRenderDisplayOptimizeAbility[];
+  extras: ExtraSyntaxName[];
+  display: DisplayOptimizeName[];
 }
 
-const ALL_EXTRAS: AIMarkdownRenderExtraSyntax[] = [
-  AIMarkdownRenderExtraSyntax.HIGHLIGHT,
-  AIMarkdownRenderExtraSyntax.DEFINITION_LIST,
-];
-const ALL_DISPLAY: AIMarkdownRenderDisplayOptimizeAbility[] = [
-  AIMarkdownRenderDisplayOptimizeAbility.REMOVE_COMMENTS,
-  AIMarkdownRenderDisplayOptimizeAbility.SMARTYPANTS,
-  AIMarkdownRenderDisplayOptimizeAbility.PANGU,
-];
+/** Maps names to the sealed catalog objects for the NEW-pipeline side only —
+ *  the legacy mirror below keeps its own hand-rolled switch on names. */
+const SEALED_BY_NAME = { highlight, definitionList, removeComments, smartypants, pangu } as const;
+
+const ALL_EXTRAS: ExtraSyntaxName[] = ['highlight', 'definitionList'];
+const ALL_DISPLAY: DisplayOptimizeName[] = ['removeComments', 'smartypants', 'pangu'];
 
 // Deterministic document id used by both sides of the byte-equivalence test
 // so the per-document clobber prefix matches and the two pipelines stay
@@ -92,19 +88,19 @@ function legacyPlugins(config: PluginConfig) {
   // ordering bug shows up here.
   const extraSyntaxPlugins = config.extras.map((syntax) => {
     switch (syntax) {
-      case AIMarkdownRenderExtraSyntax.HIGHLIGHT:
+      case 'highlight':
         return remarkMarkHighlight;
-      case AIMarkdownRenderExtraSyntax.DEFINITION_LIST:
+      case 'definitionList':
         return remarkDefinitionList;
     }
   });
   const displayPlugins = config.display.map((ability) => {
     switch (ability) {
-      case AIMarkdownRenderDisplayOptimizeAbility.REMOVE_COMMENTS:
+      case 'removeComments':
         return remarkRemoveComments;
-      case AIMarkdownRenderDisplayOptimizeAbility.SMARTYPANTS:
+      case 'smartypants':
         return remarkSmartypants;
-      case AIMarkdownRenderDisplayOptimizeAbility.PANGU:
+      case 'pangu':
         return remarkPangu;
     }
   });
@@ -132,7 +128,7 @@ function legacyPlugins(config: PluginConfig) {
       allowDangerousHtml: true,
       clobberPrefix: '',
       handlers: {
-        ...(config.extras.includes(AIMarkdownRenderExtraSyntax.DEFINITION_LIST) ? defListHastHandlers : {}),
+        ...(config.extras.includes('definitionList') ? defListHastHandlers : {}),
       },
     },
   };
@@ -147,25 +143,26 @@ function renderLegacy(md: string, config: PluginConfig): string {
   );
 }
 
-function renderNew(md: string, config: PluginConfig, blockMemoEnabled = true, incrementalParseEnabled = false): string {
-  const cfg: AIMarkdownRenderConfig = {
-    extraSyntaxSupported: config.extras,
-    displayOptimizeAbilities: config.display,
-    blockMemoEnabled,
-    preserveOrphanReferences: true,
-    incrementalParseEnabled,
-  };
+function renderNew(md: string, config: PluginConfig, blockMemo = true, incrementalParse = false): string {
+  const enginePlugins = [...config.extras, ...config.display].map((name) => SEALED_BY_NAME[name]);
   return renderToStaticMarkup(
-    <AIMarkdownRenderStateProvider
+    <AIMarkdownProvider
       streaming={false}
       fontSize="14px"
       variant="default"
       colorScheme="light"
       documentId={TEST_DOCUMENT_ID}
-      config={cfg}
+      blockMemo={blockMemo}
+      incrementalParse={incrementalParse}
     >
-      <AIMarkdownContent content={md} />
-    </AIMarkdownRenderStateProvider>
+      <AIMarkdownContent
+        content={md}
+        blockMemo={blockMemo}
+        incrementalParse={incrementalParse}
+        preserveOrphanReferences={true}
+        enginePlugins={enginePlugins}
+      />
+    </AIMarkdownProvider>
   );
 }
 
@@ -192,12 +189,12 @@ const baselineCases: Array<[string, string]> = [
 const extraSyntaxCases: Array<[string, PluginConfig, string]> = [
   [
     'mark highlight (==text==) — HIGHLIGHT plugin',
-    { extras: [AIMarkdownRenderExtraSyntax.HIGHLIGHT], display: [] },
+    { extras: ['highlight'], display: [] },
     'Some ==highlighted== text in a paragraph.\n\nAnother ==block== here.',
   ],
   [
     'definition list — DEFINITION_LIST plugin',
-    { extras: [AIMarkdownRenderExtraSyntax.DEFINITION_LIST], display: [] },
+    { extras: ['definitionList'], display: [] },
     'Term\n:   Definition body one.\n\nOther\n:   Another definition.',
   ],
 ];
@@ -207,19 +204,15 @@ const extraSyntaxCases: Array<[string, PluginConfig, string]> = [
 const displayOptimizeCases: Array<[string, PluginConfig, string]> = [
   [
     'remove HTML comments — REMOVE_COMMENTS plugin',
-    { extras: [], display: [AIMarkdownRenderDisplayOptimizeAbility.REMOVE_COMMENTS] },
+    { extras: [], display: ['removeComments'] },
     'Before.\n\n<!-- hidden comment -->\n\nAfter.',
   ],
   [
     'smartypants curly quotes + em-dash — SMARTYPANTS plugin',
-    { extras: [], display: [AIMarkdownRenderDisplayOptimizeAbility.SMARTYPANTS] },
+    { extras: [], display: ['smartypants'] },
     'He said "hello" -- and then walked away...',
   ],
-  [
-    'pangu CJK-Latin spacing — PANGU plugin',
-    { extras: [], display: [AIMarkdownRenderDisplayOptimizeAbility.PANGU] },
-    '中文mixedwith English在一段里面。',
-  ],
+  ['pangu CJK-Latin spacing — PANGU plugin', { extras: [], display: ['pangu'] }, '中文mixedwith English在一段里面。'],
 ];
 
 // ── Default config (everything enabled, as <AIMarkdown> ships) ────────────
@@ -265,9 +258,9 @@ describe('byte-equivalence (default config — everything enabled)', () => {
   }
 });
 
-// ── blockMemoEnabled toggle ────────────────────────────────────────────────
+// ── blockMemo toggle ───────────────────────────────────────────────────────
 
-describe('byte-equivalence: blockMemoEnabled toggle produces identical output', () => {
+describe('byte-equivalence: blockMemo toggle produces identical output', () => {
   // Picks a cross-section of inputs that exercise each block-memo path:
   // single block, multi-block whitespace, raw HTML, footnote, kitchen sink.
   const toggleCases: Array<[string, PluginConfig, string]> = [
@@ -290,7 +283,7 @@ describe('byte-equivalence: blockMemoEnabled toggle produces identical output', 
   }
 });
 
-// ── incrementalParseEnabled toggle ─────────────────────────────────────────
+// ── incrementalParse toggle ────────────────────────────────────────────────
 //
 // One-shot SSR renders can NEVER exercise the incremental splice path: the
 // per-instance state ref starts empty every render, so `advanceIncrementalParse`
@@ -300,7 +293,7 @@ describe('byte-equivalence: blockMemoEnabled toggle produces identical output', 
 // is owned by `incrementalParse/spliceEquivalence.test.ts` (the arbiter) and
 // the streaming Storybook play test.
 
-describe('byte-equivalence: incrementalParseEnabled toggle produces identical output', () => {
+describe('byte-equivalence: incrementalParse toggle produces identical output', () => {
   const toggleCases: Array<[string, PluginConfig, string]> = [
     ['single block', baselineConfig, 'Hello'],
     ['multi-block prose', baselineConfig, 'Hello\n\nWorld\n\nAgain'],

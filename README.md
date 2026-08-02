@@ -15,6 +15,8 @@
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](#contributing)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/AIEPhoenix/ai-react-markdown)
 
+> **Upgrading from 1.x?** v2.0.0 removes the 1.x object-based `config` channel (and its integrator default channel) in favor of flat props, a sealed engine-plugin catalog, and five narrow hooks. Every removed symbol has a one-to-one destination with before/after code in the [migration guide](./docs/migrating-to-v2.md).
+
 ---
 
 ## Why ai-react-markdown?
@@ -49,7 +51,7 @@ This library is opinionated around those problems. Out of the box you get safe L
 | **Custom components**        | swap any HTML-element renderer with a typed component; library defaults are merged underneath                                                                                                                                                     |
 | **Custom typography**        | drop-in `Typography` slot with full CSS-variable token surface for spacing, headings, weight, colors                                                                                                                                              |
 | **Metadata context**         | pass arbitrary data to nested custom components without prop drilling — isolated from render state so updates don't re-render the document                                                                                                        |
-| **TypeScript**               | first-class generics for extended configs and metadata; full IDE autocompletion                                                                                                                                                                   |
+| **TypeScript**               | first-class metadata generic and fully typed flat props; full IDE autocompletion                                                                                                                                                                  |
 | **React 19**                 | uses native `useId()`, properly typed for the current React version                                                                                                                                                                               |
 
 ## Packages
@@ -257,21 +259,15 @@ The Mantine integration renders this as an interactive SVG with dark/light theme
 
 ### CJK text with auto pangu spacing
 
-Pangu spacing automatically inserts a regular ASCII space between CJK characters and half-width letters/digits, which is the de-facto convention in Chinese, Japanese, and Korean typography. It's on by default. Turn it off explicitly if you don't want it:
+Pangu spacing automatically inserts a regular ASCII space between CJK characters and half-width letters/digits, which is the de-facto convention in Chinese, Japanese, and Korean typography. It's on by default. Turn it off by filtering the `pangu` plugin out of the default engine-plugin set:
 
 ```tsx
-import { AIMarkdownRenderDisplayOptimizeAbility } from '@ai-react-markdown/core';
+import { defaultEnginePlugins, pangu } from '@ai-react-markdown/core/plugins';
 
-<AIMarkdown
-  content="今天我用 React 19 重构了 ai-react-markdown 的 streaming 实现。"
-  config={{
-    displayOptimizeAbilities: [
-      AIMarkdownRenderDisplayOptimizeAbility.SMARTYPANTS,
-      AIMarkdownRenderDisplayOptimizeAbility.REMOVE_COMMENTS,
-      // omit PANGU to disable
-    ],
-  }}
-/>;
+// Module scope — stable reference keeps the memo cache warm.
+const PLUGINS = defaultEnginePlugins.filter((p) => p !== pangu);
+
+<AIMarkdown content="今天我用 React 19 重构了 ai-react-markdown 的 streaming 实现。" enginePlugins={PLUGINS} />;
 ```
 
 ### Allow a custom URL scheme (e.g. `myapp://`)
@@ -286,7 +282,7 @@ const ALLOWED = /^myapp:/i;
 const URL_TRANSFORM = (url, key, node) => (ALLOWED.test(url) ? url : defaultUrlTransform(url, key, node));
 
 const SCHEMA = extendSanitizeSchema((s) => {
-  s.protocols.href.push('myapp');
+  s.protocols!.href!.push('myapp');
   s.protocols.src.push('myapp');
 });
 
@@ -340,7 +336,7 @@ const components: AIMarkdownCustomComponents = {
   },
 };
 
-<AIMarkdown<typeof defaultConfig, ChatMeta>
+<AIMarkdown<ChatMeta>
   content={markdown}
   customComponents={components}
   metadata={{ messageId: msg.id, onCopyCode: handleCopy }}
@@ -349,11 +345,14 @@ const components: AIMarkdownCustomComponents = {
 
 ### Adapt rendering based on streaming state
 
+Narrow hooks subscribe per system — this component re-renders when `streaming` flips or the theme changes, and nothing else:
+
 ```tsx
-import { useAIMarkdownRenderState } from '@ai-react-markdown/core';
+import { useAIMarkdownState, useAIMarkdownTheme } from '@ai-react-markdown/core';
 
 function MyCodeBlock({ children }: { children: React.ReactNode }) {
-  const { streaming, colorScheme } = useAIMarkdownRenderState();
+  const { streaming } = useAIMarkdownState();
+  const { colorScheme } = useAIMarkdownTheme();
   return <pre className={`${colorScheme} ${streaming ? 'cursor' : ''}`}>{children}</pre>;
 }
 ```
@@ -384,7 +383,8 @@ The README covers the 90% case. For deep customization — replacing element ren
 | [Cross-chunk coordination](./docs/cross-chunk-coordination.md)    | Chunked chat messages with references that resolve across chunks                 |
 | [Metadata context](./docs/metadata-context.md)                    | Pass callbacks/ids to nested components without prop drilling                    |
 | [Streaming & performance](./docs/streaming-and-performance.md)    | Block-level memoization, `streaming` flag, cache-flush footguns                  |
-| [TypeScript generics](./docs/typescript-generics.md)              | Extend `AIMarkdownRenderConfig` and `AIMarkdownMetadata` with typed fields       |
+| [TypeScript generics](./docs/typescript-generics.md)              | Typed `metadata` via the `TMetadata` generic; wrapper extension patterns         |
+| [Migrating to v2](./docs/migrating-to-v2.md)                      | Complete 1.x → 2.0.0 mapping — every removed symbol with before/after code       |
 | [Extending via a sub-package](./docs/extending-via-subpackage.md) | Ship your own `@yourorg/ai-react-markdown-<integration>`                         |
 | [Architecture overview](./docs/architecture.md)                   | Render pipeline, context layering, registry design                               |
 | [Streaming chat: end-to-end](./docs/streaming-chat-example.md)    | Copy-runnable SSE chat example — backend route, React client, Next.js App Router |
@@ -398,77 +398,120 @@ The README covers the 90% case. For deep customization — replacing element ren
 
 The full list with all subtleties lives in [`@ai-react-markdown/core` README](./packages/core/README.md). Quick reference:
 
-| Prop                   | Type                             | Default                         | Purpose                                                                                                                                                                                                       |
-| ---------------------- | -------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `content`              | `string`                         | **required**                    | Raw markdown to render                                                                                                                                                                                        |
-| `streaming`            | `boolean`                        | `false`                         | Propagated via context for streaming-aware renderers                                                                                                                                                          |
-| `fontSize`             | `number \| string`               | `'0.9375rem'`                   | Base font size (numbers → px). Anchors `--aim-font-size-root`                                                                                                                                                 |
-| `variant`              | `AIMarkdownVariant`              | `'default'`                     | Typography variant name                                                                                                                                                                                       |
-| `colorScheme`          | `AIMarkdownColorScheme`          | `'light'`                       | `'light'`, `'dark'`, or custom                                                                                                                                                                                |
-| `config`               | `PartialDeep<TConfig>`           | —                               | Partial render config, deep-merged with defaults                                                                                                                                                              |
-| `defaultConfig`        | `TConfig`                        | `defaultAIMarkdownRenderConfig` | Base config (sub-packages can override)                                                                                                                                                                       |
-| `metadata`             | `TRenderData`                    | —                               | Arbitrary data for custom components (separate context)                                                                                                                                                       |
-| `contentPreprocessors` | `AIMDContentPreprocessor[]`      | `[]`                            | Extra string transforms applied after the LaTeX preprocessor. Ships an optional `createRemendPreprocessor()` factory for streaming tail repair — see [Content Preprocessors](./docs/content-preprocessors.md) |
-| `customComponents`     | `AIMarkdownCustomComponents`     | —                               | `react-markdown` component overrides                                                                                                                                                                          |
-| `Typography`           | `AIMarkdownTypographyComponent`  | `DefaultTypography`             | Typography wrapper                                                                                                                                                                                            |
-| `ExtraStyles`          | `AIMarkdownExtraStylesComponent` | —                               | Optional wrapper between typography and content                                                                                                                                                               |
-| `documentId`           | `string`                         | auto via `useId()`              | Stable id namespace for clobberable attributes; share across chunks for cross-chunk coordination                                                                                                              |
-| `urlTransform`         | `UrlTransform \| null`           | `defaultUrlTransform`           | Second sanitization gate — per-attribute URL rewriter (runs at render time)                                                                                                                                   |
-| `sanitizeSchema`       | `SanitizeSchema`                 | library default                 | First gate — `rehype-sanitize` schema, per-protocol allowlist (build with `extendSanitizeSchema`)                                                                                                             |
+| Prop                       | Type                                | Default                           | Purpose                                                                                                                                                                                                       |
+| -------------------------- | ----------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `content`                  | `string`                            | **required**                      | Raw markdown to render                                                                                                                                                                                        |
+| `streaming`                | `boolean`                           | `false`                           | Propagated via context for streaming-aware renderers                                                                                                                                                          |
+| `streamingCursor`          | `ComponentType`                     | —                                 | "Still generating" indicator slot, mounted after the last streamed character while `streaming` — see [Streaming cursor](./docs/streaming-cursor.md)                                                           |
+| `fontSize`                 | `number \| string`                  | `'0.9375rem'`                     | Base font size (numbers → px). Anchors `--aim-font-size-root`                                                                                                                                                 |
+| `variant`                  | `AIMarkdownVariant`                 | `'default'`                       | Typography variant name                                                                                                                                                                                       |
+| `colorScheme`              | `AIMarkdownColorScheme`             | `'light'`                         | `'light'`, `'dark'`, or custom                                                                                                                                                                                |
+| `metadata`                 | `TMetadata`                         | —                                 | Arbitrary data for custom components (separate context)                                                                                                                                                       |
+| `contentPreprocessors`     | `AIMDContentPreprocessor[]`         | `[]`                              | Extra string transforms applied after the LaTeX preprocessor. Ships an optional `createRemendPreprocessor()` factory for streaming tail repair — see [Content Preprocessors](./docs/content-preprocessors.md) |
+| `customComponents`         | `AIMarkdownCustomComponents`        | —                                 | `react-markdown` component overrides                                                                                                                                                                          |
+| `Typography`               | `AIMarkdownTypographyComponent`     | `DefaultTypography`               | Typography wrapper                                                                                                                                                                                            |
+| `ExtraStyles`              | `AIMarkdownExtraStylesComponent`    | —                                 | Optional wrapper between typography and content                                                                                                                                                               |
+| `documentId`               | `string`                            | auto via `useId()`                | Stable id namespace for clobberable attributes; share across chunks for cross-chunk coordination                                                                                                              |
+| `urlTransform`             | `UrlTransform \| null`              | `defaultUrlTransform`             | Second sanitization gate — per-attribute URL rewriter (runs at render time)                                                                                                                                   |
+| `sanitizeSchema`           | `SanitizeSchema`                    | library default                   | First gate — `rehype-sanitize` schema, per-protocol allowlist (build with `extendSanitizeSchema`)                                                                                                             |
+| `enginePlugins`            | `readonly AIMarkdownEnginePlugin[]` | `defaultEnginePlugins` (all five) | Sealed engine-plugin selection, imported from `@ai-react-markdown/core/plugins`; passing an array replaces the set wholesale — see [Engine Plugins](#engine-plugins)                                          |
+| `blockMemo`                | `boolean`                           | `true`                            | Per-block memoization. Output is byte-identical when disabled; set `blockMemo={false}` only for debugging                                                                                                     |
+| `incrementalParse`         | `boolean`                           | `true`                            | Prefix-freeze incremental parsing for append-only streaming — see [Behavior props](#behavior-props)                                                                                                           |
+| `preserveOrphanReferences` | `boolean`                           | `true`                            | Protect orphan `[^x]: …` defs from being silently dropped during streaming when the reference hasn't arrived yet                                                                                              |
 
-> The Mantine package extends this with `codeBlock.*` config options. See its [props table](./packages/mantine/README.md#props-api-reference).
+An explicitly passed prop (`v != null`) overrides the shipped default; an absent prop falls to the shipped default. Passing `null` counts as absent — this guards against serialization boundaries (RSC, persistence) materializing "not passed" as `null` and punching through defaults.
 
-## Render Configuration
+> The Mantine package extends this with a `codeBlock` prop. See its [props table](./packages/mantine/README.md#props-api-reference).
 
-`AIMarkdownRenderConfig` controls which optional pipeline features are active. Partial configs are **deep-merged** with the defaults; array values (like `extraSyntaxSupported`) **replace entirely** rather than merging by index.
+## Engine Plugins
 
-### `extraSyntaxSupported`
+Optional pipeline features are selected through the `enginePlugins` prop, which accepts **sealed plugin objects** exported from the `@ai-react-markdown/core/plugins` subpath:
 
-| Value                                         | Effect                                                                                            |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `AIMarkdownRenderExtraSyntax.HIGHLIGHT`       | `==highlighted text==` syntax                                                                     |
-| `AIMarkdownRenderExtraSyntax.DEFINITION_LIST` | Definition lists ([PHP Markdown Extra](https://michelf.ca/projects/php-markdown/extra/#def-list)) |
+```tsx
+import AIMarkdown from '@ai-react-markdown/core';
+import { highlight, pangu } from '@ai-react-markdown/core/plugins';
 
-### `displayOptimizeAbilities`
+const PLUGINS = [highlight, pangu]; // module scope — stable reference
 
-| Value                                                    | Effect                                                                                            |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `AIMarkdownRenderDisplayOptimizeAbility.REMOVE_COMMENTS` | Strip HTML comments                                                                               |
-| `AIMarkdownRenderDisplayOptimizeAbility.SMARTYPANTS`     | Curly quotes (the upstream plugin internally disables dash, ellipsis, and backtick substitutions) |
-| `AIMarkdownRenderDisplayOptimizeAbility.PANGU`           | Auto-insert spaces between CJK and half-width characters                                          |
+<AIMarkdown content={content} enginePlugins={PLUGINS} />;
+```
 
-### Other config fields
+| Plugin           | Effect                                                                                            |
+| ---------------- | ------------------------------------------------------------------------------------------------- |
+| `highlight`      | `==highlighted text==` syntax                                                                     |
+| `definitionList` | Definition lists ([PHP Markdown Extra](https://michelf.ca/projects/php-markdown/extra/#def-list)) |
+| `removeComments` | Strip HTML comments                                                                               |
+| `smartypants`    | Curly quotes (the upstream plugin internally disables dash, ellipsis, and backtick substitutions) |
+| `pangu`          | Auto-insert spaces between CJK and half-width characters                                          |
 
-| Field                      | Type      | Default | Purpose                                                                                                                                                                                                                                                                                |
-| -------------------------- | --------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `blockMemoEnabled`         | `boolean` | `true`  | Per-block memoization. Output is byte-identical when disabled; set `false` only for debugging                                                                                                                                                                                          |
-| `incrementalParseEnabled`  | `boolean` | `true`  | Prefix-freeze incremental parsing: append-only streaming re-parses only the tail (83–94% less pipeline stage time on the benchmark payloads). Output stays deep-equal to a full parse; see [Streaming & Performance](./docs/streaming-and-performance.md). Default `true` since v1.8.0 |
-| `preserveOrphanReferences` | `boolean` | `true`  | Protect orphan `[^x]: …` defs from being silently dropped during streaming when the reference hasn't arrived yet                                                                                                                                                                       |
+Omitting the prop means `defaultEnginePlugins` (all five). Passing an array **replaces the selection wholesale** — there is no merging. The recommended "turn one off" idiom:
 
-The Mantine package additionally surfaces:
+```tsx
+import { defaultEnginePlugins, pangu } from '@ai-react-markdown/core/plugins';
 
-| Field                                 | Type      | Default | Purpose                                        |
+const PLUGINS = defaultEnginePlugins.filter((p) => p !== pangu);
+```
+
+Rules worth knowing:
+
+- Each plugin's position in the produced chain comes from its internal stage metadata; the order of your array is irrelevant. Duplicates are deduplicated with a dev warning.
+- The set is **sealed**: only core constructs plugins (the incremental engine's boundary scanner must know every construct's syntax). Third-party content extension stays open through `contentPreprocessors` + `customComponents`.
+- Plugin objects are not serializable. For remote-config scenarios, store `plugin.name` strings and map them back to the exported singletons at the edge.
+
+## Behavior props
+
+| Prop                       | Type      | Default | Purpose                                                                                                                                                                                                                                                                  |
+| -------------------------- | --------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `blockMemo`                | `boolean` | `true`  | Per-block memoization. Output is byte-identical when disabled; set `false` only for debugging                                                                                                                                                                            |
+| `incrementalParse`         | `boolean` | `true`  | Prefix-freeze incremental parsing: append-only streaming re-parses only the tail (83–94% less pipeline stage time on the benchmark payloads). Output stays deep-equal to a full parse; see [Streaming & Performance](./docs/streaming-and-performance.md). On by default |
+| `preserveOrphanReferences` | `boolean` | `true`  | Protect orphan `[^x]: …` defs from being silently dropped during streaming when the reference hasn't arrived yet                                                                                                                                                         |
+
+The Mantine package additionally surfaces a `codeBlock` prop (group value replaces atomically; omitted fields fall to defaults):
+
+| Prop field                            | Type      | Default | Purpose                                        |
 | ------------------------------------- | --------- | ------- | ---------------------------------------------- |
 | `codeBlock.defaultExpanded`           | `boolean` | `true`  | Whether code blocks start expanded             |
 | `codeBlock.autoDetectUnknownLanguage` | `boolean` | `false` | Use `hljs.highlightAuto` for unlabelled blocks |
 
+### `define*` factories (optional)
+
+Integration-time values can be packaged as frozen, reference-stable fragments and spread into the component. Runtime-varying fields go after the spreads (later props win):
+
+```tsx
+import { defineTheme, defineBehaviors, definePipeline } from '@ai-react-markdown/core';
+
+const THEME = defineTheme({ fontSize: 15, variant: 'default' });
+const BEHAVIORS = defineBehaviors({ blockMemo: false });
+const PIPELINE = definePipeline({ sanitizeSchema: MY_SCHEMA });
+
+<AIMarkdown content={content} {...THEME} {...BEHAVIORS} {...PIPELINE} colorScheme={userScheme} />;
+```
+
+Factories are identity + types + `Object.freeze`, zero logic — bare flat props are always equally legal. Core factories accept core fields only; wrappers re-export widened versions (e.g. `defineMantineBehaviors`, which adds `codeBlock`).
+
 ## Hooks
 
-Available from `@ai-react-markdown/core`:
+State is split across five per-system contexts, each with a narrow hook that re-renders only when its own system changes (a `streaming` flip no longer wakes every consumer). Available from `@ai-react-markdown/core`:
 
-| Hook                                  | Returns                                                                            | When to use                                                                                              |
-| ------------------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `useAIMarkdownRenderState<TConfig>()` | `{ streaming, fontSize, variant, colorScheme, documentId, clobberPrefix, config }` | Read render state inside a custom component                                                              |
-| `useAIMarkdownMetadata<TMetadata>()`  | `TMetadata \| undefined`                                                           | Read app-specific metadata (callbacks, ids, etc.)                                                        |
-| `useDocumentRegistry(documentId)`     | `Registry \| null`                                                                 | Direct access to the cross-chunk registry. `null` when outside `<AIMarkdownDocuments>`                   |
-| `useStableValue(value)`               | Same type as input                                                                 | Returns a referentially stable copy via deep-equal; useful when you cannot easily memoize a complex prop |
+| Hook                                 | Returns                                                                      | When to use                                                                                              |
+| ------------------------------------ | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `useAIMarkdownState()`               | `{ streaming, …extension state groups }`                                     | React to streaming state (cursors, deferred copy buttons)                                                |
+| `useAIMarkdownTheme()`               | `{ fontSize, variant, colorScheme }`                                         | Theme-aware custom components                                                                            |
+| `useAIMarkdownDocument()`            | `{ documentId, documentIdExplicit, clobberPrefix }`                          | Components that emit anchors / ids                                                                       |
+| `useAIMarkdownBehaviors()`           | `{ blockMemo, incrementalParse, preserveOrphanReferences, …wrapper groups }` | Read the behavior switches and wrapper behavior groups                                                   |
+| `useAIMarkdownMetadata<TMetadata>()` | `TMetadata \| undefined`                                                     | Read app-specific metadata (callbacks, ids, etc.)                                                        |
+| `useAIMarkdown()`                    | `{ document, metadata, state, theme, behaviors }`                            | Aggregate over all five contexts — see the price below                                                   |
+| `useDocumentRegistry(documentId)`    | `Registry \| null`                                                           | Direct access to the cross-chunk registry. `null` when outside `<AIMarkdownDocuments>`                   |
+| `useStableValue(value)`              | Same type as input                                                           | Returns a referentially stable copy via deep-equal; useful when you cannot easily memoize a complex prop |
 
-The Mantine package re-exports typed variants:
+> The aggregate `useAIMarkdown()` subscribes to all five contexts and re-renders on ANY change — including every `streaming` flip. It serves teaching code and low-frequency components; performance-sensitive components should use the narrow hooks.
 
-| Hook                                         | Notes                                                                                                          |
-| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `useMantineAIMarkdownRenderState<TConfig>()` | Defaults `TConfig` to `MantineAIMarkdownRenderConfig` so `config.codeBlock.*` is typed without manual generics |
-| `useMantineAIMarkdownMetadata<TMetadata>()`  | Defaults `TMetadata` to `MantineAIMarkdownMetadata`                                                            |
+The Mantine package adds:
+
+| Hook                                        | Notes                                                                                     |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `useMantineCodeBlockOptions()`              | Returns `Required<MantineCodeBlockOptions>` — the `codeBlock` group with defaults applied |
+| `useMantineAIMarkdownMetadata<TMetadata>()` | Defaults `TMetadata` to `MantineAIMarkdownMetadata`                                       |
 
 ## Typography & Theming
 
@@ -502,28 +545,19 @@ For a fully custom typography wrapper, replace the `Typography` prop; remember t
 
 ## TypeScript
 
-The component accepts two generic type parameters — `TConfig` for extended render config and `TRenderData` for metadata:
+The component accepts one generic type parameter — `TMetadata` for metadata:
 
 ```tsx
-import AIMarkdown, { type AIMarkdownRenderConfig, type AIMarkdownMetadata } from '@ai-react-markdown/core';
-
-interface MyConfig extends AIMarkdownRenderConfig {
-  codeBlock: { defaultExpanded: boolean };
-}
+import AIMarkdown, { type AIMarkdownMetadata } from '@ai-react-markdown/core';
 
 interface MyMetadata extends AIMarkdownMetadata {
   messageId: string;
 }
 
-<AIMarkdown<MyConfig, MyMetadata>
-  content={markdown}
-  defaultConfig={myDefaultConfig}
-  config={{ codeBlock: { defaultExpanded: false } }}
-  metadata={{ messageId: '123' }}
-/>;
+<AIMarkdown<MyMetadata> content={markdown} metadata={{ messageId: '123' }} />;
 ```
 
-Both hooks accept matching generics. Sub-packages like `@ai-react-markdown/mantine` use this pattern to extend the base config with `codeBlock` options while inheriting everything else unchanged.
+`useAIMarkdownMetadata<MyMetadata>()` reads it back typed. Sub-packages like `@ai-react-markdown/mantine` extend the flat prop surface directly (`MantineAIMarkdownProps<TMetadata> extends AIMarkdownProps<TMetadata>` adds `codeBlock`), transport their groups through `AIMarkdownBehaviorsProvider`, and apply group defaults inside their own narrow hook — see [Extending via a sub-package](./docs/extending-via-subpackage.md).
 
 ## Security: Two-Gate URL Sanitization
 
@@ -546,7 +580,7 @@ For a scheme to render, **both must permit it**. This is intentional defense-in-
 | `useDocumentRegistry(documentId)`                                         | `Registry \| null`                        | Read the shared registry inside a custom component              |
 | `Registry`, `ChunkData`, `FootnoteDef`, `LinkDef`, `RefRecord`, `RefKind` | exported types                            | For typed helpers that operate on the registry directly         |
 
-The `preserveOrphanReferences` prop on `<AIMarkdownDocuments>` unconditionally overrides each chunk's `config.preserveOrphanReferences` — useful when the wrapper-level policy should always win.
+The `preserveOrphanReferences` prop on `<AIMarkdownDocuments>` unconditionally overrides each chunk's `preserveOrphanReferences` prop — useful when the wrapper-level policy should always win.
 
 `<MantineAIMarkdown>` participates in coordination identically; nest it inside `<AIMarkdownDocuments>` the same way.
 
@@ -559,33 +593,53 @@ The `preserveOrphanReferences` prop on `<AIMarkdownDocuments>` unconditionally o
 import AIMarkdown from '@ai-react-markdown/core';
 
 // Components
-import { AIMarkdownDocuments } from '@ai-react-markdown/core';
+import { AIMarkdownDocuments, AIMarkdownStreamingCursor } from '@ai-react-markdown/core';
 
-// Hooks
+// Additive Providers (extension-group transport for wrappers / apps)
+import { AIMarkdownBehaviorsProvider, AIMarkdownStateProvider } from '@ai-react-markdown/core';
+
+// Hooks — five narrow hooks + the aggregate
 import {
-  useAIMarkdownRenderState,
+  useAIMarkdownState,
+  useAIMarkdownTheme,
+  useAIMarkdownDocument,
+  useAIMarkdownBehaviors,
   useAIMarkdownMetadata,
+  useAIMarkdown,
   useDocumentRegistry,
   useStableValue,
+  useStableRecord,
 } from '@ai-react-markdown/core';
 
-// Constants & helpers
+// Factories, constants & helpers
 import {
-  defaultAIMarkdownRenderConfig,
+  defineTheme,
+  defineBehaviors,
+  definePipeline,
   defaultUrlTransform,
   extendSanitizeSchema,
-  AIMarkdownRenderExtraSyntax,
-  AIMarkdownRenderDisplayOptimizeAbility,
+  createRemendPreprocessor,
+  AIMarkdownStabilityPolicy,
 } from '@ai-react-markdown/core';
+
+// Sealed engine plugin catalog (subpath export)
+import {
+  highlight,
+  definitionList,
+  smartypants,
+  pangu,
+  removeComments,
+  defaultEnginePlugins,
+} from '@ai-react-markdown/core/plugins';
 
 // Types
 import type {
   AIMarkdownProps,
   AIMarkdownDocumentsProps,
   AIMarkdownCustomComponents,
-  AIMarkdownRenderConfig,
-  AIMarkdownRenderState,
   AIMarkdownMetadata,
+  AIMarkdownEnginePlugin,
+  AIMarkdownEnginePluginName,
   AIMarkdownTypographyProps,
   AIMarkdownTypographyComponent,
   AIMarkdownExtraStylesProps,
@@ -595,7 +649,7 @@ import type {
   AIMDContentPreprocessor,
   UrlTransform,
   SanitizeSchema,
-  PartialDeep,
+  AIMarkdownStabilityTable,
   Registry,
   ChunkData,
   FootnoteDef,
@@ -615,16 +669,17 @@ import MantineAIMarkdown from '@ai-react-markdown/mantine';
 import { MantineAIMarkdownTypography, MantineAIMDefaultExtraStyles } from '@ai-react-markdown/mantine';
 
 // Hooks
-import { useMantineAIMarkdownRenderState, useMantineAIMarkdownMetadata } from '@ai-react-markdown/mantine';
+import { useMantineCodeBlockOptions, useMantineAIMarkdownMetadata } from '@ai-react-markdown/mantine';
 
-// Constants
-import { defaultMantineAIMarkdownRenderConfig } from '@ai-react-markdown/mantine';
+// Factory & constants
+import { defineMantineBehaviors, defaultMantineCodeBlockOptions } from '@ai-react-markdown/mantine';
 
 // Types
 import type {
   MantineAIMarkdownProps,
-  MantineAIMarkdownRenderConfig,
   MantineAIMarkdownMetadata,
+  MantineCodeBlockOptions,
+  MantineBehaviorProps,
 } from '@ai-react-markdown/mantine';
 ```
 
@@ -633,18 +688,18 @@ import type {
 ```text
 <AIMarkdown>
   <AIMarkdownMetadataProvider>          // Separate context for metadata
-    <AIMarkdownRenderStateProvider>     // Context for streaming, config, scheme, etc.
+    <AIMarkdownProvider>                // Per-system contexts: document, state, theme, behaviors
       <Typography>                      // Configurable typography wrapper
         <ExtraStyles?>                  // Optional extra style wrapper
           <AIMarkdownContent />         // react-markdown with the remark/rehype pipeline
         </ExtraStyles?>
       </Typography>
-    </AIMarkdownRenderStateProvider>
+    </AIMarkdownProvider>
   </AIMarkdownMetadataProvider>
 </AIMarkdown>
 ```
 
-Metadata and render state live in **separate contexts** so metadata changes (e.g. swapping a `onCopyCode` callback) do not re-render `AIMarkdownContent`, which only consumes render state.
+State lives in **five separate per-system contexts** (document, metadata, state, theme, behaviors) so a change in one system — a metadata swap, a `streaming` flip — only re-renders that system's subscribers, not the whole tree.
 
 The Mantine package wraps `<AIMarkdown>` with:
 
@@ -684,7 +739,7 @@ Issues and pull requests are welcome. For non-trivial changes, please open an is
 
 Reporting a bug helps most when it includes:
 
-- The package and version (`@ai-react-markdown/core@1.8.0` …)
+- The package and version (`@ai-react-markdown/core@2.0.0` …)
 - The relevant `<AIMarkdown>` / `<MantineAIMarkdown>` props
 - A minimal markdown sample that reproduces the issue
 - For streaming-related bugs: the chunk sequence (one string per chunk)

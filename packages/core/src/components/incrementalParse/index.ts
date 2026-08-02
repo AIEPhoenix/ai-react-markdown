@@ -1,7 +1,7 @@
 /**
  * Internal barrel for incremental (prefix-freeze) parsing. NOT re-exported
  * from the package barrel — consumers opt in via
- * `config.incrementalParseEnabled`, never by calling these directly.
+ * the resolved `incrementalParse` value, never by calling these directly.
  */
 
 export { advanceIncrementalParse } from './advanceIncrementalParse';

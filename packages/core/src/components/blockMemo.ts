@@ -62,7 +62,7 @@ export interface PostOptions extends Readonly<Options> {
   /** Required when registry is set. Per-chunk Symbol; used by fingerprint
    *  to encode canonical-vs-this comparison. */
   thisChunkSymbol?: symbol;
-  /** Required when registry is set. From useAIMarkdownRenderState; entered
+  /** Required when registry is set. From the document context; entered
    *  into fingerprint so id/href prefix changes invalidate the cache. */
   clobberPrefix?: string;
 }

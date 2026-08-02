@@ -199,7 +199,7 @@ export function ChunkedChatMessage({ id, prompt }: { id: string; prompt: string 
 - **Same `documentId={id}` on every chunk** — this is the critical part. Without it, each chunk auto-generates its own id and coordination silently does nothing. See [Cross-chunk coordination](./cross-chunk-coordination.md#the-documentid-rule).
 - **Only the last chunk has `streaming={true}`** at any moment. As chunks finalize, their `streaming` flips to `false`, which lets per-chunk custom components rehydrate (copy buttons appear, etc.).
 
-> ⚠️ Keep `config.blockMemoEnabled: true` (the default). The cross-chunk path is only wired through the block-memo renderer; the legacy path silently disables coordination. See the warning at the top of [Cross-chunk coordination](./cross-chunk-coordination.md).
+> ⚠️ Keep `blockMemo` at `true` (the default). The cross-chunk path is only wired through the block-memo renderer; the legacy path silently disables coordination. See the warning at the top of [Cross-chunk coordination](./cross-chunk-coordination.md).
 
 ---
 

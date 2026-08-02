@@ -40,31 +40,33 @@ import type { Options as MarkdownOptions } from './markdown';
 import rehypeRebaseHashLinks from './rehypeRebaseHashLinks';
 import rehypeFooterAdorn from './rehypeFooterAdorn';
 import type { SanitizeSchema } from './extendSanitizeSchema';
-import { AIMarkdownRenderDisplayOptimizeAbility, AIMarkdownRenderExtraSyntax } from '../defs';
+import type { AIMarkdownEnginePlugin, AIMarkdownEnginePluginName } from '../plugins/defs';
 
 export type RemarkPlugins = NonNullable<MarkdownOptions['remarkPlugins']>;
 export type RehypePlugins = NonNullable<MarkdownOptions['rehypePlugins']>;
 export type RemarkRehypeOptions = NonNullable<MarkdownOptions['remarkRehypeOptions']>;
 
-/** Maps display optimization abilities to their corresponding remark plugins. */
-const DisplayOptimizeRemarkPluginMap = {
-  [AIMarkdownRenderDisplayOptimizeAbility.REMOVE_COMMENTS]: remarkRemoveComments,
-  [AIMarkdownRenderDisplayOptimizeAbility.SMARTYPANTS]: remarkSmartypants,
-  [AIMarkdownRenderDisplayOptimizeAbility.PANGU]: remarkPangu,
-};
+/**
+ * Per-stage chain tables: sealed plugin name → unified plugin, in CANONICAL
+ * chain order. The tables (not the caller's array order) fix each plugin's
+ * splice position — required for the produced-chain byte-equivalence
+ * guarantee to be checkable. The heavy unified imports stay in THIS module
+ * so the `/plugins` subpath catalog remains a lightweight descriptor set.
+ */
+const EXTRA_SYNTAX_CHAIN: ReadonlyArray<readonly [AIMarkdownEnginePluginName, RemarkPlugins[number]]> = [
+  ['highlight', remarkMarkHighlight as RemarkPlugins[number]],
+  ['definitionList', remarkDefinitionList as RemarkPlugins[number]],
+];
+const DISPLAY_OPTIMIZE_CHAIN: ReadonlyArray<readonly [AIMarkdownEnginePluginName, RemarkPlugins[number]]> = [
+  ['removeComments', remarkRemoveComments as RemarkPlugins[number]],
+  ['smartypants', remarkSmartypants as RemarkPlugins[number]],
+  ['pangu', remarkPangu as RemarkPlugins[number]],
+];
 
-/** Maps extra syntax extensions to their corresponding remark plugins. */
-const ExtraSyntaxRemarkPluginMap = {
-  [AIMarkdownRenderExtraSyntax.HIGHLIGHT]: remarkMarkHighlight,
-  [AIMarkdownRenderExtraSyntax.DEFINITION_LIST]: remarkDefinitionList,
-};
-
-/** The always-on remark chain with config-gated extras spliced at their
+/** The always-on remark chain with plugin-gated extras spliced at their
  *  contractual positions. ORDER IS LOAD-BEARING — see the arbiter suite. */
-export function buildCoreRemarkPlugins(
-  extraSyntaxSupported: readonly AIMarkdownRenderExtraSyntax[],
-  displayOptimizeAbilities: readonly AIMarkdownRenderDisplayOptimizeAbility[]
-): RemarkPlugins {
+export function buildCoreRemarkPlugins(enginePlugins: readonly AIMarkdownEnginePlugin[]): RemarkPlugins {
+  const selected = new Set<string>(enginePlugins.map((plugin) => plugin.name));
   return [
     // --- Core plugins (always active) ---
     remarkGfm,
@@ -76,16 +78,16 @@ export function buildCoreRemarkPlugins(
         singleDollarTextMath: false,
       },
     ],
-    // --- Configurable extra syntax plugins ---
-    ...extraSyntaxSupported.map((syntax) => ExtraSyntaxRemarkPluginMap[syntax]),
+    // --- Selectable extra syntax plugins (canonical table order) ---
+    ...EXTRA_SYNTAX_CHAIN.filter(([name]) => selected.has(name)).map(([, plugin]) => plugin),
     // --- Formatting & normalization ---
     remarkBreaks,
     remarkEmoji,
     remarkSqueezeParagraphs,
     remarkCjkFriendly,
     remarkCjkFriendlyGfmStrikethrough,
-    // --- Configurable display optimizations ---
-    ...displayOptimizeAbilities.map((ability) => DisplayOptimizeRemarkPluginMap[ability]),
+    // --- Selectable display optimizations (canonical table order) ---
+    ...DISPLAY_OPTIMIZE_CHAIN.filter(([name]) => selected.has(name)).map(([, plugin]) => plugin),
   ] as RemarkPlugins;
 }
 

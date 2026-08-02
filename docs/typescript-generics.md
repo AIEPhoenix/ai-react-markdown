@@ -1,119 +1,18 @@
 # TypeScript Generics
 
-`<AIMarkdown>` accepts two generic type parameters:
+`<AIMarkdown>` accepts one generic type parameter:
 
 ```ts
-function AIMarkdown<
-  TConfig extends AIMarkdownRenderConfig = AIMarkdownRenderConfig,
-  TRenderData extends AIMarkdownMetadata = AIMarkdownMetadata,
->(props: AIMarkdownProps<TConfig, TRenderData>): ReactElement;
+function AIMarkdown<TMetadata extends AIMarkdownMetadata = AIMarkdownMetadata>(
+  props: AIMarkdownProps<TMetadata>
+): ReactElement;
 ```
 
-- **`TConfig`** — your extended render config, which must include all fields of `AIMarkdownRenderConfig`.
-- **`TRenderData`** — your extended metadata, which must include all fields of `AIMarkdownMetadata` (`Record<string, any>` — so any plain object satisfies it).
+- **`TMetadata`** — your extended metadata, which must include all fields of `AIMarkdownMetadata` (`Record<string, any>` — so any plain object satisfies it).
 
-Both default to the base library types, so you only opt into generics when you need typed extension.
+It defaults to the base type, so you only opt into the generic when you need typed metadata.
 
----
-
-## Extending the config
-
-```tsx
-import AIMarkdown, { type AIMarkdownRenderConfig, defaultAIMarkdownRenderConfig } from '@ai-react-markdown/core';
-
-// Step 1: extend the config interface with your new fields.
-interface MyConfig extends AIMarkdownRenderConfig {
-  showLineNumbers: boolean;
-  maxImageWidth: string;
-}
-
-// Step 2: provide a matching default config — required so `config` can be partial.
-const defaultMyConfig: MyConfig = {
-  ...defaultAIMarkdownRenderConfig,
-  showLineNumbers: false,
-  maxImageWidth: '100%',
-};
-
-// Step 3: use the component with explicit generic arguments.
-function App({ markdown, lineNumbers }: { markdown: string; lineNumbers: boolean }) {
-  return (
-    <AIMarkdown<MyConfig>
-      content={markdown}
-      defaultConfig={defaultMyConfig}
-      config={{ showLineNumbers: lineNumbers }}
-    />
-  );
-}
-```
-
-`config` is `PartialDeep<TConfig>` — deeply optional, deeply merged with `defaultConfig`. Array fields (like `extraSyntaxSupported`) are **replaced**, not merged by index.
-
----
-
-## Reading the extended config inside a custom component
-
-```tsx
-import { useAIMarkdownRenderState } from '@ai-react-markdown/core';
-
-function LineNumberedCode({ children }: { children: React.ReactNode }) {
-  const { config } = useAIMarkdownRenderState<MyConfig>();
-  //                                          ^^^^^^^^ caller-asserted
-  if (config.showLineNumbers) {
-    return <pre className="with-line-numbers">{children}</pre>;
-  }
-  return <pre>{children}</pre>;
-}
-```
-
-The hook's generic is a **caller assertion**, not a derived type. TypeScript can't verify that the `<AIMarkdown>` provider above was actually configured with `MyConfig`. If you assert wrong, `config.showLineNumbers` looks fine at compile time but evaluates to `undefined` at runtime.
-
-The library has no way to catch this mismatch automatically — the provider's `defaultConfig` is a render-time value, and TS only sees the static type of the consumer's `useAIMarkdownRenderState` call.
-
----
-
-## The wrapper-hook pattern (recommended)
-
-Don't sprinkle `<MyConfig>` generics across your codebase. Pin the assertion **once**, next to the provider configuration, then export a narrowed hook:
-
-```ts
-// my-app/markdown/config.ts
-import {
-  useAIMarkdownRenderState,
-  type AIMarkdownRenderConfig,
-  defaultAIMarkdownRenderConfig,
-} from '@ai-react-markdown/core';
-
-// 1. Shape:
-export interface MyConfig extends AIMarkdownRenderConfig {
-  showLineNumbers: boolean;
-  maxImageWidth: string;
-}
-
-// 2. Default:
-export const defaultMyConfig: MyConfig = {
-  ...defaultAIMarkdownRenderConfig,
-  showLineNumbers: false,
-  maxImageWidth: '100%',
-};
-
-// 3. Narrowed hook (single assertion site):
-export const useMyRenderState = () => useAIMarkdownRenderState<MyConfig>();
-```
-
-Now every custom component imports `useMyRenderState()` — the assertion lives in **one** file, not scattered across the codebase:
-
-```tsx
-// my-app/markdown/components.tsx
-import { useMyRenderState } from './config';
-
-function LineNumberedCode({ children }) {
-  const { config } = useMyRenderState();
-  // config.showLineNumbers is typed and present at runtime, because the
-  // provider above uses defaultMyConfig — verified by the wrapper pattern.
-}
-```
-
-This is exactly what `@ai-react-markdown/mantine` does — see [Extending via a Sub-package](./extending-via-subpackage.md) for the full pattern applied to a real integration.
+> **Where did `TConfig` go?** v1.x took two parameters — `AIMarkdownProps<TConfig, TMetadata>` — the first being a caller-asserted extended render config. v2.0.0 deleted the `config` object channel and the generic with it; metadata moved to the **first (and only) position**, so explicit `<MyConfig, MyMeta>` arguments now fail to compile — drop the config argument. Behavior extension travels through typed flat props and behavior groups instead of an asserted config shape. See [Migrating from 1.x to 2.0](./migrating-to-v2.md) for the full mapping, and [the narrow-hook section below](#the-assertion-problem-and-where-it-lives-now) for where the residual assertion lives.
 
 ---
 
@@ -140,7 +39,7 @@ function MyCodeBlock({ children }: { children: React.ReactNode }) {
 
 function App({ msg, onCopy }: { msg: { id: string; content: string }; onCopy: (c: string) => void }) {
   return (
-    <AIMarkdown<AIMarkdownRenderConfig, ChatMeta>
+    <AIMarkdown<ChatMeta>
       content={msg.content}
       metadata={{ messageId: msg.id, onCopyCode: onCopy }}
       customComponents={{ pre: MyCodeBlock }}
@@ -149,24 +48,42 @@ function App({ msg, onCopy }: { msg: { id: string; content: string }; onCopy: (c
 }
 ```
 
-The same wrapper-hook pattern applies — define `useChatMeta = () => useAIMarkdownMetadata<ChatMeta>()` in one place.
+TS will infer `ChatMeta` from `metadata`'s shape in most positions; explicit is safer for the reasons below.
 
-> Unlike config, metadata has no `defaultConfig`-style fallback. If the provider passes no `metadata`, the hook returns `undefined` regardless of the asserted type. Always optional-chain.
+> Metadata has no default fallback. If the provider passes no `metadata`, the hook returns `undefined` regardless of the asserted type. Always optional-chain.
 
 ---
 
-## Combining both generics
+## The assertion problem, and where it lives now
 
-```tsx
-<AIMarkdown<MyConfig, ChatMeta>
-  content={c}
-  defaultConfig={defaultMyConfig}
-  config={{ showLineNumbers: true }}
-  metadata={{ messageId: '1', onCopyCode: handleCopy }}
-/>
+`useAIMarkdownMetadata<T>()` is a **caller assertion**, not a derived type. TypeScript can't verify that the `<AIMarkdown>` provider above was actually given a `ChatMeta`-shaped value — if you assert wrong, `meta.messageId` looks fine at compile time but evaluates to `undefined` at runtime.
+
+The cure is the same **wrapper-hook pattern** as always: pin the assertion once, next to where the value is provided, and export a narrowed hook:
+
+```ts
+// my-app/markdown/meta.ts
+import { useAIMarkdownMetadata } from '@ai-react-markdown/core';
+import type { ChatMeta } from './types';
+
+export const useChatMeta = () => useAIMarkdownMetadata<ChatMeta>();
 ```
 
-Argument order: `<TConfig, TRenderData>`. TS will infer `ChatMeta` from `metadata`'s shape if you pass only the first generic; explicit is safer.
+Every custom component imports `useChatMeta()`; the assertion lives in one file.
+
+For **behavior groups** — the v2 successor of the extended config — the same pattern is the _only_ channel, and it's baked into the API shape. `useAIMarkdownBehaviors()` is non-generic: it returns the three core switches plus an opaque extension record, and the single type assertion happens inside the wrapper's narrow hook. This is exactly what `@ai-react-markdown/mantine` ships for its `codeBlock` group:
+
+```ts
+// packages/mantine/src/hooks/useMantineCodeBlockOptions.ts (real code)
+export function useMantineCodeBlockOptions(): Required<MantineCodeBlockOptions> {
+  const behaviors = useAIMarkdownBehaviors();
+  // The single assertion: the `codeBlock` group key is owned by this
+  // package, contributed by `MantineAIMarkdown` via its behaviors Provider.
+  const group = behaviors.codeBlock as Partial<MantineCodeBlockOptions> | undefined;
+  return useMemo(() => ({ ...defaultMantineCodeBlockOptions, ...group }), [group]);
+}
+```
+
+Group defaults are applied here too — the hook is the one place both the assertion and the defaults live. See [Extending via a Sub-package](./extending-via-subpackage.md) for the full wrapper recipe.
 
 ---
 
@@ -178,10 +95,30 @@ import type {
   AIMarkdownProps,
   AIMarkdownDocumentsProps,
 
-  // Configuration
-  AIMarkdownRenderConfig,
+  // Metadata
   AIMarkdownMetadata,
-  AIMarkdownRenderState,
+
+  // Context payloads (narrow-hook return shapes)
+  AIMarkdownDocumentInfo,
+  AIMarkdownThemeInfo,
+  AIMarkdownStateCore,
+  AIMarkdownBehaviorsCore,
+  AIMarkdownStateGroups,
+  AIMarkdownBehaviorGroups,
+  AIMarkdownExtensionGroups,
+  AIMarkdownAggregate,
+
+  // Engine plugins (values live in '@ai-react-markdown/core/plugins')
+  AIMarkdownEnginePlugin,
+  AIMarkdownEnginePluginName,
+
+  // define* factory fragments
+  AIMarkdownThemeProps,
+  AIMarkdownBehaviorProps,
+  AIMarkdownPipelineProps,
+
+  // Stability firewall (wrapper reuse)
+  AIMarkdownStabilityTable,
 
   // Customization
   AIMarkdownCustomComponents,
@@ -191,6 +128,11 @@ import type {
   AIMarkdownExtraStylesComponent,
   AIMarkdownVariant,
   AIMarkdownColorScheme,
+
+  // Streaming cursor
+  AIMarkdownStreamingCursorProps,
+  AIMarkdownStreamingIndicatorProps,
+  AIMarkdownStreamingIndicatorComponent,
 
   // Pipeline
   AIMDContentPreprocessor,
@@ -206,9 +148,6 @@ import type {
   LinkDef,
   RefRecord,
   RefKind,
-
-  // Utils
-  PartialDeep,
 } from '@ai-react-markdown/core';
 ```
 
@@ -216,9 +155,10 @@ Mantine package additionally exports:
 
 ```ts
 import type {
-  MantineAIMarkdownProps,
-  MantineAIMarkdownRenderConfig,
+  MantineAIMarkdownProps, // extends AIMarkdownProps<TMetadata> with `codeBlock`
   MantineAIMarkdownMetadata,
+  MantineCodeBlockOptions,
+  MantineBehaviorProps, // widened defineMantineBehaviors input
 } from '@ai-react-markdown/mantine';
 ```
 
@@ -239,43 +179,28 @@ Build your sanitize schema via [`extendSanitizeSchema`](./url-sanitization.md#ga
 
 ## Footguns
 
-### Asserting a wider `TConfig` than the provider supplies
+### Asserting a wider `TMetadata` than the provider supplies
 
 ```tsx
 // Provider:
-<AIMarkdown defaultConfig={defaultAIMarkdownRenderConfig} />; // ← base config
+<AIMarkdown content={c} metadata={{ messageId: '1' }} />; // ← no onCopyCode
 
 // Consumer:
-const { config } = useAIMarkdownRenderState<MyConfig>();
-config.showLineNumbers; // undefined at runtime, but TS shows boolean
+const meta = useAIMarkdownMetadata<ChatMeta>();
+meta?.onCopyCode; // undefined at runtime, but TS shows the function type
 ```
 
-TS won't catch this. The wrapper-hook pattern is the cure.
+TS won't catch this. The wrapper-hook pattern doesn't make the assertion _safe_ — it makes the mismatch findable, because provider and assertion live next to each other in one file.
 
-### Forgetting to provide `defaultConfig`
+### Passing v1.x-style generic arguments
 
 ```tsx
-// ⚠️ Provider uses base default, but `config` carries MyConfig-specific fields.
-<AIMarkdown<MyConfig>
-  content={c}
-  config={{ showLineNumbers: true }}
-/>
-// defaultConfig falls back to defaultAIMarkdownRenderConfig (base shape),
-// which has no `showLineNumbers`. After deep-merge, `config.showLineNumbers === true` —
-// but any future consumer reading the field via the base type still sees `undefined` at the type level.
-
-// ✅ Always provide a matching defaultConfig:
-<AIMarkdown<MyConfig>
-  content={c}
-  defaultConfig={defaultMyConfig}
-  config={{ showLineNumbers: true }}
-/>
+<AIMarkdown<MyConfig, ChatMeta> … /> // ✗ compile error in v2 — one parameter only
+<AIMarkdown<ChatMeta> … />           // ✓
 ```
 
-The wrapper-hook pattern paired with a wrapper component (see [Extending via a Sub-package](./extending-via-subpackage.md)) makes this impossible to forget.
+Same for `MantineAIMarkdownProps<MyMantineConfig, MyMeta>` → `MantineAIMarkdownProps<MyMeta>`. If you're mid-migration, the [migration guide](./migrating-to-v2.md#generic-signature-mapping-ts-users) has the full signature table (including the removed `PartialDeep` export).
 
-### Putting non-serializable fields in config
+### Scattering `as` assertions at read sites
 
-`config` is deep-merged with lodash `mergeWith`. Functions, class instances, and other non-plain values _can_ travel through, but the merge isn't designed for them — and the library does `useStableValue` deep-equal on the result, which for functions always returns `false` (cache flush).
-
-For non-data extension points (callbacks, factories), use `metadata` — that's exactly what it's for. Keep `config` for primitives, plain objects, and arrays.
+If you find yourself writing `behaviors.myGroup as MyGroupOptions` in more than one file, you've skipped the narrow hook. Centralize: one hook, one assertion, defaults applied inside it (bare `??` fallbacks at multiple read sites will drift — see [Extending via a Sub-package](./extending-via-subpackage.md#footguns)).

@@ -14,7 +14,7 @@ A mental model of how `<AIMarkdown>` turns a markdown string into rendered React
 ```text
 <AIMarkdown>
   <AIMarkdownMetadataProvider>          ← Context for opaque user metadata
-    <AIMarkdownRenderStateProvider>     ← Context for streaming/config/scheme/documentId
+    <AIMarkdownProvider>                ← Four per-system contexts: document / state / theme / behaviors
       <Typography>                      ← Configurable wrapper (default | Mantine | custom)
         <ExtraStyles?>                  ← Optional CSS-scope wrapper
           <AIMarkdownContent>           ← The actual markdown renderer
@@ -23,33 +23,31 @@ A mental model of how `<AIMarkdown>` turns a markdown string into rendered React
             ↳ cross-chunk placeholder resolution
         </ExtraStyles?>
       </Typography>
-    </AIMarkdownRenderStateProvider>
+    </AIMarkdownProvider>
   </AIMarkdownMetadataProvider>
 </AIMarkdown>
 ```
 
 Each layer has a single, documented responsibility:
 
-| Layer                             | Responsibility                                                                                                       |
-| --------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `<AIMarkdown>`                    | Top-level prop normalization (font size, document id), preprocessing pipeline orchestration, prop-stability tracking |
-| `<AIMarkdownMetadataProvider>`    | Isolate opaque user data from render state                                                                           |
-| `<AIMarkdownRenderStateProvider>` | Hold immutable render state, deep-merge config with defaults                                                         |
-| `<Typography>`                    | Apply font-family, base font-size, theme class names; inject CSS custom properties via `style`                       |
-| `<ExtraStyles>`                   | Optional CSS-scope wrapper (used by Mantine integration for em-based token overrides)                                |
-| `<AIMarkdownContent>`             | Vendor-forked react-markdown pipeline + block memoization + cross-chunk resolution                                   |
+| Layer                          | Responsibility                                                                                                                      |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `<AIMarkdown>`                 | Single-point flat-prop resolution against shipped defaults, preprocessing pipeline orchestration, the stability firewall            |
+| `<AIMarkdownMetadataProvider>` | Isolate opaque user data from the render-facing contexts                                                                            |
+| `<AIMarkdownProvider>`         | Hold the resolved document/state/theme/behaviors payloads (four contexts; state and behaviors merge outer additive-Provider groups) |
+| `<Typography>`                 | Apply font-family, base font-size, theme class names; inject CSS custom properties via `style`                                      |
+| `<ExtraStyles>`                | Optional CSS-scope wrapper (used by Mantine integration for em-based token overrides)                                               |
+| `<AIMarkdownContent>`          | Vendor-forked react-markdown pipeline + block memoization + cross-chunk resolution                                                  |
 
 ---
 
-## Why two contexts?
+## Why five contexts?
 
-`AIMarkdownMetadataProvider` and `AIMarkdownRenderStateProvider` are deliberately separate.
+The resolved values are split into five per-system contexts — document, metadata, state, theme, behaviors — each with its own narrow hook (`useAIMarkdownDocument()`, `useAIMarkdownMetadata()`, `useAIMarkdownState()`, `useAIMarkdownTheme()`, `useAIMarkdownBehaviors()`), plus the aggregate `useAIMarkdown()` that subscribes to all five.
 
-**Render state** (streaming flag, config, font-size, color-scheme, documentId) is what the markdown body subscribes to via `useAIMarkdownRenderState`. It changes infrequently relative to streaming.
+The split matches change frequency. **Metadata** (user callbacks, ids, app-level data) typically rebuilds every render — a parent rebuilding `metadata={{ onCopy, messageId }}` is normal React usage — so it lives alone and the markdown body doesn't subscribe to it. **`streaming`** is the most frequently flipping field in the library, so it lives in the state context and a flip wakes only `useAIMarkdownState()` subscribers. Theme values, behavior switches, and document identity change rarely and don't ride along with either.
 
-**Metadata** (user callbacks, ids, app-level data) typically rebuilds every render — a parent rebuilding `metadata={{ onCopy, messageId }}` is normal React usage.
-
-If both lived in one context, every metadata change would re-render the entire markdown body. With them split, components reading metadata re-render when needed; the body's `useAIMarkdownRenderState` doesn't see a Provider value change, and block-level memoization stays effective.
+If everything lived in one context (the v1.x render-state design), every metadata change or `streaming` flip would re-render every consumer. With the split, components re-render only when their own system changes, and block-level memoization stays effective.
 
 See [Metadata Context](./metadata-context.md) for the consumer-side implications.
 
@@ -111,7 +109,7 @@ User preprocessors run next, in order. They receive the LaTeX-normalized string.
 
 ### Stage B: Parse
 
-`unified.parse` produces an mdast (Markdown AST). remark plugins (GFM, math, breaks, emoji, pangu, smartypants, mark-highlight, etc., all gated on config) run on mdast. Then `remark-rehype` converts to hast (HTML AST) using custom mdast handlers that:
+`unified.parse` produces an mdast (Markdown AST). remark plugins (GFM, math, breaks, emoji, pangu, smartypants, mark-highlight, etc., gated on the resolved `enginePlugins` selection) run on mdast. Then `remark-rehype` converts to hast (HTML AST) using custom mdast handlers that:
 
 - Inject phantom footnote definitions (when `preserveOrphanReferences` is on and no matching `[^x]` exists, so `mdast-util-to-hast` doesn't silently drop the def).
 - Emit cross-chunk placeholder elements (`<cross-chunk-link>`, `<cross-chunk-image>`, `<footnote-sup>`) when wrapped in `<AIMarkdownDocuments>`.
@@ -200,7 +198,7 @@ Located at `packages/core/src/components/blockMemo.ts`. The invariants:
 4. **Synchronous G3 flush at 12-dep boundary**. (Internal invariant about plan-context invalidation timing.)
 5. **`globalCtx` is the union of ref/def contributors.** Tainted blocks include this in their cache key.
 
-These invariants are enforced by tests (`byteEquivalence.test.tsx` is the harness that verifies byte-identical output across every plugin permutation and `blockMemoEnabled` on/off).
+These invariants are enforced by tests (`byteEquivalence.test.tsx` is the harness that verifies byte-identical output across every plugin permutation and `blockMemo` on/off).
 
 If you're touching `blockMemo.ts` or `MarkdownContent.tsx`, read the design document at the top of `blockMemo.ts` first.
 
@@ -226,7 +224,7 @@ See [URL Sanitization & Custom Schemes](./url-sanitization.md) for the two-gate 
 
 `@ai-react-markdown/mantine` is a thin wrapper that:
 
-1. Extends the core config with `codeBlock.{defaultExpanded, autoDetectUnknownLanguage}`.
+1. Ships the `codeBlock` behavior group (`{defaultExpanded, autoDetectUnknownLanguage}`) — contributed through the additive `AIMarkdownBehaviorsProvider`, read via `useMantineCodeBlockOptions()`.
 2. Provides `MantineAIMarkdownTypography` (uses Mantine's `<Typography>`).
 3. Provides `MantineAIMDefaultExtraStyles` (CSS scoping for em-based Mantine token overrides).
 4. Overrides `customComponents.pre` with `MantineAIMPreCode` (CodeHighlight + Mermaid + JSON pretty-print).
@@ -261,13 +259,19 @@ The fork is intentional and the surface area is small. Consumers don't need to i
 ```text
 packages/core/src/
 ├── index.tsx                   ← <AIMarkdown> + public API re-exports
-├── defs.ts                     ← config, render state, variant/scheme types
-├── context.tsx                 ← render-state + metadata providers + hooks
+├── defs.ts                     ← prop payload types, variant/scheme types
+├── resolveFlatProps.ts         ← single-point flat-prop resolution vs shipped defaults
+├── context.tsx                 ← five contexts + narrow hooks + additive Providers
+├── define.ts                   ← defineTheme / defineBehaviors / definePipeline factories
+├── plugins/
+│   ├── catalog.ts              ← the five sealed engine plugins + defaultEnginePlugins
+│   └── defs.ts                 ← AIMarkdownEnginePlugin type + seal brand
 ├── preprocessors/
 │   ├── index.ts                ← preprocessing pipeline orchestrator
 │   ├── defs.ts                 ← AIMDContentPreprocessor type
 │   └── latex.ts                ← built-in LaTeX normalizer
 ├── hooks/
+│   ├── useStableRecord.ts      ← stability firewall (table-driven, policy per prop)
 │   ├── useStableValue.ts       ← deep-equal reference stabilizer
 │   └── useReferenceFlipWarning.ts ← dev-only identity-flip detector
 ├── components/
@@ -284,15 +288,15 @@ packages/core/src/
 │   ├── shortenDocumentId.ts    ← MurmurHash3 → Base62
 │   ├── customMdastHandlers.ts  ← mdast → hast handlers (phantom defs, footnote sup, …)
 │   └── rehypeRebaseHashLinks.ts ← rehype plugin to prefix hash hrefs
-└── typings/
-    └── partial-deep.ts         ← PartialDeep<T> type util
+└── typings/                    ← ambient type shims
 ```
 
 ```text
 packages/mantine/src/
 ├── index.tsx                   ← barrel
-├── defs.tsx                    ← Mantine-extended config + default
-├── MantineAIMarkdown.tsx       ← wrapper component
+├── defs.tsx                    ← codeBlock group type + shipped defaults, metadata type
+├── define.ts                   ← defineMantineBehaviors (widened factory)
+├── MantineAIMarkdown.tsx       ← wrapper component (firewall + behaviors Provider)
 ├── components/
 │   ├── typography/
 │   │   └── MantineTypography.tsx
@@ -301,7 +305,7 @@ packages/mantine/src/
 │   └── customized/
 │       └── PreCode.tsx          ← CodeHighlight + Mermaid + JSON
 └── hooks/
-    ├── useMantineAIMarkdownRenderState.ts
+    ├── useMantineCodeBlockOptions.ts
     └── useMantineAIMarkdownMetadata.ts
 ```
 

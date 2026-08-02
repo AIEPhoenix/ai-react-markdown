@@ -15,7 +15,7 @@ describe('SSR', () => {
   });
 
   test('standalone with preserveOrphanReferences:false drops orphan', () => {
-    const html = renderToString(<AIMarkdown content="[^x]: hello" config={{ preserveOrphanReferences: false }} />);
+    const html = renderToString(<AIMarkdown content="[^x]: hello" preserveOrphanReferences={false} />);
     expect(html).not.toContain('data-footnotes');
   });
 

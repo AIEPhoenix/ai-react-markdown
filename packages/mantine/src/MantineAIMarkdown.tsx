@@ -13,26 +13,55 @@
 
 import { memo, useMemo } from 'react';
 import AIMarkdown from '@ai-react-markdown/core';
-import { type AIMarkdownProps, type AIMarkdownCustomComponents, useStableValue } from '@ai-react-markdown/core';
+import {
+  type AIMarkdownProps,
+  type AIMarkdownCustomComponents,
+  type AIMarkdownStabilityTable,
+  AIMarkdownBehaviorsProvider,
+  AIMarkdownStabilityPolicy,
+  useStableRecord,
+  useStableValue,
+} from '@ai-react-markdown/core';
 import MantineAIMarkdownTypography from './components/typography/MantineTypography';
 import MantineAIMDefaultExtraStyles from './components/extra-styles/DefaultExtraStyles';
-import { MantineAIMarkdownRenderConfig, MantineAIMarkdownMetadata, defaultMantineAIMarkdownRenderConfig } from './defs';
+import { MantineAIMarkdownMetadata, MantineCodeBlockOptions } from './defs';
 import MantineAIMPreCode from './components/customized/PreCode';
 import { useComputedColorScheme } from '@mantine/core';
 
 /**
  * Props for the {@link MantineAIMarkdown} component.
  *
- * Extends {@link AIMarkdownProps} with Mantine-specific config and metadata generics.
- * All core props (`content`, `streaming`, `fontSize`, `config`, etc.) are inherited.
+ * Extends {@link AIMarkdownProps} with the mantine behavior groups.
+ * All core props (`content`, `streaming`, `fontSize`, `enginePlugins`, etc.)
+ * are inherited.
  *
- * @typeParam TConfig - Render configuration type, defaults to {@link MantineAIMarkdownRenderConfig}.
- * @typeParam TRenderData - Metadata type, defaults to {@link MantineAIMarkdownMetadata}.
+ * @typeParam TMetadata - Metadata type, defaults to {@link MantineAIMarkdownMetadata}.
  */
 export interface MantineAIMarkdownProps<
-  TConfig extends MantineAIMarkdownRenderConfig = MantineAIMarkdownRenderConfig,
-  TRenderData extends MantineAIMarkdownMetadata = MantineAIMarkdownMetadata,
-> extends AIMarkdownProps<TConfig, TRenderData> {}
+  TMetadata extends MantineAIMarkdownMetadata = MantineAIMarkdownMetadata,
+> extends AIMarkdownProps<TMetadata> {
+  /**
+   * Code-block behavior group (Behaviors system). The group value replaces
+   * atomically; omitted fields resolve to the shipped defaults inside
+   * `useMantineCodeBlockOptions()`. `null` counts as absent.
+   */
+  codeBlock?: Partial<MantineCodeBlockOptions>;
+}
+
+/** Stable empty group for the absent-prop case (identity-stable context value). */
+const EMPTY_CODE_BLOCK: Partial<MantineCodeBlockOptions> = Object.freeze({});
+
+/**
+ * Mantine's stability-firewall table — one row today: `codeBlock` is the
+ * only object prop this wrapper TERMINATES (consumes in its own machinery).
+ * Forwarded object props ride core's firewall untouched; the merged
+ * `customComponents` derived below is caught by core's wall.
+ */
+const MANTINE_STABILITY_TABLE: AIMarkdownStabilityTable<{
+  codeBlock: Partial<MantineCodeBlockOptions> | undefined;
+}> = {
+  codeBlock: AIMarkdownStabilityPolicy.DEEP_EQUAL,
+};
 
 /**
  * Default custom component overrides applied by the Mantine integration.
@@ -72,20 +101,16 @@ const DefaultCustomComponents: AIMarkdownCustomComponents = {
  * overrides take precedence). Automatically resolves the color scheme from Mantine's
  * `useComputedColorScheme` when no explicit `colorScheme` prop is provided.
  *
- * @typeParam TConfig - Render configuration type.
- * @typeParam TRenderData - Metadata type.
+ * @typeParam TMetadata - Metadata type.
  */
-const MantineAIMarkdownComponent = <
-  TConfig extends MantineAIMarkdownRenderConfig = MantineAIMarkdownRenderConfig,
-  TRenderData extends MantineAIMarkdownMetadata = MantineAIMarkdownMetadata,
->({
+const MantineAIMarkdownComponent = <TMetadata extends MantineAIMarkdownMetadata = MantineAIMarkdownMetadata>({
   Typography = MantineAIMarkdownTypography,
   ExtraStyles = MantineAIMDefaultExtraStyles,
-  defaultConfig = defaultMantineAIMarkdownRenderConfig as TConfig,
   customComponents,
   colorScheme,
+  codeBlock,
   ...props
-}: MantineAIMarkdownProps<TConfig, TRenderData>) => {
+}: MantineAIMarkdownProps<TMetadata>) => {
   const stableCustomComponents = useStableValue(customComponents);
 
   const usedComponents = useMemo(() => {
@@ -94,15 +119,26 @@ const MantineAIMarkdownComponent = <
 
   const computedColorScheme = useComputedColorScheme('light');
 
+  // Mantine's stability firewall: `codeBlock` is terminated here (it feeds
+  // the behaviors Provider below, not the core prop surface).
+  const stable = useStableRecord({ codeBlock }, MANTINE_STABILITY_TABLE);
+
+  // Contribute the group through the additive behaviors Provider — firewall
+  // output used directly (`null` ≡ absent → empty group; the narrow hook
+  // fills the defaults), record identity memoized so the context value
+  // stays stable across unrelated re-renders.
+  const behaviorGroups = useMemo(() => ({ codeBlock: stable.codeBlock ?? EMPTY_CODE_BLOCK }), [stable.codeBlock]);
+
   return (
-    <AIMarkdown<MantineAIMarkdownRenderConfig, MantineAIMarkdownMetadata>
-      Typography={Typography}
-      ExtraStyles={ExtraStyles}
-      defaultConfig={defaultConfig}
-      customComponents={usedComponents}
-      colorScheme={colorScheme ?? computedColorScheme}
-      {...props}
-    />
+    <AIMarkdownBehaviorsProvider value={behaviorGroups}>
+      <AIMarkdown<MantineAIMarkdownMetadata>
+        Typography={Typography}
+        ExtraStyles={ExtraStyles}
+        customComponents={usedComponents}
+        colorScheme={colorScheme ?? computedColorScheme}
+        {...props}
+      />
+    </AIMarkdownBehaviorsProvider>
   );
 };
 
