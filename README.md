@@ -283,7 +283,7 @@ const URL_TRANSFORM = (url, key, node) => (ALLOWED.test(url) ? url : defaultUrlT
 
 const SCHEMA = extendSanitizeSchema((s) => {
   s.protocols!.href!.push('myapp');
-  s.protocols.src.push('myapp');
+  s.protocols!.src!.push('myapp');
 });
 
 export default function App({ content }: { content: string }) {
@@ -441,7 +441,7 @@ const PLUGINS = [highlight, pangu]; // module scope — stable reference
 | `highlight`      | `==highlighted text==` syntax                                                                     |
 | `definitionList` | Definition lists ([PHP Markdown Extra](https://michelf.ca/projects/php-markdown/extra/#def-list)) |
 | `removeComments` | Strip HTML comments                                                                               |
-| `smartypants`    | Curly quotes (the upstream plugin internally disables dash, ellipsis, and backtick substitutions) |
+| `smartypants`    | Typographic substitutions: curly quotes, em-dashes (`--`), ellipses (`...`)                       |
 | `pangu`          | Auto-insert spaces between CJK and half-width characters                                          |
 
 Omitting the prop means `defaultEnginePlugins` (all five). Passing an array **replaces the selection wholesale** — there is no merging. The recommended "turn one off" idiom:
