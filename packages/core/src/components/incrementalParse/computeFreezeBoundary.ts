@@ -42,6 +42,17 @@
  *    (Unicode case folding — `toLowerCase` is the unsafe direction).
  *    Definitions must START a block (or chain a valid definition line) —
  *    a def-shaped paragraph continuation line is literal text.
+ * 6. **Raw-remnant seam** — an html FLOW run can swallow non-tag lines
+ *    (e.g. a `$$` math fence glued under `</details>`); once tag balance
+ *    returns to zero, that remnant becomes FLOATING text that parse5/
+ *    rehype-raw attaches at the root, and its hast shape (position vs
+ *    seam-owned position-less, trailing-newline ownership) depends on
+ *    whether a sibling node FOLLOWS it. A tail block that flips between
+ *    def (no hast output) and paragraph therefore reshapes the frozen
+ *    region retroactively (2026-07-31 direction-battery counterexample,
+ *    reproduced on v1.8.0). The candidate adjacent to such a run is
+ *    rejected until a later confirmed content line pins the seam from the
+ *    frozen side; dropping candidates only over-blocks (safe direction).
  *
  * ## Incremental scanning (checkpoint resume)
  *
@@ -120,6 +131,9 @@ interface Candidate {
   htmlBalanced: boolean;
   /** Rolling continuation-hazard verdict at emission (blocker 3). */
   hazard: boolean;
+  /** Blocker-6: the run ending at this blank left balanced FLOATING raw
+   *  remnant whose hast seam is tail-dependent; reject this candidate. */
+  seamRisk: boolean;
   /** Blocker-4 settle verdict, decided by the NEXT confirmed line (`null`
    *  while that line hasn't confirmed — only the newest candidate can be
    *  pending). Storing the verdict instead of the line lets the checkpoint
@@ -169,6 +183,12 @@ export interface FreezeScanCheckpoint {
   /** An earlier line of the current paragraph left an unpaired backtick
    *  run — masking is disabled until the paragraph ends (safety gate). */
   paragraphHasUnpairedRun: boolean;
+  /** Blocker-6 pending flag: a confirmed html-flow line left balanced
+   *  floating raw remnant, and no later content line has pinned the seam
+   *  yet. Persists across blank lines (every candidate emitted while set
+   *  has the remnant as its last frozen child); cleared by the next
+   *  non-blank line that starts OUTSIDE an html-flow run. */
+  htmlSeamPending: boolean;
   /** A line since the last blank started with `<` at block indent — an html
    *  FLOW block is (approximately) running, and it only ends at a blank
    *  line. micromark does no inline parsing there: backtick runs are
@@ -323,6 +343,7 @@ function freshCheckpoint(defListEnabled: boolean): FreezeScanCheckpoint {
     prevLineWasValidDef: false,
     paragraphHasUnpairedRun: false,
     htmlFlowSinceBlank: false,
+    htmlSeamPending: false,
   };
 }
 
@@ -442,7 +463,7 @@ export function computeFreezeBoundary(
   let boundary = 0;
   for (let i = cp.candidates.length - 1; i >= 0; i--) {
     const c = cp.candidates[i];
-    if (!c.htmlBalanced || c.hazard) continue;
+    if (!c.htmlBalanced || c.hazard || c.seamRisk) continue;
     if (c.offset > earliestUnresolved) continue;
     if (!defListSettled(c)) continue;
     boundary = c.offset;
@@ -462,6 +483,32 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     newest.defListSettled = ln.blank ? true : !canBecomeDdLine(ln.text, true);
   }
   const isBlockStart = cp.prevLineBlank;
+  // Blocker-6 seam release: a confirmed non-blank line that starts OUTSIDE
+  // any html-flow run AND emits a top-level hast node at its own position is
+  // real content that will sit between the remnant and whatever streams in
+  // later — the seam is pinned from the frozen side. Lines that emit NOTHING
+  // there must NOT release: link/footnote definition lines produce no hast
+  // node (def-SHAPED but invalid lines do emit a paragraph — not releasing
+  // on them only over-blocks), and comment-only lines produce at most a
+  // comment node whose seam-pinning power is unverified. (Lines INSIDE the
+  // run keep the flag; the run's own blank keeps it so every candidate in
+  // the trailing blank run stays rejected.)
+  if (
+    cp.htmlSeamPending &&
+    !ln.blank &&
+    !cp.htmlFlowSinceBlank &&
+    !(cp.commentOpen || cp.piOpen || cp.declOpen || cp.cdataOpen)
+  ) {
+    const defShapedLine = DEF_RE.test(ln.text) || FOOTNOTE_DEF_RE.test(ln.text);
+    const commentOnly =
+      ln.text
+        .replace(/<!--[\s\S]*?-->/g, ' ')
+        .replace(/<!--[\s\S]*$/, ' ')
+        .trim() === '';
+    if (!defShapedLine && !commentOnly) {
+      cp.htmlSeamPending = false;
+    }
+  }
   const applyTag = (tag: string, closing: boolean): void => {
     if (closing) {
       const count = cp.tagBalance.get(tag) ?? 0;
@@ -480,6 +527,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
   // block ends WITH the line carrying its terminator, so even that line's
   // remainder is raw text. Gates fence/math opens, masking, and def
   // registration below, alongside the tag-block flag (htmlFlowSinceBlank).
+  const commentOpenAtLineStart = cp.commentOpen;
   const rawOpenAtLineStart = cp.commentOpen || cp.piOpen || cp.declOpen || cp.cdataOpen;
 
   // --- fence state (interiors are candidate-free; paragraph resets) ---
@@ -575,6 +623,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
       blankRun: cp.blankRun,
       htmlBalanced: cp.openTotal === 0 && !cp.commentOpen && !cp.piOpen && !cp.declOpen && !cp.cdataOpen,
       hazard: cp.hazardVerdict,
+      seamRisk: cp.htmlSeamPending,
       defListSettled: null,
     });
     cp.paragraphHasUnpairedRun = false;
@@ -706,26 +755,43 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
   }
 
   // Blocker 1: raw-block (types 3–5) state machine, then tag balance.
+  // `rawSpans` records the byte ranges this line contributes to raw
+  // constructs (interiors, openers, terminators) — blocker 6's remnant
+  // check below must not mistake construct-consumed bytes for floating
+  // text (fixture: the `?>` terminator line of a PI block).
   const rawOpenAtStart = cp.piOpen || cp.declOpen || cp.cdataOpen;
+  const rawSpans: Array<[number, number]> = [];
   let pos = 0;
   while (pos < scanText.length) {
     if (cp.piOpen) {
       const c = scanText.indexOf('?>', pos);
-      if (c === -1) break;
+      if (c === -1) {
+        rawSpans.push([pos, scanText.length]);
+        break;
+      }
+      rawSpans.push([pos, c + 2]);
       cp.piOpen = false;
       pos = c + 2;
       continue;
     }
     if (cp.cdataOpen) {
       const c = scanText.indexOf(']]>', pos);
-      if (c === -1) break;
+      if (c === -1) {
+        rawSpans.push([pos, scanText.length]);
+        break;
+      }
+      rawSpans.push([pos, c + 3]);
       cp.cdataOpen = false;
       pos = c + 3;
       continue;
     }
     if (cp.declOpen) {
       const c = scanText.indexOf('>', pos);
-      if (c === -1) break;
+      if (c === -1) {
+        rawSpans.push([pos, scanText.length]);
+        break;
+      }
+      rawSpans.push([pos, c + 1]);
       cp.declOpen = false;
       pos = c + 1;
       continue;
@@ -740,12 +806,15 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     if (starts.length === 0) break;
     const first = Math.min(...starts);
     if (first === cd) {
+      rawSpans.push([cd, cd + 9]);
       cp.cdataOpen = true;
       pos = cd + 9;
     } else if (first === pi) {
+      rawSpans.push([pi, pi + 2]);
       cp.piOpen = true;
       pos = pi + 2;
     } else {
+      rawSpans.push([decl, decl + 2]);
       cp.declOpen = true;
       pos = decl + 2;
     }
@@ -784,6 +853,42 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
           if (!VOID_TAGS.has(tag)) applyTag(tag, closing);
         }
       }
+    }
+  }
+
+  // Blocker-6 detection: this line is html-flow content, tag balance is
+  // fully settled after it, and — after masking construct-consumed bytes
+  // (raw spans, comment content) and stripping tag/comment tokens —
+  // non-whitespace remains: balanced FLOATING remnant that parse5 will
+  // attach at the root with a tail-dependent seam. `inRawText` scopes this
+  // to html-flow runs; interior remnant (openTotal > 0) is contained inside
+  // an element and stays position-stable, so it does not set the flag.
+  // Deliberately NOT gated on raw constructs being closed at line END: a
+  // settle line can carry remnant AND open a multi-line comment/PI/decl/
+  // CDATA (`remnant <!-- c`), and the terminator line's scan only covers
+  // its own bytes — requiring closure here would hide that remnant forever
+  // (the under-block direction; review counterexample with an arbiter-level
+  // hast mismatch). Unterminated construct bytes are masked (rawSpans /
+  // comment-token strip); their interior text may over-flag, which is safe.
+  if (inRawText && cp.openTotal === 0) {
+    let residue = scanText;
+    for (const [from, to] of rawSpans) {
+      residue = residue.slice(0, from) + ' '.repeat(to - from) + residue.slice(to);
+    }
+    residue = residue.replace(/<!--[\s\S]*?-->/g, ' '); // closed comments incl. content
+    // Comment content spanning lines is not covered by rawSpans (comments
+    // are tracked by the token scan, not the raw state machine). When a
+    // comment was open at line START: a line with no `-->` is pure comment
+    // interior (no remnant); a line with `-->` is comment content only up
+    // to the terminator — text AFTER it is real remnant. A stray `-->`
+    // WITHOUT an open comment must not swallow the text before it (that
+    // would HIDE real remnant, the under-block direction).
+    if (commentOpenAtLineStart) {
+      residue = residue.includes('-->') ? residue.replace(/[\s\S]*?-->/, ' ') : '';
+    }
+    residue = residue.replace(TAG_OR_COMMENT_RE, '');
+    if (residue.trim() !== '') {
+      cp.htmlSeamPending = true;
     }
   }
 

@@ -104,6 +104,89 @@ describe('computeFreezeBoundary — raw HTML blockers', () => {
   });
 });
 
+describe('computeFreezeBoundary — raw-remnant seam (blocker 6)', () => {
+  // 2026-07-31 direction-battery counterexample (reproduced on v1.8.0): the
+  // html run swallows a math fence; after `</details>` the `$$` lines are
+  // BALANCED floating remnant whose hast seam depends on whether a sibling
+  // follows. The candidate right after the run froze a region that a
+  // def-vs-paragraph flip of the tail (`[a]:` + "x") reshaped (1 → 2
+  // children). The candidate must be rejected.
+  const SOAK_PREFIX = '<details>\n<summary>t</summary>\nbody prose\n</details>\n$$\ne = mc^2\n$$\n\n[a]:';
+
+  test('the candidate adjacent to a floating-remnant run is rejected (soak counterexample)', () => {
+    expect(computeFreezeBoundary(SOAK_PREFIX, OFF)).toBe(0);
+  });
+
+  test('a later confirmed content line pins the seam and releases candidates', () => {
+    const text = '<div>\n</div>\nfloating remnant\n\npinning paragraph\n\ntail';
+    // The paragraph after the remnant run is real frozen-side content; the
+    // candidate AFTER it survives (the run-adjacent one stays rejected).
+    expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('tail'));
+  });
+
+  test('seam risk persists across the whole trailing blank run', () => {
+    const text = '<div>\n</div>\nfloating remnant\n\n\n\ntail';
+    expect(computeFreezeBoundary(text, OFF)).toBe(0);
+  });
+
+  test('interior remnant (text inside an open element) stays freezable', () => {
+    const text = '<details>\n<summary>t</summary>\nbody prose\n</details>\n\ntail paragraph';
+    expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('tail paragraph'));
+  });
+
+  test('a pure-tag run stays freezable', () => {
+    const text = '<div>\n</div>\n\ntail paragraph';
+    expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('tail paragraph'));
+  });
+
+  test('raw-construct terminators are consumed bytes, not remnant (PI corner)', () => {
+    const text = '<?data\nmore\n?>\n\ntail paragraph';
+    expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('tail paragraph'));
+  });
+
+  test('a stray --> in remnant prose does not hide the text before it', () => {
+    const text = '<div>\n</div>\nx --> y\n\ntail';
+    expect(computeFreezeBoundary(text, OFF)).toBe(0);
+  });
+
+  test('a settle line that opens a multi-line comment still flags its remnant (review F1)', () => {
+    // Balance settles on the remnant line while a comment stays open across
+    // lines — requiring closure at line end would hide the remnant forever.
+    const text = '<div>\n</div>\nremnant <!-- c\n-->\n\ntail';
+    expect(computeFreezeBoundary(text, OFF)).toBe(0);
+  });
+
+  test('a settle line that opens a multi-line PI still flags its remnant (review F1)', () => {
+    const text = '<div>\n</div>\nremnant <?data\n?>\n\ntail';
+    expect(computeFreezeBoundary(text, OFF)).toBe(0);
+  });
+
+  test('remnant AFTER a comment terminator on its closing line is flagged', () => {
+    const text = '<div>\n</div>\n<!-- open\n--> tail remnant\n\ntail';
+    expect(computeFreezeBoundary(text, OFF)).toBe(0);
+  });
+
+  test('a link-definition line does not release the seam (review F2 — defs emit no hast node)', () => {
+    const text = '<div>\n</div>\nfloating remnant\n\n[a]: /u\n\nx';
+    expect(computeFreezeBoundary(text, OFF)).toBe(0);
+  });
+
+  test('a footnote-definition line does not release the seam', () => {
+    const text = '<div>\n</div>\nfloating remnant\n\n[^a]: body\n\nx';
+    expect(computeFreezeBoundary(text, OFF)).toBe(0);
+  });
+
+  test('a comment-only block does not release the seam', () => {
+    const text = '<div>\n</div>\nfloating remnant\n\n<!-- note -->\n\nx';
+    expect(computeFreezeBoundary(text, OFF)).toBe(0);
+  });
+
+  test('closed-comment content is not remnant', () => {
+    const text = '<div>\n</div>\n<!-- note -->\n\ntail paragraph';
+    expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('tail paragraph'));
+  });
+});
+
 describe('computeFreezeBoundary — continuation blockers', () => {
   test('list context blocks even across a double blank; column-0 paragraph terminates it', () => {
     const inList = '- item one\n\n\n- item two\n\n';
