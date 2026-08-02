@@ -68,7 +68,7 @@ export function runProductionPipeline(content: string): PipelineResult {
   // matching the original harness's unprefixed output).
   const processor = unified()
     .use(remarkParse)
-    .use(buildCoreRemarkPlugins([], []))
+    .use(buildCoreRemarkPlugins([]))
     .use(remarkRehype, buildCoreRemarkRehypeOptions(false))
     .use(buildCoreRehypePlugins(sanitizeSchema, ''));
 

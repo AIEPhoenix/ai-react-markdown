@@ -57,8 +57,8 @@ Two defaults differ from stock `remend`, one overridable and one not:
 
 ### Interactions with the streaming optimizations
 
-- **Block-level memoization** (`blockMemoEnabled`, default on): zero conflict. Repairs only affect the tail; earlier blocks' bytes — and therefore their memoized hast — are untouched.
-- **Incremental parsing** (`incrementalParseEnabled`): partial discount. A frame whose tail was repaired is not a byte-append of the previous frame, so the engine's append gate falls back to a full parse for exactly the frames sitting inside an unterminated construct. The fallback is per-frame, not sticky — splicing resumes as soon as the construct closes in the real bytes. Typical prose streams degrade on a minority of frames; heavily-inline content degrades more. Both flags stay correct in combination; you are trading some splice hits for mid-stream visual completeness.
+- **Block-level memoization** (`blockMemo`, default on): zero conflict. Repairs only affect the tail; earlier blocks' bytes — and therefore their memoized hast — are untouched.
+- **Incremental parsing** (`incrementalParse`): partial discount. A frame whose tail was repaired is not a byte-append of the previous frame, so the engine's append gate falls back to a full parse for exactly the frames sitting inside an unterminated construct. The fallback is per-frame, not sticky — splicing resumes as soon as the construct closes in the real bytes. Typical prose streams degrade on a minority of frames; heavily-inline content degrades more. Both flags stay correct in combination; you are trading some splice hits for mid-stream visual completeness.
 
 ### Footguns
 
@@ -85,7 +85,7 @@ Using `indexOf` is friendlier than regex on large inputs — frontmatter only li
 
 ### Normalize curly quotes back to straight
 
-The library enables SmartyPants by default, which converts straight quotes to curly. If your downstream tooling (e.g. an `<input>` autocomplete) expects straight quotes, undo it _before_ the pipeline sees them by disabling SmartyPants in [config](../README.md#displayoptimizeabilities) — preprocessors run too early to undo decisions the remark plugins haven't made yet.
+The library enables SmartyPants by default, which converts straight quotes to curly. If your downstream tooling (e.g. an `<input>` autocomplete) expects straight quotes, undo it _before_ the pipeline sees them by filtering `smartypants` out of `enginePlugins` (see [the filter idiom](./cjk-typography.md#engineplugins-replaces-the-array)) — preprocessors run too early to undo decisions the remark plugins haven't made yet.
 
 ### Auto-link bare URLs that the model emitted without `<…>`
 

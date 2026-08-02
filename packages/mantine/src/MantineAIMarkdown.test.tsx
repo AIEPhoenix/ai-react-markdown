@@ -5,7 +5,7 @@ import { MantineProvider, type MantineProviderProps } from '@mantine/core';
 import { CodeHighlightAdapterProvider, createHighlightJsAdapter } from '@mantine/code-highlight';
 import hljs from 'highlight.js';
 import MantineAIMarkdown from './MantineAIMarkdown';
-import { useMantineAIMarkdownRenderState } from './hooks/useMantineAIMarkdownRenderState';
+import { useAIMarkdownTheme } from '@ai-react-markdown/core';
 
 const adapter = createHighlightJsAdapter(hljs);
 
@@ -65,7 +65,7 @@ describe('MantineAIMarkdown smoke', () => {
 
   test('color scheme is auto-detected from MantineProvider', () => {
     const SchemeProbe = () => {
-      const { colorScheme } = useMantineAIMarkdownRenderState();
+      const { colorScheme } = useAIMarkdownTheme();
       return <em data-scheme={colorScheme} />;
     };
     const html = renderMarkdown(<MantineAIMarkdown content={'*probe*'} customComponents={{ em: SchemeProbe }} />, {
@@ -76,7 +76,7 @@ describe('MantineAIMarkdown smoke', () => {
 
   test('explicit colorScheme prop wins over the computed scheme', () => {
     const SchemeProbe = () => {
-      const { colorScheme } = useMantineAIMarkdownRenderState();
+      const { colorScheme } = useAIMarkdownTheme();
       return <em data-scheme={colorScheme} />;
     };
     const html = renderMarkdown(

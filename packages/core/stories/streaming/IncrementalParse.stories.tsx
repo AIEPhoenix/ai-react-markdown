@@ -1,5 +1,5 @@
 /**
- * Stateful integration smoke for `config.incrementalParseEnabled`.
+ * Stateful integration smoke for the `incrementalParse` flat prop.
  *
  * The splice-equivalence arbiter (`incrementalParse/spliceEquivalence.test.ts`)
  * exhaustively proves parse-level output equality, and byteEquivalence proves
@@ -34,8 +34,8 @@ const SMOKE_DOCUMENT_ID = 'ip-smoke';
 const CHUNK_CODE_POINTS = 24;
 const FRAME_INTERVAL_MS = 15;
 
-const INCREMENTAL_ON = { incrementalParseEnabled: true } as const;
-const INCREMENTAL_OFF = { incrementalParseEnabled: false } as const;
+const INCREMENTAL_ON = { incrementalParse: true } as const;
+const INCREMENTAL_OFF = { incrementalParse: false } as const;
 
 interface SmokeStats {
   frames: number;
@@ -99,10 +99,10 @@ function IncrementalParseSmoke({ payload }: { payload: string }) {
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <div ref={onRef} data-testid="ip-smoke-on">
-          <AIMarkdown content={content} streaming={!done} documentId={SMOKE_DOCUMENT_ID} config={INCREMENTAL_ON} />
+          <AIMarkdown content={content} streaming={!done} documentId={SMOKE_DOCUMENT_ID} {...INCREMENTAL_ON} />
         </div>
         <div ref={offRef} data-testid="ip-smoke-off">
-          <AIMarkdown content={content} streaming={!done} documentId={SMOKE_DOCUMENT_ID} config={INCREMENTAL_OFF} />
+          <AIMarkdown content={content} streaming={!done} documentId={SMOKE_DOCUMENT_ID} {...INCREMENTAL_OFF} />
         </div>
       </div>
     </div>
@@ -165,7 +165,7 @@ function CrossChunkSmoke({ payload }: { payload: string }) {
   const side = (docId: string, config: typeof INCREMENTAL_ON | typeof INCREMENTAL_OFF) => (
     <AIMarkdownDocuments>
       {chunkContents.map((chunk, i) => (
-        <AIMarkdown key={i} content={chunk} streaming={!done} documentId={docId} config={config} />
+        <AIMarkdown key={i} content={chunk} streaming={!done} documentId={docId} {...config} />
       ))}
     </AIMarkdownDocuments>
   );
@@ -362,7 +362,7 @@ function PlaygroundRun({
               content={content}
               streaming={!done}
               documentId={SMOKE_DOCUMENT_ID}
-              config={INCREMENTAL_ON}
+              {...INCREMENTAL_ON}
               colorScheme={colorScheme}
             />
           </div>
@@ -374,7 +374,7 @@ function PlaygroundRun({
               content={content}
               streaming={!done}
               documentId={SMOKE_DOCUMENT_ID}
-              config={INCREMENTAL_OFF}
+              {...INCREMENTAL_OFF}
               colorScheme={colorScheme}
             />
           </div>

@@ -35,8 +35,9 @@ import { buildChunkSources, CHUNK_COUNT, sliceChunkContents } from './crossChunk
 
 const ON_DOC_ID = 'xckc-on';
 const OFF_DOC_ID = 'xckc-off';
-const ON_CONFIG = { blockMemoEnabled: true, incrementalParseEnabled: true } as const;
-const OFF_CONFIG = { blockMemoEnabled: true, incrementalParseEnabled: false } as const;
+// v2 flat props: both sides run block-memo; only the incremental switch differs.
+const ON_CONFIG = { incrementalParse: true } as const;
+const OFF_CONFIG = { incrementalParse: false } as const;
 const PIPELINE_STAGES_SHOWN = ['scan', 'parse', 'transform'] as const;
 const fmt = (n: number, digits = 1) => (Number.isFinite(n) && !Number.isNaN(n) ? n.toFixed(digits) : '—');
 
@@ -80,7 +81,8 @@ function CoordinatedSide({
             content={chunk}
             streaming={running}
             documentId={docId}
-            config={config}
+            blockMemo={true}
+            incrementalParse={config.incrementalParse}
             colorScheme={colorScheme}
           />
         ))}
@@ -297,7 +299,7 @@ export const CrossChunkIncrementalComparison = ({
         <div style={column}>
           <div style={{ ...mono, color: theme.textMuted }}>
             <span style={{ color: theme.good }}>● </span>
-            coordinated · incrementalParseEnabled: true
+            coordinated · incrementalParse: true
           </div>
           <ProfilerPanel snapshot={onProfiler.snapshot} colorScheme={colorScheme} compact />
           <Profiler id="xckc-on" onRender={onProfiler.onRender}>
@@ -316,7 +318,7 @@ export const CrossChunkIncrementalComparison = ({
         <div style={column}>
           <div style={{ ...mono, color: theme.textMuted }}>
             <span style={{ color: theme.warn }}>● </span>
-            coordinated · incrementalParseEnabled: false
+            coordinated · incrementalParse: false
           </div>
           <ProfilerPanel snapshot={offProfiler.snapshot} colorScheme={colorScheme} compact />
           <Profiler id="xckc-off" onRender={offProfiler.onRender}>

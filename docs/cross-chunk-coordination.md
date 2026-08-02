@@ -29,7 +29,7 @@ function StreamedMessage({ message }: { message: Message }) {
 
 Without the wrapper, each `<AIMarkdown>` is independent — its references resolve only within its own content (standalone behavior, unchanged).
 
-> ⚠️ **Prerequisite: keep `blockMemoEnabled: true` (the default).** Cross-chunk coordination is wired only through the block-memo render path. Setting `config.blockMemoEnabled: false` falls back to the legacy renderer which does not connect to `Registry`, and coordination silently degrades — orphan defs are not protected, refs across chunks resolve as empty placeholders, and the aggregate footnote footer is not emitted.
+> ⚠️ **Prerequisite: keep `blockMemo` at `true` (the default).** Cross-chunk coordination is wired only through the block-memo render path. Setting `blockMemo={false}` falls back to the legacy renderer which does not connect to `Registry`, and coordination silently degrades — orphan defs are not protected, refs across chunks resolve as empty placeholders, and the aggregate footnote footer is not emitted.
 
 ---
 
@@ -93,16 +93,16 @@ The footnote section is rendered **once** at the end of the document's last chun
 
 ## `<AIMarkdownDocuments>` props
 
-| Prop                       | Type        | Default | Purpose                                                                                                                                                                                                                                                                                 |
-| -------------------------- | ----------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `preserveOrphanReferences` | `boolean`   | `true`  | **Unconditionally** overrides each chunk's `config.preserveOrphanReferences`. When `true`, orphan `[^label]: …` definitions (no matching `[^label]`) are protected from being silently dropped by `mdast-util-to-hast`. Crucial for streaming — references may arrive in a later chunk. |
-| `children`                 | `ReactNode` | —       | The `<AIMarkdown>` instances to coordinate                                                                                                                                                                                                                                              |
+| Prop                       | Type        | Default | Purpose                                                                                                                                                                                                                                                                                   |
+| -------------------------- | ----------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `preserveOrphanReferences` | `boolean`   | `true`  | **Unconditionally** overrides each chunk's own `preserveOrphanReferences` prop. When `true`, orphan `[^label]: …` definitions (no matching `[^label]`) are protected from being silently dropped by `mdast-util-to-hast`. Crucial for streaming — references may arrive in a later chunk. |
+| `children`                 | `ReactNode` | —       | The `<AIMarkdown>` instances to coordinate                                                                                                                                                                                                                                                |
 
 ```tsx
 <AIMarkdownDocuments preserveOrphanReferences={true}>{children}</AIMarkdownDocuments>
 ```
 
-Note that `preserveOrphanReferences` on the wrapper **wins over** the same field in each chunk's `config`. This is by design: the wrapper-level policy is usually what you want consistent across chunks.
+Note that `preserveOrphanReferences` on the wrapper **wins over** the same prop on each chunk. This is by design: the wrapper-level policy is usually what you want consistent across chunks.
 
 ### Nested wrappers throw (dev) / degrade (prod)
 
@@ -171,7 +171,7 @@ Mutator methods (`registerChunk`, `allocateSymbol`, etc.) are intentionally **no
 
 A few internals are deliberately kept off the public surface — useful to know so you don't go looking for them:
 
-- **Per-chunk `Symbol`** — every chunk allocates a unique `Symbol` to identify itself inside the registry. There's no hook to read your own chunk's symbol from a custom component. If you need chunk-scoped behavior, derive it from `useAIMarkdownRenderState().documentId` (shared across chunks) plus your own scoping logic.
+- **Per-chunk `Symbol`** — every chunk allocates a unique `Symbol` to identify itself inside the registry. There's no hook to read your own chunk's symbol from a custom component. If you need chunk-scoped behavior, derive it from `useAIMarkdownDocument().documentId` (shared across chunks) plus your own scoping logic.
 - **Per-chunk URL policy / cross-chunk URL sanitization context** — the cross-chunk placeholders run their own per-attribute `urlTransform` pass using each consuming chunk's `urlTransform` + `sanitizeSchema`. The mechanism is internal; you control behavior by passing those props to each `<AIMarkdown>`, not by hooking into the cross-chunk machinery.
 - **Mutator methods on `Registry`** — see the note above. Only selectors and `subscribe` are public.
 

@@ -237,12 +237,9 @@ export const BlockMemoComparison = ({
   // The incremental toggle applies to the ENABLED column only — incremental
   // parsing lives inside the block-memo renderer (since v2 it splices in
   // registry mode too, via always-tail phantom suffixes, so combining the
-  // toggles measures the real coordinated splice).
-  const enabledConfig = useMemo(
-    () => ({ blockMemoEnabled: true, incrementalParseEnabled: incrementalEnabled }) as const,
-    [incrementalEnabled]
-  );
-  const disabledConfig = useMemo(() => ({ blockMemoEnabled: false }) as const, []);
+  // toggles measures the real coordinated splice). Switches ride the v2
+  // flat props (`blockMemo` / `incrementalParse`) — scalar props need no
+  // memoized config object.
 
   // Spy customComponents — count component-function invocations per side.
   // Each side gets its OWN stable spy object so the two profilers don't
@@ -315,7 +312,8 @@ export const BlockMemoComparison = ({
       content={content}
       streaming={running}
       colorScheme={colorScheme}
-      config={enabledConfig}
+      blockMemo={true}
+      incrementalParse={incrementalEnabled}
       customComponents={enabledSpy}
       documentId={registryEnabled ? 'bmc-enabled' : undefined}
     />
@@ -325,7 +323,7 @@ export const BlockMemoComparison = ({
       content={content}
       streaming={running}
       colorScheme={colorScheme}
-      config={disabledConfig}
+      blockMemo={false}
       customComponents={disabledSpy}
       documentId={registryEnabled ? 'bmc-disabled' : undefined}
     />

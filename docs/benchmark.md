@@ -1,9 +1,12 @@
 # Benchmark: block-memo × incremental parse
 
 Measured results for the two streaming optimizations — **block-level
-memoization** (`blockMemoEnabled`, default on) and **incremental
-prefix-freeze parsing** (`incrementalParseEnabled`, default on since
-v1.8.0) — individually and combined, against the legacy full pipeline. Read
+memoization** (`blockMemo`, default on) and **incremental
+prefix-freeze parsing** (`incrementalParse`, default on since
+v1.8.0) — individually and combined, against the legacy full pipeline.
+(Measurements were taken on 1.x builds, where the flags were the
+`config.blockMemoEnabled` / `config.incrementalParseEnabled` fields;
+the engines are semantically unchanged in 2.0.) Read
 [Streaming & Performance](./streaming-and-performance.md) first for what
 each mechanism does; this document is the numbers.
 

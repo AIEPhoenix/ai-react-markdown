@@ -204,11 +204,11 @@ The library defaults aim for "drop in, looks right." But every customization sur
 
 ### 3. Composition over forking
 
-Sub-package integration uses only the public extension points (`Typography`, `ExtraStyles`, `customComponents`, `defaultConfig`). The Mantine package is the reference implementation; nothing about it requires internal-API access. If your integration needs something Mantine has but core doesn't, the pattern is to compose, not fork.
+Sub-package integration uses only the public extension points (`Typography`, `ExtraStyles`, `customComponents` — plus, since 2.0, the additive Providers and widened `define*` factories that replaced the 1.x `defaultConfig` channel). The Mantine package is the reference implementation; nothing about it requires internal-API access. If your integration needs something Mantine has but core doesn't, the pattern is to compose, not fork.
 
 ### 4. Stability boundary explicitly drawn
 
-- Public surfaces (props, hook signatures, config field names) are stable across minor versions.
+- Public surfaces (props, hook signatures, field names) are stable across minor versions.
 - Default token _values_, exact byte output, and registry internals are explicitly **not** part of the stability contract.
 - This is documented in [`docs/README.md`](./README.md#a-note-on-stability) and in JSDoc per export, so consumers know which surface to depend on vs override.
 

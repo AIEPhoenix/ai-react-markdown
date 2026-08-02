@@ -70,16 +70,17 @@ export const AXIS_SIDES: Record<ComparisonAxis, { on: AxisSideSpec; off: AxisSid
   },
 };
 
-/** Engine config for one side, derived from its spec — the only place the
- *  mode→flag translation is written down. */
+/** Engine flat props for one side, derived from its spec — the only place
+ *  the mode→flag translation is written down (v2 props: spread into
+ *  `<AIMarkdown>`). */
 export const sideConfig = (spec: AxisSideSpec) =>
-  ({ blockMemoEnabled: spec.mode === 'memo', incrementalParseEnabled: spec.incremental }) as const;
+  ({ blockMemo: spec.mode === 'memo', incrementalParse: spec.incremental }) as const;
 
 /** Panel headings per axis — shared by the isolated side page and the
  *  same-page comparison columns so the copy can't drift. */
 export const AXIS_HEADINGS: Record<ComparisonAxis, { on: string; off: string }> = {
-  blockMemo: { on: 'blockMemoEnabled: true (default)', off: 'blockMemoEnabled: false (legacy)' },
-  incrementalParse: { on: 'incrementalParseEnabled: true', off: 'incrementalParseEnabled: false' },
+  blockMemo: { on: 'blockMemo: true (default)', off: 'blockMemo: false (legacy)' },
+  incrementalParse: { on: 'incrementalParse: true', off: 'incrementalParse: false' },
   boost: { on: 'boost: block-memo + incremental (all on)', off: 'legacy: full pipeline every frame (all off)' },
 };
 

@@ -23,7 +23,7 @@ import { defListHastHandlers } from 'remark-definition-list';
 import { sanitizeSchema } from '../sanitizeSchema';
 import { buildCoreRehypePlugins, buildCoreRemarkPlugins } from '../pluginChain';
 import { buildCrossChunkHandlers } from '../customMdastHandlers';
-import { AIMarkdownRenderDisplayOptimizeAbility, AIMarkdownRenderExtraSyntax } from '../../defs';
+import { highlight, definitionList, removeComments, smartypants, pangu } from '../../plugins/catalog';
 import type { AdvanceOptions } from './advanceIncrementalParse';
 
 export interface CatalogConfig {
@@ -125,7 +125,7 @@ export function buildCrossChunkAdvanceOptions(
     documentId: TEST_DOCUMENT_ID,
   };
   return {
-    remarkPlugins: buildCoreRemarkPlugins([], []),
+    remarkPlugins: buildCoreRemarkPlugins([]),
     rehypePlugins: buildCoreRehypePlugins(sanitizeSchema, TEST_CLOBBER_PREFIX),
     remarkRehypeOptions: remarkRehypeOptions as never,
     depsKey: ['cross-chunk'],
@@ -153,18 +153,16 @@ export function buildAdvanceOptions(config: CatalogConfig): AdvanceOptions {
 
   // The chains come from pluginChain.ts — the SAME builders MarkdownContent
   // calls, so the arbiter can never drift from the shipped order (the axes
-  // here map onto the config enums the production memos consume).
-  const extras = [
-    ...(config.highlight ? [AIMarkdownRenderExtraSyntax.HIGHLIGHT] : []),
-    ...(config.defList ? [AIMarkdownRenderExtraSyntax.DEFINITION_LIST] : []),
-  ];
-  const display = [
-    ...(config.removeComments ? [AIMarkdownRenderDisplayOptimizeAbility.REMOVE_COMMENTS] : []),
-    ...(config.smartypants ? [AIMarkdownRenderDisplayOptimizeAbility.SMARTYPANTS] : []),
-    ...(config.pangu ? [AIMarkdownRenderDisplayOptimizeAbility.PANGU] : []),
+  // here map onto the sealed plugin selection the production memos consume).
+  const enginePlugins = [
+    ...(config.highlight ? [highlight] : []),
+    ...(config.defList ? [definitionList] : []),
+    ...(config.removeComments ? [removeComments] : []),
+    ...(config.smartypants ? [smartypants] : []),
+    ...(config.pangu ? [pangu] : []),
   ];
   const options: AdvanceOptions = {
-    remarkPlugins: buildCoreRemarkPlugins(extras, display),
+    remarkPlugins: buildCoreRemarkPlugins(enginePlugins),
     rehypePlugins: buildCoreRehypePlugins(sanitizeSchema, TEST_CLOBBER_PREFIX),
     remarkRehypeOptions: remarkRehypeOptions as never,
     depsKey: [config.label],

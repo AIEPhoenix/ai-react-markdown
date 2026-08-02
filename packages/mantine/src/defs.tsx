@@ -1,53 +1,42 @@
 /**
- * Mantine-specific type definitions and default configuration.
- *
- * Extends the core {@link AIMarkdownRenderConfig} and {@link AIMarkdownMetadata}
- * with Mantine-themed options such as uniform heading sizes and code block behavior.
+ * Mantine-specific type definitions and defaults: the `codeBlock` behavior
+ * group and the metadata extension point.
  *
  * @module defs
  */
 
-import { AIMarkdownRenderConfig, AIMarkdownMetadata, defaultAIMarkdownRenderConfig } from '@ai-react-markdown/core';
+import { AIMarkdownMetadata } from '@ai-react-markdown/core';
 
 /**
- * Extended render configuration for the Mantine integration.
+ * Code block rendering options (the mantine `codeBlock` behavior group).
  *
- * Inherits all core config fields (extra syntax, display optimizations) and adds
- * Mantine-specific options for typography sizing and code block behavior.
+ * v2 transport: passed as the flat `codeBlock` prop on `MantineAIMarkdown`
+ * (group value replaces atomically) and read through
+ * `useMantineCodeBlockOptions()`, which applies the defaults below inside
+ * the hook — the single place defaults live at read time.
  */
-export interface MantineAIMarkdownRenderConfig extends AIMarkdownRenderConfig {
-  /** Code block rendering options. */
-  codeBlock: {
-    /**
-     * Whether code blocks start in their expanded state.
-     * When `false`, long code blocks are collapsed with an expand button.
-     *
-     * @default true
-     */
-    defaultExpanded: boolean;
+export interface MantineCodeBlockOptions {
+  /**
+   * Whether code blocks start in their expanded state.
+   * When `false`, long code blocks are collapsed with an expand button.
+   *
+   * @default true
+   */
+  defaultExpanded: boolean;
 
-    /**
-     * When `true`, uses `highlight.js` auto-detection to determine the language
-     * of code blocks that lack an explicit language annotation.
-     *
-     * @default false
-     */
-    autoDetectUnknownLanguage: boolean;
-  };
+  /**
+   * When `true`, uses `highlight.js` auto-detection to determine the language
+   * of code blocks that lack an explicit language annotation.
+   *
+   * @default false
+   */
+  autoDetectUnknownLanguage: boolean;
 }
 
-/**
- * Default Mantine render configuration.
- *
- * Extends {@link defaultAIMarkdownRenderConfig} with Mantine-specific defaults.
- * Frozen to prevent accidental mutation.
- */
-export const defaultMantineAIMarkdownRenderConfig: MantineAIMarkdownRenderConfig = Object.freeze({
-  ...defaultAIMarkdownRenderConfig,
-  codeBlock: Object.freeze({
-    defaultExpanded: true,
-    autoDetectUnknownLanguage: false,
-  }),
+/** Shipped defaults for the `codeBlock` behavior group. */
+export const defaultMantineCodeBlockOptions: Readonly<MantineCodeBlockOptions> = Object.freeze({
+  defaultExpanded: true,
+  autoDetectUnknownLanguage: false,
 });
 
 /**

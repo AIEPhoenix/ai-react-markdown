@@ -6,6 +6,8 @@
 
 Mantine UI integration for `@ai-react-markdown/core`. Provides a drop-in `<MantineAIMarkdown>` component that renders AI-generated markdown with Mantine-themed typography, syntax-highlighted code blocks, Mermaid diagrams, and automatic color scheme detection.
 
+> **Upgrading from 1.x?** v2.0.0 removes the 1.x object-based `config` channel — the Mantine code-block options move to a flat `codeBlock` prop, and the render-state hook is replaced by narrow hooks plus `useMantineCodeBlockOptions()`. See the [migration guide](../../docs/migrating-to-v2.md).
+
 ## What It Adds on Top of Core
 
 - **Mantine typography** -- markdown content is wrapped in Mantine's `<Typography>` so it inherits the active theme's font family, line height, and color tokens
@@ -36,7 +38,7 @@ yarn add @ai-react-markdown/mantine @ai-react-markdown/core
 {
   "react": ">=19",
   "react-dom": ">=19",
-  "@ai-react-markdown/core": "^1.8.0",
+  "@ai-react-markdown/core": "^2.0.0",
   "@mantine/core": "^9.0.0",
   "@mantine/code-highlight": "^9.0.0",
   "highlight.js": "^11.11.1"
@@ -92,69 +94,82 @@ function StreamingChat({ content, isStreaming }: { content: string; isStreaming:
 
 ## Props API Reference
 
-### `MantineAIMarkdownProps<TConfig, TRenderData>`
+### `MantineAIMarkdownProps<TMetadata>`
 
-`MantineAIMarkdownProps` extends `AIMarkdownProps` -- every core prop is supported. The table below lists each prop with its Mantine-specific default override (props not listed here inherit core defaults unchanged).
+`MantineAIMarkdownProps<TMetadata>` extends `AIMarkdownProps<TMetadata>` -- every core prop (`enginePlugins`, `blockMemo`, `incrementalParse`, `preserveOrphanReferences`, `streamingCursor`, …) is supported, plus the Mantine-specific `codeBlock` prop. The table below lists the props with a Mantine-specific default override or addition (props not listed here inherit core defaults unchanged — see the [core props table](../core/README.md#aimarkdownpropstmetadata)).
 
-| Prop                   | Type                             | Default                                | Description                                                                                                                                                                  |
-| ---------------------- | -------------------------------- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `content`              | `string`                         | **(required)**                         | Raw markdown content to render.                                                                                                                                              |
-| `streaming`            | `boolean`                        | `false`                                | Whether content is actively being streamed.                                                                                                                                  |
-| `fontSize`             | `number \| string`               | `'0.9375rem'`                          | Base font size. Numbers are treated as pixels. Inherited from core.                                                                                                          |
-| `variant`              | `AIMarkdownVariant`              | `'default'`                            | Typography variant name.                                                                                                                                                     |
-| `colorScheme`          | `AIMarkdownColorScheme`          | Auto-detected                          | Color scheme. When omitted, defaults to Mantine's computed color scheme via `useComputedColorScheme('light')`.                                                               |
-| `config`               | `PartialDeep<TConfig>`           | `undefined`                            | Partial render config, deep-merged with `defaultConfig`.                                                                                                                     |
-| `defaultConfig`        | `TConfig`                        | `defaultMantineAIMarkdownRenderConfig` | Base config to merge against. Already extends `defaultAIMarkdownRenderConfig` with Mantine's `codeBlock.*` defaults.                                                         |
-| `metadata`             | `TRenderData`                    | `undefined`                            | Arbitrary data for custom components via dedicated context.                                                                                                                  |
-| `contentPreprocessors` | `AIMDContentPreprocessor[]`      | `[]`                                   | Additional preprocessors run after the built-in LaTeX preprocessor.                                                                                                          |
-| `customComponents`     | `AIMarkdownCustomComponents`     | Mantine defaults                       | Component overrides, merged with Mantine's built-in `<pre>` handler. Caller overrides take precedence -- including `pre` here disables Mantine's code-block features.        |
-| `Typography`           | `AIMarkdownTypographyComponent`  | `MantineAIMarkdownTypography`          | Typography wrapper component.                                                                                                                                                |
-| `ExtraStyles`          | `AIMarkdownExtraStylesComponent` | `MantineAIMDefaultExtraStyles`         | Extra style wrapper rendered between typography and content.                                                                                                                 |
-| `documentId`           | `string`                         | auto via `useId()`                     | Stable id namespace for clobberable attributes. See the [core docs](../core/README.md#aimarkdownpropstconfig-trenderdata) for full semantics. Required for cross-chunk mode. |
+| Prop                   | Type                               | Default                          | Description                                                                                                                                                                                       |
+| ---------------------- | ---------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `content`              | `string`                           | **(required)**                   | Raw markdown content to render.                                                                                                                                                                   |
+| `streaming`            | `boolean`                          | `false`                          | Whether content is actively being streamed.                                                                                                                                                       |
+| `fontSize`             | `number \| string`                 | `'0.9375rem'`                    | Base font size. Numbers are treated as pixels. Inherited from core.                                                                                                                               |
+| `variant`              | `AIMarkdownVariant`                | `'default'`                      | Typography variant name.                                                                                                                                                                          |
+| `colorScheme`          | `AIMarkdownColorScheme`            | Auto-detected                    | Color scheme. When omitted, defaults to Mantine's computed color scheme via `useComputedColorScheme('light')`.                                                                                    |
+| `metadata`             | `TMetadata`                        | `undefined`                      | Arbitrary data for custom components via dedicated context.                                                                                                                                       |
+| `contentPreprocessors` | `AIMDContentPreprocessor[]`        | `[]`                             | Additional preprocessors run after the built-in LaTeX preprocessor.                                                                                                                               |
+| `customComponents`     | `AIMarkdownCustomComponents`       | Mantine defaults                 | Component overrides, merged with Mantine's built-in `<pre>` handler. Caller overrides take precedence -- including `pre` here disables Mantine's code-block features.                             |
+| `Typography`           | `AIMarkdownTypographyComponent`    | `MantineAIMarkdownTypography`    | Typography wrapper component.                                                                                                                                                                     |
+| `ExtraStyles`          | `AIMarkdownExtraStylesComponent`   | `MantineAIMDefaultExtraStyles`   | Extra style wrapper rendered between typography and content.                                                                                                                                      |
+| `documentId`           | `string`                           | auto via `useId()`               | Stable id namespace for clobberable attributes. See the [core docs](../core/README.md#aimarkdownpropstmetadata) for full semantics. Required for cross-chunk mode.                                |
+| `codeBlock`            | `Partial<MantineCodeBlockOptions>` | `defaultMantineCodeBlockOptions` | Code-block behavior group (Mantine-specific). The group value replaces atomically; omitted fields resolve to the shipped defaults inside `useMantineCodeBlockOptions()`. `null` counts as absent. |
 
 ## Configuration
 
-The Mantine package extends the core `AIMarkdownRenderConfig` with code-block options. All core config fields (`extraSyntaxSupported`, `displayOptimizeAbilities`, `blockMemoEnabled`, `preserveOrphanReferences`) remain available unchanged.
+The Mantine package adds one behavior group on top of core's flat props: the `codeBlock` prop. All core flat props (`enginePlugins`, `blockMemo`, `incrementalParse`, `preserveOrphanReferences`, …) remain available unchanged.
 
-### `MantineAIMarkdownRenderConfig`
+### `codeBlock` (`Partial<MantineCodeBlockOptions>`)
 
-Inherits all core config fields plus:
-
-| Field                                 | Type      | Default | Description                                                                                                                 |
-| ------------------------------------- | --------- | ------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `codeBlock.defaultExpanded`           | `boolean` | `true`  | Whether code blocks start in their expanded state. When `false`, long blocks are collapsed with an expand button.           |
-| `codeBlock.autoDetectUnknownLanguage` | `boolean` | `false` | When `true`, uses `highlight.js`'s `highlightAuto` to determine the language of code blocks lacking an explicit annotation. |
+| Field                       | Type      | Default | Description                                                                                                                 |
+| --------------------------- | --------- | ------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `defaultExpanded`           | `boolean` | `true`  | Whether code blocks start in their expanded state. When `false`, long blocks are collapsed with an expand button.           |
+| `autoDetectUnknownLanguage` | `boolean` | `false` | When `true`, uses `highlight.js`'s `highlightAuto` to determine the language of code blocks lacking an explicit annotation. |
 
 ### Example: Collapsed Code Blocks
 
 ```tsx
-<MantineAIMarkdown
-  content={markdown}
-  config={{
-    codeBlock: { defaultExpanded: false },
-  }}
-/>
+<MantineAIMarkdown content={markdown} codeBlock={{ defaultExpanded: false }} />
 ```
 
-When you provide a partial `config`, it is deep-merged with `defaultMantineAIMarkdownRenderConfig`. The same array-replacement semantics as core apply to `extraSyntaxSupported` and `displayOptimizeAbilities`.
+The group value replaces **atomically** -- omitted fields fall to the shipped defaults (`defaultMantineCodeBlockOptions`), applied exactly once inside `useMantineCodeBlockOptions()`. There is no deep merge.
+
+For integration-time packaging, the package re-exports a widened behaviors factory (core behavior fields + `codeBlock`):
+
+```tsx
+import { defineMantineBehaviors } from '@ai-react-markdown/mantine';
+
+const BEHAVIORS = defineMantineBehaviors({ blockMemo: false, codeBlock: { defaultExpanded: false } });
+
+<MantineAIMarkdown content={markdown} {...BEHAVIORS} />;
+```
 
 ## Hooks
 
-### `useMantineAIMarkdownRenderState<TConfig>()`
+### `useMantineCodeBlockOptions()`
 
-Typed wrapper around the core `useAIMarkdownRenderState`, defaulting `TConfig` to `MantineAIMarkdownRenderConfig` so `config.codeBlock.*` is available without a manual generic.
+Narrow hook for the `codeBlock` behavior group -- the single place the group's type assertion and defaults live. Returns `Required<MantineCodeBlockOptions>`: the caller-passed group merged over `defaultMantineCodeBlockOptions`.
 
 ```tsx
-import { useMantineAIMarkdownRenderState } from '@ai-react-markdown/mantine';
+import { useMantineCodeBlockOptions } from '@ai-react-markdown/mantine';
 
 function MyCodeBlock() {
-  const { config, streaming, colorScheme } = useMantineAIMarkdownRenderState();
-  const startsExpanded = config.codeBlock.defaultExpanded;
+  const { defaultExpanded, autoDetectUnknownLanguage } = useMantineCodeBlockOptions();
   // ...
 }
 ```
 
-**Returns** `AIMarkdownRenderState<MantineAIMarkdownRenderConfig>` -- identical shape to core's hook (with `streaming`, `fontSize`, `variant`, `colorScheme`, `documentId`, `clobberPrefix`, `config`). See the [core hooks reference](../core/README.md#hooks) for the full field list.
+For everything else (streaming state, theme, document ids, core behavior switches), use core's narrow hooks directly -- `useAIMarkdownState()`, `useAIMarkdownTheme()`, `useAIMarkdownDocument()`, `useAIMarkdownBehaviors()` -- or the aggregate `useAIMarkdown()` for low-frequency components. See the [core hooks reference](../core/README.md#hooks).
+
+```tsx
+import { useAIMarkdownState, useAIMarkdownTheme } from '@ai-react-markdown/core';
+import { useMantineCodeBlockOptions } from '@ai-react-markdown/mantine';
+
+function MyCodeBlock() {
+  const { streaming } = useAIMarkdownState();
+  const { colorScheme } = useAIMarkdownTheme();
+  const { defaultExpanded } = useMantineCodeBlockOptions();
+  // ...
+}
+```
 
 ### `useMantineAIMarkdownMetadata<TMetadata>()`
 
@@ -222,10 +237,10 @@ function App() {
 
 ### Language Auto-Detection
 
-By default, code blocks without an explicit language annotation render as plaintext. Enable auto-detection via config:
+By default, code blocks without an explicit language annotation render as plaintext. Enable auto-detection via the `codeBlock` prop:
 
 ```tsx
-<MantineAIMarkdown content={markdown} config={{ codeBlock: { autoDetectUnknownLanguage: true } }} />
+<MantineAIMarkdown content={markdown} codeBlock={{ autoDetectUnknownLanguage: true }} />
 ```
 
 This uses `highlight.js`'s `highlightAuto` to guess the language. Results may vary for short or ambiguous snippets.
@@ -341,16 +356,21 @@ Caller-provided `Typography`, `ExtraStyles`, and `customComponents` props overri
 ### Types
 
 - `MantineAIMarkdownProps`
-- `MantineAIMarkdownRenderConfig`
 - `MantineAIMarkdownMetadata`
+- `MantineCodeBlockOptions` -- the `codeBlock` group shape
+- `MantineBehaviorProps` -- input type of `defineMantineBehaviors`
 
 ### Constants
 
-- `defaultMantineAIMarkdownRenderConfig` -- default Mantine render config (frozen)
+- `defaultMantineCodeBlockOptions` -- shipped defaults of the `codeBlock` behavior group (frozen)
+
+### Factories
+
+- `defineMantineBehaviors()` -- widened behaviors factory (core behavior fields + `codeBlock`); identity + types + `Object.freeze`, zero logic
 
 ### Hooks
 
-- `useMantineAIMarkdownRenderState<TConfig>()` -- typed render-state access
+- `useMantineCodeBlockOptions()` -- typed access to the `codeBlock` group with defaults applied
 - `useMantineAIMarkdownMetadata<TMetadata>()` -- typed metadata access
 
 ## Core Package
