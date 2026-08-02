@@ -93,6 +93,8 @@ function StreamingChat({ content, isStreaming }: { content: string; isStreaming:
 
 All configuration is **flat props** resolved once against shipped defaults. An explicitly passed prop (`v != null`) overrides the shipped default; an absent prop falls to the shipped default. Passing `null` counts as absent — this guards against serialization boundaries (RSC, persistence) materializing "not passed" as `null` and punching through defaults.
 
+The table below is also the **prop-name registry**: flat props share one namespace across core and every wrapper layer, so wrapper authors must check it — plus the wrappers they extend (e.g. mantine adds `codeBlock`) — before naming a new prop. A collision is a compile error at the `extends` site for TS consumers but a silent override for plain-JS consumers.
+
 | Prop                       | Type                                | Default                | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | -------------------------- | ----------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `content`                  | `string`                            | **(required)**         | Raw markdown content to render.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
@@ -118,13 +120,13 @@ All configuration is **flat props** resolved once against shipped defaults. An e
 
 Optional pipeline features are selected through the `enginePlugins` prop, which accepts **sealed plugin objects** exported from the `@ai-react-markdown/core/plugins` subpath. All five are enabled by default.
 
-| Plugin           | Description                                                                                                                 |
-| ---------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `highlight`      | `==Highlight==` syntax support                                                                                              |
-| `definitionList` | Definition list syntax ([PHP Markdown Extra](https://michelf.ca/projects/php-markdown/extra/#def-list))                     |
-| `removeComments` | Strip HTML comments                                                                                                         |
-| `smartypants`    | Typographic enhancements (curly quotes; the upstream plugin internally disables dash, ellipsis, and backtick substitutions) |
-| `pangu`          | Auto-insert spaces between CJK and half-width characters                                                                    |
+| Plugin           | Description                                                                                             |
+| ---------------- | ------------------------------------------------------------------------------------------------------- |
+| `highlight`      | `==Highlight==` syntax support                                                                          |
+| `definitionList` | Definition list syntax ([PHP Markdown Extra](https://michelf.ca/projects/php-markdown/extra/#def-list)) |
+| `removeComments` | Strip HTML comments                                                                                     |
+| `smartypants`    | Typographic substitutions: curly quotes, em-dashes (`--`), ellipses (`...`)                             |
+| `pangu`          | Auto-insert spaces between CJK and half-width characters                                                |
 
 ### Example: Selective Plugins
 
@@ -242,7 +244,7 @@ const URL_TRANSFORM = (url, key, node) => (ALLOWED.test(url) ? url : defaultUrlT
 // Gate 1: extend the library schema so it permits the scheme on href + src.
 const SCHEMA = extendSanitizeSchema((s) => {
   s.protocols!.href!.push('myapp');
-  s.protocols.src.push('myapp');
+  s.protocols!.src!.push('myapp');
 });
 
 function App() {

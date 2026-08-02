@@ -76,7 +76,7 @@ export interface YourAIMarkdownMetadata extends AIMarkdownMetadata {
 }
 ```
 
-Before naming group _prop_ fields, check the prop-name registry in the core docs: flat props share one namespace across core and all wrapper layers (see [Footguns](#footguns)).
+Before naming group _prop_ fields, check the prop-name registry — the props table in the [core README](../packages/core/README.md#props-api-reference): flat props share one namespace across core and all wrapper layers (see [Footguns](#footguns)).
 
 ---
 
@@ -479,7 +479,7 @@ Group defaults live inside your narrow hook, exactly once. A component that read
 
 ### Prop-name collisions
 
-Flat props share one namespace across core and all wrapper layers. Check the prop-name registry in the core docs before adding a field to your wrapper props. A collision is a compile error at the `extends` site for TS consumers — but a **silent override** for plain-JS consumers. Same discipline for group keys inside the Provider value: prefix or scope them so an app-level group can't shadow yours accidentally.
+Flat props share one namespace across core and all wrapper layers. Check the prop-name registry — the props table in the [core README](../packages/core/README.md#props-api-reference) — before adding a field to your wrapper props. A collision is a compile error at the `extends` site for TS consumers — but a **silent override** for plain-JS consumers. Same discipline for group keys inside the Provider value: prefix or scope them so an app-level group can't shadow yours accidentally.
 
 ### Wholesale-replacing `sanitizeSchema`
 

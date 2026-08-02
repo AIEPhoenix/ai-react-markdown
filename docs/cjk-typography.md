@@ -190,7 +190,7 @@ Pangu inserts characters into the rendered text. Test snapshots that assert byte
 - Disable pangu in the test setup (`enginePlugins` without `pangu` — the `filter` idiom above).
 - Use a semantic matcher (`textContent.includes('React')`) instead of strict equality.
 
-The same applies to SmartyPants (`'`→`'`, `"`→`"` — only the quotes; `remark-smartypants` internally disables dash, ellipsis, and backtick substitutions to keep string lengths stable) — both run on by default.
+The same applies to SmartyPants — and more than quotes: with the pinned `remark-smartypants`, straight quotes curl, `--` becomes an em-dash, and `...` becomes an ellipsis. Assertions on raw CLI-style strings (`--verbose`) will not survive it — both plugins run on by default.
 
 ### `enginePlugins` replaces the array
 
