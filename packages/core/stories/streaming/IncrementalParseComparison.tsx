@@ -354,7 +354,7 @@ export const IncrementalParseComparison = ({
                   content={content}
                   streaming={running}
                   documentId={V.onDocId}
-                  config={V.onConfig}
+                  {...V.onConfig}
                   colorScheme={colorScheme}
                 />
               </div>
@@ -374,7 +374,7 @@ export const IncrementalParseComparison = ({
                   content={content}
                   streaming={running}
                   documentId={V.offDocId}
-                  config={V.offConfig}
+                  {...V.offConfig}
                   colorScheme={colorScheme}
                 />
               </div>

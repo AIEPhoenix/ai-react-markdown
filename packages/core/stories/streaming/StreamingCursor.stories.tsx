@@ -73,7 +73,7 @@ const INCREMENTAL_PAYLOAD = [
   'Third paragraph keeps appending tokens to the tail of the document.',
 ].join('\n');
 
-const INCREMENTAL_CONFIG: AIMarkdownProps['config'] = { incrementalParseEnabled: true };
+const INCREMENTAL_CONFIG: Pick<AIMarkdownProps, 'incrementalParse'> = { incrementalParse: true };
 
 /** Captured `height` props across indicator renders (module scope — reset by
  *  the harness on mount). */
@@ -112,8 +112,8 @@ interface CursorSmokeProps {
   appendAfterStallMs?: number;
   /** Text direction of the content container. */
   dir?: 'ltr' | 'rtl';
-  /** Render-config override (e.g. `incrementalParseEnabled`). */
-  config?: AIMarkdownProps['config'];
+  /** Engine flat-prop overrides (e.g. `incrementalParse`). */
+  config?: Pick<AIMarkdownProps, 'incrementalParse' | 'blockMemo'>;
   /** Cursor component for the slot; defaults to the library shell. */
   cursor?: ComponentType;
   /** Count `ai-markdown:stage:scan` performance measures (dev-build stage
@@ -227,7 +227,7 @@ function CursorSmoke({
         content={content}
         streaming={!done}
         documentId="streaming-cursor-smoke"
-        config={config}
+        {...config}
         streamingCursor={cursor}
       />
     </div>

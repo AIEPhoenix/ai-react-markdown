@@ -2,7 +2,7 @@
 
 `<AIMarkdown>` is built for **streaming-first** rendering — the same component re-renders dozens of times per second as LLM tokens arrive, and the output must stay flicker-free at 60fps even on mid-tier devices. Two mechanisms make this work:
 
-1. **Block-level memoization** (`blockMemoEnabled`, on by default) — splits the document into per-block units and memoizes each block's React subtree by source identity. Unchanged blocks skip `toJsxRuntime` and React reconcile work.
+1. **Block-level memoization** (the `blockMemo` prop, on by default) — splits the document into per-block units and memoizes each block's React subtree by source identity. Unchanged blocks skip `toJsxRuntime` and React reconcile work.
 2. **The `streaming` flag** — propagated via context, lets custom components adapt their behavior (show cursors, hide copy buttons, skip animations).
 
 This document covers both, plus the reference-stability rules that determine whether memoization helps or silently degrades into a full re-render per frame.
@@ -15,15 +15,17 @@ This document covers both, plus the reference-stability rules that determine whe
 <AIMarkdown content={chunk} streaming={!done} />
 ```
 
-`streaming` is a plain boolean exposed via `useAIMarkdownRenderState()`. The library itself doesn't change rendering behavior based on the flag — it's a signal for **custom components** to use as they see fit.
+`streaming` is a plain boolean exposed via the `useAIMarkdownState()` narrow hook. The library itself doesn't change rendering behavior based on the flag — it's a signal for **custom components** to use as they see fit.
+
+Since the v2 context split, a `streaming` flip wakes **only `useAIMarkdownState()` subscribers** — components that read other narrow hooks (`useAIMarkdownTheme()`, `useAIMarkdownBehaviors()`, …) no longer re-render on stream start/end. The aggregate `useAIMarkdown()` subscribes to all five contexts and _does_ re-render on every flip; keep it out of per-block components.
 
 ### Common uses
 
 ```tsx
-import { useAIMarkdownRenderState } from '@ai-react-markdown/core';
+import { useAIMarkdownState } from '@ai-react-markdown/core';
 
 function CodeWithCopy({ children }: { children: React.ReactNode }) {
-  const { streaming } = useAIMarkdownRenderState();
+  const { streaming } = useAIMarkdownState();
   return (
     <pre>
       {!streaming && <button>Copy</button>}
@@ -46,7 +48,7 @@ It does **not** alter the parsing pipeline. The same remark/rehype plugins run; 
 
 ## Block-level memoization
 
-When `blockMemoEnabled === true` (the default), the rendering pipeline:
+When `blockMemo` is `true` (the default), the rendering pipeline:
 
 1. Parses the markdown to **mdast** (Markdown AST) and **hast** (HTML AST) in one unified pass.
 2. Splits the hast into per-block units — each top-level child that maps 1:1 with an mdast block (paragraphs, headings, code blocks, lists, tables, …) plus an optional synthetic footnote section.
@@ -74,10 +76,10 @@ The last point is the key win: in a chat document with a footnote at the end, ty
 
 ### Disabling block memoization
 
-Set `config.blockMemoEnabled: false` to opt out:
+Set `blockMemo={false}` to opt out:
 
 ```tsx
-<AIMarkdown content={c} config={{ blockMemoEnabled: false }} />
+<AIMarkdown content={c} blockMemo={false} />
 ```
 
 Output is **structurally** unchanged for standalone use. Performance regresses to a full pipeline pass on every render. Useful for:
@@ -88,19 +90,19 @@ Output is **structurally** unchanged for standalone use. Performance regresses t
 
 In production for streaming workloads: **leave it on**.
 
-> ⚠️ **Cross-chunk coordination requires `blockMemoEnabled: true`.** When the flag is `false`, the renderer takes the legacy path which **does not wire `Registry` through**. Wrapping `<AIMarkdown>` in `<AIMarkdownDocuments>` while keeping `blockMemoEnabled: false` silently degrades — orphan footnote defs aren't protected, references across chunks resolve as empty placeholders, and the aggregate footnote footer doesn't render. If you need cross-chunk behavior, keep block memoization enabled (the default).
+> ⚠️ **Cross-chunk coordination requires `blockMemo` to stay `true`.** When the flag is `false`, the renderer takes the legacy path which **does not wire `Registry` through**. Wrapping `<AIMarkdown>` in `<AIMarkdownDocuments>` while keeping `blockMemo={false}` silently degrades — orphan footnote defs aren't protected, references across chunks resolve as empty placeholders, and the aggregate footnote footer doesn't render. If you need cross-chunk behavior, keep block memoization enabled (the default).
 
 ---
 
 ## Incremental parse (prefix-freeze)
 
-> `config.incrementalParseEnabled` — default `true` since v1.8.0 (opt-in and experimental before that). Effective only when `blockMemoEnabled` is `true`.
+> The `incrementalParse` prop (v1.x: `config.incrementalParseEnabled`) — default `true` since v1.8.0 (opt-in and experimental before that). Effective only when `blockMemo` is `true`.
 
 Block memoization removes re-_render_ work, but `unified.parse` still runs over the **full document** every streaming frame — for long documents the parse/transform stages dominate the per-token budget (see Profiling below). Incremental parsing attacks exactly that: when content grows by appends (the normal streaming shape), the renderer freezes the **stable prefix** of the document at a verified-safe boundary, re-parses only the tail, and splices the previous frame's trees with the tail's.
 
 ```tsx
 // On by default — pass `false` only as an escape hatch:
-<AIMarkdown content={content} streaming={!done} config={{ incrementalParseEnabled: false }} />
+<AIMarkdown content={content} streaming={!done} incrementalParse={false} />
 ```
 
 ### The freeze boundary
@@ -109,7 +111,7 @@ A boundary is the last **confirmed blank line** (its terminating newline must ex
 
 - **Unbalanced raw HTML / open `<!--` comment** — an unclosed container makes rehype-raw reparent every later sibling into it (the v1.5.1 swallow class), so prefix _text_ stability does not imply prefix _output_ stability.
 - **Open `$$` flow math** — remark-math swallows blank lines until the closing delimiter.
-- **List / footnote-definition / definition-list continuation context** — CommonMark lists are not terminated by blank lines (not even two); later indented lines retroactively extend them. With `DEFINITION_LIST` enabled, a `: description` line can additionally claim the paragraph above it **across one blank line**, so a single-blank candidate only settles once the next line is confirmed unable to become a `: ` line.
+- **List / footnote-definition / definition-list continuation context** — CommonMark lists are not terminated by blank lines (not even two); later indented lines retroactively extend them. With the `definitionList` plugin enabled, a `: description` line can additionally claim the paragraph above it **across one blank line**, so a single-blank candidate only settles once the next line is confirmed unable to become a `: ` line.
 - **Reference taint** — micromark resolves reference-ness at parse time: a late `[label]:` (or `[^label]:`) definition retargets earlier literal `[text]`. Every reference-style candidate in the prefix — link, image, and footnote alike — must resolve against a _settled_ definition (one already followed by a blank line). Labels match with micromark's own Unicode case folding; link and footnote labels are separate namespaces.
 
 The splice runs the tail through the same plugin chain and re-bases tail positions into document coordinates. Prefix link/image definitions are re-injected in front of the tail so its references still resolve, then stripped from the output. **Footnotes splice too** (v2): footnote numbering, footer membership/order, and backref ids are whole-document state inside mdast-util-to-hast, so the engine replays the prefix's footnote **event sequence** (definitions and references ×occurrence, in document order) at the tail head — the tail run's handlers rebuild that state exactly and regenerate the complete document footer, whose positions are then rewritten back into document coordinates (injected-def segments map per segment; tail-native ones take the ordinary shift). Sanitize-stripped prefix nodes (HTML comments, `<?…?>`, `<script>`) are handled by a separator-alignment model rather than a fallback. The contract — enforced by a dedicated falsification suite (`spliceEquivalence.test.ts`), not assumed — is that the spliced `{mdast, hast}` is **deep-equal, positions included**, to a full parse of the same content. Block-memo cache keys are position-based, so the two optimizations compose: frozen blocks stay cache hits.
@@ -146,19 +148,21 @@ On the Storybook benchmark payloads, the freeze boundary covers ~73–87% of rea
 
 Block-memoization treats several props as cache dependencies. A new identity on any of them invalidates the entire document cache:
 
-| Prop                       | Internal stabilization                  | Best practice                                         |
-| -------------------------- | --------------------------------------- | ----------------------------------------------------- |
-| `content`                  | None — strings deep-equal by value      | Plain string, no special handling                     |
-| `customComponents`         | `useStableValue` (deep-equal)           | Module scope or `useMemo` for zero-overhead           |
-| `contentPreprocessors`     | `useStableValue` (deep-equal)           | Module scope                                          |
-| `urlTransform`             | None — functions can't be deep-compared | Module scope **required**                             |
-| `sanitizeSchema`           | `useStableValue` (deep-equal)           | Module scope **recommended**                          |
-| `config` / `defaultConfig` | `useStableValue` (deep-equal)           | Module scope                                          |
-| `metadata`                 | None — opaque to library                | Doesn't affect block-memo (lives in separate context) |
+| Prop                   | Stability-firewall policy                      | Best practice                                         |
+| ---------------------- | ---------------------------------------------- | ----------------------------------------------------- |
+| `content`              | Not in the table — strings deep-equal by value | Plain string, no special handling                     |
+| `customComponents`     | `DEEP_EQUAL` backstop                          | Module scope or `useMemo` for zero-overhead           |
+| `contentPreprocessors` | `WARN_ONLY` — function array can't be compared | Module scope **required**                             |
+| `urlTransform`         | `WARN_ONLY` — functions can't be deep-compared | Module scope **required**                             |
+| `sanitizeSchema`       | `DEEP_EQUAL` backstop                          | Module scope **recommended**                          |
+| `enginePlugins`        | `DEEP_EQUAL` (elements are module singletons)  | Module scope                                          |
+| `metadata`             | `PASS_THROUGH` — deliberately exempted         | Doesn't affect block-memo (lives in separate context) |
 
-### The `urlTransform` exception
+(Policies come from core's `useStableRecord` table — the single stabilization boundary; see [Extending via a Sub-package](./extending-via-subpackage.md) for how wrappers reuse it.)
 
-`urlTransform` is **the only** cache dependency without a safety net. Function identity can't be deep-compared (two closures with identical bodies are always non-equal), so an inline `urlTransform={(url) => …}` discards the entire cache on every parent render — and unlike the deep-equal'd props, there's no recovery.
+### The function-valued exception (`urlTransform`, `contentPreprocessors`)
+
+The `WARN_ONLY` rows have no safety net. Function identity can't be deep-compared (two closures with identical bodies are always non-equal), so an inline `urlTransform={(url) => …}` discards the entire cache on every parent render — and unlike the deep-equal'd props, there's no recovery.
 
 ```tsx
 // ⚠️ Effectively disables block memoization for the whole document.
@@ -173,7 +177,7 @@ function MyApp() {
 }
 ```
 
-Development builds emit a `console.warn` after 3+ identity flips on `urlTransform` or `sanitizeSchema`. The warning is dead-code-eliminated in production.
+Development builds emit a rate-limited `console.warn` after 3+ identity flips on a `WARN_ONLY` prop (and after 3+ deep-equal _restores_ on a `DEEP_EQUAL` prop — the caller is inlining objects and paying one comparison per frame). The warnings are dead-code-eliminated in production.
 
 ---
 
@@ -257,8 +261,8 @@ The first two are unavoidable per-frame work; the third is what block memoizatio
 
 If profiling shows `<AIMarkdown>` as the bottleneck:
 
-1. Check that `customComponents`, `urlTransform`, `sanitizeSchema`, `config` are all module-scope or stable. Inline props are the most common cause of perf regressions.
-2. Try `blockMemoEnabled: false` to isolate whether the issue is in memoization or upstream.
+1. Check that `customComponents`, `urlTransform`, `sanitizeSchema`, `enginePlugins`, `contentPreprocessors` are all module-scope or stable. Inline props are the most common cause of perf regressions.
+2. Try `blockMemo={false}` to isolate whether the issue is in memoization or upstream.
 3. Profile with React DevTools — a tree with most blocks under "Did not render" is healthy.
 
 ### Built-in stage timing (dev builds only)
@@ -269,7 +273,7 @@ entry per pipeline stage per content change, named:
 
 ```
 ai-markdown:stage:scan       # incremental-parse boundary detector (only when
-                             # incrementalParseEnabled routes through the engine)
+                             # incrementalParse routes through the engine)
 ai-markdown:stage:parse      # unified.parse — full document, or TAIL-ONLY when
                              # incremental parsing spliced this frame
 ai-markdown:stage:transform  # remark/rehype transformer run (same full/tail split)
@@ -300,7 +304,7 @@ one boolean check per stage.
 
 ### Validating output equivalence
 
-If you suspect `blockMemoEnabled: true` is producing different output than `false`, the library's test suite includes a `byteEquivalence.test.tsx` harness that asserts byte-identical HTML across every plugin permutation. Failures should be reported as bugs.
+If you suspect `blockMemo` enabled is producing different output than disabled, the library's test suite includes a `byteEquivalence.test.tsx` harness that asserts byte-identical HTML across every plugin permutation. Failures should be reported as bugs.
 
 ---
 
@@ -311,11 +315,8 @@ If you suspect `blockMemoEnabled: true` is producing different output than `fals
 Already covered above for `urlTransform`. The same anti-pattern applies to any prop with reference identity:
 
 ```tsx
-import AIMarkdown, {
-  type AIMarkdownCustomComponents,
-  type AIMDContentPreprocessor,
-  type AIMarkdownRenderConfig,
-} from '@ai-react-markdown/core';
+import AIMarkdown, { type AIMarkdownCustomComponents, type AIMDContentPreprocessor } from '@ai-react-markdown/core';
+import { highlight, pangu } from '@ai-react-markdown/core/plugins';
 
 // ⚠️ All of these are new objects/functions every render.
 function Bad({ content }: { content: string }) {
@@ -330,7 +331,7 @@ function Bad({ content }: { content: string }) {
         ),
       }}
       contentPreprocessors={[(c) => c.trim()]}
-      config={{ blockMemoEnabled: true }}
+      enginePlugins={[highlight, pangu]}
     />
   );
 }
@@ -345,11 +346,16 @@ const trim: AIMDContentPreprocessor = (c) => c.trim();
 
 const COMPONENTS: AIMarkdownCustomComponents = { a: Link };
 const PREPROCESSORS: AIMDContentPreprocessor[] = [trim];
-const CONFIG: Partial<AIMarkdownRenderConfig> = { blockMemoEnabled: true };
+const PLUGINS = [highlight, pangu];
 
 function Good({ content }: { content: string }) {
   return (
-    <AIMarkdown content={content} customComponents={COMPONENTS} contentPreprocessors={PREPROCESSORS} config={CONFIG} />
+    <AIMarkdown
+      content={content}
+      customComponents={COMPONENTS}
+      contentPreprocessors={PREPROCESSORS}
+      enginePlugins={PLUGINS}
+    />
   );
 }
 ```
@@ -362,7 +368,7 @@ If something feels slow, the instinct may be to disable block-memo to "see if it
 
 - Disabling it makes things **slower**, not faster, for streaming content.
 - The actual culprit is usually a non-stable prop reference (above).
-- Disable `blockMemoEnabled` only for debugging correctness issues.
+- Disable `blockMemo` only for debugging correctness issues.
 
 ### Building a giant single-block document
 

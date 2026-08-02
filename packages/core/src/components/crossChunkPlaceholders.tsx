@@ -12,7 +12,7 @@
  * @module components/crossChunkPlaceholders
  */
 import { type ReactNode, isValidElement, useCallback, useContext, useSyncExternalStore } from 'react';
-import { useAIMarkdownRenderState } from '../context';
+import { useAIMarkdownDocument } from '../context';
 import { useDocumentRegistry } from './AIMarkdownDocuments';
 import { ChunkSymbolContext } from './chunkSymbolContext';
 import { CrossChunkUrlContext } from './crossChunkUrlContext';
@@ -57,14 +57,14 @@ function coerceLocalOccurrence(v: number | string | undefined): number | null {
 
 export function FootnoteSupNumber({ label, localOccurrence: localOccurrenceRaw }: FootnoteSupProps): ReactNode {
   const localOccurrence = coerceLocalOccurrence(localOccurrenceRaw);
-  const { documentId, documentIdExplicit, clobberPrefix } = useAIMarkdownRenderState();
+  const { documentId, documentIdExplicit, clobberPrefix } = useAIMarkdownDocument();
   // Thread `documentIdExplicit` exactly like `MarkdownContent` does: a chunk
   // with an auto-generated id must NOT open a registry even if a raw/crafted
   // placeholder tag for it survives into hast inside <AIMarkdownDocuments>.
   // Without this, such a tag would create an orphan registry shell that has
   // no paired registerChunk, so eviction never fires — a leak on the path
   // this whole change exists to keep standalone.
-  const registry = useDocumentRegistry(documentId, documentIdExplicit ?? false);
+  const registry = useDocumentRegistry(documentId, documentIdExplicit);
   const chunkSym = useContext(ChunkSymbolContext);
   // Subscribe identity stabilised across renders (see top of file).
   // useSyncExternalStore's selector must return an `Object.is`-stable value
@@ -135,10 +135,10 @@ function literalLink(rt: RefType, label: string, children: ReactNode): string {
 }
 
 export function CrossChunkLink({ label, referenceType, children }: CrossChunkLinkProps): ReactNode {
-  const { documentId, documentIdExplicit } = useAIMarkdownRenderState();
+  const { documentId, documentIdExplicit } = useAIMarkdownDocument();
   // See FootnoteSupNumber: gate on explicitness so an auto-id chunk never
   // opens a registry shell via a stray placeholder tag.
-  const registry = useDocumentRegistry(documentId, documentIdExplicit ?? false);
+  const registry = useDocumentRegistry(documentId, documentIdExplicit);
   const policy = useContext(CrossChunkUrlContext);
   // Subscription pattern matches `FootnoteSupNumber`: useSyncExternalStore
   // wakes us up on any registry mutation; the actual def is read directly
@@ -197,10 +197,10 @@ function literalImage(rt: RefType, label: string, alt: string): string {
 }
 
 export function CrossChunkImage({ label, referenceType, alt = '' }: CrossChunkImageProps): ReactNode {
-  const { documentId, documentIdExplicit } = useAIMarkdownRenderState();
+  const { documentId, documentIdExplicit } = useAIMarkdownDocument();
   // See FootnoteSupNumber: gate on explicitness so an auto-id chunk never
   // opens a registry shell via a stray placeholder tag.
-  const registry = useDocumentRegistry(documentId, documentIdExplicit ?? false);
+  const registry = useDocumentRegistry(documentId, documentIdExplicit);
   const policy = useContext(CrossChunkUrlContext);
   // Same subscription-only useSyncExternalStore pattern as CrossChunkLink —
   // see that component for the rationale.

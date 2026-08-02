@@ -11,7 +11,10 @@
  */
 import { readdirSync, readFileSync } from 'node:fs';
 
-const offenders = readdirSync('dist')
+// Recursive: subpath entries (e.g. dist/plugins/) must satisfy the same
+// invariant as the root entry.
+const offenders = readdirSync('dist', { recursive: true })
+  .map(String)
   .filter((f) => f.endsWith('.js') || f.endsWith('.cjs'))
   .filter((f) => readFileSync(`dist/${f}`, 'utf8').includes('process.env'));
 

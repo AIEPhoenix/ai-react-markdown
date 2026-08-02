@@ -27,7 +27,8 @@ Most readers come in with a task, not a curriculum. Pick the row that matches wh
 | **Retheming colors, spacing, fonts**                                        | [Design tokens](./design-tokens.md)                          | [Custom typography](./custom-typography.md) (only if tokens aren't enough)                                                                                        |
 | **Replacing element renderers (custom `<a>`, `<pre>`, …)**                  | [Custom components](./custom-components.md)                  | [Metadata context](./metadata-context.md) (for callbacks)                                                                                                         |
 | **Doing a security review / allowing private URL schemes**                  | [URL sanitization](./url-sanitization.md)                    | [Architecture](./architecture.md) (for the pipeline picture)                                                                                                      |
-| **Adding typed config / metadata fields**                                   | [TypeScript generics](./typescript-generics.md)              | [Extending via a sub-package](./extending-via-subpackage.md) (if you'll publish it)                                                                               |
+| **Adding typed metadata / behavior-group fields**                           | [TypeScript generics](./typescript-generics.md)              | [Extending via a sub-package](./extending-via-subpackage.md) (if you'll publish it)                                                                               |
+| **Upgrading from 1.x**                                                      | [Migrating from 1.x to 2.0](./migrating-to-v2.md)            | [TypeScript generics](./typescript-generics.md)                                                                                                                   |
 | **Transforming raw markdown before render**                                 | [Content preprocessors](./content-preprocessors.md)          | —                                                                                                                                                                 |
 | **Building your own `@yourorg/ai-react-markdown-…` integration**            | [Extending via a sub-package](./extending-via-subpackage.md) | [Architecture](./architecture.md), [TypeScript generics](./typescript-generics.md)                                                                                |
 | **Debugging unexpected render output**                                      | [Architecture](./architecture.md)                            | [Streaming & performance](./streaming-and-performance.md) (cache invariants)                                                                                      |
@@ -52,9 +53,10 @@ If none of these matches, the full topic index below covers every surface.
 | 7   | [Metadata context](./metadata-context.md)                    | Pass arbitrary data (callbacks, ids, app state) to deeply nested custom components without prop drilling     |
 | 8   | [Streaming & performance](./streaming-and-performance.md)    | Reason about block-level memoization, `streaming`-aware custom components, and the cache-flush footguns      |
 | 9   | [Streaming cursor](./streaming-cursor.md)                    | Show a "still generating" indicator after the last streamed character — visible through token stalls         |
-| 10  | [TypeScript generics](./typescript-generics.md)              | Extend `AIMarkdownRenderConfig` and `AIMarkdownMetadata` with your own typed fields                          |
+| 10  | [TypeScript generics](./typescript-generics.md)              | Type the metadata generic and the wrapper narrow-hook pattern for behavior groups                            |
 | 11  | [Extending via a sub-package](./extending-via-subpackage.md) | Build your own `@yourorg/ai-react-markdown-<integration>` package, following the Mantine model               |
 | 12  | [Architecture overview](./architecture.md)                   | Mental model: render pipeline, context layering, registry design                                             |
+| 13  | [Migrating from 1.x to 2.0](./migrating-to-v2.md)            | The complete v2.0.0 breaking-change map — every removed symbol with its one-to-one destination               |
 | ★   | [Streaming chat: end-to-end](./streaming-chat-example.md)    | Copy-runnable example — SSE backend, React state, Next.js App Router                                         |
 | ★   | [CJK typography](./cjk-typography.md)                        | Chinese / Japanese / Korean text — line breaking, pangu spacing, font stack                                  |
 | ★   | [Release highlights](./release-highlights.md)                | What's notable in each version — distilled from the commit log                                               |
@@ -70,17 +72,17 @@ The documents are independent — read them in any order. Cross-references are i
 
 The library follows semver:
 
-| Surface                                                                                                        | Stability under minor versions                                                    |
-| -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| Component props (`AIMarkdownProps`, `MantineAIMarkdownProps`)                                                  | Stable. Additions are non-breaking; renames/removals require a major bump         |
-| Hook signatures (`useAIMarkdownRenderState`, `useAIMarkdownMetadata`, `useDocumentRegistry`, `useStableValue`) | Stable                                                                            |
-| `AIMarkdownRenderConfig` field **names** and **roles**                                                         | Stable                                                                            |
-| `AIMarkdownRenderConfig` **default values**                                                                    | May shift under minor bumps as defaults evolve — override what you need locked    |
-| CSS custom property **names** (e.g. `--aim-spacing-md`)                                                        | Stable                                                                            |
-| CSS custom property **default values**                                                                         | May shift under minor bumps as the visual design evolves                          |
-| `UrlTransform`, `SanitizeSchema` types                                                                         | Track upstream `react-markdown` / `rehype-sanitize`; may change with their majors |
-| `Registry` interface                                                                                           | Stable read-only surface; mutator methods are intentionally not exported          |
-| Internal byte-for-byte HTML output                                                                             | Not stable — never assert on raw HTML; use semantic queries                       |
+| Surface                                                                                                              | Stability under minor versions                                                    |
+| -------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Component props (`AIMarkdownProps`, `MantineAIMarkdownProps`)                                                        | Stable. Additions are non-breaking; renames/removals require a major bump         |
+| Hook signatures (the five narrow hooks, `useAIMarkdown`, `useDocumentRegistry`, `useStableValue`, `useStableRecord`) | Stable                                                                            |
+| Flat prop **names** and **roles** (incl. the sealed plugin names)                                                    | Stable                                                                            |
+| Flat prop **default values**                                                                                         | May shift under minor bumps as defaults evolve — override what you need locked    |
+| CSS custom property **names** (e.g. `--aim-spacing-md`)                                                              | Stable                                                                            |
+| CSS custom property **default values**                                                                               | May shift under minor bumps as the visual design evolves                          |
+| `UrlTransform`, `SanitizeSchema` types                                                                               | Track upstream `react-markdown` / `rehype-sanitize`; may change with their majors |
+| `Registry` interface                                                                                                 | Stable read-only surface; mutator methods are intentionally not exported          |
+| Internal byte-for-byte HTML output                                                                                   | Not stable — never assert on raw HTML; use semantic queries                       |
 
 When in doubt, pin your overrides explicitly rather than relying on defaults.
 
@@ -100,7 +102,7 @@ When in doubt, pin your overrides explicitly rather than relying on defaults.
 If you find a documented API that doesn't behave as described, or a customization recipe that breaks at a version boundary, please open an issue with:
 
 - the document name and section,
-- the package version (`@ai-react-markdown/core@1.4.x` …),
+- the package version (`@ai-react-markdown/core@2.0.x` …),
 - a minimal reproduction,
 - the observed vs expected behavior.
 

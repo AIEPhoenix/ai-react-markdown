@@ -3,13 +3,13 @@
  *
  * Wraps the local `Markdown` (a vendored fork of react-markdown — see
  * `./markdown/`) with a curated set of remark and rehype plugins for GFM,
- * math/LaTeX, emoji, CJK support, and configurable extra syntax extensions
- * and display optimizations. Plugin selection is driven by the
- * {@link AIMarkdownRenderConfig} from context.
+ * math/LaTeX, emoji, CJK support, and selectable extra syntax extensions
+ * and display optimizations. Plugin selection is driven by the resolved
+ * `enginePlugins` internal prop (sealed plugin objects).
  *
  * ## Render strategy
  *
- * Two render paths gated by `config.blockMemoEnabled` (default `true`):
+ * Two render paths gated by the resolved `blockMemo` value (default `true`):
  *
  * - **Block-memo path** (`BlockMemoizedRenderer`): the rendered hast is cut
  *   into per-block units and memoized across frames by source identity
@@ -33,8 +33,9 @@
  * For the cache to be effective, props that influence rendered output must
  * be referentially stable across renders. This component stabilizes its own
  * plugin arrays via `useMemo`. The outer `<AIMarkdown>` stabilizes
- * `customComponents` via `useStableValue`. If you wire `<AIMarkdownContent>`
- * directly, ensure `customComponents` is memoized at the call site.
+ * `customComponents` at its stability firewall. If you wire
+ * `<AIMarkdownContent>` directly, ensure `customComponents` is memoized at
+ * the call site.
  *
  * @module components/MarkdownContent
  */
@@ -50,8 +51,9 @@ import { buildBlocks, createCache, renderBlocksWithCache, type Cache, type PostO
 import { buildCoreRehypePlugins, buildCoreRemarkPlugins, buildCoreRemarkRehypeOptions } from './pluginChain';
 import { advanceIncrementalParse, type IncrementalParseState } from './incrementalParse';
 import { measureStage } from './devStageTimings';
-import { useAIMarkdownRenderState } from '../context';
-import { AIMarkdownCustomComponents, AIMarkdownRenderExtraSyntax } from '../defs';
+import { useAIMarkdownDocument } from '../context';
+import { AIMarkdownCustomComponents } from '../defs';
+import type { AIMarkdownEnginePlugin } from '../plugins/defs';
 import { collectDefLabels, createDefLabelScanner, type DefLabelScanner } from './collectDefLabels';
 import { useDocumentRegistry, usePreserveOrphanReferences } from './AIMarkdownDocuments';
 import type { RegistryInternal } from './documentRegistry';
@@ -104,6 +106,16 @@ interface AIMarkdownContentProps {
    * tag allowlist.
    */
   sanitizeSchema?: SanitizeSchema;
+  // ── Resolved engine values ──
+  // Passed field-by-field from `<AIMarkdown>`'s single resolution point.
+  /** Renderer dispatch: block-memo path (`true`) vs legacy path (`false`). */
+  blockMemo: boolean;
+  /** Incremental (prefix-freeze) parse gate. */
+  incrementalParse: boolean;
+  /** Orphan-reference policy (standalone mode; `<AIMarkdownDocuments>` overrides via its own chain). */
+  preserveOrphanReferences: boolean;
+  /** Resolved sealed-plugin selection (sanitized; absent prop already defaulted upstream). */
+  enginePlugins: readonly AIMarkdownEnginePlugin[];
 }
 
 interface RendererProps {
@@ -113,6 +125,17 @@ interface RendererProps {
   rehypePlugins: RehypePlugins;
   remarkRehypeOptions: RemarkRehypeOptions;
   urlTransform: MarkdownOptions['urlTransform'];
+  /** Incremental-parse gate (resolved). */
+  incrementalParse: boolean;
+  /** Resolved orphan-reference policy (standalone tier of the override chain). */
+  preserveOrphanReferences: boolean;
+  /**
+   * Whether the definition-list plugin is in the active chain. Feeds the
+   * boundary scanner's syntax awareness (`computeFreezeBoundary`'s
+   * `defListEnabled`) — the scanner must know the boundary rules of every
+   * active multiline construct.
+   */
+  defListEnabled: boolean;
   /** Resolved sanitize schema. Propagated to cross-chunk placeholders via
    *  {@link CrossChunkUrlContext} so they can apply the same `protocols.*`
    *  allowlist that `rehype-sanitize` applies to in-tree `<a>`/`<img>` —
@@ -122,7 +145,7 @@ interface RendererProps {
 }
 
 /**
- * Block-memo render path. Mounted when `config.blockMemoEnabled === true`.
+ * Block-memo render path. Mounted when the resolved `blockMemo` is `true`.
  * Encapsulates the `useRef`-backed cache, G3 sync flush, and the three-stage
  * unified pipeline (parse → transform → buildBlocks → renderBlocksWithCache).
  */
@@ -135,6 +158,9 @@ const BlockMemoizedRenderer = memo(
     remarkRehypeOptions,
     urlTransform,
     sanitizeSchema: usedSanitizeSchema,
+    incrementalParse,
+    preserveOrphanReferences,
+    defListEnabled,
   }: RendererProps) => {
     // Vendored Markdown options that AIMarkdown does not currently expose. They
     // are tracked in the G3 flush below so the cache stays correct if any of
@@ -149,7 +175,7 @@ const BlockMemoizedRenderer = memo(
     // ─── Cross-chunk coordination wiring (Phase 11) ──────────────────────────
     // All effects below are NO-OP when `registry === null` (standalone mode
     // without `<AIMarkdownDocuments>`): the gating is on `registry` truthiness.
-    const { documentId, documentIdExplicit, clobberPrefix, config } = useAIMarkdownRenderState();
+    const { documentId, documentIdExplicit, clobberPrefix } = useAIMarkdownDocument();
     const reactId = useId();
     // The runtime value behind `useDocumentRegistry` is always a
     // `RegistryInternal` (see `createRegistry`); the public hook narrows
@@ -158,7 +184,7 @@ const BlockMemoizedRenderer = memo(
     // widen back to `RegistryInternal` once at the top so subsequent
     // mutator calls (`registerChunk`, `releaseSymbol`, `contributeChunkData`)
     // type-check without scattered `as` casts.
-    const registry = useDocumentRegistry(documentId, documentIdExplicit ?? false) as RegistryInternal | null;
+    const registry = useDocumentRegistry(documentId, documentIdExplicit) as RegistryInternal | null;
     // Allocate-and-publish state: the Symbol for THIS chunk PAIRED with the
     // registry it was allocated from. Modelling as state — instead of a
     // ref — makes both fields real deps for downstream effects, so React's
@@ -394,7 +420,7 @@ const BlockMemoizedRenderer = memo(
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [registry, registry?.version, content, ownLabels]);
 
-    const effectivePreserveOrphan = usePreserveOrphanReferences(config.preserveOrphanReferences);
+    const effectivePreserveOrphan = usePreserveOrphanReferences(preserveOrphanReferences);
     // In coordinated client renders, def-only chunks may be referenced by
     // other chunks even when visible orphan rendering is disabled. Once this
     // chunk has a Symbol, keep real defs in the synthetic footer so
@@ -469,7 +495,7 @@ const BlockMemoizedRenderer = memo(
       // has no next frame — routing through the engine would pay a dead
       // O(document) line-lex per request. Hydration is unaffected (the
       // client's first frame rebuilds from null either way).
-      if (!config.incrementalParseEnabled || typeof window === 'undefined') {
+      if (!incrementalParse || typeof window === 'undefined') {
         incrementalStateRef.current = null;
         // Dev-only stage telemetry (`ai-markdown:stage:*` performance
         // measures; no-op in production). Wraps only the stage calls — the
@@ -498,7 +524,7 @@ const BlockMemoizedRenderer = memo(
           // phantom label sets are deliberately NOT here: their churn tracks
           // the suffix (always re-parsed with the tail), never the prefix.
           depsKey: [remarkPlugins, rehypePlugins, remarkRehypeOptions, handlers, preserveForBodyHarvest, documentId],
-          defListEnabled: config.extraSyntaxSupported.includes(AIMarkdownRenderExtraSyntax.DEFINITION_LIST),
+          defListEnabled,
           phantomSuffix,
           measure: measureHere,
         });
@@ -536,8 +562,8 @@ const BlockMemoizedRenderer = memo(
       handlers,
       preserveForBodyHarvest,
       documentId,
-      config.incrementalParseEnabled,
-      config.extraSyntaxSupported,
+      incrementalParse,
+      defListEnabled,
       measureHere,
     ]);
 
@@ -756,7 +782,7 @@ const BlockMemoizedRenderer = memo(
 BlockMemoizedRenderer.displayName = 'BlockMemoizedRenderer';
 
 /**
- * Legacy render path. Mounted when `config.blockMemoEnabled === false`.
+ * Legacy render path. Mounted when the resolved `blockMemo` is `false`.
  * Calls the vendored `<Markdown>` directly — every render runs the full
  * pipeline end-to-end with no cross-frame reuse. Output is byte-identical
  * to the block-memo path in standalone mode (validated by
@@ -764,9 +790,9 @@ BlockMemoizedRenderer.displayName = 'BlockMemoizedRenderer';
  *
  * **Cross-chunk coordination (Phase 11) is NOT wired through this path.**
  * Wrapping `<AIMarkdown>` with `<AIMarkdownDocuments>` while keeping
- * `blockMemoEnabled: false` silently runs without coordination — orphan
+ * `blockMemo: false` silently runs without coordination — orphan
  * defs are not protected, refs across chunks don't resolve. If you need
- * cross-chunk behavior, keep `blockMemoEnabled: true` (the default).
+ * cross-chunk behavior, keep `blockMemo: true` (the default).
  */
 const LegacyRenderer = memo(
   // `sanitizeSchema` is accepted (and ignored) here purely for prop-shape
@@ -798,12 +824,22 @@ LegacyRenderer.displayName = 'LegacyRenderer';
 
 /**
  * Internal component that assembles the remark/rehype plugin chain based on
- * the current render config, then dispatches to either the block-memo
- * renderer or the legacy renderer based on `config.blockMemoEnabled`.
+ * the resolved engine values (received as internal props from
+ * `<AIMarkdown>`'s single resolution point), then dispatches to either the
+ * block-memo renderer or the legacy renderer based on `blockMemo`.
  */
 const AIMarkdownContent = memo(
-  ({ content, customComponents, urlTransform, sanitizeSchema: customSanitizeSchema }: AIMarkdownContentProps) => {
-    const { config, clobberPrefix } = useAIMarkdownRenderState();
+  ({
+    content,
+    customComponents,
+    urlTransform,
+    sanitizeSchema: customSanitizeSchema,
+    blockMemo,
+    incrementalParse,
+    preserveOrphanReferences,
+    enginePlugins,
+  }: AIMarkdownContentProps) => {
+    const { clobberPrefix } = useAIMarkdownDocument();
     // Dev-mode flip warnings live in the parent `<AIMarkdown>` (`./../index.tsx`)
     // — they MUST run BEFORE `useStableValue` collapses identity churn, otherwise
     // an inline-but-deep-equal `sanitizeSchema` would be silently stabilized and
@@ -815,7 +851,7 @@ const AIMarkdownContent = memo(
     // object every render — important for the rehypePlugins memo below.
     const usedSanitizeSchema = customSanitizeSchema ?? sanitizeSchema;
 
-    const enableDefinitionList = config.extraSyntaxSupported.includes(AIMarkdownRenderExtraSyntax.DEFINITION_LIST);
+    const enableDefinitionList = enginePlugins.some((plugin) => plugin.name === 'definitionList');
 
     const usedComponents = useMemo(() => {
       return customComponents ? { ...DefaultCustomComponents, ...customComponents } : DefaultCustomComponents;
@@ -828,10 +864,7 @@ const AIMarkdownContent = memo(
     // Chain assembly lives in pluginChain.ts — the single source shared with
     // the splice-equivalence arbiter and the prefixFreeze experiment harness,
     // so verification suites can never drift from the shipped order.
-    const remarkPlugins = useMemo<RemarkPlugins>(
-      () => buildCoreRemarkPlugins(config.extraSyntaxSupported, config.displayOptimizeAbilities),
-      [config.extraSyntaxSupported, config.displayOptimizeAbilities]
-    );
+    const remarkPlugins = useMemo<RemarkPlugins>(() => buildCoreRemarkPlugins(enginePlugins), [enginePlugins]);
 
     const rehypePlugins = useMemo<RehypePlugins>(
       () => buildCoreRehypePlugins(usedSanitizeSchema, clobberPrefix),
@@ -843,7 +876,7 @@ const AIMarkdownContent = memo(
       [enableDefinitionList]
     );
 
-    const Renderer = config.blockMemoEnabled ? BlockMemoizedRenderer : LegacyRenderer;
+    const Renderer = blockMemo ? BlockMemoizedRenderer : LegacyRenderer;
     return (
       <Renderer
         content={content}
@@ -853,6 +886,9 @@ const AIMarkdownContent = memo(
         remarkRehypeOptions={remarkRehypeOptions}
         urlTransform={urlTransform}
         sanitizeSchema={usedSanitizeSchema}
+        incrementalParse={incrementalParse}
+        preserveOrphanReferences={preserveOrphanReferences}
+        defListEnabled={enableDefinitionList}
       />
     );
   }

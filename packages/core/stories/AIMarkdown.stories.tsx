@@ -23,16 +23,22 @@ const meta: Meta<typeof AIMarkdown> = {
     fontSize: { control: 'text', description: 'Base font size (e.g. `"0.9375rem"`, `"14px"`, or a number for px).' },
     variant: { control: 'select', options: ['default'], description: 'Typography variant name.' },
     colorScheme: { table: { disable: true } },
-    config: {
-      control: 'object',
-      description: 'Partial render config, deep-merged with defaults. Array values are replaced entirely.',
+    // Behaviors-system flat props.
+    blockMemo: { control: 'boolean', description: 'Block-level memoization (output-invariant). Default `true`.' },
+    incrementalParse: {
+      control: 'boolean',
+      description: 'Incremental (prefix-freeze) parsing for streaming appends (output-invariant). Default `true`.',
     },
+    preserveOrphanReferences: {
+      control: 'boolean',
+      description: 'Protect orphan reference definitions in incomplete/streaming documents. Default `true`.',
+    },
+    enginePlugins: { table: { disable: true } },
     metadata: { control: 'object', description: 'Arbitrary data passed to custom components via context.' },
     contentPreprocessors: { table: { disable: true } },
     customComponents: { table: { disable: true } },
     Typography: { table: { disable: true } },
     ExtraStyles: { table: { disable: true } },
-    defaultConfig: { table: { disable: true } },
   },
   decorators: [withThemedBackground],
   render: (args, context) => {

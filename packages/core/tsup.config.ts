@@ -38,7 +38,7 @@ export default defineConfig([
   // The build:js script rm -rf's dist BEFORE tsup starts instead.
   {
     ...shared,
-    entry: ['src/index.tsx'],
+    entry: { index: 'src/index.tsx', 'plugins/index': 'src/plugins/index.ts' },
     dts: true,
     clean: false,
     env: { NODE_ENV: 'production' },
@@ -48,7 +48,7 @@ export default defineConfig([
   // condition (Vite dev, webpack/Next in development mode).
   {
     ...shared,
-    entry: { 'index.dev': 'src/index.tsx' },
+    entry: { 'index.dev': 'src/index.tsx', 'plugins/index.dev': 'src/plugins/index.ts' },
     dts: false,
     clean: false, // see above — never clean from inside the array
     env: { NODE_ENV: 'development' },

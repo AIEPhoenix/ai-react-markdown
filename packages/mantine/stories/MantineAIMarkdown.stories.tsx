@@ -14,19 +14,28 @@ const meta: Meta<typeof MantineAIMarkdown> = {
     streaming: { control: 'boolean', description: 'Whether content is actively being streamed.' },
     fontSize: { control: 'text', description: 'Base font size (e.g. `"0.9375rem"`, `"14px"`, or a number for px).' },
     colorScheme: { table: { disable: true } },
-    config: {
+    // Behaviors-system flat props.
+    blockMemo: { control: 'boolean', description: 'Block-level memoization (output-invariant). Default `true`.' },
+    incrementalParse: {
+      control: 'boolean',
+      description: 'Incremental (prefix-freeze) parsing for streaming appends (output-invariant). Default `true`.',
+    },
+    preserveOrphanReferences: {
+      control: 'boolean',
+      description: 'Protect orphan reference definitions in incomplete/streaming documents. Default `true`.',
+    },
+    codeBlock: {
       control: 'object',
       description:
-        'Partial render config, deep-merged with defaults. ' +
-        'Includes `codeBlock.defaultExpanded`, `codeBlock.autoDetectUnknownLanguage`, ' +
-        '`extraSyntaxSupported`, and `displayOptimizeAbilities`.',
+        'Code-block behavior group (`defaultExpanded`, `autoDetectUnknownLanguage`). ' +
+        'Replaces atomically; omitted fields fall to the shipped defaults.',
     },
+    enginePlugins: { table: { disable: true } },
     metadata: { control: 'object', description: 'Arbitrary data passed to custom components via context.' },
     contentPreprocessors: { table: { disable: true } },
     customComponents: { table: { disable: true } },
     Typography: { table: { disable: true } },
     ExtraStyles: { table: { disable: true } },
-    defaultConfig: { table: { disable: true } },
   },
   decorators: [withMantineProvider],
   render: (args) => <MantineAIMarkdown {...args} />,

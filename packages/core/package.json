@@ -33,6 +33,13 @@
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "plugins": [
+        "./dist/plugins/index.d.ts"
+      ]
+    }
+  },
   "files": [
     "dist"
   ],
@@ -48,6 +55,18 @@
       },
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./plugins": {
+      "types": {
+        "import": "./dist/plugins/index.d.ts",
+        "require": "./dist/plugins/index.d.cts"
+      },
+      "development": {
+        "import": "./dist/plugins/index.dev.js",
+        "require": "./dist/plugins/index.dev.cjs"
+      },
+      "import": "./dist/plugins/index.js",
+      "require": "./dist/plugins/index.cjs"
     },
     "./typography/*.css": "./dist/typography/*.css"
   },

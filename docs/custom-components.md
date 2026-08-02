@@ -77,10 +77,10 @@ For full interactivity (persist toggles to state), pair this with [Metadata Cont
 ### Custom code block with copy button (core, no Mantine)
 
 ```tsx
-import { useAIMarkdownRenderState } from '@ai-react-markdown/core';
+import { useAIMarkdownState } from '@ai-react-markdown/core';
 
 function CopyableCode({ children, className }: { children: React.ReactNode; className?: string }) {
-  const { streaming } = useAIMarkdownRenderState();
+  const { streaming } = useAIMarkdownState();
   const text = String(children).replace(/\n$/, '');
   return (
     <pre className={className}>
@@ -187,10 +187,10 @@ const components: AIMarkdownCustomComponents = {
 
 ### Generating ids that share the document namespace
 
-The library namespaces every clobberable attribute (`id="…"` / `href="#…"`) with a per-document prefix so footnote anchors and hash hrefs don't collide across `<AIMarkdown>` instances. If your custom component emits its own ids — e.g. anchor links on headings — you should use the same prefix instead of inventing one. Read `clobberPrefix` from the render state:
+The library namespaces every clobberable attribute (`id="…"` / `href="#…"`) with a per-document prefix so footnote anchors and hash hrefs don't collide across `<AIMarkdown>` instances. If your custom component emits its own ids — e.g. anchor links on headings — you should use the same prefix instead of inventing one. Read `clobberPrefix` from the document context:
 
 ```tsx
-import { useAIMarkdownRenderState } from '@ai-react-markdown/core';
+import { useAIMarkdownDocument } from '@ai-react-markdown/core';
 
 function slugify(s: string) {
   return s
@@ -201,7 +201,7 @@ function slugify(s: string) {
 
 const components: AIMarkdownCustomComponents = {
   h2: ({ children }) => {
-    const { clobberPrefix } = useAIMarkdownRenderState();
+    const { clobberPrefix } = useAIMarkdownDocument();
     const text = String(children);
     const id = `${clobberPrefix}heading-${slugify(text)}`;
     return (
@@ -216,7 +216,7 @@ const components: AIMarkdownCustomComponents = {
 };
 ```
 
-The exact byte form of `clobberPrefix` (long ids get MurmurHash3-shortened to keep HTML compact) is not part of the stability contract — always read it from render state, never recompute from `documentId`.
+The exact byte form of `clobberPrefix` (long ids get MurmurHash3-shortened to keep HTML compact) is not part of the stability contract — always read it from `useAIMarkdownDocument()`, never recompute from `documentId`.
 
 ---
 
@@ -231,17 +231,17 @@ Custom components are called by `react-markdown` per node. They can use Hooks li
 const components: AIMarkdownCustomComponents = {
   a: ({ href }) => {
     if (!href) return null;
-    const state = useAIMarkdownRenderState(); // Hook after conditional return
-    return <a href={href}>{state.colorScheme}</a>;
+    const { colorScheme } = useAIMarkdownTheme(); // Hook after conditional return
+    return <a href={href}>{colorScheme}</a>;
   },
 };
 
 // ✅ Hooks first, conditional later.
 const components: AIMarkdownCustomComponents = {
   a: ({ href }) => {
-    const state = useAIMarkdownRenderState();
+    const { colorScheme } = useAIMarkdownTheme();
     if (!href) return null;
-    return <a href={href}>{state.colorScheme}</a>;
+    return <a href={href}>{colorScheme}</a>;
   },
 };
 ```

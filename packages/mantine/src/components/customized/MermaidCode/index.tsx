@@ -4,7 +4,8 @@ import React, { memo, useEffect, useRef, useState, useCallback } from 'react';
 import { CodeHighlightControl, CodeHighlightTabs } from '@mantine/code-highlight';
 import { ActionIcon, CopyButton, Flex, Tooltip } from '@mantine/core';
 import mermaid from 'mermaid';
-import { useMantineAIMarkdownRenderState } from '../../../hooks/useMantineAIMarkdownRenderState';
+import { useAIMarkdownState, useAIMarkdownTheme } from '@ai-react-markdown/core';
+import { useMantineCodeBlockOptions } from '../../../hooks/useMantineCodeBlockOptions';
 import './styles.scss';
 
 /** Static `<pre>` style for the mermaid container. */
@@ -142,9 +143,10 @@ const handleViewSVGInNewWindow = (svgElement: SVGElement | null | undefined, isD
  * @param props.code - Raw mermaid diagram source code to render.
  */
 const MantineAIMMermaidCode = memo((props: { code: string }) => {
-  const renderState = useMantineAIMarkdownRenderState();
-  const isDark = renderState.colorScheme === 'dark';
-  const streaming = renderState.streaming;
+  const { colorScheme, fontSize } = useAIMarkdownTheme();
+  const { streaming } = useAIMarkdownState();
+  const { defaultExpanded } = useMantineCodeBlockOptions();
+  const isDark = colorScheme === 'dark';
 
   const ref = useRef<HTMLPreElement>(null);
   const renderVersionRef = useRef(0);
@@ -298,7 +300,7 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
       {showSourceFallback && (
         <CodeHighlightTabs
           mb={15}
-          fz={renderState.fontSize}
+          fz={fontSize}
           w="100%"
           code={[
             {
@@ -307,7 +309,7 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
               language: 'mermaid',
             },
           ]}
-          defaultExpanded={renderState.config.codeBlock.defaultExpanded}
+          defaultExpanded={defaultExpanded}
           maxCollapsedHeight="320px"
           styles={{
             filesScrollarea: {

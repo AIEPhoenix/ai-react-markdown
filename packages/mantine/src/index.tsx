@@ -24,13 +24,19 @@ export { default as MantineAIMDefaultExtraStyles } from './components/extra-styl
 // --- Types, config, and hooks ---
 
 /** Extended render configuration and metadata types for the Mantine integration. */
-export type { MantineAIMarkdownRenderConfig, MantineAIMarkdownMetadata } from './defs';
+export type { MantineAIMarkdownMetadata, MantineCodeBlockOptions } from './defs';
 
-/** Default Mantine render configuration (frozen). */
-export { defaultMantineAIMarkdownRenderConfig } from './defs';
+// ── v2 surface (props-api v2) ───────────────────────────────────────────────
 
-/** Typed hook for accessing render state with Mantine-specific config fields. */
-export { useMantineAIMarkdownRenderState } from './hooks/useMantineAIMarkdownRenderState';
+/** Shipped defaults of the `codeBlock` behavior group. */
+export { defaultMantineCodeBlockOptions } from './defs';
+
+/** Narrow hook for the `codeBlock` behavior group — the single assertion site. */
+export { useMantineCodeBlockOptions } from './hooks/useMantineCodeBlockOptions';
+
+/** Widened behaviors factory (core fields + mantine's `codeBlock` group). */
+export { defineMantineBehaviors } from './define';
+export type { MantineBehaviorProps } from './define';
 
 /** Typed hook for accessing metadata within the Mantine AI markdown tree. */
 export { useMantineAIMarkdownMetadata } from './hooks/useMantineAIMarkdownMetadata';

@@ -29,26 +29,20 @@ CJK characters are full-width; Latin letters and digits are half-width. Without 
 今天我用 React 19 重构了项目            ← natural reading
 ```
 
-`remark-pangu` (controlled by the `PANGU` display optimization) automatically inserts a regular ASCII space between any CJK boundary and an adjacent half-width character. The space appears in the rendered HTML; it's not a CSS visual hack, so it survives copy-paste, screen readers, and downstream processing.
+`remark-pangu` (controlled by the `pangu` engine plugin) automatically inserts a regular ASCII space between any CJK boundary and an adjacent half-width character. The space appears in the rendered HTML; it's not a CSS visual hack, so it survives copy-paste, screen readers, and downstream processing.
 
 ### Turning pangu off
 
 ```tsx
-import { AIMarkdownRenderDisplayOptimizeAbility } from '@ai-react-markdown/core';
+import { defaultEnginePlugins, pangu } from '@ai-react-markdown/core/plugins';
 
-<AIMarkdown
-  content="今天我用React19重构了项目"
-  config={{
-    displayOptimizeAbilities: [
-      AIMarkdownRenderDisplayOptimizeAbility.SMARTYPANTS,
-      AIMarkdownRenderDisplayOptimizeAbility.REMOVE_COMMENTS,
-      // PANGU omitted → pangu spacing disabled
-    ],
-  }}
-/>;
+// Module scope — stable reference. pangu filtered out → spacing disabled.
+const PLUGINS = defaultEnginePlugins.filter((p) => p !== pangu);
+
+<AIMarkdown content="今天我用React19重构了项目" enginePlugins={PLUGINS} />;
 ```
 
-> Note that the `displayOptimizeAbilities` array **replaces** the default entirely (array values aren't merged by index). To turn off just one optimization, list the ones you want to keep — that's what the example above does.
+> Note that a passed `enginePlugins` array **replaces** the default selection wholesale (it isn't merged). The `filter` idiom above is the recommended way to turn off exactly one plugin while keeping the rest.
 
 ### When to keep pangu off
 
@@ -187,32 +181,31 @@ That's the whole setup. The rest — `remark-cjk-friendly`, pangu spacing, Smart
 
 ### Disabling pangu when content is already pre-spaced
 
-Some content pipelines insert their own CJK/Latin spacing upstream. Running pangu on that content **doesn't double-space** (it's idempotent and won't insert a second space where one already exists) — but it still walks the tree, which is wasted work on every render. If your content is reliably pre-spaced, disable pangu via `displayOptimizeAbilities` to skip the walk entirely. The optimization disappears once you mix in any un-pre-spaced source.
+Some content pipelines insert their own CJK/Latin spacing upstream. Running pangu on that content **doesn't double-space** (it's idempotent and won't insert a second space where one already exists) — but it still walks the tree, which is wasted work on every render. If your content is reliably pre-spaced, filter `pangu` out of `enginePlugins` to skip the walk entirely. The optimization disappears once you mix in any un-pre-spaced source.
 
 ### Asserting on exact byte content in tests
 
 Pangu inserts characters into the rendered text. Test snapshots that assert byte-for-byte equality with the source markdown will fail because `今天用React` becomes `今天用 React` after pangu. Either:
 
-- Disable pangu in test config (`displayOptimizeAbilities: [...]` without `PANGU`).
+- Disable pangu in the test setup (`enginePlugins` without `pangu` — the `filter` idiom above).
 - Use a semantic matcher (`textContent.includes('React')`) instead of strict equality.
 
 The same applies to SmartyPants (`'`→`'`, `"`→`"` — only the quotes; `remark-smartypants` internally disables dash, ellipsis, and backtick substitutions to keep string lengths stable) — both run on by default.
 
-### `displayOptimizeAbilities` replaces the array
+### `enginePlugins` replaces the array
 
-When you pass `config={{ displayOptimizeAbilities: [...] }}`, your array **replaces** the default entirely; it doesn't merge by index. To disable just pangu, list the other two:
+When you pass `enginePlugins={[...]}`, your array **replaces** the default selection wholesale; it isn't merged. To disable just pangu, keep the rest:
 
 ```tsx
-// ⚠️ Disables ALL display optimizations (loses comment removal + SmartyPants too).
-config={{ displayOptimizeAbilities: [] }}
+import { defaultEnginePlugins, pangu } from '@ai-react-markdown/core/plugins';
 
-// ✅ Keep everything except pangu.
-config={{
-  displayOptimizeAbilities: [
-    AIMarkdownRenderDisplayOptimizeAbility.REMOVE_COMMENTS,
-    AIMarkdownRenderDisplayOptimizeAbility.SMARTYPANTS,
-  ],
-}}
+// ⚠️ Disables ALL engine plugins (loses comment removal + SmartyPants +
+// highlight + definition lists too).
+enginePlugins={[]}
+
+// ✅ Keep everything except pangu (module scope — stable reference).
+const PLUGINS = defaultEnginePlugins.filter((p) => p !== pangu);
+enginePlugins={PLUGINS}
 ```
 
 ### Hair-space vs ASCII space confusion

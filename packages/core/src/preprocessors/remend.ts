@@ -24,7 +24,7 @@
  *
  * - **block-memo**: zero conflict. Repairs only append/adjust the tail;
  *   earlier blocks' bytes are untouched, so their hast digests still hit.
- * - **incremental parse** (`incrementalParseEnabled`): frames whose tail was
+ * - **incremental parse** (`incrementalParse`): frames whose tail was
  *   repaired are not byte-appends of the previous frame, so the engine's
  *   append gate falls back to a full parse for exactly those frames (not
  *   sticky — splicing resumes once the construct closes in the real bytes).

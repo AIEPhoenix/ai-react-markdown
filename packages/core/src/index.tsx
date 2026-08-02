@@ -22,17 +22,13 @@
 'use client';
 
 import { useMemo, memo, type ComponentType, type CSSProperties } from 'react';
-import AIMarkdownRenderStateProvider, {
-  AIMarkdownMetadataProvider,
-  AIMarkdownRenderStateProviderProps,
-  AIMarkdownMetadataProviderProps,
-} from './context';
+import AIMarkdownProvider, { AIMarkdownMetadataProvider } from './context';
 import { AIMDContentPreprocessor } from './preprocessors/defs';
+import useStableValue from './hooks/useStableValue';
 import preprocessAIMDContent from './preprocessors';
 import AIMarkdownContent from './components/MarkdownContent';
 import {
   AIMarkdownCustomComponents,
-  AIMarkdownRenderConfig,
   AIMarkdownMetadata,
   AIMarkdownTypographyComponent,
   AIMarkdownExtraStylesComponent,
@@ -41,23 +37,23 @@ import {
 } from './defs';
 import type { SanitizeSchema } from './components/extendSanitizeSchema';
 import type { UrlTransform } from './components/markdown';
-import useStableValue from './hooks/useStableValue';
-import useReferenceFlipWarning from './hooks/useReferenceFlipWarning';
+import useStableRecord, { AIMarkdownStabilityPolicy, type AIMarkdownStabilityTable } from './hooks/useStableRecord';
+import { resolveEngineValues } from './resolveFlatProps';
+import type { AIMarkdownEnginePlugin } from './plugins/defs';
 import DefaultTypography from './components/typography/Default';
 
 /**
  * Props for the `<AIMarkdown>` component.
  *
- * @typeParam TConfig - Custom render configuration type (extends {@link AIMarkdownRenderConfig}).
- * @typeParam TRenderData - Custom metadata type (extends {@link AIMarkdownMetadata}).
+ * @typeParam TMetadata - Custom metadata type (extends {@link AIMarkdownMetadata}).
  */
-export interface AIMarkdownProps<
-  TConfig extends AIMarkdownRenderConfig = AIMarkdownRenderConfig,
-  TRenderData extends AIMarkdownMetadata = AIMarkdownMetadata,
->
-  extends
-    Omit<AIMarkdownRenderStateProviderProps<TConfig>, 'streaming' | 'fontSize' | 'variant' | 'colorScheme'>,
-    AIMarkdownMetadataProviderProps<TRenderData> {
+export interface AIMarkdownProps<TMetadata extends AIMarkdownMetadata = AIMarkdownMetadata> {
+  /**
+   * Arbitrary consumer data delivered to custom components through the
+   * metadata context (`useAIMarkdownMetadata`). Deliberately never
+   * stabilized by the library — see the firewall table (`PASS_THROUGH`).
+   */
+  metadata?: TMetadata;
   /**
    * Whether content is actively being streamed (e.g. token-by-token from an LLM).
    * When `true`, the flag is propagated via context so custom components can adapt
@@ -245,23 +241,109 @@ export interface AIMarkdownProps<
    * inline.
    */
   streamingCursor?: ComponentType;
+  /**
+   * Sealed engine plugin selection (v2 input surface; Engine-plugins system).
+   * Accepts core-exported sealed plugins only — import them from
+   * `@ai-react-markdown/core/plugins`. Third-party content extension goes
+   * through `contentPreprocessors` + `customComponents`.
+   *
+   * - Absent → `defaultEnginePlugins` (all five, parity with the shipped
+   *   config defaults). Passing an array replaces the set wholesale
+   *   (array-atomic semantics).
+   * - Each plugin's position in the produced chain comes from its internal
+   *   stage metadata; the order of this array is irrelevant. Duplicates are
+   *   deduplicated with a dev warning.
+   * - Turn one off: `enginePlugins={defaultEnginePlugins.filter((p) => p !== pangu)}`.
+   *
+   * "Explicit" is `v != null` — passing `null` counts as absent (guards
+   * serialization boundaries materializing "not passed" as `null`).
+   */
+  enginePlugins?: readonly AIMarkdownEnginePlugin[];
+  /**
+   * Behaviors system: block-level memoization. Output-invariant — flipping
+   * it changes no rendered byte. When `true` (default), the renderer splits
+   * the document into per-block units and memoizes each block's subtree by
+   * source identity, so unchanged blocks skip render work during streaming.
+   * When `false`, the legacy bare flow runs the full pipeline every render.
+   *
+   * `null` counts as absent (falls to the default). @default true
+   */
+  blockMemo?: boolean;
+  /**
+   * Behaviors system: incremental (prefix-freeze) parsing for streaming
+   * content. Output-invariant (enforced by the splice-equivalence suites).
+   * When the content grows by appends, the engine freezes the verified
+   * prefix and re-parses only the tail; a per-frame gate chain silently
+   * falls back to the full parse whenever splicing is not provably safe.
+   * Effective only while `blockMemo` is `true`; SSR always full-parses.
+   *
+   * `null` counts as absent (falls to the default). @default true
+   */
+  incrementalParse?: boolean;
+  /**
+   * Behaviors system: protect orphan reference definitions (footnote/link
+   * defs with no matching reference yet) in incomplete/streaming documents.
+   * Affects output. Override chain: an `<AIMarkdownDocuments>` wrapper's
+   * same-named prop (omission ≡ explicit `true`) unconditionally wins for
+   * all chunks under it > this prop > the shipped default.
+   *
+   * `null` counts as absent (falls to the default). @default true
+   */
+  preserveOrphanReferences?: boolean;
 }
+
+/**
+ * The record of object-valued props that crosses the stability firewall.
+ * `metadata` is generic at the component level; the firewall treats it as
+ * opaque (`PASS_THROUGH`), so the base type is used here.
+ */
+interface CoreStabilizedProps {
+  enginePlugins: readonly AIMarkdownEnginePlugin[] | undefined;
+  sanitizeSchema: SanitizeSchema | undefined;
+  customComponents: AIMarkdownCustomComponents | undefined;
+  contentPreprocessors: AIMDContentPreprocessor[] | undefined;
+  urlTransform: UrlTransform | null | undefined;
+  Typography: AIMarkdownTypographyComponent;
+  ExtraStyles: AIMarkdownExtraStylesComponent | undefined;
+  streamingCursor: ComponentType | undefined;
+  metadata: AIMarkdownMetadata | undefined;
+}
+
+/**
+ * The stability firewall's policy table — the complete roster of
+ * object-valued props (EXECUTION-PLAN §3.9). `Required<Record<…>>` makes a
+ * missing row a compile error, so exemption (`PASS_THROUGH`) and omission
+ * are distinguishable. Each prop is stabilized exactly once, here at its
+ * terminus; below this wall internal code trusts reference equality
+ * outright.
+ */
+const CORE_STABILITY_TABLE: AIMarkdownStabilityTable<CoreStabilizedProps> = {
+  // Elements are module singletons; per-element === short-circuits the deep compare.
+  enginePlugins: AIMarkdownStabilityPolicy.DEEP_EQUAL,
+  sanitizeSchema: AIMarkdownStabilityPolicy.DEEP_EQUAL,
+  customComponents: AIMarkdownStabilityPolicy.DEEP_EQUAL,
+  // Function array — deep-comparing closures is meaningless; contract requires stable refs.
+  contentPreprocessors: AIMarkdownStabilityPolicy.WARN_ONLY,
+  urlTransform: AIMarkdownStabilityPolicy.WARN_ONLY,
+  // Component values: carrier-tier enforcement unified here.
+  Typography: AIMarkdownStabilityPolicy.WARN_ONLY,
+  ExtraStyles: AIMarkdownStabilityPolicy.WARN_ONLY,
+  streamingCursor: AIMarkdownStabilityPolicy.WARN_ONLY,
+  // Deliberate exemption: opaque shape, potentially huge, unbounded
+  // comparison cost — stabilization is the consumer's responsibility.
+  metadata: AIMarkdownStabilityPolicy.PASS_THROUGH,
+};
 
 /**
  * Root component that preprocesses markdown content and renders it through
  * a configurable remark/rehype pipeline wrapped in typography and style layers.
  */
-const AIMarkdownComponent = <
-  TConfig extends AIMarkdownRenderConfig = AIMarkdownRenderConfig,
-  TRenderData extends AIMarkdownMetadata = AIMarkdownMetadata,
->({
+const AIMarkdownComponent = <TMetadata extends AIMarkdownMetadata = AIMarkdownMetadata>({
   streaming = false,
   content,
   fontSize,
   contentPreprocessors,
   customComponents,
-  defaultConfig,
-  config,
   metadata,
   Typography = DefaultTypography,
   ExtraStyles,
@@ -270,8 +352,12 @@ const AIMarkdownComponent = <
   documentId,
   urlTransform,
   sanitizeSchema,
-  streamingCursor: StreamingCursor,
-}: AIMarkdownProps<TConfig, TRenderData>) => {
+  streamingCursor,
+  enginePlugins,
+  blockMemo,
+  incrementalParse,
+  preserveOrphanReferences,
+}: AIMarkdownProps<TMetadata>) => {
   // Normalize fontSize: number -> px string, undefined -> default rem value.
   // Branch on `undefined` (not truthiness) so `fontSize={0}` resolves to `'0px'`.
   const usedFontSize = fontSize === undefined ? '0.9375rem' : typeof fontSize === 'number' ? `${fontSize}px` : fontSize;
@@ -284,44 +370,48 @@ const AIMarkdownComponent = <
   // auto-generated id would then wrongly opt a standalone chunk into
   // cross-chunk coordination when nested under `<AIMarkdownDocuments>`.
 
-  // Dev-mode flip-rate warnings on the two cache-sensitive props. These
-  // MUST run BEFORE `useStableValue` below, otherwise a deep-equal collapse
-  // would mask the very anti-pattern they exist to surface (inline schema
-  // re-built every render). Both hook calls become dead code in production
-  // via `__DEV__` constant folding inside the hook implementation.
-  useReferenceFlipWarning(urlTransform, 'urlTransform');
-  useReferenceFlipWarning(sanitizeSchema, 'sanitizeSchema');
+  // ── Stability firewall (EXECUTION-PLAN §3.9) ──
+  // Single table-driven boundary for all object-valued props. Per-key policy
+  // lives in CORE_STABILITY_TABLE next to the roster type; the dev probes
+  // (flip-rate for WARN_ONLY keys, deep-equal-restore for DEEP_EQUAL keys)
+  // live inside the hook, replacing the old pre-stabilization
+  // useReferenceFlipWarning calls. `metadata` crosses as PASS_THROUGH — the
+  // deliberate exemption (opaque, potentially huge, unbounded comparison
+  // cost) is now a declared policy row instead of an absence.
+  const stable = useStableRecord<CoreStabilizedProps>(
+    {
+      enginePlugins,
+      sanitizeSchema,
+      customComponents,
+      contentPreprocessors,
+      urlTransform,
+      Typography,
+      ExtraStyles,
+      streamingCursor,
+      metadata,
+    },
+    CORE_STABILITY_TABLE
+  );
+  const { Typography: TypographySlot, ExtraStyles: ExtraStylesSlot, streamingCursor: StreamingCursor } = stable;
 
-  // Stabilize object/array props to prevent unnecessary re-renders
-  // when the consumer creates new references on each render.
-  //
-  // `metadata` is INTENTIONALLY excluded — its shape is opaque to the library
-  // and may be arbitrarily large (e.g. full chat session, document tree). A
-  // blanket lodash isEqual deep-compare here would penalize every render with
-  // an unbounded scan. Stabilizing metadata is the consumer's responsibility:
-  // if their custom renderers do reference-equal work on it, they should
-  // useMemo their metadata at the call site.
-  const stableDefaultConfig = useStableValue(defaultConfig);
-  const stableConfig = useStableValue(config);
-  const stablePreprocessors = useStableValue(contentPreprocessors);
-  const stableCustomComponents = useStableValue(customComponents);
-  // Stabilize the sanitize schema so callers who construct it inline (against
-  // our recommendation) don't blow the rehypePlugins memo on every render.
-  // Also covers the common case of spreading defaults to add a single
-  // protocol — the deep-equal check collapses identity churn. The flip
-  // warning above runs on the RAW prop (before this stabilize) so the user
-  // still sees the warning even though the cache stays warm.
-  const stableSanitizeSchema = useStableValue(sanitizeSchema);
-  // urlTransform is intentionally NOT stabilized — useStableValue uses
-  // lodash isEqual, which is not meaningful for functions (two different
-  // closures over the same logic will never be equal). The JSDoc on the
-  // prop already requires callers to pass a stable function reference; we
-  // forward it as-is so the behavior is honest.
+  // Single-point resolution of the engine-consumed fields: explicit prop
+  // (`v != null`) over shipped default. Both the internal pipeline props and
+  // the behaviors-context payload derive from this one resolution.
+  const resolvedEngine = useMemo(
+    () =>
+      resolveEngineValues({
+        blockMemo,
+        incrementalParse,
+        preserveOrphanReferences,
+        enginePlugins: stable.enginePlugins,
+      }),
+    [blockMemo, incrementalParse, preserveOrphanReferences, stable.enginePlugins]
+  );
 
   // Run the preprocessing pipeline (LaTeX normalization + user preprocessors).
   const usedContent = useMemo(
-    () => (content ? preprocessAIMDContent(content, stablePreprocessors) : content),
-    [content, stablePreprocessors]
+    () => (content ? preprocessAIMDContent(content, stable.contentPreprocessors) : content),
+    [content, stable.contentPreprocessors]
   );
 
   // Stabilize the inline style passed to Typography; otherwise its memo wrapper
@@ -336,26 +426,31 @@ const AIMarkdownComponent = <
     <>
       <AIMarkdownContent
         content={usedContent}
-        customComponents={stableCustomComponents}
-        urlTransform={urlTransform ?? undefined}
-        sanitizeSchema={stableSanitizeSchema}
+        customComponents={stable.customComponents}
+        urlTransform={stable.urlTransform ?? undefined}
+        sanitizeSchema={stable.sanitizeSchema}
+        blockMemo={resolvedEngine.blockMemo}
+        incrementalParse={resolvedEngine.incrementalParse}
+        preserveOrphanReferences={resolvedEngine.preserveOrphanReferences}
+        enginePlugins={resolvedEngine.enginePlugins}
       />
       {streaming && StreamingCursor ? <StreamingCursor /> : null}
     </>
   );
 
   return (
-    <AIMarkdownMetadataProvider<TRenderData> metadata={metadata}>
-      <AIMarkdownRenderStateProvider<TConfig>
+    <AIMarkdownMetadataProvider<TMetadata> metadata={stable.metadata as TMetadata | undefined}>
+      <AIMarkdownProvider
         streaming={streaming}
         fontSize={usedFontSize}
         variant={variant}
         colorScheme={colorScheme}
         documentId={documentId}
-        defaultConfig={stableDefaultConfig}
-        config={stableConfig}
+        blockMemo={resolvedEngine.blockMemo}
+        incrementalParse={resolvedEngine.incrementalParse}
+        preserveOrphanReferences={resolvedEngine.preserveOrphanReferences}
       >
-        <Typography
+        <TypographySlot
           fontSize={usedFontSize}
           variant={variant}
           colorScheme={colorScheme}
@@ -365,9 +460,9 @@ const AIMarkdownComponent = <
           // See AIMarkdownTypographyProps.style JSDoc for the full variable list.
           style={typographyStyle}
         >
-          {ExtraStyles ? <ExtraStyles>{contentBody}</ExtraStyles> : contentBody}
-        </Typography>
-      </AIMarkdownRenderStateProvider>
+          {ExtraStylesSlot ? <ExtraStylesSlot>{contentBody}</ExtraStylesSlot> : contentBody}
+        </TypographySlot>
+      </AIMarkdownProvider>
     </AIMarkdownMetadataProvider>
   );
 };
@@ -387,11 +482,13 @@ const AIMarkdownComponent = <
  *
  * @example
  * ```tsx
+ * import { highlight, definitionList } from '@ai-react-markdown/core/plugins';
+ *
  * <AIMarkdown
  *   content={markdownString}
  *   streaming={isStreaming}
  *   colorScheme="dark"
- *   config={{ extraSyntaxSupported: [AIMarkdownRenderExtraSyntax.HIGHLIGHT] }}
+ *   enginePlugins={[highlight, definitionList]}
  * />
  * ```
  */
@@ -407,8 +504,6 @@ export type { AIMDContentPreprocessor };
 export type { RemendPreprocessorOptions } from './preprocessors/remend';
 export type {
   AIMarkdownCustomComponents,
-  AIMarkdownRenderConfig,
-  AIMarkdownRenderState,
   AIMarkdownMetadata,
   AIMarkdownTypographyProps,
   AIMarkdownTypographyComponent,
@@ -418,16 +513,52 @@ export type {
   AIMarkdownColorScheme,
 } from './defs';
 
-// Enums & Constants
-export {
-  AIMarkdownRenderExtraSyntax,
-  AIMarkdownRenderDisplayOptimizeAbility,
-  defaultAIMarkdownRenderConfig,
-} from './defs';
-
-// Hooks -- for custom components to access render state & metadata
-export { useAIMarkdownRenderState, useAIMarkdownMetadata } from './context';
+// Hooks -- for custom components to access metadata
+export { useAIMarkdownMetadata } from './context';
 export { useStableValue };
+
+// ── v2 output surface (EXECUTION-PLAN props-api v2) ─────────────────────────
+
+// Five narrow hooks + the aggregate. `useAIMarkdownMetadata` (above) is the
+// fifth narrow hook — it predates v2 and keeps its generic.
+export {
+  useAIMarkdownDocument,
+  useAIMarkdownTheme,
+  useAIMarkdownState,
+  useAIMarkdownBehaviors,
+  useAIMarkdown,
+} from './context';
+
+// Additive (stackable) Providers — extension-group transport for wrappers
+// and applications. Stack OUTSIDE <AIMarkdown>; see each Provider's JSDoc.
+export { AIMarkdownBehaviorsProvider, AIMarkdownStateProvider } from './context';
+export type {
+  AIMarkdownDocumentInfo,
+  AIMarkdownThemeInfo,
+  AIMarkdownStateCore,
+  AIMarkdownBehaviorsCore,
+  AIMarkdownStateGroups,
+  AIMarkdownBehaviorGroups,
+  AIMarkdownExtensionGroups,
+  AIMarkdownAggregate,
+} from './context';
+
+// ── v2 input surface (EXECUTION-PLAN props-api v2) ──────────────────────────
+
+// Sealed engine plugin type. The plugin VALUES live in the
+// `@ai-react-markdown/core/plugins` subpath (see `enginePlugins` prop JSDoc);
+// only the type travels through the root entry.
+export type { AIMarkdownEnginePlugin, AIMarkdownEnginePluginName } from './plugins/defs';
+
+// `define*` factories — frozen, typed, reference-stable flat prop fragments.
+export { defineTheme, defineBehaviors, definePipeline } from './define';
+export type { AIMarkdownThemeProps, AIMarkdownBehaviorProps, AIMarkdownPipelineProps } from './define';
+
+// Stability firewall — exported for wrapper reuse: a wrapper builds a table
+// only for object props it terminates (e.g. mantine's `codeBlock`);
+// forwarded props ride core's firewall untouched.
+export { AIMarkdownStabilityPolicy, default as useStableRecord } from './hooks/useStableRecord';
+export type { AIMarkdownStabilityTable } from './hooks/useStableRecord';
 
 // Content preprocessors — opt-in factories for the `contentPreprocessors`
 // prop. Tree-shakeable: `remend` only enters a consumer bundle when this
@@ -470,6 +601,3 @@ export type { AIMarkdownDocumentsProps } from './components/AIMarkdownDocuments'
 // (`function helper(r: Registry)`) need these. The Registry shape itself is a
 // public contract: we maintain backwards compat across minor versions.
 export type { Registry, ChunkData, FootnoteDef, LinkDef, RefRecord, RefKind } from './components/documentRegistry';
-
-// Utils
-export type { PartialDeep } from './typings/partial-deep';

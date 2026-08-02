@@ -21,7 +21,7 @@ function MyCodeBlock({ children }: { children: React.ReactNode }) {
   );
 }
 
-<AIMarkdown<typeof defaultConfig, ChatMeta>
+<AIMarkdown<ChatMeta>
   content={markdown}
   metadata={{
     messageId: msg.id,
@@ -38,20 +38,19 @@ The hook returns `TMetadata | undefined`. Always handle the `undefined` case —
 
 ## Why a separate context?
 
-`<AIMarkdown>` has two React contexts under the hood:
+`<AIMarkdown>` provides five per-system React contexts (document, metadata, state, theme, behaviors — each with its own narrow hook). The one that matters here:
 
-1. **`AIMarkdownRenderStateContext`** — holds `{ streaming, fontSize, variant, colorScheme, documentId, clobberPrefix, config }`. Read via `useAIMarkdownRenderState()`. The markdown body subscribes to this.
-2. **`AIMarkdownMetadataContext`** — holds the consumer's `metadata` opaquely. Read via `useAIMarkdownMetadata()`. The markdown body **does not** subscribe.
+- **The metadata context** — holds the consumer's `metadata` opaquely. Read via `useAIMarkdownMetadata()`. The markdown body **does not** subscribe.
 
-Why two contexts? Because metadata changes are typically common in chat UIs — a parent rebuilding `metadata={{ onCopy: …, messageId: … }}` on every render is the default React pattern. If metadata lived in the same context as render state, **every metadata change would re-render the full markdown body**, defeating block-level memoization for streaming content.
+Why isolate it? Because metadata changes are typically common in chat UIs — a parent rebuilding `metadata={{ onCopy: …, messageId: … }}` on every render is the default React pattern. If metadata lived in the same context as, say, the theme or streaming state, **every metadata change would re-render the full markdown body**, defeating block-level memoization for streaming content.
 
 The split is precisely the optimization that lets `metadata` carry callbacks (and other non-stabilized data) without performance penalty — callbacks are usually new references every render, and that's fine here.
 
 ```text
 parent render → new `metadata` object
-  → AIMarkdownMetadataContext.Provider value changes
+  → the metadata context value changes
   → components that call `useAIMarkdownMetadata` re-render
-  → AIMarkdownRenderStateContext value is unchanged
+  → the other four context values are unchanged
   → AIMarkdownContent is memoized on its own stable props
     and does NOT re-render
   → the per-block memo cache is untouched
@@ -154,7 +153,7 @@ interface StreamMeta {
 
 function CodeWithSpinner({ children }: { children: React.ReactNode }) {
   const meta = useAIMarkdownMetadata<StreamMeta>();
-  const { streaming } = useAIMarkdownRenderState();
+  const { streaming } = useAIMarkdownState();
   return (
     <pre>
       {streaming && meta?.thinkingStartedAt && <Spinner since={meta.thinkingStartedAt} />}
@@ -164,7 +163,7 @@ function CodeWithSpinner({ children }: { children: React.ReactNode }) {
 }
 ```
 
-Note `useAIMarkdownRenderState()` and `useAIMarkdownMetadata()` can be combined freely — they're separate contexts but the component just uses both.
+Note `useAIMarkdownState()` and `useAIMarkdownMetadata()` can be combined freely — they're separate contexts but the component just uses both.
 
 ---
 
@@ -194,18 +193,18 @@ function MyCodeBlock() {
 }
 ```
 
-This mirrors the pattern `@ai-react-markdown/mantine` uses for `useMantineAIMarkdownMetadata`. See [TypeScript Generics](./typescript-generics.md) and [Extending via a Sub-package](./extending-via-subpackage.md) for the same idea applied to config.
+This mirrors the pattern `@ai-react-markdown/mantine` uses for `useMantineAIMarkdownMetadata`. See [TypeScript Generics](./typescript-generics.md) and [Extending via a Sub-package](./extending-via-subpackage.md) for the same idea applied to behavior groups.
 
 ---
 
-## Metadata vs render state vs prop drilling
+## Metadata vs render-facing props vs prop drilling
 
-| When you have…                                                                                             | Use…                                                                                      |
-| ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Data that's part of how markdown should _render_ (color scheme, font size, streaming flag, document id)    | Render state (props on `<AIMarkdown>`, read via `useAIMarkdownRenderState`)               |
-| App-level callbacks, ids, or data that custom components need (rarely affects render of standard markdown) | Metadata (`metadata` prop, read via `useAIMarkdownMetadata`)                              |
-| One-off data passed to a single direct child                                                               | Plain prop on the custom component                                                        |
-| Data already in a project-wide Context                                                                     | Just use that Context inside your custom components — no need to route through `metadata` |
+| When you have…                                                                                             | Use…                                                                                                                             |
+| ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Data that's part of how markdown should _render_ (color scheme, font size, streaming flag, document id)    | Props on `<AIMarkdown>`, read via the matching narrow hook (`useAIMarkdownTheme`, `useAIMarkdownState`, `useAIMarkdownDocument`) |
+| App-level callbacks, ids, or data that custom components need (rarely affects render of standard markdown) | Metadata (`metadata` prop, read via `useAIMarkdownMetadata`)                                                                     |
+| One-off data passed to a single direct child                                                               | Plain prop on the custom component                                                                                               |
+| Data already in a project-wide Context                                                                     | Just use that Context inside your custom components — no need to route through `metadata`                                        |
 
 The library doesn't _force_ you to use `metadata`. If you already have a Redux/Zustand/Context for chat state, custom components can read from it directly. `metadata` is the path of least resistance when you don't have one — and it gives you the re-render isolation guarantee automatically.
 

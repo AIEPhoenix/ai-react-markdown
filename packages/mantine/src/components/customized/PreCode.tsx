@@ -4,7 +4,8 @@ import { HTMLAttributes, memo, useMemo } from 'react';
 import { CodeHighlight, CodeHighlightTabs } from '@mantine/code-highlight';
 import { deepParseJson } from 'deep-parse-json';
 import hljs from 'highlight.js';
-import { useMantineAIMarkdownRenderState } from '../../hooks/useMantineAIMarkdownRenderState';
+import { useAIMarkdownTheme } from '@ai-react-markdown/core';
+import { useMantineCodeBlockOptions } from '../../hooks/useMantineCodeBlockOptions';
 import MantineAIMMermaidCode from './MermaidCode';
 
 /**
@@ -30,8 +31,9 @@ const SPECIAL_LANGUAGES = new Set<string>(Object.values(SpecialCodeLanguage));
  *
  * Behavior:
  * - If the code block has an explicit language annotation, uses that language.
- * - If no language is specified and `config.codeBlock.autoDetectUnknownLanguage` is
- *   enabled, uses `highlight.js` auto-detection.
+ * - If no language is specified and the `codeBlock` group's
+ *   `autoDetectUnknownLanguage` option is enabled, uses `highlight.js`
+ *   auto-detection.
  * - Mermaid code blocks (`language-mermaid`) are rendered as interactive diagrams
  *   via {@link MantineAIMMermaidCode}.
  * - JSON code blocks are deep-parsed and pretty-printed before display.
@@ -50,15 +52,16 @@ const MantineAIMPreCode = memo(
       existLanguage?: string;
     }
   ) => {
-    const renderState = useMantineAIMarkdownRenderState();
+    const { fontSize } = useAIMarkdownTheme();
+    const { autoDetectUnknownLanguage, defaultExpanded } = useMantineCodeBlockOptions();
 
     const codeLanguage = useMemo(() => {
       if (props.existLanguage) return props.existLanguage;
-      if (renderState.config.codeBlock.autoDetectUnknownLanguage) {
+      if (autoDetectUnknownLanguage) {
         return hljs.highlightAuto(props.codeText).language || '';
       }
       return '';
-    }, [props.existLanguage, props.codeText, renderState.config.codeBlock.autoDetectUnknownLanguage]);
+    }, [props.existLanguage, props.codeText, autoDetectUnknownLanguage]);
 
     const [usedCodeLanguage, usedFileName] = useMemo(() => {
       if (!codeLanguage) return ['plaintext', 'unknown'];
@@ -81,18 +84,18 @@ const MantineAIMPreCode = memo(
       return usedFileName === 'unknown' ? (
         <CodeHighlight
           mb={15}
-          fz={renderState.fontSize}
+          fz={fontSize}
           w="100%"
           code={usedCodeStr}
           withBorder
           withExpandButton
-          defaultExpanded={renderState.config.codeBlock.defaultExpanded}
+          defaultExpanded={defaultExpanded}
           maxCollapsedHeight="320px"
         />
       ) : (
         <CodeHighlightTabs
           mb={15}
-          fz={renderState.fontSize}
+          fz={fontSize}
           w="100%"
           code={[
             {
@@ -103,18 +106,11 @@ const MantineAIMPreCode = memo(
           ]}
           withBorder
           withExpandButton
-          defaultExpanded={renderState.config.codeBlock.defaultExpanded}
+          defaultExpanded={defaultExpanded}
           maxCollapsedHeight="320px"
         />
       );
-    }, [
-      isSpecialCodeBlock,
-      props.codeText,
-      usedCodeLanguage,
-      usedFileName,
-      renderState.fontSize,
-      renderState.config.codeBlock.defaultExpanded,
-    ]);
+    }, [isSpecialCodeBlock, props.codeText, usedCodeLanguage, usedFileName, fontSize, defaultExpanded]);
 
     const specialCodeBlockContent = useMemo(() => {
       switch (codeLanguage) {
