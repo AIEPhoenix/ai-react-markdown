@@ -330,6 +330,7 @@ replacement (nothing on the v2 surface is deep-partial).
   on it (cross-chunk placeholders, KaTeX class names). Build schemas with
   `extendSanitizeSchema` — unchanged from 1.x.
 - **Flat props share one namespace across core and wrappers.** Wrapper
-  authors must check the prop-name registry in the core docs before
+  authors must check the prop-name registry (the props table in the
+  [core README](../packages/core/README.md#props-api-reference)) before
   adding fields; collisions are compile errors for TS consumers but
   silent overrides for plain-JS consumers.
