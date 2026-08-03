@@ -98,6 +98,11 @@ jobs:
       - name: Build
         run: pnpm build
 
+      # Publish-surface gate, mirroring CI's build task: exports-map
+      # resolution (attw) + manifest lint (publint) on the packed tarballs.
+      - name: Package export checks (attw + publint)
+        run: pnpm packcheck
+
       - name: Typecheck
         run: pnpm -r typecheck
 

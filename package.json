@@ -12,7 +12,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "version-packages": "node scripts/version-packages.mjs",
-    "preflight": "pnpm lint && pnpm format:check && pnpm build && pnpm -r typecheck && pnpm typecheck && pnpm vitest run",
+    "packcheck": "pnpm --filter './packages/*' -r exec attw --pack . && pnpm --filter './packages/*' -r exec publint",
+    "preflight": "pnpm lint && pnpm format:check && pnpm build && pnpm packcheck && pnpm -r typecheck && pnpm typecheck && pnpm vitest run",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build"
   },
@@ -39,6 +40,7 @@
   },
   "packageManager": "pnpm@10.28.1",
   "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
     "@chromatic-com/storybook": "^5.2.1",
     "@eslint/js": "^10.0.1",
     "@storybook/addon-a11y": "^10.5.0",
@@ -61,6 +63,7 @@
     "postcss": "^8.5.19",
     "postcss-cli": "^11.0.1",
     "prettier": "^3.9.5",
+    "publint": "^0.3.22",
     "react-scan": "^0.5.7",
     "sass": "^1.101.0",
     "storybook": "^10.5.0",
