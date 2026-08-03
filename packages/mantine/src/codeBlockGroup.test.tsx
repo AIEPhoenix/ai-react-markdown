@@ -8,6 +8,7 @@ import type { ReactNode } from 'react';
 import { MantineProvider } from '@mantine/core';
 import { CodeHighlightAdapterProvider, createHighlightJsAdapter } from '@mantine/code-highlight';
 import hljs from 'highlight.js';
+import { AIMarkdownBehaviorsProvider } from '@ai-react-markdown/core';
 import MantineAIMarkdown from './MantineAIMarkdown';
 import { useMantineCodeBlockOptions } from './hooks/useMantineCodeBlockOptions';
 import { defineMantineBehaviors } from './define';
@@ -57,6 +58,32 @@ describe('codeBlock behavior group', () => {
       <MantineAIMarkdown content={'*p*'} {...BEHAVIORS} customComponents={{ em: OptionsProbe }} />
     );
     expect(html).toContain('data-expanded="false"');
+  });
+
+  test('absent prop contributes NO group — an outer app-level Provider group passes through', () => {
+    const html = renderMarkdown(
+      <AIMarkdownBehaviorsProvider value={{ codeBlock: { defaultExpanded: false } }}>
+        <MantineAIMarkdown content={'*p*'} customComponents={{ em: OptionsProbe }} />
+      </AIMarkdownBehaviorsProvider>
+    );
+    expect(html).toContain('data-expanded="false"');
+    expect(html).toContain('data-autodetect="false"');
+  });
+
+  test('the codeBlock prop wins over an outer Provider group (inner-wins merge)', () => {
+    const html = renderMarkdown(
+      <AIMarkdownBehaviorsProvider value={{ codeBlock: { defaultExpanded: false, autoDetectUnknownLanguage: true } }}>
+        <MantineAIMarkdown
+          content={'*p*'}
+          codeBlock={{ defaultExpanded: true }}
+          customComponents={{ em: OptionsProbe }}
+        />
+      </AIMarkdownBehaviorsProvider>
+    );
+    // Group replacement is atomic: the outer group's autoDetect does NOT
+    // merge into the winning inner group — omitted fields fall to defaults.
+    expect(html).toContain('data-expanded="true"');
+    expect(html).toContain('data-autodetect="false"');
   });
 
   test('the prop and an equivalent define fragment render identical bytes; the toggle takes effect', () => {
