@@ -210,11 +210,13 @@ export const myDefaultConfig: MyConfig = { ...defaultAIMarkdownRenderConfig, pan
 export const useMyRenderState = () => useAIMarkdownRenderState<MyConfig>();
 
 // v2.0.0 wrapper pattern
+import { useMemo } from 'react';
 import AIMarkdown, {
   AIMarkdownBehaviorsProvider,
   useAIMarkdownBehaviors,
   useStableRecord,
   AIMarkdownStabilityPolicy,
+  type AIMarkdownBehaviorGroups,
   type AIMarkdownStabilityTable,
 } from '@ai-react-markdown/core';
 
@@ -227,9 +229,16 @@ const TABLE: AIMarkdownStabilityTable<{ panel: Partial<PanelOptions> | undefined
   panel: AIMarkdownStabilityPolicy.DEEP_EQUAL,
 };
 
+const NO_GROUPS: AIMarkdownBehaviorGroups = Object.freeze({});
+
 export function MyMarkdown({ panel, ...rest }: MyMarkdownProps) {
   const stable = useStableRecord({ panel }, TABLE);
-  const groups = useMemo(() => ({ panel: stable.panel ?? {} }), [stable.panel]);
+  // Absent prop → contribute NO group, so an outer app-level Provider's
+  // `panel` group stays visible; a present prop wins via inner-wins.
+  const groups = useMemo<AIMarkdownBehaviorGroups>(
+    () => (stable.panel != null ? { panel: stable.panel } : NO_GROUPS),
+    [stable.panel]
+  );
   return (
     <AIMarkdownBehaviorsProvider value={groups}>
       <AIMarkdown {...rest} />
