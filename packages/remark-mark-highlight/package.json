@@ -1,0 +1,67 @@
+{
+  "name": "@ai-react-markdown/remark-mark-highlight",
+  "version": "1.0.0",
+  "description": "remark plugin for ==mark== highlight syntax \u2014 first-party successor to remark-mark-highlight, with dual ESM/CJS output.",
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "license": "MIT",
+  "author": "Brian Lee <aiephoenixbl@gmail.com> (https://github.com/AIEPhoenix)",
+  "homepage": "https://github.com/AIEPhoenix/ai-react-markdown/tree/main/packages/remark-mark-highlight#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AIEPhoenix/ai-react-markdown.git",
+    "directory": "packages/remark-mark-highlight"
+  },
+  "bugs": {
+    "url": "https://github.com/AIEPhoenix/ai-react-markdown/issues"
+  },
+  "keywords": [
+    "remark",
+    "remark-plugin",
+    "micromark",
+    "markdown",
+    "mark",
+    "highlight"
+  ],
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": {
+        "import": "./dist/index.d.ts",
+        "require": "./dist/index.d.cts"
+      },
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsup",
+    "test": "vitest --run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "micromark-util-chunked": "^2.0.1",
+    "micromark-util-classify-character": "^2.0.1",
+    "micromark-util-resolve-all": "^2.0.1",
+    "micromark-util-symbol": "^2.0.1"
+  },
+  "devDependencies": {
+    "@types/mdast": "^4.0.4",
+    "mdast-util-from-markdown": "^2.0.2",
+    "mdast-util-to-hast": "^13.2.1",
+    "mdast-util-to-markdown": "^2.1.2",
+    "micromark-util-types": "^2.0.2",
+    "remark-parse": "^11.0.0",
+    "remark-stringify": "^11.0.0",
+    "unified": "^11.0.5",
+    "@types/node": "^25.9.5"
+  }
+}

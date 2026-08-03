@@ -106,6 +106,9 @@ importers:
 
   packages/core:
     dependencies:
+      '@ai-react-markdown/remark-mark-highlight':
+        specifier: workspace:^
+        version: link:../remark-mark-highlight
       devlop:
         specifier: ^1.1.0
         version: 1.1.0
@@ -157,9 +160,6 @@ importers:
       remark-gfm:
         specifier: ^4.0.1
         version: 4.0.1
-      remark-mark-highlight:
-        specifier: ^0.1.1
-        version: 0.1.1
       remark-math:
         specifier: ^6.0.0
         version: 6.0.0
@@ -288,6 +288,49 @@ importers:
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(jiti@2.7.0)(postcss@8.5.20)(typescript@6.0.3)(yaml@2.9.0)
+
+  packages/remark-mark-highlight:
+    dependencies:
+      micromark-util-chunked:
+        specifier: ^2.0.1
+        version: 2.0.1
+      micromark-util-classify-character:
+        specifier: ^2.0.1
+        version: 2.0.1
+      micromark-util-resolve-all:
+        specifier: ^2.0.1
+        version: 2.0.1
+      micromark-util-symbol:
+        specifier: ^2.0.1
+        version: 2.0.1
+    devDependencies:
+      '@types/mdast':
+        specifier: ^4.0.4
+        version: 4.0.4
+      '@types/node':
+        specifier: ^25.9.5
+        version: 25.9.5
+      mdast-util-from-markdown:
+        specifier: ^2.0.2
+        version: 2.0.3
+      mdast-util-to-hast:
+        specifier: ^13.2.1
+        version: 13.2.1
+      mdast-util-to-markdown:
+        specifier: ^2.1.2
+        version: 2.1.2
+      micromark-util-types:
+        specifier: ^2.0.2
+        version: 2.0.2
+      remark-parse:
+        specifier: ^11.0.0
+        version: 11.0.0
+      remark-stringify:
+        specifier: ^11.0.0
+        version: 11.0.0
+      unified:
+        specifier: ^11.0.5
+        version: 11.0.5
 
 packages:
 
@@ -4332,9 +4375,6 @@ packages:
 
   remark-gfm@4.0.1:
     resolution: {integrity: sha512-1quofZ2RQ9EWdeN34S79+KExV1764+wCUGop5CPL1WGdD0ocPpu91lzPGbwWMECpEpd42kJGQwzRfyov9j4yNg==}
-
-  remark-mark-highlight@0.1.1:
-    resolution: {integrity: sha512-ot2AE37OKO2YQTcqyZ8VatEGJV/7CXk/RPJHk2TEVm04pT+JLCnoQb4Yj1vdOv2y4ZK45cDylj19gYVHqHz7Tw==}
 
   remark-math@6.0.0:
     resolution: {integrity: sha512-MMqgnP74Igy+S3WwnhQ7kqGlEerTETXMvJhrUzDikVZ2/uogJCb+WHUg97hK9/jcfc0dkD73s3LN8zU49cTEtA==}
@@ -9622,8 +9662,6 @@ snapshots:
       unified: 11.0.5
     transitivePeerDependencies:
       - supports-color
-
-  remark-mark-highlight@0.1.1: {}
 
   remark-math@6.0.0:
     dependencies:
