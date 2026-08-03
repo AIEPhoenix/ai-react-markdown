@@ -1,7 +1,7 @@
 # @ai-react-markdown/remark-mark-highlight
 
 [![npm](https://img.shields.io/npm/v/@ai-react-markdown/remark-mark-highlight)](https://www.npmjs.com/package/@ai-react-markdown/remark-mark-highlight)
-[![license](https://img.shields.io/npm/l/@ai-react-markdown/remark-mark-highlight)](../../LICENSE)
+[![license](https://img.shields.io/npm/l/@ai-react-markdown/remark-mark-highlight)](./LICENSE)
 
 [remark](https://github.com/remarkjs/remark) plugin for `==mark==` highlight syntax: `==text==` parses to an mdast `mark` node and renders as `<mark>text</mark>`.
 
@@ -31,8 +31,12 @@ Serialization back to markdown (`remark-stringify`) is supported; `==` sequences
 
 ## Behavior contract
 
-- Attention-style tokenizer (same family as GFM strikethrough): exactly two `=`, standard flanking rules, nesting with emphasis/strong/strikethrough, escapes and code spans respected, spans may contain line endings.
+- Attention-style tokenizer (same family as GFM strikethrough): exactly two `=`, standard flanking rules, nesting with emphasis/strong, escapes and code spans respected, spans may contain line endings. Interplay with other attention extensions (e.g. GFM strikethrough) follows micromark's shared attention machinery but is not part of the pinned corpus, which runs the plugin without GFM.
 - **Byte-compatible with `remark-mark-highlight@0.1.1`**: a 50-case parity corpus (mdast with positions + hast), generated against the upstream before this package replaced it, runs in CI. Behavior changes would be a semver-major of this package.
+
+## Footguns
+
+- **Loading the plugin changes how `remark-stringify` escapes `=`.** The serializer registers `=` as unsafe in phrasing content (so `==` spans survive round-trips), which escapes _every_ phrasing `=` — `let a = b` serializes as `let a \= b`. This matches the upstream's behavior and only affects stringify output, never parsing or rendering.
 
 ## API
 

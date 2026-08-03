@@ -20,7 +20,11 @@
   "keywords": [
     "remark",
     "remark-plugin",
+    "remark-mark-highlight",
     "micromark",
+    "micromark-extension",
+    "mdast",
+    "unified",
     "markdown",
     "mark",
     "highlight"
@@ -40,28 +44,30 @@
       },
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "scripts": {
     "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsup",
+    "prepublishOnly": "pnpm build",
     "test": "vitest --run",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@types/mdast": "^4.0.4",
+    "mdast-util-from-markdown": "^2.0.2",
+    "mdast-util-to-markdown": "^2.1.2",
     "micromark-util-chunked": "^2.0.1",
     "micromark-util-classify-character": "^2.0.1",
     "micromark-util-resolve-all": "^2.0.1",
-    "micromark-util-symbol": "^2.0.1"
+    "micromark-util-symbol": "^2.0.1",
+    "micromark-util-types": "^2.0.2",
+    "unified": "^11.0.5"
   },
   "devDependencies": {
-    "@types/mdast": "^4.0.4",
-    "mdast-util-from-markdown": "^2.0.2",
     "mdast-util-to-hast": "^13.2.1",
-    "mdast-util-to-markdown": "^2.1.2",
-    "micromark-util-types": "^2.0.2",
     "remark-parse": "^11.0.0",
     "remark-stringify": "^11.0.0",
-    "unified": "^11.0.5",
     "@types/node": "^25.9.5"
   }
 }
