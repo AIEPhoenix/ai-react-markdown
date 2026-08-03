@@ -1,7 +1,7 @@
 {
   "name": "@ai-react-markdown/core",
   "version": "2.0.0",
-  "description": "Core rendering engine for ai-react-markdown — LaTeX preprocessing, plugin pipeline, and React components.",
+  "description": "Core rendering engine for ai-react-markdown \u2014 LaTeX preprocessing, plugin pipeline, and React components.",
   "publishConfig": {
     "access": "public"
   },
@@ -76,7 +76,8 @@
     "build": "pnpm run build:js && pnpm run build:css",
     "test": "vitest --run",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "fuzz:splice": "vitest --run src/components/incrementalParse/spliceFuzz.test.ts"
+    "fuzz:splice": "vitest --run src/components/incrementalParse/spliceFuzz.test.ts",
+    "soak": "./scripts/run-soak.sh"
   },
   "peerDependencies": {
     "katex": "^0.16.0 || ^0.17.0",
@@ -89,6 +90,7 @@
     }
   },
   "dependencies": {
+    "@ai-react-markdown/remark-mark-highlight": "workspace:^",
     "devlop": "^1.1.0",
     "hast-util-to-jsx-runtime": "^2.3.6",
     "html-url-attributes": "^3.0.1",
@@ -105,7 +107,6 @@
     "remark-definition-list": "^2.0.0",
     "remark-emoji": "^5.0.2",
     "remark-gfm": "^4.0.1",
-    "remark-mark-highlight": "^0.1.1",
     "remark-math": "^6.0.0",
     "remark-pangu": "^2.2.0",
     "remark-parse": "^11.0.0",
