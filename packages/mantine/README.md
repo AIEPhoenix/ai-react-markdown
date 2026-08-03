@@ -340,7 +340,7 @@ See the [core README's cross-chunk section](../core/README.md#cross-chunk-coordi
        colorScheme         = useComputedColorScheme('light')  (when not overridden)
 ```
 
-Caller-provided `Typography`, `ExtraStyles`, and `customComponents` props override the Mantine defaults at their respective slots. Inside the wrapped `<AIMarkdown>`, the rest of the render pipeline (metadata context, render-state context, content preprocessors, remark/rehype plugin chain) is identical to standalone core -- see the [core architecture overview](../core/README.md#architecture-overview).
+Caller-provided `Typography`, `ExtraStyles`, and `customComponents` props override the Mantine defaults at their respective slots. Inside the wrapped `<AIMarkdown>`, the rest of the render pipeline (the five per-system contexts, content preprocessors, remark/rehype plugin chain) is identical to standalone core -- see the [core architecture overview](../core/README.md#architecture-overview).
 
 ## Exported API
 
