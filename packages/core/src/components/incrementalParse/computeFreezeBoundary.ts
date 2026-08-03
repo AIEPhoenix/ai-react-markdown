@@ -53,6 +53,16 @@
  *    reproduced on v1.8.0). The candidate adjacent to such a run is
  *    rejected until a later confirmed content line pins the seam from the
  *    frozen side; dropping candidates only over-blocks (safe direction).
+ * 7. **Phase poison** (`phasePoisonedAt`) — points where this line-level
+ *    model may have DIVERGED from micromark and provably cannot resync:
+ *    a fence/math open suppressed by `htmlFlowSinceBlank` (only certainly
+ *    swallowed at top level — in a container it really opens and the
+ *    open/close phase inverts permanently), and a paragraph-inline `<!--`
+ *    that fails to close by end of line (literal text to micromark, but
+ *    the comment scan would skip real markup as comment interior). Every
+ *    candidate past the first such point is rejected, sticky; candidates
+ *    at or before it stay valid — the ambiguous region then re-parses
+ *    inside the tail (pure over-block).
  *
  * ## Incremental scanning (checkpoint resume)
  *
