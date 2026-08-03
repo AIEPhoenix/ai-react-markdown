@@ -2,23 +2,27 @@
  * Pinned counterexamples from the 2026-08-03 enlarged (200k-sample) sharded
  * soak — all three reachable in shipped v1.8.0 (three-version replay:
  * v1.8.0 and the pre-blocker-6 v2 commit fail identically). Two distinct
- * mechanisms, closed by two structural bails in spliceParse.ts:
+ * mechanisms; the guards holding them moved during the 2026-08-04 credit
+ * refinement:
  *
- * - CLASS A (seeds 20260757/20260759): a multi-line self-closing raw block
- *   (`<embed\n src="x"\n/>`) glued to `$$` math leaves the frozen cut
- *   ending in a POSITION-LESS KaTeX span. Positioned content self-validates
- *   by containment, so mispairings are caught at the next positioned node —
- *   but nothing positioned follows, and the pairing error survives into the
- *   trailing-gap arithmetic, misplacing the whole math block. Bail: cut
- *   region whose last content node is position-less → full parse.
+ * - CLASS A (seeds 20260757/20260759): originally read as a splice-layer
+ *   blind spot, actually a DETECTOR under-block — `<embed` glued lines set
+ *   htmlFlowSinceBlank, the real `$$` open got suppressed, and the fence
+ *   tracker's phase INVERTED (every later close read as an open), letting a
+ *   boundary land inside open math; the tail re-parse then flipped the
+ *   closing fence into an opener. Held first by the coarse cut-ends-
+ *   position-less bail (2.0.1), now by detector blocker 7 (suppressed
+ *   fence/math opens poison later candidates — computeFreezeBoundary.ts
+ *   `phasePoisonedAt`); the coarse bail is removed.
  *
  * - CLASS B (seed 20260751, display-only config): an unclosed inline
  *   `<details>` open tag in a frozen paragraph. parse5's tree construction
  *   closes the `<p>` and hoists a details element to the root, where it
  *   swallows every later sibling — so an mdast-clean boundary is NOT
  *   hast-clean: the previous frame's details subtree contains tail bytes,
- *   which the tail re-parse then duplicates. Bail: a positioned cut child
- *   whose end offset exceeds the boundary → full parse.
+ *   which the tail re-parse then duplicates. Still held by the hast
+ *   straddle bail in spliceTrees: a positioned cut child whose end offset
+ *   exceeds the boundary → full parse.
  */
 import { describe, expect, test } from 'vitest';
 import { CATALOG } from './testPluginCatalog';

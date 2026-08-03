@@ -401,6 +401,18 @@ export function spliceTrees(input: SpliceInput): { mdast: MdastRoot; hast: HastR
       // child whose source extends past the boundary is exactly that shape.
       const end = node.position?.end?.offset;
       if (end !== undefined && end > boundary) return null;
+      // A position-less CONTENT text is only attributable when it directly
+      // follows a positioned element — its owner (parse5 merges adjacent
+      // texts, so one block never emits two literal nodes). One that
+      // follows another text is a stripped-construct remnant whose owner
+      // may live PAST the boundary (`<?instr <b> ?>` → ` ?>`, seed-20260830:
+      // attribution stalls on the last positioned child and pulled the
+      // CURRENT TAIL's remnant into the cut, duplicating it). Ownership is
+      // undecidable here — bail to a full parse.
+      if (isTrailingLiteralText(node)) {
+        const prev = i > 0 ? prevHast.children[i - 1] : undefined;
+        if (!prev || prev.type !== 'element' || prev.position === undefined) return null;
+      }
       cutRegion.push(node);
       continue;
     }
@@ -411,8 +423,21 @@ export function spliceTrees(input: SpliceInput): { mdast: MdastRoot; hast: HastR
     // its bytes live before the boundary — it must freeze with its owner,
     // the preceding included node. Whitespace-only texts stay excluded:
     // those are separators/foster-hoist, owned by the model below.
+    //
+    // OWNERSHIP is element-adjacency (seed-20260830 regression, exposed by
+    // removing the coarse tail bail): a real trailing literal always sits
+    // DIRECTLY after its owner's element output — parse5 merges adjacent
+    // texts, so one block never emits two literal nodes. A position-less
+    // non-whitespace text after a TEXT node is the current tail's own
+    // stripped-construct remnant (`<?instr <b> ?>` → ` ?>`), which the tail
+    // re-parse reproduces — freezing it would duplicate it.
     const node = prevHast.children[i];
-    if (i > 0 && attrs[i - 1] < boundary && isTrailingLiteralText(node)) {
+    if (
+      i > 0 &&
+      attrs[i - 1] < boundary &&
+      prevHast.children[i - 1].type === 'element' &&
+      isTrailingLiteralText(node)
+    ) {
       cutRegion.push(node);
     }
     break;
@@ -587,24 +612,18 @@ function alignPrefixCut(
 ): HastContent[] | null {
   const visibles = prefixMdast.filter((c) => !isWrapInvisible(c));
 
-  // STRUCTURAL BAIL (campaign prototype, 2026-08-03): positioned content
-  // self-validates by containment, so a mispairing is caught at the next
-  // positioned node — the only blind spot is the region AFTER the last
-  // positioned content node. If the cut ends in a position-less content
-  // node (KaTeX span, raw trailing literal), pairing errors there survive
-  // unchecked into the trailing-gap arithmetic. Bail the whole frame.
-  for (let i = cutRegion.length - 1; i >= 0; i--) {
-    const node = cutRegion[i];
-    if (isSeparatorText(node)) continue;
-    if (node.position === undefined) return null;
-    break;
-  }
-
   const out: HastContent[] = [];
   let sepBuffer: HastContent[] = [];
   let pairIdx = -1; // index into `visibles` of the child paired with the last content node
   let sawContent = false;
-  let literalSeen = false; // a raw trailing literal was pushed — separator runs after it undercount
+  // Wrap separators MERGED into pushed trailing literals (every trailing
+  // '\n' on a literal is a merged separator — see the trailing-region
+  // note). They count toward the NEXT gap's run length: without the
+  // credit, separator runs after a literal UNDERCOUNT the stripped
+  // children and the run-length rule mispairs position-less content
+  // (seed-20260752: the KaTeX span paired with the stripped comment,
+  // inflating the trailing gap count and duplicating the seam separator).
+  let literalCredit = 0;
 
   for (const node of cutRegion) {
     if (isSeparatorText(node)) {
@@ -636,7 +655,7 @@ function alignPrefixCut(
       // separator may intervene; the pairing cursor stays put.
       if (sepBuffer.length !== 0) return null;
       out.push(node);
-      literalSeen = true;
+      literalCredit += countTrailingNewlines(node.value);
       continue;
     }
     // New pairing: the separator run before this node covers the gap from
@@ -672,18 +691,10 @@ function alignPrefixCut(
       const excess = sepBuffer.length - nextIdx;
       if (excess > (nextIdx === 0 ? 1 : 0)) return null;
     } else {
-      // A trailing literal MERGES its preceding wrap separator into itself
-      // (its trailing '\n's are merged artifacts — see the trailing-region
-      // note below), so separator runs after one UNDERCOUNT the stripped
-      // children. A positioned node still self-validates by containment; a
-      // position-less node (KaTeX) has no such check and the run-length
-      // rule would mispair it (seed-20260752 counterexample: literal-bearing
-      // <details> + sanitize-stripped comment + math — the span paired with
-      // the comment, inflating the trailing gap count and duplicating the
-      // seam separator). Out of the plain run-length model — bail to a
-      // full parse.
-      if (start === undefined && literalSeen) return null;
-      const stripped = sawContent ? sepBuffer.length - 1 : sepBuffer.length;
+      // Run length = observed bare separators PLUS the ones merged into
+      // trailing literals since the last pairing (literalCredit) — the gap
+      // ground truth the stripped-children arithmetic needs.
+      const stripped = sawContent ? sepBuffer.length + literalCredit - 1 : sepBuffer.length;
       if (stripped < 0) return null;
       nextIdx = pairIdx + 1 + stripped;
       const candidate = visibles[nextIdx];
@@ -696,6 +707,7 @@ function alignPrefixCut(
     }
     out.push(...sepBuffer, node);
     sepBuffer = [];
+    literalCredit = 0; // merged separators consumed by this gap
     pairIdx = nextIdx;
     sawContent = true;
   }
@@ -752,6 +764,24 @@ function alignPrefixCut(
   // counterexample: a stripped comment's preceding ' ' merged into ' \n').
   // Out of the plain-slot model — bail to a full parse.
   if (sepBuffer.some((s) => s.type !== 'text' || s.value !== '\n')) return null;
+  // An interior literal whose merged separators were never consumed by a
+  // later pairing (literal, bare separators, then nothing) — its credit
+  // would have to offset the trailing-run arithmetic below, a shape the
+  // trailing rebuild does not model. Bail to a full parse.
+  if (literalCredit > 0) return null;
+  // A frozen html child ENDING in a sanitize-stripped construct (`…-->`,
+  // `…?>`, `…]]>`, declarations) leaves interior whitespace between its
+  // last element and the stripped tail — whitespace the full parse MERGES
+  // into the seam separator (`"\n\n"`, seed-20260850) while the plain-slot
+  // rebuild below synthesizes a bare `'\n'`. The merged node never reaches
+  // the cut (attribution excludes it), so the rebuild is blind to it —
+  // bail to a full parse when the last paired child has such a tail.
+  const lastPaired = pairIdx >= 0 ? visibles[pairIdx] : undefined;
+  if (lastPaired && lastPaired.type === 'html') {
+    const v = (lastPaired as { value: string }).value;
+    const lastLt = v.lastIndexOf('<');
+    if (lastLt !== -1 && /^<[!?]/.test(v.slice(lastLt))) return null;
+  }
   if (sepBuffer.length !== trailingGaps && sepBuffer.length !== trailingGaps + 1) return null;
   for (let i = 0; i < trailingGaps + seam; i++) {
     out.push({ type: 'text', value: '\n' });
@@ -895,8 +925,15 @@ function isSeparatorText(node: HastContent): boolean {
  *  literal trailing output of an html block (an unblanked text line after
  *  the block's closing tag). Distinct from separators and foster-parenting
  *  hoist, which are whitespace-only. */
-function isTrailingLiteralText(node: HastContent): boolean {
+function isTrailingLiteralText(node: HastContent): node is HastContent & { type: 'text'; value: string } {
   return node.type === 'text' && node.position === undefined && node.value.trim() !== '';
+}
+
+/** Trailing '\n' run length on a literal's value — its merged separators. */
+function countTrailingNewlines(value: string): number {
+  let n = 0;
+  for (let i = value.length - 1; i >= 0 && value[i] === '\n'; i--) n += 1;
+  return n;
 }
 
 /** Newlines in `text` before `end` (defaults to the whole string) — the
