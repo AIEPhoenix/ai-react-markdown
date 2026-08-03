@@ -58,13 +58,14 @@ export interface AIMarkdownProps<TMetadata extends AIMarkdownMetadata = AIMarkdo
    * Whether content is actively being streamed (e.g. token-by-token from an LLM).
    * When `true`, the flag is propagated via context so custom components can adapt
    * their behavior (show cursors, disable copy buttons, skip animations, etc.).
-   * Defaults to `false`.
+   * Defaults to `false`. `null` (from untyped/serialized callers) counts as absent.
    */
   streaming?: boolean;
   /**
    * Base font size for the rendered output.
    * Accepts a CSS length string (e.g. `'14px'`, `'0.875rem'`) or a number
-   * which is treated as pixels. Defaults to `'0.9375rem'`.
+   * which is treated as pixels. Defaults to `'0.9375rem'`. `null` (from
+   * untyped/serialized callers) counts as absent.
    */
   fontSize?: number | string;
   /** Raw markdown content to render. */
@@ -84,7 +85,7 @@ export interface AIMarkdownProps<TMetadata extends AIMarkdownMetadata = AIMarkdo
   customComponents?: AIMarkdownCustomComponents;
   /**
    * Typography wrapper component. Receives `fontSize`, `variant`, and `colorScheme`.
-   * Defaults to the built-in {@link DefaultTypography}.
+   * Defaults to the built-in {@link DefaultTypography}; `null` counts as absent.
    *
    * `children` may be a Fragment (the rendered content plus the optional
    * `streamingCursor` slot) — implementations must render `children`
@@ -100,9 +101,9 @@ export interface AIMarkdownProps<TMetadata extends AIMarkdownMetadata = AIMarkdo
    * verbatim.
    */
   ExtraStyles?: AIMarkdownExtraStylesComponent;
-  /** Typography variant name. Defaults to `'default'`. */
+  /** Typography variant name. Defaults to `'default'`; `null` counts as absent. */
   variant?: AIMarkdownVariant;
-  /** Color scheme name. Defaults to `'light'`. */
+  /** Color scheme name. Defaults to `'light'`; `null` counts as absent. */
   colorScheme?: AIMarkdownColorScheme;
   /**
    * Stable identifier for the *logical markdown document* this `<AIMarkdown>`
@@ -339,16 +340,16 @@ const CORE_STABILITY_TABLE: AIMarkdownStabilityTable<CoreStabilizedProps> = {
  * a configurable remark/rehype pipeline wrapped in typography and style layers.
  */
 const AIMarkdownComponent = <TMetadata extends AIMarkdownMetadata = AIMarkdownMetadata>({
-  streaming = false,
+  streaming,
   content,
   fontSize,
   contentPreprocessors,
   customComponents,
   metadata,
-  Typography = DefaultTypography,
+  Typography,
   ExtraStyles,
-  variant = 'default',
-  colorScheme = 'light',
+  variant,
+  colorScheme,
   documentId,
   urlTransform,
   sanitizeSchema,
@@ -358,9 +359,20 @@ const AIMarkdownComponent = <TMetadata extends AIMarkdownMetadata = AIMarkdownMe
   incrementalParse,
   preserveOrphanReferences,
 }: AIMarkdownProps<TMetadata>) => {
-  // Normalize fontSize: number -> px string, undefined -> default rem value.
-  // Branch on `undefined` (not truthiness) so `fontSize={0}` resolves to `'0px'`.
-  const usedFontSize = fontSize === undefined ? '0.9375rem' : typeof fontSize === 'number' ? `${fontSize}px` : fontSize;
+  // ── Library-wide explicitness guard (EXECUTION-PLAN §3.7) ──
+  // "Explicit" is `v != null` for EVERY prop, not just the engine slice:
+  // serialization boundaries (RSC, persistence) materialize "not passed" as
+  // `null`, and JS destructure defaults only cover `undefined`. `??` (not a
+  // destructure default) is therefore the only correct default site. The
+  // TS prop types still exclude `null` — this guard is runtime
+  // defense-in-depth for untyped/serialized callers.
+  const usedStreaming = streaming ?? false;
+  const usedVariant = variant ?? 'default';
+  const usedColorScheme = colorScheme ?? 'light';
+  // Normalize fontSize: number -> px string, null/undefined -> default rem
+  // value. Branch on `== null` (not truthiness) so `fontSize={0}` resolves
+  // to `'0px'`.
+  const usedFontSize = fontSize == null ? '0.9375rem' : typeof fontSize === 'number' ? `${fontSize}px` : fontSize;
 
   // documentId is forwarded RAW (possibly undefined) to the render-state
   // provider, which is the single point that resolves the useId() fallback
@@ -378,17 +390,22 @@ const AIMarkdownComponent = <TMetadata extends AIMarkdownMetadata = AIMarkdownMe
   // useReferenceFlipWarning calls. `metadata` crosses as PASS_THROUGH — the
   // deliberate exemption (opaque, potentially huge, unbounded comparison
   // cost) is now a declared policy row instead of an absence.
+  // `?? undefined` collapses `null` from untyped callers to `undefined` so
+  // the record matches its declared types and downstream `??`/conditional
+  // sites see exactly one absent value. `urlTransform` rides through as-is —
+  // its public type admits `null` (same null≡absent semantics), and its
+  // single consumption site below already normalizes with `?? undefined`.
   const stable = useStableRecord<CoreStabilizedProps>(
     {
-      enginePlugins,
-      sanitizeSchema,
-      customComponents,
-      contentPreprocessors,
+      enginePlugins: enginePlugins ?? undefined,
+      sanitizeSchema: sanitizeSchema ?? undefined,
+      customComponents: customComponents ?? undefined,
+      contentPreprocessors: contentPreprocessors ?? undefined,
       urlTransform,
-      Typography,
-      ExtraStyles,
-      streamingCursor,
-      metadata,
+      Typography: Typography ?? DefaultTypography,
+      ExtraStyles: ExtraStyles ?? undefined,
+      streamingCursor: streamingCursor ?? undefined,
+      metadata: metadata ?? undefined,
     },
     CORE_STABILITY_TABLE
   );
@@ -434,17 +451,17 @@ const AIMarkdownComponent = <TMetadata extends AIMarkdownMetadata = AIMarkdownMe
         preserveOrphanReferences={resolvedEngine.preserveOrphanReferences}
         enginePlugins={resolvedEngine.enginePlugins}
       />
-      {streaming && StreamingCursor ? <StreamingCursor /> : null}
+      {usedStreaming && StreamingCursor ? <StreamingCursor /> : null}
     </>
   );
 
   return (
     <AIMarkdownMetadataProvider<TMetadata> metadata={stable.metadata as TMetadata | undefined}>
       <AIMarkdownProvider
-        streaming={streaming}
+        streaming={usedStreaming}
         fontSize={usedFontSize}
-        variant={variant}
-        colorScheme={colorScheme}
+        variant={usedVariant}
+        colorScheme={usedColorScheme}
         documentId={documentId}
         blockMemo={resolvedEngine.blockMemo}
         incrementalParse={resolvedEngine.incrementalParse}
@@ -452,8 +469,8 @@ const AIMarkdownComponent = <TMetadata extends AIMarkdownMetadata = AIMarkdownMe
       >
         <TypographySlot
           fontSize={usedFontSize}
-          variant={variant}
-          colorScheme={colorScheme}
+          variant={usedVariant}
+          colorScheme={usedColorScheme}
           // Inject CSS custom properties onto the Typography root element.
           // --aim-font-size-root: absolute font-size anchor so inner CSS can
           //   bypass em-compounding in deeply nested markdown structures.

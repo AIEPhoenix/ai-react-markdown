@@ -24,6 +24,19 @@ import { getEnginePluginInternals, type AIMarkdownEnginePlugin } from './plugins
 /** Module-scope dev flag — resolved at build time (see `useReferenceFlipWarning`'s docblock). */
 const __DEV__ = process.env.NODE_ENV !== 'production';
 
+/**
+ * Shipped defaults of the three Behaviors switches — the SINGLE source of
+ * truth, shared by {@link resolveEngineValues} and the direct-provider
+ * destructure defaults in `context.tsx` (extension packages composing
+ * `AIMarkdownProvider` without `<AIMarkdown>` must see the same values).
+ * @internal
+ */
+export const SHIPPED_BEHAVIOR_DEFAULTS = Object.freeze({
+  blockMemo: true,
+  incrementalParse: true,
+  preserveOrphanReferences: true,
+} as const);
+
 /** Flat props the resolver consumes. `null` is tolerated at runtime (≡ absent). */
 export interface AIMarkdownFlatEngineProps {
   blockMemo?: boolean | null;
@@ -96,9 +109,9 @@ export function sanitizeEnginePlugins(plugins: readonly AIMarkdownEnginePlugin[]
  */
 export function resolveEngineValues(flat: AIMarkdownFlatEngineProps): ResolvedEngineValues {
   return {
-    blockMemo: flat.blockMemo ?? true,
-    incrementalParse: flat.incrementalParse ?? true,
-    preserveOrphanReferences: flat.preserveOrphanReferences ?? true,
+    blockMemo: flat.blockMemo ?? SHIPPED_BEHAVIOR_DEFAULTS.blockMemo,
+    incrementalParse: flat.incrementalParse ?? SHIPPED_BEHAVIOR_DEFAULTS.incrementalParse,
+    preserveOrphanReferences: flat.preserveOrphanReferences ?? SHIPPED_BEHAVIOR_DEFAULTS.preserveOrphanReferences,
     enginePlugins: flat.enginePlugins != null ? sanitizeEnginePlugins(flat.enginePlugins) : defaultEnginePlugins,
   };
 }
