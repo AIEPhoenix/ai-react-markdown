@@ -25,8 +25,9 @@
  * `<script>`) are modeled explicitly: their wrap separators survive as
  * orphans, and `alignPrefixCut` re-derives the mdast↔hast pairing from
  * separator-run lengths (B0-probe-verified: one orphan '\n' per stripped
- * child's gap slot). Layouts outside the model return null → full-parse
- * fallback for the frame.
+ * child's gap slot; separators MERGED into raw trailing literals count via
+ * their trailing newlines — `literalCredit`). Layouts outside the model
+ * return null → full-parse fallback for the frame.
  */
 
 import type { Root as HastRoot, RootContent as HastContent } from 'hast';
