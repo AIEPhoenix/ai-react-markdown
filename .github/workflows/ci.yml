@@ -56,13 +56,15 @@ jobs:
         if: matrix.task == 'format-check'
         run: pnpm format:check
 
-      # mantine's typecheck/tests resolve @ai-react-markdown/core through its
-      # exports map, which points at dist/ — absent on a fresh checkout since
-      # matrix tasks run in isolated jobs. Build core first so dependents
-      # check against the real built artifact (what npm consumers get).
-      - name: Build core (dependents resolve its dist)
+      # Workspace packages resolve each other through exports maps that point
+      # at dist/ — absent on a fresh checkout since matrix tasks run in
+      # isolated jobs. Build core AND its workspace dependencies (the `...`
+      # suffix pulls in @ai-react-markdown/remark-mark-highlight) so
+      # dependents check against the real built artifacts (what npm consumers
+      # get).
+      - name: Build core + its workspace deps (dependents resolve dist)
         if: matrix.task == 'typecheck' || matrix.task == 'test' || matrix.task == 'browser-smoke'
-        run: pnpm --filter @ai-react-markdown/core build
+        run: pnpm --filter '@ai-react-markdown/core...' build
 
       - name: Typecheck (all packages)
         if: matrix.task == 'typecheck'
