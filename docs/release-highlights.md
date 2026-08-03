@@ -8,6 +8,12 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 ## 2.0.x — The flat props API
 
+### 2.0.1 — Splice-layer hardening; first-party `==mark==` plugin; type-dependency fixes
+
+- **Engine fixes** (all pre-existing — reachable in shipped 1.8.0, found by an enlarged sharded soak; none are 2.0.0 regressions): four incremental-parse splice divergences in three classes are closed with structural bails to the full parse. A raw trailing literal merging its wrap separator could mispair a position-less KaTeX span (duplicated seam separator); a frozen cut ending in a position-less node escaped the positioned-containment cross-check (misplaced math block); and an unclosed inline `<details>` makes parse5 hoist a root element that swallows later siblings, so an mdast-clean freeze boundary was not hast-clean (duplicated tail content). Counterexamples are pinned; measured coverage cost is ~1pp of incremental-frame ratio on benign-shaped documents. Verified by the full three-leg soak plus a 300k-sample fresh-seed run — both clean.
+- **Plain-Node CJS `require()` works** — the 2.0.0 known issue is resolved. The unmaintained `remark-mark-highlight` dependency is replaced by first-party [`@ai-react-markdown/remark-mark-highlight`](https://www.npmjs.com/package/@ai-react-markdown/remark-mark-highlight) (independently versioned, dual ESM/CJS): byte-compatible with the upstream's 0.1.1 output, pinned by a 50-case parity corpus generated against the upstream before the swap.
+- **Published types resolve under strict resolvers**: `@types/hast` moves to `dependencies` — the shipped d.ts imports from `hast`, and with the package absent, pnpm/PnP consumers got TS2307 (or a silent `any` with `skipLibCheck`).
+
 ### 2.0.0 — Props/config API v2: flat props, sealed engine plugins, five contexts
 
 **Breaking.** The 1.x `config` / `defaultConfig` object channel is removed outright — no compatibility layer. Every removed symbol has a one-to-one destination with runnable before/after code in the [migration guide](./migrating-to-v2.md); the engine itself is untouched (the produced plugin chain is byte-equivalent, enforced by the independent-mirror suite and a fresh full soak).
