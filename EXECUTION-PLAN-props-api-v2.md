@@ -472,3 +472,42 @@ export interface MantineCodeBlockOptions { defaultExpanded: boolean; autoDetectU
 export function useMantineCodeBlockOptions(): Required<MantineCodeBlockOptions>;
 export function defineMantineBehaviors(v: MantineBehaviorProps): Readonly<MantineBehaviorProps>;
 ```
+
+## Appendix B — Post-release amendments (recorded 2026-08-04, after the v2.0.2 dual review)
+
+This plan is the frozen execution record for 2.0.0. The implementation deviates from — or has since amended — the letter of the plan in the following points. The amendments below are authoritative over the corresponding plan text.
+
+### B.1 Seal mechanics (§3.5, Appendix A)
+
+- **Implemented as a structural `'~sealed'` marker key, not a `unique symbol` brand.** Reason: the type must stay assignable across the package's two build entries whether or not the build duplicates the declaration per entry; a `unique symbol` brand breaks the duplicated case. Note for the record: current tsup output happens to share one declaration chunk between the entries, so the original failure mode does not manifest in today's build — the structural key remains the choice because chunk sharing is a bundler implementation detail this contract must not lean on.
+- **Runtime gate requires BOTH keys** (2.0.3): `getEnginePluginInternals` accepts an object only when it carries the public `'~sealed'` marker AND the internal `stage` metadata, so a type-level forge and a stage-only structural mimic are both dropped (dev warning). The gate is defense-in-depth, not tamper-proofing — unchanged guarantee class.
+- **Chain position mechanism**: implemented as canonical per-stage tables keyed by plugin NAME in `pluginChain.ts`; the object's `stage` field serves as the runtime-gate sentinel, not as the splice-position source. Contract outcome (order independence, fixed positions) is unchanged and now pinned by a unit test.
+- **Duplicates are deduplicated by `name`**, not "by identity" as §3.5 wrote — equivalent while plugins are singletons, and strictly safer if factory-form plugins ever land (a second differently-configured instance of one name is dropped with a dev warning, not silently double-spliced).
+
+### B.2 `define*` factories are non-generic (§3.3)
+
+Deliberate deviation: generic signatures would defeat excess-property checking, which is the factories' main misuse guard. Recorded in `define.ts`'s docblock.
+
+### B.3 Library-wide null guard (§3.7)
+
+2.0.0–2.0.2 implemented the `v != null` explicitness rule only for the engine/behavior slice; the theme/state/component props used JS destructure defaults (undefined-only). Completed library-wide in 2.0.3 — every optional prop now treats `null` as absent at runtime; the TS prop types still exclude `null` (compile-time rejection stays the first line of defense for typed callers).
+
+### B.4 Wrapper group contribution: absent prop ⇒ NO key (§4, §3.6)
+
+Amendment to the integrator contract: a wrapper whose group prop is absent must contribute **no group key at all** (not an empty group object). Contributing `codeBlock: {}` as a placeholder shadows an app-level Provider's same-named group under the inner-wins merge and silently kills the documented third-level extension path. Fixed in mantine and in every documented wrapper example in 2.0.3; pinned by tests.
+
+### B.5 Group-key registry and reservation policy (extends §3.2 caveat 2)
+
+The prop-name registry (core README props table) now has a sibling **group-key registry** for additive-Provider group keys (core README, "Additive Providers" section). Policy:
+
+- Core will NOT promote a registered group key into a core-locked key (`& { key?: never }`) within the 2.x line — promotion is a breaking change because the `never` lock retroactively breaks every downstream compile that used the key.
+- Wrapper packages register their group keys in the registry via PR. Application-local groups should use app-scoped names (e.g. `chatPanel`, not `panel`) to stay clear of future wrapper keys.
+- Duplicated keys between independent wrappers resolve by inner-wins silently — the registry is the only collision governance, same rationale as the prop-name registry.
+
+### B.6 Behaviors-context isolation: re-evaluation trigger (§3.4 known cost)
+
+The accepted cost "one group change re-renders all subscribers of the behaviors/state context" holds at current scale. Re-evaluate the private-context alternative when EITHER: (a) any group's change frequency rises above message-lifecycle (toward per-token/frame), or (b) the registered group count exceeds ~5.
+
+### B.7 `AIMarkdownEnginePluginName` is open across minors (Appendix A)
+
+The name union grows in minor releases when new plugins ship. Documented on the type: consumers must not write exhaustive `switch`es or `Record<AIMarkdownEnginePluginName, …>` maps over it; feature-test membership instead.

@@ -90,6 +90,7 @@ import { memo, useMemo } from 'react';
 import AIMarkdown, {
   type AIMarkdownProps,
   type AIMarkdownCustomComponents,
+  type AIMarkdownBehaviorGroups,
   type AIMarkdownStabilityTable,
   AIMarkdownBehaviorsProvider,
   AIMarkdownStabilityPolicy,
@@ -109,8 +110,13 @@ export interface YourAIMarkdownProps<
   codeBlock?: Partial<YourCodeBlockOptions>;
 }
 
-/** Stable empty group for the absent-prop case (identity-stable context value). */
-const EMPTY_CODE_BLOCK: Partial<YourCodeBlockOptions> = Object.freeze({});
+/**
+ * Stable empty CONTRIBUTION for the absent-prop case. Deliberately carries
+ * no `codeBlock` key: contributing `codeBlock: {}` would shadow a group
+ * provided by an outer app-level Provider (inner-wins merge) even though
+ * your wrapper has nothing to say.
+ */
+const NO_GROUPS: AIMarkdownBehaviorGroups = Object.freeze({});
 
 /**
  * Your stability-firewall table — rows ONLY for object props this wrapper
@@ -149,10 +155,14 @@ const YourAIMarkdownComponent = <TMetadata extends YourAIMarkdownMetadata = Your
   const stable = useStableRecord({ codeBlock }, STABILITY_TABLE);
 
   // Contribute the group through the additive behaviors Provider — firewall
-  // output used directly (`null` ≡ absent → empty group; the narrow hook
-  // fills the defaults), record identity memoized so the context value
-  // stays stable across unrelated re-renders.
-  const behaviorGroups = useMemo(() => ({ codeBlock: stable.codeBlock ?? EMPTY_CODE_BLOCK }), [stable.codeBlock]);
+  // output used directly, record identity memoized so the context value
+  // stays stable across unrelated re-renders. `null`/absent prop ≡ NO
+  // contribution (not an empty group): an outer app-level Provider's group
+  // stays visible; when the prop IS present, inner-wins gives it precedence.
+  const behaviorGroups = useMemo<AIMarkdownBehaviorGroups>(
+    () => (stable.codeBlock != null ? { codeBlock: stable.codeBlock } : NO_GROUPS),
+    [stable.codeBlock]
+  );
 
   return (
     <AIMarkdownBehaviorsProvider value={behaviorGroups}>
@@ -479,7 +489,7 @@ Group defaults live inside your narrow hook, exactly once. A component that read
 
 ### Prop-name collisions
 
-Flat props share one namespace across core and all wrapper layers. Check the prop-name registry — the props table in the [core README](../packages/core/README.md#props-api-reference) — before adding a field to your wrapper props. A collision is a compile error at the `extends` site for TS consumers — but a **silent override** for plain-JS consumers. Same discipline for group keys inside the Provider value: prefix or scope them so an app-level group can't shadow yours accidentally.
+Flat props share one namespace across core and all wrapper layers. Check the prop-name registry — the props table in the [core README](../packages/core/README.md#props-api-reference) — before adding a field to your wrapper props. A collision is a compile error at the `extends` site for TS consumers — but a **silent override** for plain-JS consumers. Same discipline for group keys inside the Provider value: check the [group-key registry](../packages/core/README.md#group-key-registry) and register your wrapper's keys there via PR — group keys share one namespace per context and a duplicated key resolves by inner-wins silently. Application-local groups should use app-scoped names (`chatPanel`, not `panel`).
 
 ### Wholesale-replacing `sanitizeSchema`
 
