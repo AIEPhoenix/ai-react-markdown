@@ -11,6 +11,7 @@
 import { PropsWithChildren, createContext, useContext, useId, useMemo, useRef, type Context, type FC } from 'react';
 import { AIMarkdownMetadata, AIMarkdownVariant, AIMarkdownColorScheme } from './defs';
 import { shortenDocumentId } from './components/shortenDocumentId';
+import { SHIPPED_BEHAVIOR_DEFAULTS } from './resolveFlatProps';
 import useReferenceFlipWarning from './hooks/useReferenceFlipWarning';
 
 const AIMarkdownMetadataContext = createContext<AIMarkdownMetadata | undefined>(undefined);
@@ -237,12 +238,17 @@ function requireCoreContext<T extends object>(value: T | null, coreKey: string, 
  * `documentIdExplicit` coordination signal, and the canonical
  * `clobberPrefix`. Payload is derived invariants — this context is closed
  * to extension (a forgeable `clobberPrefix` would break the anchor system).
+ *
+ * @throws When called outside an `<AIMarkdown>` tree.
  */
 export function useAIMarkdownDocument(): AIMarkdownDocumentInfo {
   return requireContext(useContext(documentCell), 'useAIMarkdownDocument');
 }
 
-/** Theme-system narrow hook: `fontSize`, `variant`, `colorScheme`. */
+/**
+ * Theme-system narrow hook: `fontSize`, `variant`, `colorScheme`.
+ * @throws When called outside an `<AIMarkdown>` tree.
+ */
 export function useAIMarkdownTheme(): AIMarkdownThemeInfo {
   return requireContext(useContext(themeCell), 'useAIMarkdownTheme');
 }
@@ -253,6 +259,10 @@ export function useAIMarkdownTheme(): AIMarkdownThemeInfo {
  * that re-render on a flip.
  * Extension state groups contributed via {@link AIMarkdownStateProvider}
  * appear as additional keys, typed `object | undefined`.
+ *
+ * @throws When called outside an `<AIMarkdown>` tree — a stacked additive
+ *   Provider alone does not satisfy the guard (core keys come only from
+ *   `<AIMarkdown>`'s internal provider).
  */
 export function useAIMarkdownState(): AIMarkdownStateCore & AIMarkdownExtensionGroups {
   return requireCoreContext(useContext(stateCell.Ctx), 'streaming', 'useAIMarkdownState');
@@ -264,6 +274,10 @@ export function useAIMarkdownState(): AIMarkdownStateCore & AIMarkdownExtensionG
  * `TConfig` generic is retired; wrapper narrow hooks (e.g.
  * `useMantineCodeBlockOptions()`) perform the single type assertion and
  * apply group defaults inside.
+ *
+ * @throws When called outside an `<AIMarkdown>` tree — a stacked additive
+ *   Provider alone does not satisfy the guard (core keys come only from
+ *   `<AIMarkdown>`'s internal provider).
  */
 export function useAIMarkdownBehaviors(): AIMarkdownBehaviorsCore & AIMarkdownExtensionGroups {
   return requireCoreContext(useContext(behaviorsCell.Ctx), 'blockMemo', 'useAIMarkdownBehaviors');
@@ -344,8 +358,8 @@ export interface AIMarkdownProviderProps extends PropsWithChildren {
    * Logical-document identifier used as the id namespace for clobberable
    * attributes (id / hash hrefs). Optional — when omitted, the provider
    * auto-generates one via {@link useId} so the provider stays drop-in
-   * usable for direct consumers (e.g. extension packages that don't go
-   * through `<AIMarkdown>`).
+   * usable for direct in-repo consumers (stories / test harnesses that
+   * don't go through `<AIMarkdown>`).
    *
    * Pass the SAME value to multiple providers / `<AIMarkdown>` instances
    * when they render chunks of the same logical document — their id
@@ -383,9 +397,10 @@ export const AIMarkdownMetadataProvider = <RDT extends AIMarkdownMetadata = AIMa
 /**
  * Internal provider that feeds the five per-system contexts from the
  * already-resolved values `<AIMarkdown>` passes in (single resolution
- * point). Directly composable by extension packages that bypass
- * `<AIMarkdown>`; the behaviors switches then default to the shipped
- * defaults.
+ * point). NOT part of the public export surface (the openness table keeps
+ * the document system closed) — direct composition is an in-repo
+ * convenience for stories and test harnesses; the behaviors switches then
+ * default to the shipped defaults.
  */
 const AIMarkdownProvider = ({
   streaming,
@@ -393,9 +408,9 @@ const AIMarkdownProvider = ({
   variant,
   colorScheme,
   documentId,
-  blockMemo = true,
-  incrementalParse = true,
-  preserveOrphanReferences = true,
+  blockMemo = SHIPPED_BEHAVIOR_DEFAULTS.blockMemo,
+  incrementalParse = SHIPPED_BEHAVIOR_DEFAULTS.incrementalParse,
+  preserveOrphanReferences = SHIPPED_BEHAVIOR_DEFAULTS.preserveOrphanReferences,
   children,
 }: AIMarkdownProviderProps) => {
   // Fallback id when the caller did not supply one. `useId()` is SSR-safe
@@ -406,8 +421,8 @@ const AIMarkdownProvider = ({
   // `<AIMarkdown>` forwards the raw (possibly undefined) prop straight here
   // rather than pre-defaulting it, so the "did the consumer supply an id?"
   // signal survives all the way to where it's consumed. Any deeper consumer
-  // that composes this provider directly (e.g. an extension package that
-  // bypasses `<AIMarkdown>`) therefore gets identical resolution + the
+  // that composes this provider directly (in-repo stories / test harnesses
+  // that bypass `<AIMarkdown>`) therefore gets identical resolution + the
   // correct `documentIdExplicit` for free.
   const fallbackId = useId();
   const documentIdExplicit = !!(documentId && documentId.length > 0);
