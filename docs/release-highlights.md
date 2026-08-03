@@ -6,6 +6,21 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 ---
 
+## 2.0.x — The flat props API
+
+### 2.0.0 — Props/config API v2: flat props, sealed engine plugins, five contexts
+
+**Breaking.** The 1.x `config` / `defaultConfig` object channel is removed outright — no compatibility layer. Every removed symbol has a one-to-one destination with runnable before/after code in the [migration guide](./migrating-to-v2.md); the engine itself is untouched (the produced plugin chain is byte-equivalent, enforced by the independent-mirror suite and a fresh full soak).
+
+- **Input surface**: 18 flat props resolved once against shipped defaults — explicit (`v != null`) beats default, `null` counts as absent (an RSC serialization guard). The behavior switches become `blockMemo` / `incrementalParse` / `preserveOrphanReferences`; note the absence-semantics flip — an omitted `incrementalParse` now means the shipped default (**on**), where a 1.x custom `defaultConfig` omitting the field silently meant off. The two selection enums collapse into `enginePlugins`, accepting core-sealed plugin objects from the new `@ai-react-markdown/core/plugins` subpath (`highlight`, `definitionList`, `smartypants`, `pangu`, `removeComments`, `defaultEnginePlugins`); chain position comes from plugin metadata, never array order. `defineTheme` / `defineBehaviors` / `definePipeline` package integration-time fragments as frozen spreads, and reference stabilization is consolidated into one table-driven firewall (`useStableRecord` + `AIMarkdownStabilityPolicy`, exported for wrapper reuse).
+- **Output surface**: the render-state context and its caller-asserted `TConfig` generic (`useAIMarkdownRenderState`) are replaced by five per-system contexts with narrow hooks — `useAIMarkdownDocument` / `Metadata` / `State` / `Theme` / `Behaviors` — plus a `useAIMarkdown()` aggregate. `streaming` flips now wake ONLY state subscribers (pinned by a browser-run story test). Wrappers and apps extend through additive `AIMarkdownBehaviorsProvider` / `AIMarkdownStateProvider` stacked outside `<AIMarkdown>`, with the core keys triple-locked (type-level `never`, spread order, dev warning) and misuse outside `<AIMarkdown>` throwing exactly like the narrow hooks promise.
+- **mantine**: `codeBlock` becomes a flat behavior-group prop read through `useMantineCodeBlockOptions()` (the single assertion-and-defaults site); `defineMantineBehaviors` is the widened factory; the render-config trio (`MantineAIMarkdownRenderConfig`, `defaultMantineAIMarkdownRenderConfig`, `useMantineAIMarkdownRenderState`) is gone. Generic signatures change positionally: `AIMarkdownProps<TConfig, TMetadata>` → `AIMarkdownProps<TMetadata>`.
+- **Engine fix** (reachable in shipped 1.8.0, found by the release-gate soak): an html-flow run that swallows non-tag lines leaves balanced floating remnant whose rehype-raw seam depends on what follows — a tail flipping between definition and paragraph could reshape the frozen region. The freeze-boundary detector gains blocker 6 (raw-remnant seam): candidates adjacent to such a run are rejected until later content pins the seam, hardened through adversarial review (multi-line raw constructs on the settle line; no-hast-output lines no longer release). Over-block only — output correctness, not output shape. Full three-leg soak (50k fuzz, 20k direction prefixes, K=4 census ×12 shards) clean on the final detector.
+- **Docs**: all three READMEs and every `docs/` page migrated; `docs/migrating-to-v2.md` is the complete old→new mapping; `docs/typescript-generics.md` shrinks to the metadata generic; `docs/extending-via-subpackage.md` is rewritten around behavior groups + additive Providers, mirroring the mantine implementation.
+- **Known issue** (pre-existing, unchanged from 1.8.0): plain-Node CJS `require('@ai-react-markdown/core')` fails because the `remark-mark-highlight` dependency ships no `require` condition; bundler and ESM consumers are unaffected. A first-party replacement subpackage is planned.
+
+---
+
 ## 1.8.x — Incremental parsing by default
 
 ### 1.8.0 — `incrementalParseEnabled` defaults to `true`
