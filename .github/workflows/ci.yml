@@ -83,6 +83,14 @@ jobs:
         if: matrix.task == 'build'
         run: pnpm build
 
+      # Publish-surface gate: attw resolves every exports-map entrypoint under
+      # node10/node16/bundler rules against the packed tarball, publint lints
+      # the manifest — locks the dual-format exports pattern that was
+      # previously only hand-validated.
+      - name: Package export checks (attw + publint)
+        if: matrix.task == 'build'
+        run: pnpm packcheck
+
       # The root vitest config's `storybook` project renders every story in
       # headless Chromium (via @storybook/addon-vitest) — the only gate that
       # exercises real browser DOM. `pnpm -r test` never reaches it because
