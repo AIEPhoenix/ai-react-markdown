@@ -353,3 +353,67 @@ describe('computeFreezeBoundary — inline code-span masking (safe direction)', 
     }
   });
 });
+
+describe('computeFreezeBoundary — suppressed fence/math opens poison the phase (blocker 7)', () => {
+  // A fence/math open glued under an html-flow run is suppressed (the run
+  // may swallow it) — but whether it REALLY does is container-dependent:
+  // `<embed` inside a list item is a lazy paragraph line and the glued `$$`
+  // a REAL math open (seed-20260757 under-block: the tracker's phase
+  // inverted from that line on, and a boundary landed inside open math).
+  // The suppression point poisons all LATER candidates, sticky.
+
+  test('glued $$ after an ambiguous tag run caps the boundary at the pre-run candidate', () => {
+    const text = 'x\n\n<embed\n  src="x"\n/>\n$$\ne = mc^2\n\n$$\n\ntail prose\n\nmore prose\n';
+    expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('<embed'));
+  });
+
+  test('glued ``` fence poisons identically (same inversion mechanism)', () => {
+    const text = 'x\n\n<embed\n  src="x"\n/>\n```\ncode\n```\n\ntail prose\n\nmore prose\n';
+    expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('<embed'));
+  });
+
+  test('control: blank-separated math with an internal blank line tracks and releases', () => {
+    const text = 'para\n\n$$\ne = mc^2\n\n$$\n\ntail prose\n\nmore prose\n';
+    // The blank INSIDE the math block must not be a candidate; the blanks
+    // after the closed block are (last one wins).
+    expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('more prose'));
+  });
+
+  test('type-6 glued math also poisons (deliberate over-block: swallow is container-dependent)', () => {
+    const text = 'para\n\n<details>\n</details>\n$$\nnot math maybe\n\nmore\n\nend\n';
+    expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('<details>'));
+  });
+
+  test('a paragraph-inline <!-- that never closes poisons from the opener', () => {
+    // micromark treats the unclosed inline opener as literal text, so the
+    // `<details>` after the blank is REAL and unclosed — candidates past
+    // the opener must be rejected (seed-20260828).
+    const text =
+      'x\n\nprose <b>x</b> <!-- trailing opener\n\n<details>\n\n<!-- a closed comment -->\n\nsee it\n\nmore\n';
+    expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('prose'));
+  });
+
+  test('a 4-indented line glued after a fence close is an A1 hazard', () => {
+    // Indented code starts fresh after the close and merges across the
+    // blank into the next indented line (seed-20260841) — the blank between
+    // them must not be a candidate.
+    const text = 'x\n\n```\ncode\n```\n    indented code\n\n    more indented\n\ntail\n';
+    expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('```'));
+  });
+
+  test('a line-START <!-- block keeps terminator semantics (no poison)', () => {
+    const text = 'x\n\n<!--\ninner\n-->\n\ntail prose\n\nmore prose\n';
+    expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('more prose'));
+  });
+
+  test('candidates BEFORE the poison point survive across appends (monotone)', () => {
+    const text = 'x\n\n<embed\n  src="x"\n/>\n$$\ne = mc^2\n\n$$\n\ntail prose\n\nmore prose\n';
+    let prev = 0;
+    for (let i = 1; i <= text.length; i++) {
+      const b = computeFreezeBoundary(text.slice(0, i), OFF);
+      expect(b, `regression at length ${i}`).toBeGreaterThanOrEqual(prev);
+      expect(b, `poison ceiling at length ${i}`).toBeLessThanOrEqual(text.indexOf('<embed'));
+      prev = b;
+    }
+  });
+});

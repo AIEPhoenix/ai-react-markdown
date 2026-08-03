@@ -263,6 +263,57 @@ describe('splice equivalence — fuzz-found regressions', () => {
     // close on the CONTINUATION line — registering at the opener line was
     // premature. Multi-line titles now never register (A2 edge).
     ['def-title-closed-then-garbage', '[x]: /u "t\nt2"a\n\n[x]: /u', [17, 5], 0],
+    // Credit-refinement soak pair (300k fresh seeds, 2026-08-04). A
+    // paragraph-inline `<!--` that never closes is literal TEXT to
+    // micromark, but the detector's comment scan skipped the REAL unclosed
+    // `<details>` after it as "comment interior" — the boundary landed past
+    // an element whose raw-time node absorbs every later sibling. Fixed by
+    // the inline-comment-opener phase poison (blocker 7 family).
+    [
+      'inline-comment-opener-poison',
+      '- tight one\n- tight two\n\nplain prose keeps flowing here, inline `<div>` stays code, <b>x</b> <!-- trailing opener\n\n<details>\n\n<!-- a closed comment -->\n\nsee [a] maybe, or [a][a] even ![a]\n\n```\nconst x = "[a]<div>";\n```\n',
+      [12, 22, 1, 16, 4, 4, 4, 31],
+      3, // fuzz configIndex 21 % CATALOG.length — display-only
+    ],
+    // A stripped-construct remnant (`<?instr <b> ?>` → ` ?>`) is a
+    // position-less content text that follows a TEXT node — attribution
+    // stalls on the last positioned child and pulled the CURRENT TAIL's
+    // remnant into the cut, duplicating it once the tail re-parsed. The cut
+    // now requires a positioned-element predecessor for any position-less
+    // content text (ownership by parse5 adjacency) and bails otherwise.
+    [
+      'tail-remnant-ownership',
+      '<details>\n<summary>t</summary>\nbody prose\n</details>\nprose with [a] used\n\n[^a]: body text\n\n    indented continuation\n\n[a]: https://example.com/a\n\n<?instr <b> ?> after the pi\n\n```\nconst x = "[a]<div>";\n\n```\n\n[a]: https://example.com/a\n',
+      [4, 4, 4, 1, 4, 4, 1, 4],
+      0,
+    ],
+    // Round-3 soak (seeds 20260841/44/50). A 4-indented line GLUED after a
+    // fence close starts an indented code block that merges across later
+    // blanks (A1) — the stale rolling verdict let a candidate split it.
+    // classifyBlockStart's glued-marker branch now covers indent >= 4.
+    [
+      'glued-indented-code-after-fence',
+      '- tight one\n- tight two\n\n[^b]: body text\n\n<details>\ninner prose\n</details>\n\n```\nconst x = "[a]<div>";\n```\n    [^b]: not a real def\n\n    <details>[a] scanned literal\n\n[^a]: body text\n',
+      [7, 4, 4, 7, 4, 4, 1, 1],
+      0,
+    ],
+    [
+      'glued-indented-code-after-fence-cdata',
+      '[^b]: body text\n\nplain prose keeps flowing here\n\n```\nconst x = "[a]<div>";\n```\n    [^b]: not a real def\n\n    <details>[a] scanned literal\n\n<details>\ninner prose\n</details>\n\n[^a]: body text\n\n<![CDATA[<div>data</div>]]> trailing prose\n\n[^a]: body text\n',
+      [4, 4, 9, 4, 4, 4, 4, 1],
+      0,
+    ],
+    // A frozen html child ending in a sanitize-stripped construct
+    // (`</details>\n<!--…-->`) leaves interior whitespace that the full
+    // parse merges into the seam separator ("\n\n") — the plain-slot
+    // trailing rebuild was blind to it (the merged node never reaches the
+    // cut). The stripped-tail bail now sends those frames to a full parse.
+    [
+      'stripped-tail-seam-residue',
+      '- tight one\n- tight two\n\n- tight one\n- tight two\n\n<details>\n<summary>t</summary>\nbody prose\n</details>\n<!--\n- tight one\n- tight two\n\n<!--\ninner prose\n-->\n\nprose with [a] used\n\nTerm line\n\n:   description body\n\nTerm line\n\n:   description body\n\n[^a]: body text\n',
+      [4, 4, 4, 4, 1, 4, 4, 4],
+      1, // fuzz configIndex 563389549 % CATALOG.length — defaults-all-on
+    ],
   ];
 
   for (const [name, payload, sizes, configIdx] of FUZZ_CASES) {
