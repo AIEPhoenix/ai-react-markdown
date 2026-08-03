@@ -244,6 +244,64 @@ ratio 0.4388 → 0.4291, hazard 0.3451 → 0.3020; all "must actually splice"
 fixture pins in `spliceEquivalence.test.ts` still splice. Pinned in
 `spliceStructuralBail.test.ts`.
 
+Credit refinement (2026-08-04, shipped after 2.0.1): dissecting class A
+for the planned run-length-credit work showed it was never a splice-layer
+blind spot at all but a DETECTOR under-block — an `<embed`-style glued
+line sets `htmlFlowSinceBlank`, the real `$$` open is suppressed, and the
+fence tracker's phase INVERTS from that line on (every later close reads
+as an open; the phases never resync), eventually offering a boundary
+inside open math that the tail re-parse flips into a fresh opener. Three
+changes landed together: (1) detector blocker 7 — a fence/math open
+suppressed by `htmlFlowSinceBlank` records `phasePoisonedAt` and every
+later candidate is rejected, sticky (whether the run really swallows the
+line is container-dependent and undecidable line-locally; candidates at
+or before the point stay valid, so the ambiguous region re-parses in the
+tail — pure over-block); (2) the seam class is now handled
+arithmetically — trailing literals' merged wrap separators count as
+`literalCredit` toward the next gap's run length instead of bailing;
+(3) the coarse cut-ends-position-less bail is REMOVED (the hast straddle
+bail for class B stays). Net coverage vs the 2.0.1 bails (same paired
+2000-sample fuzz): benign 0.4291 → 0.4395, hazard 0.3020 → 0.3467 —
+above even the pre-campaign broken-arithmetic ceiling, because the credit
+also recovers frames the old model bailed on `stripped < 0`. Blocker-7
+unit pins in `computeFreezeBoundary.test.ts`; the class pins in
+`spliceStructuralBail.test.ts` / `spliceSeamLiteralMispair.test.ts` hold
+under the new guards.
+
+The refined engine's own 300k fresh-seed soak (seeds 20260820..831)
+surfaced two more counterexamples — one regression, one pre-existing —
+both fixed before landing: (a) seed 20260830, a REGRESSION exposed by
+removing the coarse bail: attribution stalls on the last positioned child,
+so the CURRENT TAIL's stripped-construct remnant (`<?instr <b> ?>` →
+` ?>`) was pulled into the cut and duplicated; the cut now requires a
+positioned-element predecessor for any position-less content text (parse5
+adjacency is ownership — one block never emits two literal nodes) and
+bails otherwise. (b) seed 20260828, pre-existing (2.0.1 fails
+identically): a paragraph-inline `<!--` that never closes is literal TEXT
+to micromark, but the comment scan skipped a REAL unclosed `<details>`
+as comment interior and the boundary landed past it — inline comment
+openers that fail to close by end of line now poison candidates from the
+opener (blocker-7 mechanism; line-start type-2 blocks keep exact
+terminator semantics). Both pinned in `spliceEquivalence.test.ts`
+(`inline-comment-opener-poison`, `tail-remnant-ownership`); guard cost at
+the 2000-sample scale: none measurable (benign 0.4395, hazard 0.3466).
+
+Round 3 (seeds 20260840..851, same protocol) surfaced three more — all
+pre-existing (2.0.1 replay fails identically), two classes, both fixed:
+(a) seeds 20260841/44 — a 4-indented line GLUED after a fence close
+starts an indented code block that merges across later blanks (A1), but
+the rolling hazard verdict only classified block starts after blanks;
+the glued-marker branch now covers `indent >= 4` (a mid-paragraph
+indented line is a lazy continuation, so the extra flag is pure
+over-block). (b) seed 20260850 — a frozen html child ending in a
+sanitize-stripped construct (`</details>\n<!--…-->`) leaves interior
+whitespace the full parse merges into the seam separator ("\n\n"); the
+plain-slot trailing rebuild was blind to it (the merged node never
+reaches the cut), so a stripped-construct tail on the last paired html
+child now bails the frame. Pins: `glued-indented-code-after-fence`(+
+`-cdata`), `stripped-tail-seam-residue`, plus an A1 unit pin. Guard cost
+at the 2000-sample scale: zero frames (identical ratios).
+
 Mutation audit (`stryker.conf.json`, one-off 2026-07-17, not in CI):
 killer suite = the fast arbiter set (`stryker.vitest.config.ts`). Score:
 **64.55% total** (1061 killed, 19 timeout, 566 survived, 27 no-coverage,

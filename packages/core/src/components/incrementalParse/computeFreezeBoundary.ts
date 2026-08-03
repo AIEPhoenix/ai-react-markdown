@@ -197,6 +197,18 @@ export interface FreezeScanCheckpoint {
    *  by an unblanked `` `<div>` `` line). While set, masking is skipped —
    *  which can only over-block (safe direction). */
   htmlFlowSinceBlank: boolean;
+  /** Offset of the first fence/math OPEN suppressed by `htmlFlowSinceBlank`
+   *  (Infinity = none). Whether the run really swallowed that line depends
+   *  on container context the line scan cannot see (`<embed` inside a list
+   *  item is a lazy paragraph line, and the glued `$$` a REAL math open —
+   *  seed-20260757 under-block: the tracker's fence phase INVERTS from that
+   *  line on, every later close reads as an open, and the corruption never
+   *  resyncs). Candidates past this offset are rejected outright — sticky,
+   *  pure over-block; candidates before it are untouched (the ambiguous
+   *  region then re-parses inside the tail). The rolling hazard poison for
+   *  ambiguous tag names stays, but it decays at the next decisive block
+   *  start — this field is the phase-corruption backstop that does not. */
+  phasePoisonedAt: number;
 }
 
 const VOID_TAGS = new Set([
@@ -344,6 +356,7 @@ function freshCheckpoint(defListEnabled: boolean): FreezeScanCheckpoint {
     paragraphHasUnpairedRun: false,
     htmlFlowSinceBlank: false,
     htmlSeamPending: false,
+    phasePoisonedAt: Infinity,
   };
 }
 
@@ -464,6 +477,10 @@ export function computeFreezeBoundary(
   for (let i = cp.candidates.length - 1; i >= 0; i--) {
     const c = cp.candidates[i];
     if (!c.htmlBalanced || c.hazard || c.seamRisk) continue;
+    // Fence/math phase untrusted past a suppressed open (phasePoisonedAt
+    // docs) — a boundary AT the poisoned line start is still safe: the
+    // whole ambiguous region lands in the tail re-parse.
+    if (c.offset > cp.phasePoisonedAt) continue;
     if (c.offset > earliestUnresolved) continue;
     if (!defListSettled(c)) continue;
     boundary = c.offset;
@@ -545,13 +562,18 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     cp.prevLineWasValidDef = false;
     return;
   }
-  if (!cp.inMath && !cp.htmlFlowSinceBlank && !rawOpenAtLineStart) {
+  if (!cp.inMath && !rawOpenAtLineStart) {
     const open = FENCE_RE.exec(ln.text);
     // A backtick fence's info string may not contain a backtick —
     // ```a``` b is a PARAGRAPH with a code span, not a fence open (A5).
     const bogusInfo =
       open !== null && open[1][0] === '`' && ln.text.slice(ln.text.indexOf(open[1]) + open[1].length).includes('`');
-    if (open && !bogusInfo) {
+    if (open && !bogusInfo && cp.htmlFlowSinceBlank) {
+      // Suppressed open — whether the html-flow run really swallows this
+      // line is container-dependent (see phasePoisonedAt). Poison the phase
+      // and fall through so the line stays tag-scanned as raw text.
+      cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
+    } else if (open && !bogusInfo) {
       // The open line is a block start for blocker 3 (a column-0 fence
       // terminates a list context; an indented one is ambiguous/hazard).
       if (isBlockStart) {
@@ -591,26 +613,32 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
   // entering fence state there would skip tag extraction on lines that
   // rehype-raw parses as REAL markup (fuzz counterexample: a fence glued
   // to `</details>` hiding a quoted `<div>`). Falling through to the
-  // plain-text branch keeps those lines tag-scanned (over-block safe).
-  const mathRun = !cp.htmlFlowSinceBlank && !rawOpenAtLineStart ? MATH_RUN_RE.exec(ln.text) : null;
+  // plain-text branch keeps those lines tag-scanned (over-block safe) —
+  // but the suppression itself is only certainly right at top level, so it
+  // ALSO poisons the phase (see phasePoisonedAt).
+  const mathRun = !rawOpenAtLineStart ? MATH_RUN_RE.exec(ln.text) : null;
   if (mathRun) {
     const rest = ln.text.slice(ln.text.indexOf(mathRun[1]) + mathRun[1].length);
     // A `$` anywhere in the rest disqualifies the flow open (meta may not
     // contain `$`): `$$x$$` is inline math, `$$x$` a plain paragraph —
     // both self-contained lines, no state either way.
     if (!rest.includes('$')) {
-      if (isBlockStart) {
-        const verdict = classifyBlockStart(ln.text, ln.indent, cp.defListEnabled);
-        if (verdict !== null) cp.hazardVerdict = verdict;
+      if (cp.htmlFlowSinceBlank) {
+        cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
+      } else {
+        if (isBlockStart) {
+          const verdict = classifyBlockStart(ln.text, ln.indent, cp.defListEnabled);
+          if (verdict !== null) cp.hazardVerdict = verdict;
+        }
+        cp.inMath = true;
+        cp.mathFenceLen = mathRun[1].length;
+        cp.blankRun = 0;
+        cp.paragraphHasUnpairedRun = false;
+        cp.prevLineBlank = false;
+        cp.prevLineWasText = false;
+        cp.prevLineWasValidDef = false;
+        return;
       }
-      cp.inMath = true;
-      cp.mathFenceLen = mathRun[1].length;
-      cp.blankRun = 0;
-      cp.paragraphHasUnpairedRun = false;
-      cp.prevLineBlank = false;
-      cp.prevLineWasText = false;
-      cp.prevLineWasValidDef = false;
-      return;
     }
   }
 
@@ -643,7 +671,8 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
   } else if (
     LIST_MARKER_RE.test(ln.text) ||
     FOOTNOTE_DEF_RE.test(ln.text) ||
-    (cp.defListEnabled && DEF_LIST_DD_RE.test(ln.text))
+    (cp.defListEnabled && DEF_LIST_DD_RE.test(ln.text)) ||
+    ln.indent >= 4
   ) {
     // A marker line NOT sitting after a blank still begins a block: lists
     // interrupt paragraphs, and anything starts fresh after a just-closed
@@ -652,6 +681,12 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     // counterexamples: paragraph + glued bullet, `$$` close + glued
     // ordered item). Inside an html flow run the marker is raw text and
     // no hazard exists — turning the verdict on anyway only over-blocks.
+    //
+    // indent >= 4 mirrors A1 at glued positions (seed-20260841): a
+    // 4-indented line directly after a fence close starts an indented CODE
+    // block that merges across later blanks — a stale verdict let a
+    // candidate split it. A mid-paragraph indented line is only a lazy
+    // continuation, so flagging it too is pure over-block (safe).
     cp.hazardVerdict = true;
   }
 
@@ -826,9 +861,11 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
   if (!rawOpenAtStart && !rawOpenAtEnd) {
     TAG_OR_COMMENT_RE.lastIndex = 0;
     let m: RegExpExecArray | null;
+    let lastCommentOpenerIdx = -1;
     while ((m = TAG_OR_COMMENT_RE.exec(scanText)) !== null) {
       if (m[0] === '<!--') {
         cp.commentOpen = true;
+        lastCommentOpenerIdx = m.index;
         continue;
       }
       if (m[0] === '-->') {
@@ -841,6 +878,23 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
       const selfClosing = m[3] !== undefined && /\/\s*$/.test(m[3]);
       if (VOID_TAGS.has(tag) || selfClosing) continue;
       applyTag(tag, closing);
+    }
+    // A comment opener that is NOT the line's first token and fails to
+    // close by end of line is PARAGRAPH-INLINE: micromark only recognizes
+    // it as a comment if `-->` arrives before the paragraph ends, else the
+    // `<!--` is literal text and everything this scan skipped as "comment
+    // interior" until the next stray `-->` is REAL markup (seed-20260828
+    // under-block: a real unclosed `<details>` went uncounted and the
+    // boundary landed past it, where its raw-time element absorbs every
+    // later sibling). Which way it resolves is paragraph-shape-dependent —
+    // poison the candidates from the opener on (sticky, over-block), same
+    // mechanism as the suppressed fence/math opens. Line-START openers are
+    // html block type 2 (terminator semantics, tracked exactly) and raw/
+    // flow-context openers follow parse5's comment state — neither poisons.
+    if (cp.commentOpen && lastCommentOpenerIdx !== -1 && !inRawText) {
+      if (scanText.slice(0, lastCommentOpenerIdx).trim() !== '') {
+        cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start + lastCommentOpenerIdx);
+      }
     }
     // Line-truncated tag start — anchor on the LAST `<` of the line.
     if (!cp.commentOpen) {
