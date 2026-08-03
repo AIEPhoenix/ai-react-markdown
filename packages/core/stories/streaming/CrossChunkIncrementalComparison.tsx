@@ -12,7 +12,7 @@ import { normalizeClobberPrefix, useDomEqualityStats } from './useDomEqualitySta
 import { buildChunkSources, CHUNK_COUNT, sliceChunkContents } from './crossChunkFixtures';
 
 /**
- * Cross-chunk (coordinated) A/B for `incrementalParseEnabled` — each side is
+ * Cross-chunk (coordinated) A/B for `incrementalParse` — each side is
  * an `<AIMarkdownDocuments>` document rendered as THREE chunks sharing one
  * documentId, streamed sequentially. The only config difference between the
  * sides is the flag.

@@ -840,15 +840,15 @@ const AIMarkdownContent = memo(
     enginePlugins,
   }: AIMarkdownContentProps) => {
     const { clobberPrefix } = useAIMarkdownDocument();
-    // Dev-mode flip warnings live in the parent `<AIMarkdown>` (`./../index.tsx`)
-    // — they MUST run BEFORE `useStableValue` collapses identity churn, otherwise
-    // an inline-but-deep-equal `sanitizeSchema` would be silently stabilized and
-    // the warning would never fire. Don't add a duplicate call here.
+    // Dev-mode flip probes live in the parent `<AIMarkdown>`'s stability
+    // firewall (`useStableRecord`, `./../index.tsx`) — the DEEP_EQUAL policy
+    // there both warns on identity churn and restores the previous reference.
+    // Don't add a duplicate probe here.
     // Resolve schema: caller-provided override (from `extendSanitizeSchema(...)`
     // or a hand-rolled Schema) wins; otherwise the library default. Reference
-    // identity is preserved by the parent `<AIMarkdown>`'s `useStableValue`,
-    // so this picks one of two stable references rather than minting a new
-    // object every render — important for the rehypePlugins memo below.
+    // identity is preserved by the parent's firewall, so this picks one of two
+    // stable references rather than minting a new object every render —
+    // important for the rehypePlugins memo below.
     const usedSanitizeSchema = customSanitizeSchema ?? sanitizeSchema;
 
     const enableDefinitionList = enginePlugins.some((plugin) => plugin.name === 'definitionList');

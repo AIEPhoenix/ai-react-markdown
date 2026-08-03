@@ -467,7 +467,7 @@ export const IncrementalParseRegression: Story = {
       { timeout: 5_000 }
     );
     // Engine engaged: the scan stage measure is emitted ONLY when
-    // `incrementalParseEnabled` routes a frame through the incremental
+    // `incrementalParse` routes a frame through the incremental
     // engine (dev-build stage telemetry).
     const scanCount = Number(smokeIn(canvasElement)?.getAttribute('data-scan-count'));
     expect(scanCount).toBeGreaterThan(0);

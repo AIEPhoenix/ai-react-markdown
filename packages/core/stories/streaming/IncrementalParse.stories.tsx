@@ -356,7 +356,7 @@ function PlaygroundRun({
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <div>
-          <div style={{ ...mono, color: theme.textMuted, marginBottom: 6 }}>incrementalParseEnabled: true</div>
+          <div style={{ ...mono, color: theme.textMuted, marginBottom: 6 }}>incrementalParse: true</div>
           <div ref={onRef} style={pane}>
             <AIMarkdown
               content={content}
@@ -368,7 +368,7 @@ function PlaygroundRun({
           </div>
         </div>
         <div>
-          <div style={{ ...mono, color: theme.textMuted, marginBottom: 6 }}>incrementalParseEnabled: false</div>
+          <div style={{ ...mono, color: theme.textMuted, marginBottom: 6 }}>incrementalParse: false</div>
           <div ref={offRef} style={pane}>
             <AIMarkdown
               content={content}

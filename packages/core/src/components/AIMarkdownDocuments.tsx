@@ -29,8 +29,8 @@ const AIMarkdownDocumentsContext = createContext<AIMarkdownDocumentsContextValue
 export interface AIMarkdownDocumentsProps extends PropsWithChildren {
   /**
    * Default `true`. Unconditionally controls orphan-reference protection
-   * for all chunks under this wrapper, overriding their individual
-   * `config.preserveOrphanReferences`. Does not control cross-chunk
+   * for all chunks under this wrapper, overriding each chunk's own
+   * `preserveOrphanReferences` prop. Does not control cross-chunk
    * coordination itself (that's gated by wrapper presence + `documentId`).
    */
   preserveOrphanReferences?: boolean;
@@ -173,7 +173,7 @@ export function useDocumentRegistry(documentId: string | undefined, documentIdEx
 
 /** Returns the effective preserveOrphanReferences for this position in the tree:
  *  the wrapper's prop value if inside one, otherwise the supplied fallback
- *  (typically `config.preserveOrphanReferences`). */
+ *  (typically the chunk's resolved `preserveOrphanReferences` prop). */
 export function usePreserveOrphanReferences(fallback: boolean): boolean {
   const ctx = useContext(AIMarkdownDocumentsContext);
   return ctx?.preserveOrphanReferences ?? fallback;

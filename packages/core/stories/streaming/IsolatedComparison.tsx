@@ -61,7 +61,7 @@ interface IsolatedComparisonProps {
    * Which A/B this host runs (see AXIS_SIDES in isolatedProtocol.ts).
    * 'blockMemo' (default): memo vs legacy.
    * 'incrementalParse': BOTH sides run block-memo and differ only in
-   * `incrementalParseEnabled` — process isolation makes the per-side stage
+   * `incrementalParse` — process isolation makes the per-side stage
    * panels trustworthy without instance scoping (each side owns its page's
    * stage channel), and fps/jank become genuinely per-side. Note the
    * same-page variant's per-frame DOM-equality verifier cannot exist here:
@@ -351,7 +351,7 @@ export const IsolatedComparison = ({
   });
 
   // Keep RunRecord.incremental truthful: on the incrementalParse/boost axes
-  // the enabled iframe genuinely runs incrementalParseEnabled (URL-driven).
+  // the enabled iframe genuinely runs incrementalParse (URL-driven).
   useEffect(() => {
     setIncrementalEnabled(AXIS_SIDES[axis].on.incremental);
   }, [axis, setIncrementalEnabled]);
