@@ -208,6 +208,42 @@ full three-leg soak (50k-sample fuzz seed 20260750; 20k direction
 prefixes; K=4 stride-2 census, 12/12 shards) was re-run CLEAN on the
 fixed detector (2026-08-03).
 
+Second post-release finding (2026-08-03, splice layer, also reachable in
+shipped v1.8.0 — verified by replay on 0fb574d and on the pre-detector-fix
+tree): the first run of the SHARDED soak protocol (new seeds) surfaced a
+duplicated seam separator. A raw trailing literal merges its preceding
+wrap separator into itself, so the separator run after it undercounts
+sanitize-stripped children; a POSITION-LESS content node (KaTeX output)
+following such a literal cannot self-validate by containment, and
+`alignPrefixCut`'s run-length pairing mispaired it with the stripped
+comment — inflating the trailing-gap count and emitting an extra '\n'
+where the full parse has the tail block. Fix: bail that shape (literal
+seen + position-less content) to a full parse, consistent with the other
+out-of-model bails; a run-length compensation using the literal's
+trailing-'\n' count as merged-separator credit is a possible future
+refinement. Pinned in `spliceSeamLiteralMispair.test.ts`.
+
+Third finding batch (2026-08-03): an enlarged 200k-sample sharded fuzz
+budget run after the seam fix surfaced three more counterexamples in two
+new classes — both pre-existing (three-version replay fails identically on
+v1.8.0 and the pre-blocker-6 v2 commit) and both outside the K=4 census
+horizon (long multi-block documents). Class A (seeds 20260757/20260759):
+a multi-line self-closing raw block glued to `$$` math leaves the frozen
+cut ending in a position-less KaTeX span, where pairing errors escape the
+containment cross-check and corrupt the trailing-gap arithmetic. Class B
+(seed 20260751, display-only): an unclosed inline `<details>` open tag
+makes parse5 hoist a root-level element that swallows later siblings, so
+an mdast-clean boundary is not hast-clean and the frozen subtree contains
+tail bytes the tail re-parse duplicates. Both closed by STRUCTURAL bails
+in `spliceParse.ts` (cut ends position-less → bail; positioned cut child
+ends past the boundary → bail) rather than per-class modeling — the
+positioned-containment cross-check is the model's real safety net, and
+the bails simply refuse the two shapes it cannot see. Measured coverage
+cost (2000-sample paired fuzz, seed 20260717): benign incremental-frame
+ratio 0.4388 → 0.4291, hazard 0.3451 → 0.3020; all "must actually splice"
+fixture pins in `spliceEquivalence.test.ts` still splice. Pinned in
+`spliceStructuralBail.test.ts`.
+
 Mutation audit (`stryker.conf.json`, one-off 2026-07-17, not in CI):
 killer suite = the fast arbiter set (`stryker.vitest.config.ts`). Score:
 **64.55% total** (1061 killed, 19 timeout, 566 survived, 27 no-coverage,

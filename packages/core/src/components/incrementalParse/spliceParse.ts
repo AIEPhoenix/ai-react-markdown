@@ -391,7 +391,17 @@ export function spliceTrees(input: SpliceInput): { mdast: MdastRoot; hast: HastR
   const cutRegion: HastContent[] = [];
   for (let i = 0; i < prevHast.children.length; i++) {
     if (attrs[i] < boundary) {
-      cutRegion.push(prevHast.children[i]);
+      const node = prevHast.children[i];
+      // HAST STRADDLE BAIL (campaign, 2026-08-03): an mdast-clean boundary
+      // does not imply a hast-clean one — parse5's tree construction can
+      // hoist an unclosed inline element (`<details>` open tag in a frozen
+      // paragraph) to the root, where it swallows every later sibling. The
+      // frozen subtree then CONTAINS tail bytes, and the tail re-parse
+      // duplicates them (seed-20260751 counterexample). A positioned cut
+      // child whose source extends past the boundary is exactly that shape.
+      const end = node.position?.end?.offset;
+      if (end !== undefined && end > boundary) return null;
+      cutRegion.push(node);
       continue;
     }
     // Raw trailing literal of a frozen html block (fuzz counterexample):
@@ -577,10 +587,24 @@ function alignPrefixCut(
 ): HastContent[] | null {
   const visibles = prefixMdast.filter((c) => !isWrapInvisible(c));
 
+  // STRUCTURAL BAIL (campaign prototype, 2026-08-03): positioned content
+  // self-validates by containment, so a mispairing is caught at the next
+  // positioned node — the only blind spot is the region AFTER the last
+  // positioned content node. If the cut ends in a position-less content
+  // node (KaTeX span, raw trailing literal), pairing errors there survive
+  // unchecked into the trailing-gap arithmetic. Bail the whole frame.
+  for (let i = cutRegion.length - 1; i >= 0; i--) {
+    const node = cutRegion[i];
+    if (isSeparatorText(node)) continue;
+    if (node.position === undefined) return null;
+    break;
+  }
+
   const out: HastContent[] = [];
   let sepBuffer: HastContent[] = [];
   let pairIdx = -1; // index into `visibles` of the child paired with the last content node
   let sawContent = false;
+  let literalSeen = false; // a raw trailing literal was pushed — separator runs after it undercount
 
   for (const node of cutRegion) {
     if (isSeparatorText(node)) {
@@ -612,6 +636,7 @@ function alignPrefixCut(
       // separator may intervene; the pairing cursor stays put.
       if (sepBuffer.length !== 0) return null;
       out.push(node);
+      literalSeen = true;
       continue;
     }
     // New pairing: the separator run before this node covers the gap from
@@ -647,6 +672,17 @@ function alignPrefixCut(
       const excess = sepBuffer.length - nextIdx;
       if (excess > (nextIdx === 0 ? 1 : 0)) return null;
     } else {
+      // A trailing literal MERGES its preceding wrap separator into itself
+      // (its trailing '\n's are merged artifacts — see the trailing-region
+      // note below), so separator runs after one UNDERCOUNT the stripped
+      // children. A positioned node still self-validates by containment; a
+      // position-less node (KaTeX) has no such check and the run-length
+      // rule would mispair it (seed-20260752 counterexample: literal-bearing
+      // <details> + sanitize-stripped comment + math — the span paired with
+      // the comment, inflating the trailing gap count and duplicating the
+      // seam separator). Out of the plain run-length model — bail to a
+      // full parse.
+      if (start === undefined && literalSeen) return null;
       const stripped = sawContent ? sepBuffer.length - 1 : sepBuffer.length;
       if (stripped < 0) return null;
       nextIdx = pairIdx + 1 + stripped;
