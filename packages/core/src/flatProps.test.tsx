@@ -6,7 +6,7 @@
 import { describe, expect, test } from 'vitest';
 import { renderToString } from 'react-dom/server';
 import AIMarkdown from '.';
-import { useAIMarkdownBehaviors } from './context';
+import { useAIMarkdownBehaviors, useAIMarkdownState, useAIMarkdownTheme } from './context';
 import { highlight, pangu } from './plugins/catalog';
 
 /** Renders `<AIMarkdown>` with a Typography-slot probe capturing the behaviors payload. */
@@ -39,6 +39,60 @@ describe('flat props — precedence through <AIMarkdown>', () => {
     const behaviors = captureBehaviors({ blockMemo: null as never, incrementalParse: null as never });
     expect(behaviors.blockMemo).toBe(true);
     expect(behaviors.incrementalParse).toBe(true);
+  });
+});
+
+describe('library-wide null guard — theme/state/component slices (§3.7)', () => {
+  test('null theme/state props fall to the shipped defaults', () => {
+    let theme: ReturnType<typeof useAIMarkdownTheme> | null = null;
+    let state: ReturnType<typeof useAIMarkdownState> | null = null;
+    const Probe = () => {
+      // eslint-disable-next-line react-hooks/globals
+      theme = useAIMarkdownTheme();
+      // eslint-disable-next-line react-hooks/globals
+      state = useAIMarkdownState();
+      return null;
+    };
+    renderToString(
+      <AIMarkdown
+        content="hello"
+        streaming={null as never}
+        fontSize={null as never}
+        variant={null as never}
+        colorScheme={null as never}
+        Typography={Probe as never}
+      />
+    );
+    expect(theme).toEqual({ fontSize: '0.9375rem', variant: 'default', colorScheme: 'light' });
+    expect(state).toEqual({ streaming: false });
+  });
+
+  test('Typography: null falls back to the default typography instead of crashing', () => {
+    const html = renderToString(<AIMarkdown content="hello" Typography={null as never} />);
+    expect(html).toContain('hello');
+  });
+
+  test('null object props (customComponents/sanitizeSchema/…) count as absent', () => {
+    const html = renderToString(
+      <AIMarkdown
+        content="==mark== **bold**"
+        customComponents={null as never}
+        sanitizeSchema={null as never}
+        contentPreprocessors={null as never}
+        urlTransform={null}
+        enginePlugins={null as never}
+        metadata={null as never}
+        ExtraStyles={null as never}
+        streamingCursor={null as never}
+      />
+    );
+    expect(html).toContain('<mark>');
+    expect(html).toContain('<strong>');
+  });
+
+  test('fontSize={0} still resolves to 0px (guard branches on null, not truthiness)', () => {
+    const html = renderToString(<AIMarkdown content="hello" fontSize={0} />);
+    expect(html).toContain('--aim-font-size-root:0px');
   });
 });
 
