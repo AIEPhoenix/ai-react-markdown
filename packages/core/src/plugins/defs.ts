@@ -24,18 +24,30 @@
  *
  * The seal is a type-level contract and design declaration, not runtime
  * tamper-proofing — the same guarantee class as `Object.freeze`. The
- * `'~sealed'` marker key makes accidental construction impossible while
+ * `'~sealed'` marker key makes accidental construction a type error while
  * keeping the type structural, which is required for the type to remain
  * assignable across the package's two build entries (the root entry and
- * the `/plugins` subpath each bundle their own copy of this declaration;
- * a `unique symbol` brand would make those two copies mutually
- * incompatible). Deliberately forging the marker voids the engine's
+ * the `/plugins` subpath must stay mutually assignable whether or not the
+ * build duplicates this declaration per entry; a `unique symbol` brand
+ * would break the duplicated case. Current tsup output happens to share
+ * one declaration chunk between the entries — an implementation detail
+ * the seal deliberately does not lean on). A second, runtime gate
+ * (`getEnginePluginInternals`, enforced in `sanitizeEnginePlugins`)
+ * additionally rejects any object that lacks EITHER the marker or the
+ * internal stage metadata, so a type-level forge is dropped at runtime
+ * with a dev warning. Deliberately forging both keys voids the engine's
  * verification record.
  *
  * @module plugins/defs
  */
 
-/** Names of the five shipped engine plugins. Closed set — see module docs. */
+/**
+ * Names of the shipped engine plugins. Closed to third-party EXTENSION (see
+ * module docs), but an OPEN set across 2.x versions: new plugin names may be
+ * added in minor releases. Do not write exhaustive `switch` statements or
+ * `Record<AIMarkdownEnginePluginName, …>` maps over this union — both break
+ * on the next addition. Feature-test with `Set`/`includes` instead.
+ */
 export type AIMarkdownEnginePluginName = 'highlight' | 'definitionList' | 'smartypants' | 'pangu' | 'removeComments';
 
 /**
@@ -87,6 +99,12 @@ export interface EnginePluginInternals {
  * @internal
  */
 export function getEnginePluginInternals(plugin: AIMarkdownEnginePlugin): EnginePluginInternals | null {
-  const candidate = plugin as unknown as Partial<EnginePluginInternals>;
-  return candidate.stage != null ? (candidate as EnginePluginInternals) : null;
+  const candidate = plugin as unknown as (Partial<EnginePluginInternals> & Partial<AIMarkdownEnginePlugin>) | null;
+  // Both keys are required, so the runtime gate matches the type-level seal:
+  // an object carrying only the public `'~sealed'` marker (a deliberate
+  // forge) or only the internal `stage` (an untyped structural mimic) is
+  // rejected either way.
+  return candidate != null && candidate['~sealed'] === 'ai-react-markdown/engine-plugin' && candidate.stage != null
+    ? (candidate as EnginePluginInternals)
+    : null;
 }

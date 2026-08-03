@@ -67,4 +67,13 @@ describe('sanitizeEnginePlugins', () => {
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls[0][0]).toContain('not a sealed engine plugin');
   });
+
+  test('drops stage-only structural mimics — the runtime gate requires BOTH seal keys', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const mimic = { name: 'pangu', stage: 'displayOptimize' };
+    const out = sanitizeEnginePlugins([mimic as never, highlight]);
+    expect(out).toEqual([highlight]);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toContain('not a sealed engine plugin');
+  });
 });
