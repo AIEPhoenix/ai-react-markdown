@@ -178,7 +178,14 @@ per-test timeout, and a timed-out soak reports a failure with NO
 counterexample; rerun awake before treating one as a finding. (2) the
 census is ONE vitest test = one core; use `EXHAUSTIVE_SHARD=i/N` with N
 parallel processes (12-way ≈ 8 min for K=4 on 16 cores vs 1-2 h and two
-sleep-killed attempts single-core).
+sleep-killed attempts single-core). (3) the fuzz leg parallelizes the same
+way — not by splitting one chain (samples are seed-sequential) but by
+running N independent seeds concurrently (base seed + i, TOTAL/N samples
+each; the historical record already mixes multi-seed and single-chain
+runs, so the sample budget, not one particular chain, is the protocol).
+`packages/core/scripts/run-soak.sh` (also `pnpm soak`, run it under
+`caffeinate`) encodes the full three-leg gate this way: ~15 min wall
+clock for the 50k+20k+K=4 budget instead of ~65 min single-core.
 
 Post-release finding (2026-07-31, fixed 2026-08-03): the direction
 battery — running against a fuzz-generator pool that had grown since the
