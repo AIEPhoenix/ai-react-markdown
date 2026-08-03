@@ -91,7 +91,7 @@ export interface AdvanceOptions {
    *  exactly what the full path would pass to parseStage. */
   remarkRehypeOptions: MarkdownOptions['remarkRehypeOptions'];
   depsKey: readonly unknown[];
-  /** Whether remark-definition-list is active (config extraSyntaxSupported). */
+  /** Whether remark-definition-list is active (`enginePlugins` includes `definitionList`). */
   defListEnabled: boolean;
   /** Cross-chunk phantom-definition suffix (coordinated mode) — appended to
    *  the parse input but NEVER frozen: the append gate, boundary scan, and

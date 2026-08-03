@@ -4,7 +4,7 @@ import { AIMarkdownDocuments, useDocumentRegistry, __internalGetContext } from '
 import type { Registry } from './documentRegistry';
 import * as registryModule from './documentRegistry';
 import { FootnoteSupNumber } from './crossChunkPlaceholders';
-import AIMarkdownRenderStateProvider from '../context';
+import AIMarkdownProvider from '../context';
 
 describe('<AIMarkdownDocuments>', () => {
   test('renders children', () => {
@@ -210,9 +210,9 @@ describe('<AIMarkdownDocuments>', () => {
       renderToString(
         <AIMarkdownDocuments>
           {/* documentId omitted ⇒ documentIdExplicit=false ⇒ standalone */}
-          <AIMarkdownRenderStateProvider streaming={false} fontSize="14px" variant="default" colorScheme="light">
+          <AIMarkdownProvider streaming={false} fontSize="14px" variant="default" colorScheme="light">
             <FootnoteSupNumber label="x" />
-          </AIMarkdownRenderStateProvider>
+          </AIMarkdownProvider>
         </AIMarkdownDocuments>
       );
       expect(spy).not.toHaveBeenCalled();
@@ -228,7 +228,7 @@ describe('<AIMarkdownDocuments>', () => {
     try {
       renderToString(
         <AIMarkdownDocuments>
-          <AIMarkdownRenderStateProvider
+          <AIMarkdownProvider
             streaming={false}
             fontSize="14px"
             variant="default"
@@ -236,7 +236,7 @@ describe('<AIMarkdownDocuments>', () => {
             documentId="msg-1"
           >
             <FootnoteSupNumber label="x" />
-          </AIMarkdownRenderStateProvider>
+          </AIMarkdownProvider>
         </AIMarkdownDocuments>
       );
       expect(spy).toHaveBeenCalled();

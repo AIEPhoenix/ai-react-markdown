@@ -12,7 +12,7 @@ import { useComparisonRuns } from './useComparisonRuns';
 import { normalizeClobberPrefix, useDomEqualityStats } from './useDomEqualityStats';
 
 /**
- * Side-by-side A/B for `incrementalParseEnabled` — BOTH columns run the
+ * Side-by-side A/B for `incrementalParse` — BOTH columns run the
  * block-memo renderer (default config); the only difference is the flag.
  *
  * How this differs from `BlockMemoComparison` and why it is a separate

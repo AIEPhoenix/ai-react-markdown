@@ -115,7 +115,7 @@ interface SummaryStat {
 }
 
 /**
- * Side-by-side comparison of `<AIMarkdown>` with `blockMemoEnabled: true` vs
+ * Side-by-side comparison of `<AIMarkdown>` with `blockMemo: true` vs
  * `false`. Both sides receive the same stream of content updates and each
  * has its own `useRenderProfiler` capturing:
  * - React commit timing (actualDuration + baseDuration percentiles)
@@ -405,7 +405,7 @@ export const BlockMemoComparison = ({
           disabled={busy}
           onClick={() => setIncrementalEnabled(!incrementalEnabled)}
           style={controls.baseButton}
-          title="Enables incrementalParseEnabled (prefix-freeze parsing) on the block-memo side: streaming appends freeze the stable prefix and re-parse only the tail. Watch the scan/parse/transform stage panel — parse should drop to the tail's share. Since v2 footnote payloads (defs ON) and registry mode splice too; unresolved references hold the boundary until their defs settle."
+          title="Enables incrementalParse (prefix-freeze parsing) on the block-memo side: streaming appends freeze the stable prefix and re-parse only the tail. Watch the scan/parse/transform stage panel — parse should drop to the tail's share. Since v2 footnote payloads (defs ON) and registry mode splice too; unresolved references hold the boundary until their defs settle."
         >
           incremental: {incrementalEnabled ? 'ON (prefix-freeze)' : 'OFF (full parse per frame)'}
         </button>

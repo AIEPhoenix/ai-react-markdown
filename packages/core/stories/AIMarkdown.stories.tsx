@@ -166,7 +166,7 @@ export const StreamingProfiler: Story = {
 
 /**
  * Side-by-side comparison of the same content streamed through both render
- * paths simultaneously. Left column has `blockMemoEnabled: true` (default);
+ * paths simultaneously. Left column has `blockMemo: true` (default);
  * right column has it explicitly disabled. Each column has its own
  * `<React.Profiler>` boundary measuring commit cost in isolation, plus a
  * summary banner that reports the cumulative commit-time savings.
@@ -189,7 +189,7 @@ export const BlockMemoCompare: Story = {
 };
 
 /**
- * A/B for `incrementalParseEnabled` — BOTH columns run block-memo; the only
+ * A/B for `incrementalParse` — BOTH columns run block-memo; the only
  * difference is the incremental-parse flag. The attribution-clean signal is
  * the per-side scan/parse/transform stage table (instance-scoped via the
  * stage channel's documentId): with the flag on, parse should drop to the
@@ -213,7 +213,7 @@ export const IncrementalParseCompare: Story = {
 };
 
 /**
- * Cross-chunk (coordinated) A/B for `incrementalParseEnabled` — each side is
+ * Cross-chunk (coordinated) A/B for `incrementalParse` — each side is
  * an `<AIMarkdownDocuments>` document rendered as three chunks sharing one
  * documentId, streamed sequentially. Chunks 2/3 reference labels defined in
  * chunk 1, so the flag-on side's parse inputs carry a registry-driven

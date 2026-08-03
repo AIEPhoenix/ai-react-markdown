@@ -45,7 +45,7 @@ export interface RunRecord {
   registry: boolean;
   /** True when the definitions tail was appended to the scaled payload. */
   defs: boolean;
-  /** True when the enabled side ran with `incrementalParseEnabled` (prefix-freeze parsing). */
+  /** True when the enabled side ran with `incrementalParse` (prefix-freeze parsing). */
   incremental: boolean;
   /** disabled.total − enabled.total (ms); positive = block-memo faster. */
   deltaTotal: number;

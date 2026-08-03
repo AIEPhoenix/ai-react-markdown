@@ -1,7 +1,7 @@
 # Experiment: prefix-freeze boundary detection for streaming parse
 
 **Status: PRODUCTIONIZED** — the shipped implementation lives in
-`src/components/incrementalParse/` (config flag `incrementalParseEnabled`);
+`src/components/incrementalParse/` (flat prop `incrementalParse`);
 this directory stays frozen as the ablation record and falsification
 evidence behind it. The harness imports the production
 `attributeHastChildren` and `pluginChain` builders so prefixes and plugin
