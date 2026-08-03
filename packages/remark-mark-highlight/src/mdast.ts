@@ -9,15 +9,17 @@
  * @module mdast
  */
 
-import type { Parent, PhrasingContent } from 'mdast';
+import type { Data, Parent, PhrasingContent } from 'mdast';
 import type { CompileContext, Extension as FromMarkdownExtension, Token } from 'mdast-util-from-markdown';
 import type { ConstructName, Handle as ToMarkdownHandle, Options as ToMarkdownExtension } from 'mdast-util-to-markdown';
 
-/** A `==highlight==` span, rendered as `<mark>` through `data.hName`. */
+/** A `==highlight==` span, rendered as `<mark>` through `data.hName`.
+ *  `data` stays assignable to mdast's `Data` (hProperties/hChildren etc.) so
+ *  generic tree visitors that write those fields still compile on `mark`. */
 export interface Mark extends Parent {
   type: 'mark';
   children: PhrasingContent[];
-  data?: { hName?: 'mark' };
+  data?: Data & { hName?: 'mark' };
 }
 
 declare module 'mdast' {

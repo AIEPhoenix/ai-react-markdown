@@ -3,11 +3,15 @@ MIT License
 Copyright (c) 2026 Brian Lee
 
 This package is a first-party continuation of two MIT-licensed, unmaintained
-upstreams whose tokenizer this implementation derives from:
+upstreams whose tokenizer this implementation derives from. Their copyright
+notices are reproduced verbatim as required by the MIT license:
 
-- remark-mark-highlight (c) its contributors
+- remark-mark-highlight (https://github.com/widcardw/remark-mark-highlight):
+  Copyright (c) 2024 widcardw
 - remark-highlight-mark / micromark-extension-highlight-mark /
-  mdast-util-highlight-mark (c) Moshee
+  mdast-util-highlight-mark
+  (https://github.com/shlroland/remark-highlight-mark):
+  Copyright (c) 2024 remark-highlight-mark
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
