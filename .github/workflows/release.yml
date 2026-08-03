@@ -7,6 +7,17 @@ name: Release
 #   git commit -am "chore(release): vX.Y.Z"
 #   git tag vX.Y.Z && git push origin main vX.Y.Z
 #
+# Independent (non-lockstep) packages — e.g.
+# @ai-react-markdown/remark-mark-highlight — ride a train tag automatically
+# when their version was bumped (pnpm publish -r skips already-published
+# versions). To release ONE of them without a train, push a package tag:
+#
+#   git tag remark-mark-highlight-vX.Y.Z && git push origin remark-mark-highlight-vX.Y.Z
+#
+# The steps below detect the tag shape: package tags verify against that
+# package's package.json, publish with --filter, and use auto-generated
+# release notes.
+#
 # Auth is npm "trusted publishing" (OIDC): this repo+workflow is registered
 # as a trusted publisher for both packages on npmjs.com, so no token secret
 # exists at all — npm mints a short-lived credential from the id-token
@@ -18,6 +29,7 @@ on:
   push:
     tags:
       - 'v*'
+      - '*-v*'
 
 permissions:
   contents: write # create the GitHub release
@@ -53,10 +65,24 @@ jobs:
 
       - name: Verify tag matches package version
         run: |
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
-          PKG_VERSION="$(node -p "require('./package.json').version")"
+          case "$GITHUB_REF_NAME" in
+            v*)
+              TAG_VERSION="${GITHUB_REF_NAME#v}"
+              PKG_PATH="./package.json"
+              ;;
+            *-v*)
+              PKG_DIR="${GITHUB_REF_NAME%-v*}"
+              TAG_VERSION="${GITHUB_REF_NAME##*-v}"
+              PKG_PATH="./packages/${PKG_DIR}/package.json"
+              if [ ! -f "$PKG_PATH" ]; then
+                echo "::error::Tag ${GITHUB_REF_NAME} names no package directory (${PKG_PATH})"
+                exit 1
+              fi
+              ;;
+          esac
+          PKG_VERSION="$(node -p "require('${PKG_PATH}').version")"
           if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
-            echo "::error::Tag v${TAG_VERSION} does not match package.json version ${PKG_VERSION}"
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match ${PKG_PATH} version ${PKG_VERSION}"
             exit 1
           fi
 
@@ -94,7 +120,16 @@ jobs:
         run: npm install -g npm@^11.5.1 && npm --version
 
       - name: Publish to npm (OIDC trusted publishing + provenance)
-        run: npx -y pnpm@^11.1.3 publish -r --access public --no-git-checks
+        run: |
+          case "$GITHUB_REF_NAME" in
+            v*)
+              npx -y pnpm@^11.1.3 publish -r --access public --no-git-checks
+              ;;
+            *-v*)
+              PKG_DIR="${GITHUB_REF_NAME%-v*}"
+              npx -y pnpm@^11.1.3 publish --filter "./packages/${PKG_DIR}" --access public --no-git-checks
+              ;;
+          esac
 
       # Notes come from the version's section in docs/release-highlights.md —
       # the hand-written changelog — falling back to GitHub's auto-generated
@@ -103,6 +138,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          if [ "${GITHUB_REF_NAME#v}" = "$GITHUB_REF_NAME" ]; then
+            # Package tag — no release-highlights section; auto-generate notes.
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes --verify-tag
+            exit 0
+          fi
           VERSION="${GITHUB_REF_NAME#v}"
           awk -v ver="$VERSION" '
             index($0, "### " ver " ") == 1 { found = 1; next }
