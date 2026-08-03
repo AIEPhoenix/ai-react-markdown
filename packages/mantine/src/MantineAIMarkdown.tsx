@@ -16,6 +16,7 @@ import AIMarkdown from '@ai-react-markdown/core';
 import {
   type AIMarkdownProps,
   type AIMarkdownCustomComponents,
+  type AIMarkdownBehaviorGroups,
   type AIMarkdownStabilityTable,
   AIMarkdownBehaviorsProvider,
   AIMarkdownStabilityPolicy,
@@ -43,13 +44,22 @@ export interface MantineAIMarkdownProps<
   /**
    * Code-block behavior group (Behaviors system). The group value replaces
    * atomically; omitted fields resolve to the shipped defaults inside
-   * `useMantineCodeBlockOptions()`. `null` counts as absent.
+   * `useMantineCodeBlockOptions()`. `null` counts as absent. When absent,
+   * this wrapper contributes NO `codeBlock` group, so a group provided by
+   * an outer app-level `AIMarkdownBehaviorsProvider` passes through; when
+   * present, this prop wins over any outer group (inner-wins merge).
    */
   codeBlock?: Partial<MantineCodeBlockOptions>;
 }
 
-/** Stable empty group for the absent-prop case (identity-stable context value). */
-const EMPTY_CODE_BLOCK: Partial<MantineCodeBlockOptions> = Object.freeze({});
+/**
+ * Stable empty CONTRIBUTION for the absent-prop case. Deliberately carries
+ * no `codeBlock` key at all: contributing `codeBlock: {}` would shadow a
+ * group provided by an outer app-level `AIMarkdownBehaviorsProvider`
+ * (inner-wins merge) even though this wrapper has nothing to say — the
+ * documented app-level extension path would silently go dead.
+ */
+const NO_GROUPS: AIMarkdownBehaviorGroups = Object.freeze({});
 
 /**
  * Mantine's stability-firewall table — one row today: `codeBlock` is the
@@ -124,10 +134,16 @@ const MantineAIMarkdownComponent = <TMetadata extends MantineAIMarkdownMetadata 
   const stable = useStableRecord({ codeBlock }, MANTINE_STABILITY_TABLE);
 
   // Contribute the group through the additive behaviors Provider — firewall
-  // output used directly (`null` ≡ absent → empty group; the narrow hook
-  // fills the defaults), record identity memoized so the context value
-  // stays stable across unrelated re-renders.
-  const behaviorGroups = useMemo(() => ({ codeBlock: stable.codeBlock ?? EMPTY_CODE_BLOCK }), [stable.codeBlock]);
+  // output used directly, record identity memoized so the context value
+  // stays stable across unrelated re-renders. `null`/absent prop ≡ no
+  // contribution (NOT an empty group): an outer app-level Provider's
+  // `codeBlock` group then stays visible; when the prop IS present the
+  // inner-wins merge gives this wrapper's value precedence. The narrow hook
+  // fills the defaults for the no-group-anywhere case.
+  const behaviorGroups = useMemo<AIMarkdownBehaviorGroups>(
+    () => (stable.codeBlock != null ? { codeBlock: stable.codeBlock } : NO_GROUPS),
+    [stable.codeBlock]
+  );
 
   return (
     <AIMarkdownBehaviorsProvider value={behaviorGroups}>
