@@ -1,14 +1,14 @@
 /**
  * Export-surface guard: the v1 API stays deleted and the v2 surface stays
  * present. Runtime-value guard only — deleted TYPES (e.g. the v1
- * `AIMarkdownRenderConfig`) leave no runtime trace and are covered by the
- * compile step instead (any resurrected type would need a value import site
- * to matter).
+ * `AIMarkdownRenderConfig`) leave no runtime trace, so listing them here
+ * would assert nothing; they are covered by the compile step instead (any
+ * resurrected type would need a value import site to matter).
  */
 import { describe, expect, test } from 'vitest';
 import * as core from '.';
 
-const DELETED_V1_VALUES = ['useAIMarkdownRenderState', 'AIMarkdownRenderStateProvider', 'AIMarkdownRenderConfig'];
+const DELETED_V1_VALUES = ['useAIMarkdownRenderState', 'AIMarkdownRenderStateProvider'];
 
 const REQUIRED_V2_VALUES = [
   'useAIMarkdownDocument',

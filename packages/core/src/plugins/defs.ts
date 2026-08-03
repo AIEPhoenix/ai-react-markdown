@@ -57,12 +57,13 @@ export type AIMarkdownEnginePluginName = 'highlight' | 'definitionList' | 'smart
  *
  * - Passing an array replaces the default set wholesale (array-atomic
  *   semantics); omitting the prop means `defaultEnginePlugins` (all five).
- * - The produced chain position of each plugin comes from its internal
- *   stage metadata — the order of the user-supplied array is irrelevant.
+ * - The produced chain position of each plugin comes from canonical
+ *   per-stage tables keyed by name (`pluginChain.ts`) — the order of the
+ *   user-supplied array is irrelevant.
  * - Duplicate members are deduplicated with a dev warning.
- * - Plugin objects are not serializable; use {@link AIMarkdownEnginePlugin.name}
- *   as the escape hatch for remote-config scenarios (map names back to the
- *   exported singletons at the edge).
+ * - Serializing plugin objects is unsupported; transport
+ *   {@link AIMarkdownEnginePlugin.name} instead and map names back to the
+ *   exported singletons at the edge (remote-config scenarios).
  */
 export interface AIMarkdownEnginePlugin {
   /** Stable identifier; the serialization escape hatch. */
