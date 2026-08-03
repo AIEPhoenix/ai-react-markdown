@@ -490,7 +490,7 @@ Deliberate deviation: generic signatures would defeat excess-property checking, 
 
 ### B.3 Library-wide null guard (§3.7)
 
-2.0.0–2.0.2 implemented the `v != null` explicitness rule only for the engine/behavior slice; the theme/state/component props used JS destructure defaults (undefined-only). Completed library-wide in 2.0.3 — every optional prop now treats `null` as absent at runtime; the TS prop types still exclude `null` (compile-time rejection stays the first line of defense for typed callers).
+2.0.0–2.0.2 implemented the `v != null` explicitness rule only for the engine/behavior slice; the theme/state/component props used JS destructure defaults (undefined-only). Completed library-wide in 2.0.3 — every optional prop now treats `null` as absent at runtime; the TS prop types still exclude `null` (compile-time rejection stays the first line of defense for typed callers). One historical exception: `urlTransform`'s public type already admitted `| null` (same null≡absent semantics) and keeps it — removing it would be a breaking type change for nothing.
 
 ### B.4 Wrapper group contribution: absent prop ⇒ NO key (§4, §3.6)
 
@@ -511,3 +511,7 @@ The accepted cost "one group change re-renders all subscribers of the behaviors/
 ### B.7 `AIMarkdownEnginePluginName` is open across minors (Appendix A)
 
 The name union grows in minor releases when new plugins ship. Documented on the type: consumers must not write exhaustive `switch`es or `Record<AIMarkdownEnginePluginName, …>` maps over it; feature-test membership instead.
+
+### B.8 Accepted deviation: mantine pre-stabilizes `customComponents` (§3.9)
+
+`MantineAIMarkdown` runs the legacy `useStableValue` on `customComponents` before merging its defaults, and the merged result then rides core's DEEP_EQUAL wall — nominally violating "each prop is stabilized exactly once at its terminus". Accepted as-is: without the pre-pass, an inline caller value would re-mint the merged object every render, core's probe would emit a misleading "re-created every render" warning against the wrapper, and the deep compare would run per frame. Revisit only if the wrapper's stability table grows more rows (a `customComponents: DEEP_EQUAL` row in the mantine table would then be the uniform shape).

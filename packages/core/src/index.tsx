@@ -251,9 +251,9 @@ export interface AIMarkdownProps<TMetadata extends AIMarkdownMetadata = AIMarkdo
    * - Absent → `defaultEnginePlugins` (all five, parity with the shipped
    *   config defaults). Passing an array replaces the set wholesale
    *   (array-atomic semantics).
-   * - Each plugin's position in the produced chain comes from its internal
-   *   stage metadata; the order of this array is irrelevant. Duplicates are
-   *   deduplicated with a dev warning.
+   * - Each plugin's position in the produced chain comes from canonical
+   *   per-stage tables keyed by name; the order of this array is
+   *   irrelevant. Duplicates are deduplicated with a dev warning.
    * - Turn one off: `enginePlugins={defaultEnginePlugins.filter((p) => p !== pangu)}`.
    *
    * "Explicit" is `v != null` — passing `null` counts as absent (guards

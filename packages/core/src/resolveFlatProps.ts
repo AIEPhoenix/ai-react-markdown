@@ -27,8 +27,9 @@ const __DEV__ = process.env.NODE_ENV !== 'production';
 /**
  * Shipped defaults of the three Behaviors switches — the SINGLE source of
  * truth, shared by {@link resolveEngineValues} and the direct-provider
- * destructure defaults in `context.tsx` (extension packages composing
- * `AIMarkdownProvider` without `<AIMarkdown>` must see the same values).
+ * destructure defaults in `context.tsx` (in-repo stories / test harnesses
+ * composing `AIMarkdownProvider` without `<AIMarkdown>` must see the same
+ * values).
  * @internal
  */
 export const SHIPPED_BEHAVIOR_DEFAULTS = Object.freeze({
