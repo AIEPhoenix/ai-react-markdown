@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import { AIMarkdownDocuments, __internalGetContext } from './AIMarkdownDocuments';
 import { ChunkSymbolContext } from './chunkSymbolContext';
 import { CrossChunkUrlContext, type CrossChunkUrlPolicy } from './crossChunkUrlContext';
-import AIMarkdownRenderStateProvider from '../context';
+import AIMarkdownProvider from '../context';
 import { CrossChunkImage, CrossChunkLink, FootnoteSupNumber } from './crossChunkPlaceholders';
 import { defaultUrlTransform } from './markdown';
 import { extendSanitizeSchema } from './extendSanitizeSchema';
@@ -23,15 +23,9 @@ function WithProvider({
   policy?: CrossChunkUrlPolicy;
 }) {
   const inner = (
-    <AIMarkdownRenderStateProvider
-      streaming={false}
-      fontSize="14px"
-      variant="default"
-      colorScheme="light"
-      documentId={documentId}
-    >
+    <AIMarkdownProvider streaming={false} fontSize="14px" variant="default" colorScheme="light" documentId={documentId}>
       {children}
-    </AIMarkdownRenderStateProvider>
+    </AIMarkdownProvider>
   );
   return (
     <AIMarkdownDocuments>

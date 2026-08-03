@@ -111,8 +111,8 @@ import { normalizeIdentifier } from 'micromark-util-normalize-identifier';
 const TYPE6_NAMES = new Set(htmlBlockNames);
 
 export interface FreezeBoundaryOptions {
-  /** Whether remark-definition-list is in the active plugin chain (config
-   *  `extraSyntaxSupported` includes DEFINITION_LIST). Enables blockers 3b/4. */
+  /** Whether remark-definition-list is in the active plugin chain (the
+   *  `enginePlugins` selection includes `definitionList`). Enables blockers 3b/4. */
   defListEnabled: boolean;
 }
 

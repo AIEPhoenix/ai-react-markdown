@@ -8,12 +8,12 @@
  * Configuration is read from plain URL query params (NOT storybook args —
  * plain params dodge the args URL-encoding quirks and keep the host's URL
  * builder trivial):
- *   - `bmcMode`:     'memo' | 'legacy' → blockMemoEnabled true/false
+ *   - `bmcMode`:     'memo' | 'legacy' → blockMemo true/false
  *   - `bmcAxis`:     one of COMPARISON_AXES → which A/B this side belongs
  *                    to (heading copy + on/off attribution); the engine
  *                    wiring itself arrives pre-derived via bmcMode /
  *                    bmcIncremental, which the host reads off AXIS_SIDES
- *   - `bmcIncremental`: 'on' | 'off'   → incrementalParseEnabled
+ *   - `bmcIncremental`: 'on' | 'off'   → incrementalParse
  *   - `bmcSpy`:      'on' | 'off'      → wrap tags in counting spies
  *   - `bmcRegistry`: 'on' | 'off'      → wrap in AIMarkdownDocuments
  *                    (coordinated mode: per-token PASS 0 def-label scan)
