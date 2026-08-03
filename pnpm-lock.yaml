@@ -109,6 +109,9 @@ importers:
       '@ai-react-markdown/remark-mark-highlight':
         specifier: workspace:^
         version: link:../remark-mark-highlight
+      '@types/hast':
+        specifier: ^3.0.5
+        version: 3.0.5
       devlop:
         specifier: ^1.1.0
         version: 1.1.0
@@ -200,9 +203,6 @@ importers:
       '@stryker-mutator/vitest-runner':
         specifier: ^9.6.1
         version: 9.6.1(@stryker-mutator/core@9.6.1(@types/node@25.9.5))(vitest@4.1.10)
-      '@types/hast':
-        specifier: ^3.0.5
-        version: 3.0.5
       '@types/lodash-es':
         specifier: ^4.17.12
         version: 4.17.12
