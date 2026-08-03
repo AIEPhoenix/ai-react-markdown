@@ -300,7 +300,9 @@ plain-slot trailing rebuild was blind to it (the merged node never
 reaches the cut), so a stripped-construct tail on the last paired html
 child now bails the frame. Pins: `glued-indented-code-after-fence`(+
 `-cdata`), `stripped-tail-seam-residue`, plus an A1 unit pin. Guard cost
-at the 2000-sample scale: zero frames (identical ratios).
+at the 2000-sample scale: zero frames (identical ratios). Round 4 (fresh
+seeds 20260860..871, same 300k budget) came back ALL CLEAN on all three
+legs — the fix loop converged, and the campaign shipped in 2.0.2.
 
 Mutation audit (`stryker.conf.json`, one-off 2026-07-17, not in CI):
 killer suite = the fast arbiter set (`stryker.vitest.config.ts`). Score:
