@@ -8,6 +8,14 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 ## 2.0.x — The flat props API
 
+### 2.0.2 — Incremental-parse hardening round two: precise guards replace the coarse bail
+
+Seven engine fixes (six reachable in shipped 2.0.1; none are 2.0.1 regressions), found and verified by four 300k-sample fresh-seed sharded soaks — the final one fully clean. Highlights:
+
+- **Freeze-boundary detector, blocker 7**: a `$$` math or ``` fence open glued under an html-flow-looking line is only certainly swallowed at top level — in a container it really opens, and the tracker's open/close phase inverts permanently. Suppressed opens now poison later freeze candidates (sticky, over-block only). Same mechanism covers a paragraph-inline `<!--` that never closes (literal text to micromark, but previously scanned as comment interior — real markup went uncounted) and 4-indented lines glued after a fence close (indented code that merges across blank lines).
+- **Splice layer**: the seam-separator run-length model now credits wrap separators merged into raw trailing literals (correct arithmetic instead of a bail); position-less content texts must sit directly after their owning element (anything text-preceded is the tail's own stripped-construct remnant — freezing it duplicated it); a frozen html child ending in a stripped construct (`…-->`) bails the trailing rebuild (its interior whitespace merges into the seam separator invisibly).
+- **Net effect**: the coarse cut-ends-position-less bail from 2.0.1 is removed; benign-document incremental coverage comes back above the pre-2.0.1 ceiling (paired fuzz: benign 0.4291 → 0.4395, hazard 0.3020 → 0.3466) with all seven counterexamples pinned.
+
 ### 2.0.1 — Splice-layer hardening; first-party `==mark==` plugin; type-dependency fixes
 
 - **Engine fixes** (all pre-existing — reachable in shipped 1.8.0, found by an enlarged sharded soak; none are 2.0.0 regressions): four incremental-parse splice divergences in three classes are closed with structural bails to the full parse. A raw trailing literal merging its wrap separator could mispair a position-less KaTeX span (duplicated seam separator); a frozen cut ending in a position-less node escaped the positioned-containment cross-check (misplaced math block); and an unclosed inline `<details>` makes parse5 hoist a root element that swallows later siblings, so an mdast-clean freeze boundary was not hast-clean (duplicated tail content). Counterexamples are pinned; measured coverage cost is ~1pp of incremental-frame ratio on benign-shaped documents. Verified by the full three-leg soak plus a 300k-sample fresh-seed run — both clean.
