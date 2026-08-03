@@ -27,6 +27,14 @@ const ROOT = resolve(import.meta.dirname, '..');
 const PACKAGES_DIR = join(ROOT, 'packages');
 const CORE_PKG_NAME = '@ai-react-markdown/core';
 
+// Release-train LOCKSTEP set: these ship together at the train version and
+// get their core peer range rewritten. Every other workspace package (e.g.
+// plugin packages like @ai-react-markdown/remark-mark-highlight) versions
+// INDEPENDENTLY: it is skipped here, published from a train tag only when
+// its own version was bumped (`pnpm publish -r` skips already-published
+// versions), or standalone via a `<pkg>-vX.Y.Z` tag.
+const LOCKSTEP = new Set([CORE_PKG_NAME, '@ai-react-markdown/mantine']);
+
 // Update root package.json
 const rootPkgPath = join(ROOT, 'package.json');
 const rootPkg = JSON.parse(readFileSync(rootPkgPath, 'utf-8'));
@@ -44,6 +52,11 @@ for (const dir of packageDirs) {
   const pkgPath = join(PACKAGES_DIR, dir, 'package.json');
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
   const oldVersion = pkg.version;
+
+  if (!LOCKSTEP.has(pkg.name)) {
+    console.log(`${pkg.name}: ${oldVersion} (independent — not part of the release train)`);
+    continue;
+  }
 
   pkg.version = newVersion;
 
