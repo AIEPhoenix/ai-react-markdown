@@ -117,6 +117,17 @@ export const useSmoothStream = ({
       controller.snap(content);
     }
     prevStreamingRef.current = streaming;
+
+    // Arm the drained latch on BACKLOG FORMATION, not on the first
+    // un-drained notify: update() is silent, so a round whose only notify
+    // is the drain itself (single-grapheme append; a background tab's
+    // mega-reveal) would otherwise find the latch still armed-off from
+    // the previous round and swallow its onDrained. Mid-stream notifies
+    // can never read drained (the held-back tail keeps the reveal short
+    // of a live source), so arming here cannot cause a mid-stream fire —
+    // and after a replacement, snap() leaves the controller drained, so
+    // the pre-arm above is never overridden.
+    if (!controller.isDrained()) wasDrainedRef.current = false;
   }, [controller, content, streaming]);
 
   // Drained-edge detection: fire onDrained only when a real backlog

@@ -278,12 +278,39 @@ describe('smoothStream controller', () => {
   });
 
   test('reentrant dispose inside notify schedules nothing past disposal', () => {
-    const { controller, advance, frameCount } = makeHarness({ charsPerSecond: 1_000 });
+    // Low rate on purpose: the first tick reveals PART of the backlog, so
+    // when the subscriber disposes, pending is still nonempty — the tick
+    // tail must be stopped by the `!disposed` guard itself, not by an
+    // incidentally empty queue.
+    const { controller, advance, frameCount } = makeHarness({ charsPerSecond: 1_000, catchUpWindowMs: 100_000 });
     controller.update('');
-    controller.update('abcd');
+    controller.update('abcdefgh');
     controller.subscribe(() => controller.dispose());
-    advance(1_000);
+    advance(2);
+    expect(controller.getVisible().length).toBeLessThan(7);
     expect(frameCount()).toBe(0);
+  });
+
+  test('a single-grapheme append emits no notify until finish', () => {
+    // The mechanism behind the hook's arm-on-backlog-formation rule: the
+    // appended grapheme is tentative (held back), pending stays empty, so
+    // nothing ticks and nothing notifies — the round's ONLY notify is the
+    // post-finish drain. Arming off that first notify would be too late.
+    const { controller, advance, hasFrame } = makeHarness({ charsPerSecond: 1_000 });
+    controller.update('round one.');
+    let notifies = 0;
+    controller.subscribe(() => {
+      notifies += 1;
+    });
+    controller.update('round one.。');
+    expect(hasFrame()).toBe(false);
+    advance(1_000);
+    expect(notifies).toBe(0);
+    expect(controller.isDrained()).toBe(false);
+    controller.finish();
+    advance(1_000);
+    expect(notifies).toBe(1);
+    expect(controller.getVisible()).toBe('round one.。');
   });
 
   test('visible is always a prefix of the source across a chunked run', () => {
