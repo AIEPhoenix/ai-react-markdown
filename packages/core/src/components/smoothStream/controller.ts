@@ -125,6 +125,16 @@ const defaultSchedule = (cb: () => void): (() => void) => {
   return () => clearTimeout(id);
 };
 
+/**
+ * Pacing knobs must be FINITE numbers. NaN is a `number` to TypeScript
+ * (`charsPerSecond={parseInt(missing)}` type-checks), and `Math.max`
+ * propagates NaN instead of guarding it — one poisoned knob would freeze
+ * the reveal in a permanent no-op frame loop. Infinity is rejected too:
+ * `Infinity × 0` on a zero-dt tick is NaN by another road.
+ */
+const finiteOr = (value: number | undefined, fallback: number): number =>
+  value !== undefined && Number.isFinite(value) ? value : fallback;
+
 const segmenter =
   typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function'
     ? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
@@ -206,7 +216,7 @@ export const createSmoothStreamController = (options: SmoothStreamOptions = {}):
     const dt = Math.max(0, t - lastTickAt);
     lastTickAt = t;
 
-    const base = options.charsPerSecond ?? DEFAULT_CHARS_PER_SECOND;
+    const base = finiteOr(options.charsPerSecond, DEFAULT_CHARS_PER_SECOND);
     // While streaming: proportional catch-up over a fixed window (steady-
     // state lag ≈ one window of tokens). After finish(): remaining-backlog
     // over remaining-time-to-deadline, which reaches zero BY the deadline
@@ -214,7 +224,7 @@ export const createSmoothStreamController = (options: SmoothStreamOptions = {}):
     const windowMs =
       finished && drainDeadlineAt !== undefined
         ? Math.max(1, drainDeadlineAt - t)
-        : (options.catchUpWindowMs ?? DEFAULT_CATCH_UP_WINDOW_MS);
+        : finiteOr(options.catchUpWindowMs, DEFAULT_CATCH_UP_WINDOW_MS);
     const rate = Math.max(base, (pending.length * 1000) / Math.max(1, windowMs));
     credit += (rate * dt) / 1000;
 
@@ -293,7 +303,7 @@ export const createSmoothStreamController = (options: SmoothStreamOptions = {}):
       revive();
       if (finished) return;
       finished = true;
-      drainDeadlineAt = now() + (options.drainMs ?? DEFAULT_DRAIN_MS);
+      drainDeadlineAt = now() + finiteOr(options.drainMs, DEFAULT_DRAIN_MS);
       if (tentativeEnd > (pending.length > 0 ? pending[pending.length - 1] : visibleEnd)) {
         pending.push(tentativeEnd);
       }

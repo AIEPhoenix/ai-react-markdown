@@ -31,8 +31,16 @@ markdown renderers pay a full reparse per render, which makes smoothing a
 performance trade-off. Here the revealed prefix grows append-only, which is
 exactly the incremental-parse engine's fast path — each frame re-tokenizes
 only the appended tail, and block-level memoization skips every settled
-block. Smoothing costs one small splice parse per frame, not a document
-reparse per frame.
+block.
+
+Honest per-frame accounting: the _parse_ is O(appended tail), but the
+content **preprocessors** in front of it (the LaTeX normalizer, plus any
+`contentPreprocessors` you add, remend included) run on the full revealed
+prefix each frame — O(n) work that the math-free fast path skips entirely
+but a single `$` in the message re-enables (measured ~0.3 ms/frame on a
+20k-character math-bearing message; graceful, not free). The one
+combination that genuinely cliffs is per-chunk smoothing inside
+`<AIMarkdownDocuments>` — see Footguns.
 
 ## How pacing works
 
@@ -185,6 +193,20 @@ final grapheme and starts the timed drain. If `streaming` stays `true`
 forever, the last grapheme of the message never reveals and the returned
 `streaming` never settles (so the cursor never unmounts). Wire it to the
 actual completion event of your transport, not to a heuristic.
+
+### Per-chunk smoothing inside `<AIMarkdownDocuments>`
+
+Coordinated (cross-chunk) mode runs a definition scan over the chunk's
+full source on every content change, and its fast-path bail-out is
+defeated by the single most common AI output shape — bulleted link lists
+(`- [Title](url)` matches the def-shaped line probe). Per-frame reveals
+turn that scan into a full remark parse up to 60×/s: measured ~15 ms per
+frame on a 20k-character chunk, which saturates the frame budget by
+itself. Until the scanner grows an append-aware path, smooth the message
+_before_ it enters coordinated chunking (one `<AIMarkdownSmoothStream>`
+per message), or keep smoothing off for chunks rendered inside
+`<AIMarkdownDocuments>`. Standalone usage is unaffected — the scan only
+runs in coordinated mode.
 
 ### Disabling block-memo while smoothing
 
