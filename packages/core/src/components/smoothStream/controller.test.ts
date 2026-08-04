@@ -313,6 +313,37 @@ describe('smoothStream controller', () => {
     expect(controller.getVisible()).toBe('round one.。');
   });
 
+  test('NaN pacing knobs fall back to defaults instead of freezing the reveal', () => {
+    // NaN is a `number`, so the TS surface cannot stop it — e.g.
+    // charsPerSecond={parseInt(missingSetting)}. Math.max PROPAGATES NaN
+    // rather than guarding it, so an unsanitized knob would poison credit
+    // and spin a permanent no-op frame loop.
+    const { controller, advance } = makeHarness({
+      charsPerSecond: Number.NaN,
+      catchUpWindowMs: Number.NaN,
+      drainMs: Number.NaN,
+    });
+    controller.update('');
+    controller.update('abcdefgh');
+    for (let i = 0; i < 30; i += 1) advance(100);
+    expect(controller.getVisible().length).toBeGreaterThan(0);
+    controller.finish();
+    for (let i = 0; i < 30; i += 1) advance(100);
+    expect(controller.getVisible()).toBe('abcdefgh');
+  });
+
+  test('Infinity charsPerSecond falls back instead of NaN-poisoning a zero-dt tick', () => {
+    const { controller, advance } = makeHarness({ charsPerSecond: Number.POSITIVE_INFINITY });
+    controller.update('');
+    controller.update('abcdef');
+    // Two ticks in the same clock quantum: dt = 0, and Infinity × 0 = NaN.
+    advance(0);
+    for (let i = 0; i < 20; i += 1) advance(100);
+    controller.finish();
+    for (let i = 0; i < 10; i += 1) advance(100);
+    expect(controller.getVisible()).toBe('abcdef');
+  });
+
   test('visible is always a prefix of the source across a chunked run', () => {
     const payload = '# Title\n\nSome **bold** text with 中文和 emoji 🎉 mixed in.\n\n- item one\n- item two\n';
     const { controller, advance } = makeHarness({ charsPerSecond: 200, catchUpWindowMs: 300 });

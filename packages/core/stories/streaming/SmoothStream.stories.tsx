@@ -86,12 +86,19 @@ const MultiRoundSmoke = ({ theme }: { theme: 'light' | 'dark' }) => {
     at(50, () => setPhase({ content: ROUND_ONE.slice(0, 12), streaming: true }));
     at(120, () => setPhase({ content: ROUND_ONE, streaming: true }));
     at(400, () => setPhase({ content: ROUND_ONE, streaming: false }));
-    // Round 1 drains within drainMs (250 ms) of the flip above; the gap to
-    // round 2 is generous, so ordering never races the reveal.
-    at(900, () => setPhase({ content: ROUND_ONE + ROUND_TWO_TAIL, streaming: true }));
-    at(960, () => setPhase({ content: ROUND_ONE + ROUND_TWO_TAIL, streaming: false }));
     return () => timers.forEach((id) => window.clearTimeout(id));
   }, []);
+  // Round 2 is GATED on round 1's drain (not a wall-clock offset): a slow
+  // runner can delay round 1 arbitrarily without merging the rounds, so
+  // the story stays convergence-driven — no race against the reveal.
+  useEffect(() => {
+    if (drains !== 1) return;
+    const timers: number[] = [];
+    const at = (ms: number, fn: () => void) => timers.push(window.setTimeout(fn, ms));
+    at(50, () => setPhase({ content: ROUND_ONE + ROUND_TWO_TAIL, streaming: true }));
+    at(110, () => setPhase({ content: ROUND_ONE + ROUND_TWO_TAIL, streaming: false }));
+    return () => timers.forEach((id) => window.clearTimeout(id));
+  }, [drains]);
   const smooth = useSmoothStream({ ...phase, onDrained: () => setDrains((count) => count + 1) });
   const settled = !phase.streaming && !smooth.streaming && smooth.content === ROUND_ONE + ROUND_TWO_TAIL;
   return (
