@@ -90,8 +90,16 @@ describe('createDefLabelScanner', () => {
     replay(['Cite [1] then [a link](https://e.com) ', 'and more [2] prose.\n\n', 'tail [3] text ', 'continues.']);
     // CRLF stream with a def across a CRLF blank line.
     replay(['line one\r\n\r\n', '[d]: /url\r\n', 'prose after\r\n']);
-    // Bulleted link (over-match direction) and blockquoted def.
+    // Bulleted link (fast-path direction) and blockquoted def.
     replay(['- [t](https://e.com)\n', '- second bullet\n\n', '> [q]: /q\n']);
+    // Escaped bracket inside a label, split right at the escape.
+    replay(['[a\\', ']b]: /url\n', 'prose after\n']);
+    // Multi-line label split across the line break.
+    replay(['[foo\n', 'bar]: /url\n']);
+    // Def signature completing one char at a time: `[x` → `[x]` → `[x]:`.
+    replay(['see\n[x', ']', ': /url\n']);
+    // Link list followed by a genuine def footer.
+    replay(['- [a](https://e.com/a)\n', '- [b](https://e.com/b)\n', '\n[c]: https://e.com/c\n']);
   });
 
   test('region boundary is CRLF-aware', () => {
@@ -101,18 +109,62 @@ describe('createDefLabelScanner', () => {
     expect(lastRegionStart('no blanks at all')).toBe(0);
   });
 
-  test('fast-path trigger is line-anchored, not any-bracket', () => {
+  test('fast-path trigger requires the full `]:` def signature, not just a line-start bracket', () => {
     // Mid-line brackets — the shape AI prose is dense with — must NOT
     // knock the stream off the fast path.
     expect(DEF_LINE_START_RE.test('See [the docs](https://e.com) and [1] for details')).toBe(false);
     expect(DEF_LINE_START_RE.test('prose line\nmore [citation] prose')).toBe(false);
-    // Anything that CAN start a definition must trigger.
+    // Line-START brackets without the `]:` signature are links, task boxes
+    // or references — grammar-verified non-defs, and exactly what the
+    // Documents+smooth cliff streamed. They must stay on the fast path.
+    expect(DEF_LINE_START_RE.test('- [Title](https://e.com)')).toBe(false);
+    expect(DEF_LINE_START_RE.test('  - [maybe][ref]')).toBe(false); // `][` adjacency: not a def
+    expect(DEF_LINE_START_RE.test('1. [ordered](u)')).toBe(false);
+    expect(DEF_LINE_START_RE.test('- [x] task item')).toBe(false);
+    expect(DEF_LINE_START_RE.test('[x')).toBe(false); // incomplete: no def until `]:` lands (region re-checks)
+    expect(DEF_LINE_START_RE.test('[x]\n: /url')).toBe(false); // colon must be ADJACENT (grammar-verified)
+    // Anything that CAN be a definition must trigger.
     expect(DEF_LINE_START_RE.test('[x]: /url')).toBe(true);
     expect(DEF_LINE_START_RE.test('prose\n[^fn]: body')).toBe(true);
     expect(DEF_LINE_START_RE.test('> [q]: /q')).toBe(true);
-    expect(DEF_LINE_START_RE.test('  - [maybe][ref]')).toBe(true); // over-match: safe
-    expect(DEF_LINE_START_RE.test('1. [ordered](u)')).toBe(true); // over-match: safe
-    expect(DEF_LINE_START_RE.test('[x')).toBe(true); // partial def line mid-stream
+    expect(DEF_LINE_START_RE.test('- [li]: /url')).toBe(true); // defs nest in lists
+    expect(DEF_LINE_START_RE.test('[a\\]b]: /url')).toBe(true); // escaped bracket inside label
+    expect(DEF_LINE_START_RE.test('[a\\\\]: /url')).toBe(true); // escaped backslash then close
+    expect(DEF_LINE_START_RE.test('[foo\nbar]: /url')).toBe(true); // labels may span lines
+  });
+
+  test('bulleted link lists and task lists stream entirely on the fast path', () => {
+    // The measured Documents+smooth cliff: a blank-line-free `- [Title](url)`
+    // list used to defeat the bracket-only probe and pay a full reparse per
+    // revealed frame (~15ms at 20k chars). A def's real signature is the
+    // adjacent `]:` — links (`](`), references (`][`) and task boxes (`] `)
+    // never carry it.
+    let calls = 0;
+    const counting = (s: string) => {
+      calls++;
+      return collectDefLabels(s);
+    };
+    const scanner = createDefLabelScanner(counting);
+    let acc = 'Sources:\n';
+    scanner.scan(acc);
+    expect(calls).toBe(1);
+    for (let i = 1; i <= 20; i += 1) {
+      // Split each item mid-bracket to exercise the append seam.
+      for (const piece of [`- [Result ${i}]`, `(https://example.com/${i})\n`]) {
+        acc += piece;
+        expect(asPlain(scanner.scan(acc))).toEqual(asPlain(collectDefLabels(acc)));
+      }
+    }
+    for (const piece of ['- [ ] pending task\n', '- [x] done task\n']) {
+      acc += piece;
+      expect(asPlain(scanner.scan(acc))).toEqual(asPlain(collectDefLabels(acc)));
+    }
+    expect(calls).toBe(1); // the whole list rode the fast path
+    // A REAL def arriving afterwards still forces the parse and is found.
+    acc += '\n[1]: https://example.com/canonical\n';
+    const labels = scanner.scan(acc);
+    expect(calls).toBe(2);
+    expect([...labels.linkLabels]).toContain('1');
   });
 
   test('append without "[" in the active region returns the SAME object', () => {
@@ -189,6 +241,10 @@ describe('createDefLabelScanner', () => {
       '```\n[fenced]: /nope\n```\n',
       '> quoted line\n',
       '- list item ',
+      '- [Title](https://e.com)\n',
+      '- [x] task\n',
+      '[a\\]b]: /u\n',
+      '\\',
       '   ',
       '===\n',
       ': ',
