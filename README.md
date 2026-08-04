@@ -42,6 +42,7 @@ This library is opinionated around those problems. Out of the box you get safe L
 | **CJK-friendly**             | proper line breaking for Chinese / Japanese / Korean text plus optional [pangu](https://github.com/vinta/pangu.js) auto-spacing between CJK and half-width characters                                                                             |
 | **Streaming-aware**          | `streaming` flag is propagated via context; custom renderers can show cursors, skip animations, or disable copy buttons during streaming                                                                                                          |
 | **Streaming cursor**         | built-in `streamingCursor` slot renders a "still generating" indicator after the last streamed character — visible through token stalls, pure-CSS animation, zero impact on the parse pipeline                                                    |
+| **Smooth streaming**         | `<AIMarkdownSmoothStream>` reveals bursty token chunks as a steady grapheme-by-grapheme typewriter with backlog-adaptive pacing; every frame rides the incremental-parse fast path                                                                |
 | **Cross-chunk coordination** | `<AIMarkdownDocuments>` wrapper lets chunked chat messages share a `documentId` so footnotes / link refs / image refs resolve across chunks                                                                                                       |
 | **Block-level memoization**  | each markdown block is memoized by source identity; unchanged blocks skip `toJsxRuntime` and React reconcile work during streaming. Output is byte-identical to the disabled path                                                                 |
 | **Emoji shortcodes**         | `:smile:` → 😄 via `remark-emoji`                                                                                                                                                                                                                 |
@@ -224,6 +225,18 @@ function ChatMessage({ message }: { message: { content: string; pending: boolean
 }
 ```
 
+Network chunks land in bursts; if the lurching bothers you, swap in `<AIMarkdownSmoothStream>` — same props, plus typewriter pacing that reveals the text grapheme-by-grapheme at a backlog-adaptive rate ([docs](./docs/smooth-streaming.md)):
+
+```tsx
+import { AIMarkdownSmoothStream, AIMarkdownStreamingCursor } from '@ai-react-markdown/core';
+
+<AIMarkdownSmoothStream
+  content={message.content}
+  streaming={message.pending}
+  streamingCursor={AIMarkdownStreamingCursor}
+/>;
+```
+
 ### Render chunked chat messages with cross-chunk references
 
 When a single logical document is delivered in multiple `<AIMarkdown>` instances (e.g. one per chunk, or one per turn within a thread), wrap them in `<AIMarkdownDocuments>` and pass the **same** `documentId` so footnotes, link refs, and image refs resolve across chunks:
@@ -383,6 +396,7 @@ The README covers the 90% case. For deep customization — replacing element ren
 | [Cross-chunk coordination](./docs/cross-chunk-coordination.md)    | Chunked chat messages with references that resolve across chunks                 |
 | [Metadata context](./docs/metadata-context.md)                    | Pass callbacks/ids to nested components without prop drilling                    |
 | [Streaming & performance](./docs/streaming-and-performance.md)    | Block-level memoization, `streaming` flag, cache-flush footguns                  |
+| [Smooth streaming](./docs/smooth-streaming.md)                    | Typewriter pacing for bursty token streams — shell, hook, non-React controller   |
 | [TypeScript generics](./docs/typescript-generics.md)              | Typed `metadata` via the `TMetadata` generic; wrapper extension patterns         |
 | [Migrating to v2](./docs/migrating-to-v2.md)                      | Complete 1.x → 2.0.0 mapping — every removed symbol with before/after code       |
 | [Extending via a sub-package](./docs/extending-via-subpackage.md) | Ship your own `@yourorg/ai-react-markdown-<integration>`                         |
