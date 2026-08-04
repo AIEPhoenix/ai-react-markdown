@@ -257,8 +257,10 @@ own the cadence.
 A typewriter reveal is motion. The library doesn't auto-disable it (the
 paced string is ordinary content — there's no CSS to gate), so honor
 `prefers-reduced-motion` yourself where it matters: render plain
-`<AIMarkdown>` (or skip the `smooth*` props) when
-`matchMedia('(prefers-reduced-motion: reduce)').matches`.
+`<AIMarkdown>` instead of the smooth shell (or don't route through
+`useSmoothStream`) when
+`matchMedia('(prefers-reduced-motion: reduce)').matches` — the shell
+always paces; omitting `smoothPacing` just means the default preset.
 
 ### Asserting on wall-clock timing in tests
 

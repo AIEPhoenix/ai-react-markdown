@@ -329,6 +329,22 @@ import MantineAIMarkdown from '@ai-react-markdown/mantine';
 
 See the [core README's cross-chunk section](../core/README.md#cross-chunk-coordination) for the full `<AIMarkdownDocuments>` API and `useDocumentRegistry` hook.
 
+## Smooth Streaming
+
+Typewriter pacing composes with `<MantineAIMarkdown>` through core's `useSmoothStream` hook — its result is props-shaped, so it spreads straight in:
+
+```tsx
+import { useSmoothStream } from '@ai-react-markdown/core';
+import MantineAIMarkdown from '@ai-react-markdown/mantine';
+
+function ChatMessage({ markdown, pending }: { markdown: string; pending: boolean }) {
+  const smooth = useSmoothStream({ content: markdown, streaming: pending, pacing: 'balanced' });
+  return <MantineAIMarkdown {...smooth} />;
+}
+```
+
+See [docs/smooth-streaming.md](../../docs/smooth-streaming.md) for the pacing model, presets, and footguns.
+
 ## Architecture Overview
 
 ```text
