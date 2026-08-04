@@ -67,6 +67,45 @@ const SmoothStreamSmoke = ({ theme }: { theme: 'light' | 'dark' }) => {
   );
 };
 
+const ROUND_ONE = 'Multi-round body: streamed, paused for a tool call, then resumed.';
+const ROUND_TWO_TAIL = '。';
+
+/**
+ * Deterministic two-round script. Round 2 appends a SINGLE grapheme and
+ * ends — the round whose only notify is the drain itself. Regression for
+ * the drained-latch arming hole: with notify-based arming only, round 2's
+ * `onDrained` is swallowed (latch still true from round 1), breaking the
+ * documented once-per-round contract.
+ */
+const MultiRoundSmoke = ({ theme }: { theme: 'light' | 'dark' }) => {
+  const [phase, setPhase] = useState<{ content: string; streaming: boolean }>({ content: '', streaming: true });
+  const [drains, setDrains] = useState(0);
+  useEffect(() => {
+    const timers: number[] = [];
+    const at = (ms: number, fn: () => void) => timers.push(window.setTimeout(fn, ms));
+    at(50, () => setPhase({ content: ROUND_ONE.slice(0, 12), streaming: true }));
+    at(120, () => setPhase({ content: ROUND_ONE, streaming: true }));
+    at(400, () => setPhase({ content: ROUND_ONE, streaming: false }));
+    // Round 1 drains within drainMs (250 ms) of the flip above; the gap to
+    // round 2 is generous, so ordering never races the reveal.
+    at(900, () => setPhase({ content: ROUND_ONE + ROUND_TWO_TAIL, streaming: true }));
+    at(960, () => setPhase({ content: ROUND_ONE + ROUND_TWO_TAIL, streaming: false }));
+    return () => timers.forEach((id) => window.clearTimeout(id));
+  }, []);
+  const smooth = useSmoothStream({ ...phase, onDrained: () => setDrains((count) => count + 1) });
+  const settled = !phase.streaming && !smooth.streaming && smooth.content === ROUND_ONE + ROUND_TWO_TAIL;
+  return (
+    <div
+      data-testid="multi-round"
+      data-drains={drains}
+      data-settled={settled ? 'yes' : 'no'}
+      style={{ color: getStreamingTheme(theme).text }}
+    >
+      <AIMarkdown {...smooth} colorScheme={theme} streamingCursor={AIMarkdownStreamingCursor} />
+    </div>
+  );
+};
+
 const meta: Meta<typeof SmoothStreamSmoke> = {
   title: 'Core/Streaming/SmoothStream',
   component: SmoothStreamSmoke,
@@ -109,6 +148,24 @@ export const Smoke: Story = {
     expect(root().querySelector('[data-aimd-streaming-indicator]')).toBeNull();
     // And the full document made it to the DOM through the paced path.
     expect(root().textContent).toContain('incomplete tokens');
+  },
+};
+
+export const MultiRound: Story = {
+  render: (_args, context) => (
+    <StrictMode>
+      <MultiRoundSmoke theme={context.globals.theme === 'dark' ? 'dark' : 'light'} />
+    </StrictMode>
+  ),
+  play: async ({ canvasElement }) => {
+    const root = () => {
+      const el = canvasElement.querySelector<HTMLElement>('[data-testid="multi-round"]');
+      if (!el) throw new Error('multi-round root not mounted');
+      return el;
+    };
+    await waitFor(() => expect(root().dataset.settled).toBe('yes'), { timeout: 20_000 });
+    // Once per stream round: the single-grapheme round 2 must fire too.
+    await waitFor(() => expect(root().dataset.drains).toBe('2'), { timeout: 5_000 });
   },
 };
 
