@@ -86,17 +86,31 @@ export function lastRegionStart(source: string): number {
   return start;
 }
 
-/** A line that can START a definition: `[` preceded only by whitespace and
- *  container prefixes (blockquote `>`, list bullets, ordered-list digits).
- *  A definition's `[` always sits at its line's content start, so mid-line
- *  brackets — inline links `[t](u)`, citations `[1]`, exactly what AI prose
- *  is dense with — must NOT knock the stream off the fast path. The `m`
- *  flag also matches at index 0, which is a true line start (the region
- *  begins just past a blank line or at the document start). Over-matching
- *  (a bulleted link `- [t](u)`) is safe: it costs a redundant full parse,
- *  never a wrong result.
+/** A line that can START a definition, matched by the FULL def signature:
+ *  container prefixes (blockquote `>`, list bullets, ordered-list digits),
+ *  then `[label]` with the closing bracket IMMEDIATELY followed by `:` —
+ *  remark accepts a definition only with that adjacency (grammar-verified:
+ *  `[x]\n: url` and `[x] : url` are paragraphs, and `[a][b]: url` is a
+ *  reference because the label's first unescaped `]` isn't followed by
+ *  `:`). The label alternation admits escape pairs (`\]` stays inside the
+ *  label) and spans newlines (labels may soft-wrap; they cannot cross the
+ *  blank line that bounds the region). Both alternatives are disjoint, so
+ *  the scan is linear — no backtracking blowup on bracket-dense regions.
+ *
+ *  Requiring the signature (not just a line-start `[`) is what keeps the
+ *  streaming-heavy shapes — bulleted link lists `- [t](u)`, task boxes
+ *  `- [x]`, reference lists `- [a][b]` — on the fast path; a bracket-only
+ *  probe made every append inside a blank-line-free link list pay a full
+ *  reparse (the measured Documents+smooth cliff). An INCOMPLETE def line
+ *  (`[x` with `]:` still in flight) correctly stays on the fast path too:
+ *  the parser sees no definition in it either, and the region re-check on
+ *  the completing append flips to the full parse exactly when the answer
+ *  can change. The `m` flag also matches at index 0, which is a true line
+ *  start (the region begins just past a blank line or at the document
+ *  start). Residual over-matching (e.g. `[x]:` inside an open code fence)
+ *  is safe: it costs a redundant full parse, never a wrong result.
  *  @internal exported for tests only. */
-export const DEF_LINE_START_RE = /^[ \t>*+\d.)-]*\[/m;
+export const DEF_LINE_START_RE = /^[ \t>*+\d.)-]*\[(?:[^\]\\]|\\[\s\S])*\]:/m;
 
 export interface DefLabelScanner {
   /** Equivalent to `collectDefLabels(source)` at every call, but cheap for
@@ -111,10 +125,10 @@ export interface DefLabelScanner {
  * set — almost never changes while prose streams in.
  *
  * Fast path: when the new source merely APPENDS to the previous one, the
- * label set can only differ if the affected region contains a line whose
- * content starts with `[` (see DEF_LINE_START_RE — a definition's bracket
- * is always line-anchored, so mid-line brackets from inline links and
- * citations stay on the fast path). That region is the previous source's
+ * label set can only differ if the affected region contains a line-start
+ * `[label]:` def signature (see DEF_LINE_START_RE — mid-line brackets,
+ * bulleted links, task boxes and reference lists all lack the adjacent
+ * `]:` and stay on the fast path). That region is the previous source's
  * text SINCE ITS LAST BLANK LINE plus the appended text — not just the
  * appended text, because CommonMark definitions span lines (`[x]:` with
  * the destination on the next line) and a trailing append can re-type an
