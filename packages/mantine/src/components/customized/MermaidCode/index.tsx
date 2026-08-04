@@ -362,6 +362,7 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
                 size={28}
                 className="action-icon"
                 variant="transparent"
+                aria-label="Show Mermaid code"
                 onClick={() => {
                   setShowOriginalCode(true);
                 }}
@@ -374,7 +375,13 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
             <CopyButton value={props.code}>
               {({ copied, copy }) => (
                 <Tooltip label={copied ? 'Copied' : 'Copy'} withArrow position="right">
-                  <ActionIcon variant="transparent" size={28} className="action-icon" onClick={copy}>
+                  <ActionIcon
+                    variant="transparent"
+                    size={28}
+                    className="action-icon"
+                    aria-label={copied ? 'Mermaid code copied' : 'Copy Mermaid code'}
+                    onClick={copy}
+                  >
                     {copied ? (
                       <span className="icon-origin-[lucide--check] text-[18px]"></span>
                     ) : (
@@ -400,7 +407,20 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
             </CopyButton>
           </Flex>
         </div>
-        <pre ref={ref} style={PRE_STYLE} onClick={viewSvgInNewWindow} />
+        <pre
+          ref={ref}
+          style={PRE_STYLE}
+          role="button"
+          tabIndex={0}
+          aria-label="Open Mermaid diagram in a new window"
+          onClick={viewSvgInNewWindow}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              viewSvgInNewWindow();
+            }
+          }}
+        />
       </div>
     </>
   );
