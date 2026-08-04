@@ -52,10 +52,12 @@ One control law, two regimes:
 
 Reveal steps are grapheme clusters (`Intl.Segmenter`): a surrogate pair,
 combining sequence, or emoji ZWJ family is revealed atomically, never as a
-lone half that would reach the parser as U+FFFD garbage. The final grapheme
-of the source is held back until it is _confirmed_ — by more text arriving
-behind it, or by the stream ending — because a trailing emoji sequence may
-still be growing.
+lone half that would reach the parser as U+FFFD garbage. (In the rare
+runtime without `Intl.Segmenter`, a code-point fallback still keeps
+surrogate pairs intact, but ZWJ families and combining sequences may reveal
+in steps.) The final grapheme of the source is held back until it is
+_confirmed_ — by more text arriving behind it, or by the stream ending —
+because a trailing emoji sequence may still be growing.
 
 ## The `streaming` prop shifts one step
 
@@ -142,8 +144,10 @@ unprefixed names (`charsPerSecond`, `catchUpWindowMs`, `drainMs`) and
 `onDrained`. Returns `{ content, streaming, flush }` where `content` is the
 revealed prefix and `streaming` stays `true` until drained.
 
-Pacing knobs are read live — changing them mid-stream retunes the reveal
-without resetting it.
+`charsPerSecond` and `catchUpWindowMs` are read live — changing them
+mid-stream retunes the reveal without resetting it. `drainMs` is consumed
+when the stream ends (the deadline is stamped at that moment), so changing
+it affects the next drain, not one already in progress.
 
 ## Behavior details
 

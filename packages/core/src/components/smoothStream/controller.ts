@@ -57,9 +57,12 @@ export interface SmoothStreamOptions {
    */
   now?: () => number;
   /**
-   * Injectable frame scheduler: schedules `cb` once, returns a cancel
-   * function. Defaults to `requestAnimationFrame` with a `setTimeout`
-   * fallback so the controller also runs under node.
+   * Injectable frame scheduler: schedules `cb` once, ASYNCHRONOUSLY, and
+   * returns a cancel function. A scheduler that invokes `cb` synchronously
+   * violates the contract (the returned cancel handle would be recorded
+   * after the tick already cleared it, stranding the controller). Defaults
+   * to `requestAnimationFrame` with a `setTimeout` fallback so the
+   * controller also runs under node.
    */
   schedule?: (cb: () => void) => () => void;
 }
