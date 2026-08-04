@@ -200,9 +200,12 @@ it affects the next drain, not one already in progress.
   exhibit this (the paced prefix is by definition behind the source); it
   only matters if you interleave regeneration with same-frame screenshots
   or DOM assertions.
-- **Stall behavior.** If the source stalls mid-stream, the reveal drains its
-  backlog at the base rate and then waits. The built-in cursor's stall
-  indicator takes over from there, exactly as without smoothing.
+- **Stall behavior.** If the source stalls mid-stream, the reveal eases its
+  remaining backlog out (decaying toward the anti-freeze floor) and then
+  waits; a pause never enters the cadence estimates, so pacing resumes at
+  the pre-stall rhythm instead of adapting to the silence. The built-in
+  cursor's stall indicator takes over from there, exactly as without
+  smoothing.
 - **`onSmoothDrained` fires at end-of-stream, once per stream round.** The
   held-back trailing grapheme keeps the reveal one step short of the source
   for as long as the stream is live, so mid-stream catch-ups (during source
