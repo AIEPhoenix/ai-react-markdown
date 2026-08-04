@@ -38,7 +38,7 @@ yarn add @ai-react-markdown/mantine @ai-react-markdown/core
 {
   "react": ">=19",
   "react-dom": ">=19",
-  "@ai-react-markdown/core": "^2.0.2",
+  "@ai-react-markdown/core": "^2.0.3",
   "@mantine/core": "^9.0.0",
   "@mantine/code-highlight": "^9.0.0",
   "highlight.js": "^11.11.1"
@@ -106,7 +106,7 @@ function StreamingChat({ content, isStreaming }: { content: string; isStreaming:
 | `variant`              | `AIMarkdownVariant`                | `'default'`                      | Typography variant name.                                                                                                                                                                          |
 | `colorScheme`          | `AIMarkdownColorScheme`            | Auto-detected                    | Color scheme. When omitted, defaults to Mantine's computed color scheme via `useComputedColorScheme('light')`.                                                                                    |
 | `metadata`             | `TMetadata`                        | `undefined`                      | Arbitrary data for custom components via dedicated context.                                                                                                                                       |
-| `contentPreprocessors` | `AIMDContentPreprocessor[]`        | `[]`                             | Additional preprocessors run after the built-in LaTeX preprocessor.                                                                                                                               |
+| `contentPreprocessors` | `AIMDContentPreprocessor[]`        | `undefined`                      | Additional preprocessors run after the built-in LaTeX preprocessor.                                                                                                                               |
 | `customComponents`     | `AIMarkdownCustomComponents`       | Mantine defaults                 | Component overrides, merged with Mantine's built-in `<pre>` handler. Caller overrides take precedence -- including `pre` here disables Mantine's code-block features.                             |
 | `Typography`           | `AIMarkdownTypographyComponent`    | `MantineAIMarkdownTypography`    | Typography wrapper component.                                                                                                                                                                     |
 | `ExtraStyles`          | `AIMarkdownExtraStylesComponent`   | `MantineAIMDefaultExtraStyles`   | Extra style wrapper rendered between typography and content.                                                                                                                                      |
