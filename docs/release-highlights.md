@@ -8,6 +8,15 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 ## 2.0.x — The flat props API
 
+### 2.0.3 — Props-API surface hardening from the dual-review campaign
+
+No engine changes — the parse/splice pipeline is byte-identical to 2.0.2. All fixes target the v2 prop/context surface, found by a two-agent review (implementation + architecture) with an adversarial re-review of the fixes:
+
+- **Library-wide null guard completed**: the rule "explicitly passing `null` counts as absent" now covers every prop, not just the engine slice. Previously an untyped/serialized caller (RSC, persistence) passing `Typography: null` crashed the render, and `null` on `fontSize` / `streaming` / `variant` / `colorScheme` punched through the shipped defaults. TS prop types still exclude `null` — the guard is runtime defense-in-depth.
+- **Mantine no longer dead-ends the app-level `codeBlock` channel**: with no `codeBlock` prop, `<MantineAIMarkdown>` used to contribute an empty placeholder group that silently shadowed an outer `AIMarkdownBehaviorsProvider`'s group under the inner-wins merge. An absent prop now contributes no group key at all; the documented wrapper examples follow the same pattern.
+- **Seal runtime gate checks both keys**: `enginePlugins` sanitization now requires the public `'~sealed'` marker AND the internal stage metadata, so a stage-only structural mimic is rejected like a type-level forge (dev warning either way).
+- **Governance**: the core README gains a group-key registry with a 2.x reservation policy (core will not promote a registered group key into a core-locked key within the major line); the execution plan gains Appendix B recording every implementation deviation; new contract tests pin plugin-chain order independence and the export surface (v1 symbols stay deleted). Storybook labels and JSDoc no longer mention v1-era prop names.
+
 ### 2.0.2 — Incremental-parse hardening round two: precise guards replace the coarse bail
 
 Seven engine fixes (six reachable in shipped 2.0.1; none are 2.0.1 regressions), found and verified by four 300k-sample fresh-seed sharded soaks — the final one fully clean. Highlights:
