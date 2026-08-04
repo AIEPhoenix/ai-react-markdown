@@ -200,7 +200,7 @@ const defaultSchedule = (cb: () => void): (() => void) => {
 
 /**
  * Pacing knobs must be FINITE numbers. NaN is a `number` to TypeScript
- * (`charsPerSecond={parseInt(missing)}` type-checks), and `Math.max`
+ * (`{ minCharsPerSecond: parseInt(missing) }` type-checks), and `Math.max`
  * propagates NaN instead of guarding it — one poisoned knob would freeze
  * the reveal in a permanent no-op frame loop. Infinity is rejected too:
  * `Infinity × 0` on a zero-dt tick is NaN by another road.

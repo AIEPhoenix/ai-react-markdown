@@ -693,7 +693,6 @@ export type {
   AIMarkdownStreamingIndicatorComponent,
 } from './components/streamingCursor';
 
-// Cross-chunk coordination wrapper + hook
 // Smooth streaming — the shell component is defined above; these are the
 // composable layers beneath it (framework-free controller + React hook).
 export { createSmoothStreamController, SMOOTH_STREAM_PACING_PRESETS } from './components/smoothStream/controller';
@@ -706,6 +705,7 @@ export type {
 export { useSmoothStream } from './components/smoothStream/useSmoothStream';
 export type { UseSmoothStreamOptions, UseSmoothStreamResult } from './components/smoothStream/useSmoothStream';
 
+// Cross-chunk coordination wrapper + hook
 export { AIMarkdownDocuments, useDocumentRegistry } from './components/AIMarkdownDocuments';
 export type { AIMarkdownDocumentsProps } from './components/AIMarkdownDocuments';
 // Registry types — consumers writing typed helpers around useDocumentRegistry

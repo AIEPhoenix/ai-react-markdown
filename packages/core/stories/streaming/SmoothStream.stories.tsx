@@ -153,9 +153,10 @@ export const Smoke: Story = {
     // The reveal genuinely lagged the source at some point (pacing engaged
     // rather than degenerate instant reveal).
     expect(root().dataset.lagged).toBe('yes');
-    // Each catch-up fired the drained edge at least once (the final drain
-    // always does; mid-stream catch-ups may add more).
-    expect(Number(root().dataset.drains)).toBeGreaterThanOrEqual(1);
+    // Exactly one drain for a single-round stream: mid-stream catch-ups
+    // can never read drained (the held-back tail keeps the reveal one
+    // step short of a live source), so only the post-finish drain fires.
+    expect(root().dataset.drains).toBe('1');
     // Settled means the cursor slot is unmounted again.
     expect(root().querySelector('[data-aimd-streaming-indicator]')).toBeNull();
     // And the full document made it to the DOM through the paced path.
