@@ -114,6 +114,29 @@ export interface FreezeBoundaryOptions {
   /** Whether remark-definition-list is in the active plugin chain (the
    *  `enginePlugins` selection includes `definitionList`). Enables blockers 3b/4. */
   defListEnabled: boolean;
+  /**
+   * Whether `$$` flow math is in the grammar (remark-math). Default `true`
+   * (the engine's own profile). The def-label scanner runs a PINNED
+   * remark-parse+gfm subset where `$$` is ordinary paragraph text — under
+   * that grammar the math branch is a MASKING hole: `inMath` returns early
+   * without comment/fence scanning, so `$$\n<!--\n$$` reads as a closed
+   * math block here while the subset grammar sees an OPEN type-2 HTML
+   * comment running to `-->`/EOF (a candidate after it would let a
+   * standalone tail parse invent ghost defs). With `false`, `$$` lines take
+   * the ordinary text path and comments/fences inside are scanned.
+   */
+  mathFlow?: boolean;
+  /**
+   * Whether blocker 5 (reference taint) applies. Default `true`: the
+   * engine must reject candidates past an unresolved `[label]` because a
+   * later definition retargets the reference's PARSE. The def-label
+   * scanner only extracts definition IDENTITIES — a pure block-level fact
+   * unaffected by how inline references resolve — and under taint a
+   * streaming citation footer (defs with no settling blank line yet)
+   * collapses the boundary to the body's first reference, zeroing the
+   * caching this profile exists for. `false` skips ref tracking entirely.
+   */
+  referenceTaint?: boolean;
 }
 
 export interface FreezeScanResult {
@@ -162,6 +185,10 @@ interface UnresolvedRef {
  *  first unconfirmed character (`confirmedOffset`). */
 export interface FreezeScanCheckpoint {
   defListEnabled: boolean;
+  /** Grammar-profile switches baked at creation — a checkpoint is only
+   *  resumable under the exact profile that built it. */
+  mathFlow: boolean;
+  referenceTaint: boolean;
   /** Start offset of the first line NOT yet baked into this checkpoint. */
   confirmedOffset: number;
   candidates: Candidate[];
@@ -338,9 +365,11 @@ function maskIntraLineCodeSpans(text: string, carryOpen: boolean): { masked: str
   return { masked: out, unpaired: false };
 }
 
-function freshCheckpoint(defListEnabled: boolean): FreezeScanCheckpoint {
+function freshCheckpoint(defListEnabled: boolean, mathFlow: boolean, referenceTaint: boolean): FreezeScanCheckpoint {
   return {
     defListEnabled,
+    mathFlow,
+    referenceTaint,
     confirmedOffset: 0,
     candidates: [],
     defs: new Map(),
@@ -427,10 +456,19 @@ export function computeFreezeBoundary(
   options: FreezeBoundaryOptions,
   resume?: FreezeScanCheckpoint | null
 ): FreezeScanResult {
+  const mathFlow = options.mathFlow ?? true;
+  const referenceTaint = options.referenceTaint ?? true;
+  // A checkpoint encodes profile-dependent state (math phase, ref taint
+  // tables) — resuming under a DIFFERENT profile would mix grammars, so
+  // every switch participates in the invalidation check.
   const cp =
-    resume && resume.defListEnabled === options.defListEnabled && resume.confirmedOffset <= text.length
+    resume &&
+    resume.defListEnabled === options.defListEnabled &&
+    resume.mathFlow === mathFlow &&
+    resume.referenceTaint === referenceTaint &&
+    resume.confirmedOffset <= text.length
       ? resume
-      : freshCheckpoint(options.defListEnabled);
+      : freshCheckpoint(options.defListEnabled, mathFlow, referenceTaint);
 
   // ── advance the checkpoint over newly-CONFIRMED lines ──
   let start = cp.confirmedOffset;
@@ -626,7 +664,10 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
   // plain-text branch keeps those lines tag-scanned (over-block safe) —
   // but the suppression itself is only certainly right at top level, so it
   // ALSO poisons the phase (see phasePoisonedAt).
-  const mathRun = !rawOpenAtLineStart ? MATH_RUN_RE.exec(ln.text) : null;
+  // Under the scanner profile (mathFlow=false) `$$` is ordinary paragraph
+  // text — no math state, no suppressed-open poison; the line falls through
+  // to the plain-text path where its content stays comment/tag-scanned.
+  const mathRun = cp.mathFlow && !rawOpenAtLineStart ? MATH_RUN_RE.exec(ln.text) : null;
   if (mathRun) {
     const rest = ln.text.slice(ln.text.indexOf(mathRun[1]) + mathRun[1].length);
     // A `$` anywhere in the rest disqualifies the flow open (meta may not
@@ -766,7 +807,12 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
       if (key && !cp.defs.has(key)) cp.defs.set(key, ln.end);
     }
   }
-  if (scanText.includes('[')) {
+  // Blocker 5 collection is skipped entirely under referenceTaint=false
+  // (the def-label scanner profile): definition IDENTITY is a block-level
+  // fact independent of how inline references resolve, and taint would
+  // collapse the boundary to the body's first citation while a def footer
+  // streams (defs settle only after a trailing blank line).
+  if (cp.referenceTaint && scanText.includes('[')) {
     // `[label]:` is only definition-shaped when THIS line registers it as a
     // def (the label bracket of validDef). On a paragraph CONTINUATION line
     // the same bytes are literal text where micromark still parses `[label]`

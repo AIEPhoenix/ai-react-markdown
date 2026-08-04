@@ -100,6 +100,16 @@ describe('createDefLabelScanner', () => {
     replay(['see\n[x', ']', ': /url\n']);
     // Link list followed by a genuine def footer.
     replay(['- [a](https://e.com/a)\n', '- [b](https://e.com/b)\n', '\n[c]: https://e.com/c\n']);
+    // Ghost-def counterexample (Phase B review): without the scanner
+    // boundary profile, `$$`-wrapped `<!--` reads as closed math and the
+    // frozen prefix would let the tail parse invent `[x]` OUTSIDE the
+    // still-open type-2 comment. Per-step equality pins the profile.
+    replay(['$$\n', '<!--\n', '$$\n', '\n', '[x]: /u\n', 'prose\n']);
+    replay(['$$\r\n', '<!--\r\n', '$$\r\n', '\r\n', '[x]: /u\r\n']);
+    // A ``` fence inside $$ really opens under the pinned grammar.
+    replay(['$$\n', '```\n', '$$\n', '\n', '[x]: /u\n']);
+    // Streaming def footer after freezable prose (the Phase B motivation).
+    replay(['body paragraph one.\n\n', 'body paragraph two.\n\n', '[1]: /a\n', '[2]: /b\n', '[^3]: note\n']);
   });
 
   test('region boundary is CRLF-aware', () => {
@@ -147,7 +157,9 @@ describe('createDefLabelScanner', () => {
     const scanner = createDefLabelScanner(counting);
     let acc = 'Sources:\n';
     scanner.scan(acc);
-    expect(calls).toBe(1);
+    // Phase B: the probe gates the SLICE and TAIL parses too, so a
+    // signature-free document costs zero parses even on first scan.
+    expect(calls).toBe(0);
     for (let i = 1; i <= 20; i += 1) {
       // Split each item mid-bracket to exercise the append seam.
       for (const piece of [`- [Result ${i}]`, `(https://example.com/${i})\n`]) {
@@ -159,11 +171,13 @@ describe('createDefLabelScanner', () => {
       acc += piece;
       expect(asPlain(scanner.scan(acc))).toEqual(asPlain(collectDefLabels(acc)));
     }
-    expect(calls).toBe(1); // the whole list rode the fast path
-    // A REAL def arriving afterwards still forces the parse and is found.
+    expect(calls).toBe(0); // the whole list rode the fast path
+    // A REAL def arriving afterwards still forces a parse and is found.
+    // (The list's continuation hazard blocks freezing here, so this one
+    // parse covers the full source — the conservative direction.)
     acc += '\n[1]: https://example.com/canonical\n';
     const labels = scanner.scan(acc);
-    expect(calls).toBe(2);
+    expect(calls).toBe(1);
     expect([...labels.linkLabels]).toContain('1');
   });
 
@@ -202,16 +216,46 @@ describe('createDefLabelScanner', () => {
     const scanner = createDefLabelScanner(counting);
     let acc = 'intro paragraph\n\nprose ';
     scanner.scan(acc);
-    expect(calls).toBe(1); // first scan always parses
+    // Phase B: even the first scan skips the parse when neither the frozen
+    // slice nor the live tail carries a def signature.
+    expect(calls).toBe(0);
     for (const token of ['streams ', 'in with [a link](https://e.com) ', 'and citations [1] ', 'to the end.']) {
       acc += token;
       scanner.scan(acc);
     }
-    expect(calls).toBe(1); // every append rode the fast path
-    // A def line DOES force the parse.
+    expect(calls).toBe(0); // every append rode the fast path
+    // A def line DOES force a parse — of the small tail only: the frozen
+    // prefix ends at the blank line before it and holds no signature.
     acc += '\n\n[d]: /url';
     scanner.scan(acc);
-    expect(calls).toBe(2);
+    expect(calls).toBe(1);
+  });
+
+  test('a streaming def footer parses only the live tail once the prefix freezes', () => {
+    // The Phase B goal: while a citation footer streams, the parse cost
+    // must be O(footer), not O(document). The injected parse records the
+    // LENGTH of every source it is given.
+    const parsedLengths: number[] = [];
+    const recording = (s: string) => {
+      parsedLengths.push(s.length);
+      return collectDefLabels(s);
+    };
+    const scanner = createDefLabelScanner(recording);
+    const body = Array.from({ length: 60 }, (_, i) => `Body paragraph ${i} with prose text in it.`).join('\n\n');
+    let acc = body + '\n\n';
+    scanner.scan(acc); // body: full parse once (fast path not yet armed)
+    const bodyLength = acc.length;
+    parsedLengths.length = 0;
+    for (let i = 1; i <= 30; i += 1) {
+      acc += `[${i}]: https://example.com/${i}\n`;
+      expect(asPlain(scanner.scan(acc))).toEqual(asPlain(collectDefLabels(acc)));
+    }
+    expect(bodyLength).toBeGreaterThan(2_000);
+    const maxParsed = Math.max(...parsedLengths);
+    // Every footer-era parse touched only the footer-sized tail (plus the
+    // one-off frozen-prefix slice, which contains no def signature and is
+    // skipped by the probe entirely).
+    expect(maxParsed).toBeLessThan(1_200);
   });
 
   test('property: seeded random token streams match a full parse at every step', () => {
@@ -248,6 +292,11 @@ describe('createDefLabelScanner', () => {
       '   ',
       '===\n',
       ': ',
+      '$$\n',
+      '<!--\n',
+      '-->\n',
+      '<div>\n',
+      '</div>\n',
     ];
     for (let stream = 0; stream < 25; stream++) {
       const scanner = createDefLabelScanner();
