@@ -16,6 +16,22 @@ import remarkGfm from 'remark-gfm';
 import { visit } from 'unist-util-visit';
 import type { Root as MdastRoot } from 'mdast';
 import { normalizeId } from './normalizeId';
+import { computeFreezeBoundary, type FreezeScanCheckpoint } from './incrementalParse/computeFreezeBoundary';
+
+/**
+ * The scanner's freeze-boundary grammar profile. `mathFlow: false` because
+ * this module's PINNED pipeline (remark-parse + remark-gfm) has no
+ * remark-math — `$$` is paragraph text here, and the engine's math
+ * masking would hide comment/fence opens from the balance scan (ghost-def
+ * counterexample, Phase B design review). `referenceTaint: false` because
+ * only definition IDENTITIES matter to PASS 0 — a block-level fact
+ * independent of inline reference resolution — and taint would collapse
+ * the boundary to the body's first citation exactly while a def footer
+ * streams. The engine's soak battery does not cover this switch
+ * combination; the replay/property/fuzz suites in collectDefLabels.test.ts
+ * are its safety net.
+ */
+const SCANNER_BOUNDARY_PROFILE = { defListEnabled: false, mathFlow: false, referenceTaint: false } as const;
 
 export interface DefLabels {
   footnoteLabels: Set<string>;
@@ -153,12 +169,31 @@ export interface DefLabelScanner {
 export function createDefLabelScanner(parse: (source: string) => DefLabels = collectDefLabels): DefLabelScanner {
   let prevSource: string | null = null;
   let prevLabels: DefLabels | null = null;
+  // Frozen-prefix cache (Phase B): labels extracted from the region before
+  // `frozenEnd` are FINAL — the freeze boundary guarantees every block
+  // beginning before it parses byte-identically under any future append,
+  // so a def there can neither appear nor disappear. The checkpoint makes
+  // the boundary scan O(new lines) per call; it belongs to this scanner's
+  // single append-only lineage (non-append resets it).
+  let frozenEnd = 0;
+  let frozenFootnotes = new Set<string>();
+  let frozenLinks = new Set<string>();
+  let checkpoint: FreezeScanCheckpoint | null = null;
+
+  const resetFrozen = () => {
+    frozenEnd = 0;
+    frozenFootnotes = new Set();
+    frozenLinks = new Set();
+    checkpoint = null;
+  };
 
   return {
     scan(source: string): DefLabels {
+      let isAppend = false;
       if (prevSource !== null && prevLabels !== null) {
         if (source === prevSource) return prevLabels;
         if (source.startsWith(prevSource)) {
+          isAppend = true;
           const regionStart = lastRegionStart(prevSource);
           // Joined so a def line straddling the append boundary keeps its
           // line-start context.
@@ -169,7 +204,34 @@ export function createDefLabelScanner(parse: (source: string) => DefLabels = col
           }
         }
       }
-      const next = parse(source);
+      // Slow path — the region really may contain a definition. Advance the
+      // frozen prefix as far as the boundary allows, then parse ONLY the
+      // live tail instead of the whole document.
+      if (!isAppend && prevSource !== null) resetFrozen();
+      const scanResult = computeFreezeBoundary(source, SCANNER_BOUNDARY_PROFILE, isAppend ? checkpoint : null);
+      checkpoint = scanResult.checkpoint;
+      // An older freeze is permanently valid — never move backwards even if
+      // a later scan reports a smaller boundary (over-blocking direction).
+      const boundary = Math.max(scanResult.boundary, frozenEnd);
+      if (boundary > frozenEnd) {
+        const slice = source.slice(frozenEnd, boundary);
+        // The slice can only add labels if it contains a def signature —
+        // the same probe that gates the slow path.
+        if (DEF_LINE_START_RE.test(slice)) {
+          const sliceLabels = parse(slice);
+          for (const label of sliceLabels.footnoteLabels) frozenFootnotes.add(label);
+          for (const label of sliceLabels.linkLabels) frozenLinks.add(label);
+        }
+        frozenEnd = boundary;
+      }
+      const tailSource = source.slice(frozenEnd);
+      const tail = DEF_LINE_START_RE.test(tailSource)
+        ? parse(tailSource)
+        : { footnoteLabels: new Set<string>(), linkLabels: new Set<string>() };
+      const next: DefLabels = {
+        footnoteLabels: new Set([...frozenFootnotes, ...tail.footnoteLabels]),
+        linkLabels: new Set([...frozenLinks, ...tail.linkLabels]),
+      };
       if (
         prevLabels !== null &&
         setsEqual(next.footnoteLabels, prevLabels.footnoteLabels) &&

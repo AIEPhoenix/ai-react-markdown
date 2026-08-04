@@ -417,3 +417,76 @@ describe('computeFreezeBoundary — suppressed fence/math opens poison the phase
     }
   });
 });
+
+describe('computeFreezeBoundary — scanner profile (mathFlow/referenceTaint off)', () => {
+  // The def-label scanner runs a PINNED remark-parse+gfm grammar (no math,
+  // and it only extracts def IDENTITIES). These switches exist for it and
+  // for nothing else; each test asserts the ENGINE profile's opposite
+  // behavior alongside, so a silently ignored switch turns the test red.
+  const SCANNER = { defListEnabled: false, mathFlow: false, referenceTaint: false };
+
+  test('math-masking hole: $$-wrapped <!-- is an OPEN comment without remark-math', () => {
+    // Engine grammar: `$$…$$` is flow math containing the `<!--` as inert
+    // interior; the candidate after the blank is genuinely safe. Scanner
+    // grammar: `$$` is paragraph text and `<!--` opens a type-2 HTML block
+    // running to `-->`/EOF — a boundary after the blank would let a
+    // standalone tail parse read `[x]: /u` OUTSIDE the comment and invent a
+    // ghost def (oracle counterexample, Phase B design review).
+    const text = '$$\n<!--\n$$\n\n[x]: /u\nprose\n';
+    expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('[x]: /u'));
+    expect(computeFreezeBoundary(text, SCANNER)).toBe(0);
+    // Closing the comment releases candidates under the scanner profile too.
+    const closed = '$$\n<!--\n$$\n-->\n\n[y]: /u\nprose\n';
+    expect(computeFreezeBoundary(closed, SCANNER)).toBe(closed.indexOf('[y]: /u'));
+  });
+
+  test('math-masking hole survives CRLF line endings', () => {
+    const text = '$$\r\n<!--\r\n$$\r\n\r\n[x]: /u\r\nprose\r\n';
+    expect(computeFreezeBoundary(text, SCANNER)).toBe(0);
+  });
+
+  test('a ``` fence inside $$ really opens without remark-math', () => {
+    // Engine grammar: the fence chars are math interior. Scanner grammar:
+    // a REAL fence opens at line 2 and never closes — the blank line and
+    // everything after it live inside code.
+    const text = '$$\n```\n$$\n\n[x]: /u\n';
+    expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('[x]: /u'));
+    expect(computeFreezeBoundary(text, SCANNER)).toBe(0);
+  });
+
+  test('referenceTaint off: a streaming def footer does not collapse the boundary', () => {
+    // Body cites [1]; the footer defs have no settling blank line yet.
+    // Engine profile: blocker 5 rejects every candidate past the citation.
+    // Scanner profile: def identity is block-level — the candidate after
+    // the body survives and the footer stays in the (small) tail.
+    const text = 'intro cites [1] and [2] here\n\n[1]: /a\n[2]: /b\n[3]: /c';
+    expect(computeFreezeBoundary(text, OFF)).toBe(0);
+    expect(computeFreezeBoundary(text, SCANNER)).toBe(text.indexOf('[1]: /a'));
+  });
+
+  test('referenceTaint off, CRLF variant', () => {
+    const text = 'intro cites [1] here\r\n\r\n[1]: /a\r\n[2]: /b';
+    expect(computeFreezeBoundary(text, SCANNER)).toBe(text.indexOf('[1]: /a'));
+  });
+
+  test('a profile switch invalidates a resumed checkpoint', () => {
+    const text = 'para one\n\npara two\n\nmore';
+    const engine = scanFreezeBoundary(text, OFF);
+    // Resuming under a different profile must rebuild from scratch, not
+    // reuse engine-profile state (math phase / taint tables differ).
+    const rescanned = scanFreezeBoundary(text, SCANNER, engine.checkpoint);
+    expect(rescanned.checkpoint).not.toBe(engine.checkpoint);
+    expect(rescanned.checkpoint.mathFlow).toBe(false);
+    expect(rescanned.checkpoint.referenceTaint).toBe(false);
+  });
+
+  test('scanner profile keeps every non-math blocker intact', () => {
+    // Unclosed container tag still blocks…
+    expect(computeFreezeBoundary('<div>\ntext\n\nafter\n', SCANNER)).toBe(0);
+    // …an open fence still blocks…
+    expect(computeFreezeBoundary('```\ncode\n\nafter\n', SCANNER)).toBe(0);
+    // …and plain prose still freezes normally.
+    const text = 'para one\n\npara two\n\npara three';
+    expect(computeFreezeBoundary(text, SCANNER)).toBe(text.indexOf('para three'));
+  });
+});
