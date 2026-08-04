@@ -28,6 +28,7 @@ const REQUIRED_V2_VALUES = [
   'AIMarkdownSmoothStream',
   'useSmoothStream',
   'createSmoothStreamController',
+  'SMOOTH_STREAM_PACING_PRESETS',
   'AIMarkdownDocuments',
   'useDocumentRegistry',
   'extendSanitizeSchema',

@@ -684,7 +684,8 @@ State is deliberately split across five per-system contexts (document, metadata,
 
 - `defineTheme`, `defineBehaviors`, `definePipeline` -- frozen, typed, reference-stable flat prop fragments (identity + types + `Object.freeze`, zero logic)
 - `createRemendPreprocessor()` -- opt-in streaming tail-repair factory for `contentPreprocessors` (tree-shakeable)
-- `createSmoothStreamController()` -- the framework-free pacing core beneath `useSmoothStream` (no React/DOM dependency)
+- `createSmoothStreamController()` -- the framework-free pacing core beneath `useSmoothStream` (no React/DOM dependency); accepts advanced numeric overrides on top of the pacing presets
+- `SMOOTH_STREAM_PACING_PRESETS` -- the frozen parameter bundles behind the three `smoothPacing` presets
 
 ### Constants and Helpers
 
@@ -715,7 +716,7 @@ State is deliberately split across five per-system contexts (document, metadata,
 - `AIMarkdownStabilityTable` -- table type for `useStableRecord`
 - Context payload types: `AIMarkdownDocumentInfo`, `AIMarkdownThemeInfo`, `AIMarkdownStateCore`, `AIMarkdownBehaviorsCore`, `AIMarkdownStateGroups`, `AIMarkdownBehaviorGroups`, `AIMarkdownExtensionGroups`, `AIMarkdownAggregate`
 - Streaming cursor types: `AIMarkdownStreamingCursorProps`, `AIMarkdownStreamingIndicatorProps`, `AIMarkdownStreamingIndicatorComponent`
-- Smooth streaming types: `AIMarkdownSmoothStreamProps`, `SmoothStreamController`, `SmoothStreamOptions`, `UseSmoothStreamOptions`, `UseSmoothStreamResult`
+- Smooth streaming types: `AIMarkdownSmoothStreamProps`, `SmoothStreamController`, `SmoothStreamOptions`, `SmoothStreamPacing`, `SmoothStreamPacingParams`, `UseSmoothStreamOptions`, `UseSmoothStreamResult`
 - `UrlTransform`, `SanitizeSchema` -- prop-type aliases for the URL handling props (track upstream `react-markdown` / `rehype-sanitize` shapes)
 - Cross-chunk registry types: `Registry`, `ChunkData`, `FootnoteDef`, `LinkDef`, `RefRecord`, `RefKind`
 

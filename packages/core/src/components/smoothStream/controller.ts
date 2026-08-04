@@ -7,17 +7,28 @@
  * exactly the incremental-parse engine's fast path — the controller sits
  * upstream of the renderer and never touches the parse pipeline.
  *
- * Pacing model (one control law, two regimes):
- * - Streaming: rate = max(charsPerSecond, backlog / catchUpWindowMs).
- *   The base rate is the floor that prevents asymptotic stall; the
- *   proportional term bounds steady-state lag to ~one window of tokens.
- * - Finished: rate = max(charsPerSecond, backlog / time-to-deadline),
- *   where the deadline is stamped at `finish() + drainMs` — the backlog
- *   empties BY the deadline instead of decaying toward it forever.
+ * Pacing model — an adaptive jitter buffer (audio-playout style):
+ * - The controller estimates the source's arrival rate and burst interval
+ *   with irregular-sampling EMAs (recorded on every append), and derives a
+ *   target buffer B* ≈ bufferFactor × one burst's worth of text — the
+ *   causality floor for smoothing bursts of that period.
+ * - Streaming: rate = max(floor, rateEma + (backlog − B*) / correctionTau).
+ *   Feedforward tracks the source speed (bounded lag at any model speed);
+ *   the feedback term pins the backlog near B*, dipping BELOW the source
+ *   rate on purpose when the buffer runs low so it can refill instead of
+ *   running dry between bursts. The floor is a tiny anti-freeze trickle,
+ *   deliberately smaller than any realistic arrival rate.
+ * - Pre-stats (first burst after construction/snap): no estimate exists
+ *   yet, so the backlog reveals over roughly one correction window.
+ * - Finished: rate = backlog / time-to-deadline, deadline stamped at
+ *   `finish() + drainMs` — the backlog empties BY the deadline instead of
+ *   decaying toward it forever.
  * - A deadline credit accumulator converts elapsed time (injectable
  *   `now()`) into whole-grapheme reveals per scheduled frame — timers
  *   carry no state between frames, so throttled/paused schedulers
  *   self-correct on the next tick instead of drifting.
+ * - The public tuning surface is three named presets ({@link SmoothStreamPacing});
+ *   the numeric parameters stay controller-level for advanced hosts.
  *
  * Grapheme discipline: stepping uses `Intl.Segmenter` (code-point fallback)
  * and the trailing grapheme of the source is held back until it is
@@ -28,28 +39,56 @@
  * @module components/smoothStream/controller
  */
 
-export interface SmoothStreamOptions {
+/**
+ * The public pacing surface: three named trade-off points on the
+ * latency-vs-smoothness axis (the audio-plugin buffer-preset convention —
+ * perceptual parameters resist meaningful numeric tuning).
+ *
+ * - `'smooth'` — target ~1.7 bursts of buffer: almost never runs dry
+ *   between server flushes, at the cost of a little extra lag.
+ * - `'balanced'` (default) — ~1 burst of buffer, the causality floor for
+ *   smoothing: minimal lag that can still bridge a typical gap.
+ * - `'responsive'` — sub-burst buffer: lowest lag, accepts an occasional
+ *   visible pause between bursts.
+ */
+export type SmoothStreamPacing = 'smooth' | 'balanced' | 'responsive';
+
+/** The numeric parameter bundle a {@link SmoothStreamPacing} preset names. */
+export interface SmoothStreamPacingParams {
+  /** Target buffer as a multiple of one estimated burst's worth of text. */
+  bufferFactor: number;
   /**
-   * Floor reveal rate in grapheme clusters per second. Keeps the reveal
-   * trickling through source pauses so the proportional term can never
-   * stall asymptotically. Default `40`.
+   * Feedback time constant (ms): how fast the backlog is steered toward
+   * the target buffer. Also the pre-stats reveal window for the first
+   * burst, before any arrival estimate exists.
    */
-  charsPerSecond?: number;
+  correctionTauMs: number;
+  /** Smoothing horizon (ms) for the arrival-rate / burst-interval EMAs. */
+  emaTauMs: number;
   /**
-   * Catch-up window while streaming: when the backlog exceeds
-   * `charsPerSecond × window`, the rate rises to drain the backlog in
-   * roughly this many milliseconds, bounding steady-state lag to ~one
-   * window of incoming text. Default `600`.
+   * Anti-freeze floor (grapheme clusters/s). Deliberately tiny — smaller
+   * than any realistic arrival rate — so the feedback term can slow the
+   * reveal below the source rate to refill the buffer, without ever
+   * freezing visible progress entirely.
    */
-  catchUpWindowMs?: number;
+  minCharsPerSecond: number;
   /**
    * Hard drain budget after {@link SmoothStreamController.finish}: a
    * deadline is stamped at `finish() + drainMs` and the rate scales with
    * remaining-backlog / remaining-time, so the backlog empties BY the
-   * deadline (not asymptotically) — the visible stream ends at most this
-   * many milliseconds after the source does. Default `250`.
+   * deadline (not asymptotically). Consumed when the deadline is stamped —
+   * changing it affects the next drain, not one in progress.
    */
-  drainMs?: number;
+  drainMs: number;
+}
+
+export interface SmoothStreamOptions extends Partial<SmoothStreamPacingParams> {
+  /**
+   * Named pacing preset, the intended tuning surface. Individual
+   * {@link SmoothStreamPacingParams} fields act as advanced per-field
+   * overrides on top of the chosen preset. Default `'balanced'`.
+   */
+  pacing?: SmoothStreamPacing;
   /**
    * Injectable clock (milliseconds, monotonic preferred). Defaults to
    * `performance.now`, falling back to `Date.now`. Tests inject a manual
@@ -107,9 +146,43 @@ export interface SmoothStreamController {
   dispose(): void;
 }
 
-const DEFAULT_CHARS_PER_SECOND = 40;
-const DEFAULT_CATCH_UP_WINDOW_MS = 600;
-const DEFAULT_DRAIN_MS = 250;
+/**
+ * The three preset bundles. Calibrated against the burst patterns in the
+ * SmoothStream stories (server-buffer-like flushes at slow and fast model
+ * speeds); frozen so a shared reference can't be mutated by a consumer.
+ */
+export const SMOOTH_STREAM_PACING_PRESETS: Readonly<Record<SmoothStreamPacing, Readonly<SmoothStreamPacingParams>>> =
+  Object.freeze({
+    smooth: Object.freeze({
+      bufferFactor: 1.7,
+      correctionTauMs: 280,
+      emaTauMs: 2600,
+      minCharsPerSecond: 4,
+      drainMs: 320,
+    }),
+    balanced: Object.freeze({
+      bufferFactor: 1.0,
+      correctionTauMs: 180,
+      emaTauMs: 1800,
+      minCharsPerSecond: 6,
+      drainMs: 240,
+    }),
+    responsive: Object.freeze({
+      bufferFactor: 0.45,
+      correctionTauMs: 110,
+      emaTauMs: 1100,
+      minCharsPerSecond: 10,
+      drainMs: 150,
+    }),
+  });
+
+/**
+ * Absolute ceiling on the target buffer, expressed as milliseconds of lag
+ * at the estimated rate. Guards against a skewed interval estimate (one
+ * pathological gap) demanding seconds of buffered text. Internal — not a
+ * preset field because no preset should ever want to move it.
+ */
+const MAX_TARGET_BUFFER_MS = 1200;
 
 const defaultNow: () => number =
   typeof performance !== 'undefined' && typeof performance.now === 'function'
@@ -190,7 +263,49 @@ export const createSmoothStreamController = (options: SmoothStreamOptions = {}):
   let cancelFrame: (() => void) | undefined;
   let disposed = false;
 
+  // Arrival statistics for the adaptive law. Reset by snap(): a content
+  // replacement is a new stream whose cadence the old estimates don't
+  // describe. `undefined` = pre-stats regime (first burst).
+  let rateEma: number | undefined;
+  let intervalEma: number | undefined;
+  let lastArrivalAt: number | undefined;
+
   const listeners = new Set<() => void>();
+
+  /** Live-resolves preset + per-field overrides, sanitizing every number. */
+  const resolveParams = (): SmoothStreamPacingParams => {
+    const preset =
+      SMOOTH_STREAM_PACING_PRESETS[options.pacing as SmoothStreamPacing] ?? SMOOTH_STREAM_PACING_PRESETS.balanced;
+    return {
+      bufferFactor: finiteOr(options.bufferFactor, preset.bufferFactor),
+      correctionTauMs: finiteOr(options.correctionTauMs, preset.correctionTauMs),
+      emaTauMs: finiteOr(options.emaTauMs, preset.emaTauMs),
+      minCharsPerSecond: finiteOr(options.minCharsPerSecond, preset.minCharsPerSecond),
+      drainMs: finiteOr(options.drainMs, preset.drainMs),
+    };
+  };
+
+  /**
+   * Irregular-sampling EMA update: α = 1 − e^(−gap/τ) weighs each sample
+   * by the time it spans, so bursty arrival timing doesn't bias the
+   * estimates the way a fixed-α EMA would. `added` is in UTF-16 units —
+   * close enough to the grapheme-denominated backlog for control purposes
+   * (emoji-heavy text mildly over-estimates the rate, which only pads the
+   * buffer).
+   */
+  const recordArrival = (t: number, added: number) => {
+    if (added <= 0) return;
+    if (lastArrivalAt === undefined) {
+      lastArrivalAt = t;
+      return;
+    }
+    const gap = Math.max(1, t - lastArrivalAt);
+    lastArrivalAt = t;
+    const alpha = 1 - Math.exp(-gap / Math.max(1, resolveParams().emaTauMs));
+    const instantRate = (added * 1000) / gap;
+    rateEma = rateEma === undefined ? instantRate : rateEma + alpha * (instantRate - rateEma);
+    intervalEma = intervalEma === undefined ? gap : intervalEma + alpha * (gap - intervalEma);
+  };
 
   const notify = () => {
     visibleCache = source.slice(0, visibleEnd);
@@ -216,16 +331,30 @@ export const createSmoothStreamController = (options: SmoothStreamOptions = {}):
     const dt = Math.max(0, t - lastTickAt);
     lastTickAt = t;
 
-    const base = finiteOr(options.charsPerSecond, DEFAULT_CHARS_PER_SECOND);
-    // While streaming: proportional catch-up over a fixed window (steady-
-    // state lag ≈ one window of tokens). After finish(): remaining-backlog
-    // over remaining-time-to-deadline, which reaches zero BY the deadline
-    // instead of decaying asymptotically toward it.
-    const windowMs =
-      finished && drainDeadlineAt !== undefined
-        ? Math.max(1, drainDeadlineAt - t)
-        : finiteOr(options.catchUpWindowMs, DEFAULT_CATCH_UP_WINDOW_MS);
-    const rate = Math.max(base, (pending.length * 1000) / Math.max(1, windowMs));
+    const params = resolveParams();
+    let rate: number;
+    if (finished && drainDeadlineAt !== undefined) {
+      // Drain regime: remaining backlog over remaining time-to-deadline —
+      // reaches zero BY the deadline instead of decaying asymptotically.
+      rate = Math.max(params.minCharsPerSecond, (pending.length * 1000) / Math.max(1, drainDeadlineAt - t));
+    } else if (rateEma !== undefined && intervalEma !== undefined) {
+      // Adaptive regime: feedforward on the estimated source rate,
+      // feedback steering the backlog toward the target buffer. The
+      // feedback dips below the source rate on purpose when the buffer
+      // runs low — that is how it refills instead of running dry.
+      const targetBuffer = Math.min(
+        Math.max(1, params.bufferFactor * rateEma * (intervalEma / 1000)),
+        (rateEma * MAX_TARGET_BUFFER_MS) / 1000
+      );
+      rate = Math.max(
+        params.minCharsPerSecond,
+        rateEma + ((pending.length - targetBuffer) * 1000) / Math.max(1, params.correctionTauMs)
+      );
+    } else {
+      // Pre-stats regime (first burst after construction/snap): no
+      // arrival estimate yet — reveal over roughly one correction window.
+      rate = Math.max(params.minCharsPerSecond, (pending.length * 1000) / Math.max(1, params.correctionTauMs));
+    }
     credit += (rate * dt) / 1000;
 
     const reveal = Math.min(Math.floor(credit), pending.length);
@@ -262,6 +391,10 @@ export const createSmoothStreamController = (options: SmoothStreamOptions = {}):
     initialized = true;
     finished = false;
     drainDeadlineAt = undefined;
+    // A replacement is a new stream: the old cadence estimates are noise.
+    rateEma = undefined;
+    intervalEma = undefined;
+    lastArrivalAt = undefined;
     source = next;
     visibleEnd = next.length;
     tentativeEnd = next.length;
@@ -295,15 +428,17 @@ export const createSmoothStreamController = (options: SmoothStreamOptions = {}):
       }
       finished = false;
       drainDeadlineAt = undefined;
+      const previousLength = source.length;
       source = next;
       resegmentTail();
+      recordArrival(now(), next.length - previousLength);
       ensureScheduled();
     },
     finish() {
       revive();
       if (finished) return;
       finished = true;
-      drainDeadlineAt = now() + finiteOr(options.drainMs, DEFAULT_DRAIN_MS);
+      drainDeadlineAt = now() + resolveParams().drainMs;
       if (tentativeEnd > (pending.length > 0 ? pending[pending.length - 1] : visibleEnd)) {
         pending.push(tentativeEnd);
       }

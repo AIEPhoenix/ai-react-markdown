@@ -5,7 +5,7 @@ stall, three clumps back-to-back. Rendering each chunk the moment it lands
 makes the message jump in visible lurches. Smooth streaming decouples the
 _arrival_ cadence from the _reveal_ cadence: the full accumulated source is
 fed in as usual, and a controller reveals it as a steadily growing prefix,
-grapheme by grapheme, at a rate that adapts to how far behind it is.
+grapheme by grapheme, at a rate that tracks the source's measured cadence.
 
 ```tsx
 import { AIMarkdownSmoothStream, AIMarkdownStreamingCursor } from '@ai-react-markdown/core';
@@ -18,10 +18,10 @@ import { AIMarkdownSmoothStream, AIMarkdownStreamingCursor } from '@ai-react-mar
 ```
 
 `<AIMarkdownSmoothStream>` accepts the full `<AIMarkdown>` prop surface and
-adds four `smooth*`-prefixed knobs (see [API](#api-reference)). Everything
-else — plugins, custom components, sanitization, cross-chunk coordination —
-behaves identically, because the shell renders a plain `<AIMarkdown>` with a
-paced `content` string.
+adds two props: a `smoothPacing` preset and an `onSmoothDrained` callback
+(see [API](#api-reference)). Everything else — plugins, custom components,
+sanitization, cross-chunk coordination — behaves identically, because the
+shell renders a plain `<AIMarkdown>` with a paced `content` string.
 
 ## Why this composes well here
 
@@ -44,19 +44,41 @@ combination that genuinely cliffs is per-chunk smoothing inside
 
 ## How pacing works
 
-One control law, two regimes:
+The controller is an adaptive jitter buffer — the same shape as an audio
+playout buffer. It continuously estimates the source's arrival rate and
+burst interval (exponential moving averages recorded on every append) and
+derives a **target buffer**: roughly one burst's worth of text, the
+causality floor for smoothing bursts of that period (you cannot bridge a
+300 ms gap with less than ~300 ms of buffered text).
 
-- **While streaming** — `rate = max(charsPerSecond, backlog / catchUpWindowMs)`.
-  The base rate (`smoothCharsPerSecond`, default 40/s) is a floor that keeps
-  text trickling through source stalls. The proportional term kicks in when
-  chunks arrive faster than the floor: the further behind the reveal falls,
-  the faster it runs, bounding the steady-state lag to roughly one
-  `smoothCatchUpWindowMs` (default 600 ms) worth of incoming text.
-- **After the stream ends** — a deadline is stamped `smoothDrainMs`
-  (default 250 ms) in the future, and the rate becomes
-  `remaining backlog / time to deadline`. The backlog empties _by_ the
-  deadline — a hard bound, not an asymptotic decay — so the message never
-  dribbles on long after the model has finished.
+- **While streaming** — `rate = sourceRate + (backlog − target) / correctionTau`.
+  The feedforward term tracks the source's measured speed, so lag stays
+  bounded at any model speed — a fast model doesn't accumulate a growing
+  backlog, a slow model isn't outrun. The feedback term steers the backlog
+  toward the target: above target it speeds up; below target it slows
+  _below_ the source rate on purpose so the buffer refills instead of
+  running dry between bursts. A tiny anti-freeze floor keeps visible
+  progress whenever anything is pending.
+- **After the stream ends** — a deadline is stamped `drainMs` in the
+  future, and the rate becomes `remaining backlog / time to deadline`. The
+  backlog empties _by_ the deadline — a hard bound, not an asymptotic
+  decay — so the message never dribbles on long after the model finished.
+
+The tuning surface is three named presets (`smoothPacing`), a deliberate
+echo of audio-plugin buffer settings — perceptual trade-offs resist
+meaningful numeric tuning:
+
+| Preset               | Target buffer    | Trade-off                                                            |
+| -------------------- | ---------------- | -------------------------------------------------------------------- |
+| `smooth`             | ~1.7 bursts      | Almost never runs dry between server flushes; a little extra lag     |
+| `balanced` (default) | ~1 burst         | The causality floor: minimal lag that can still bridge a typical gap |
+| `responsive`         | ~0.45 of a burst | Lowest lag; accepts an occasional visible pause between bursts       |
+
+Numeric parameters (buffer factor, time constants, drain budget) live on
+`createSmoothStreamController` for advanced hosts — see
+`SmoothStreamPacingParams` and the exported `SMOOTH_STREAM_PACING_PRESETS`
+bundles. The preset is read live: switching it mid-stream retunes the
+reveal without resetting it.
 
 Reveal steps are grapheme clusters (`Intl.Segmenter`): a surrogate pair,
 combining sequence, or emoji ZWJ family is revealed atomically, never as a
@@ -115,7 +137,7 @@ bindings:
 ```ts
 import { createSmoothStreamController } from '@ai-react-markdown/core';
 
-const controller = createSmoothStreamController({ charsPerSecond: 60 });
+const controller = createSmoothStreamController({ pacing: 'balanced' });
 controller.subscribe(() => render(controller.getVisible()));
 socket.on('token', (accumulated) => controller.update(accumulated));
 socket.on('done', () => controller.finish());
@@ -136,24 +158,28 @@ Contract highlights (full JSDoc on the export):
 
 ### `<AIMarkdownSmoothStream>` extra props
 
-| Prop                    | Type         | Default | Description                                                                   |
-| ----------------------- | ------------ | ------- | ----------------------------------------------------------------------------- |
-| `smoothCharsPerSecond`  | `number`     | `40`    | Floor reveal rate, grapheme clusters per second                               |
-| `smoothCatchUpWindowMs` | `number`     | `600`   | Catch-up window; steady-state lag stays around one window of incoming text    |
-| `smoothDrainMs`         | `number`     | `250`   | Hard budget to reveal the remaining backlog once `streaming` flips to `false` |
-| `onSmoothDrained`       | `() => void` | —       | Fires when the post-stream drain completes — once per stream round            |
+| Prop              | Type                                     | Default      | Description                                                        |
+| ----------------- | ---------------------------------------- | ------------ | ------------------------------------------------------------------ |
+| `smoothPacing`    | `'smooth' \| 'balanced' \| 'responsive'` | `'balanced'` | Latency-vs-smoothness preset (see the table above); read live      |
+| `onSmoothDrained` | `() => void`                             | —            | Fires when the post-stream drain completes — once per stream round |
 
 All other props are forwarded to `<AIMarkdown>` untouched.
 
 ### `useSmoothStream(options)`
 
-Options: `content`, `streaming`, plus the three pacing knobs under their
-unprefixed names (`charsPerSecond`, `catchUpWindowMs`, `drainMs`) and
-`onDrained`. Returns `{ content, streaming, flush }` where `content` is the
-revealed prefix and `streaming` stays `true` until drained.
+Options: `content`, `streaming`, `pacing` (the same preset, unprefixed),
+and `onDrained`. Returns `{ content, streaming, flush }` where `content` is
+the revealed prefix and `streaming` stays `true` until drained.
 
-`charsPerSecond` and `catchUpWindowMs` are read live — changing them
-mid-stream retunes the reveal without resetting it. `drainMs` is consumed
+### Advanced numeric control
+
+`createSmoothStreamController(options)` accepts, besides `pacing`, every
+field of `SmoothStreamPacingParams` as a per-field override on top of the
+chosen preset: `bufferFactor`, `correctionTauMs`, `emaTauMs`,
+`minCharsPerSecond`, and `drainMs`. The preset bundles themselves are
+exported as `SMOOTH_STREAM_PACING_PRESETS`. All numbers are sanitized —
+NaN or Infinity (e.g. `parseInt` of a missing setting) falls back to the
+preset value instead of poisoning the control law. `drainMs` is consumed
 when the stream ends (the deadline is stamped at that moment), so changing
 it affects the next drain, not one already in progress.
 
