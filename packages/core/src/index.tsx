@@ -41,6 +41,7 @@ import useStableRecord, { AIMarkdownStabilityPolicy, type AIMarkdownStabilityTab
 import { resolveEngineValues } from './resolveFlatProps';
 import type { AIMarkdownEnginePlugin } from './plugins/defs';
 import DefaultTypography from './components/typography/Default';
+import { useSmoothStream } from './components/smoothStream/useSmoothStream';
 
 /**
  * Props for the `<AIMarkdown>` component.
@@ -514,6 +515,86 @@ AIMarkdown.displayName = 'AIMarkdown';
 
 export default AIMarkdown as typeof AIMarkdownComponent;
 
+// ── Smooth-stream shell ─────────────────────────────────────────────────────
+// Lives here (not in components/smoothStream/) because it renders
+// <AIMarkdown>: a separate module importing from this index would form an
+// import cycle. The controller/hook layers stay framework-free/React-only
+// respectively so the future engine split can lift them wholesale.
+
+/**
+ * Props for {@link AIMarkdownSmoothStream}: the full `<AIMarkdown>`
+ * surface plus `smooth*`-prefixed pacing knobs (prefixed so future base
+ * props can never collide with the shell's additions).
+ */
+export interface AIMarkdownSmoothStreamProps<
+  TMetadata extends AIMarkdownMetadata = AIMarkdownMetadata,
+> extends AIMarkdownProps<TMetadata> {
+  /** Floor reveal rate, grapheme clusters per second. Default `40`. */
+  smoothCharsPerSecond?: number;
+  /** Catch-up window (ms) bounding steady-state lag while streaming. Default `600`. */
+  smoothCatchUpWindowMs?: number;
+  /** Budget (ms) to drain the backlog once `streaming` flips false. Default `250`. */
+  smoothDrainMs?: number;
+  /**
+   * Fires when the post-stream drain completes (once per stream round);
+   * content replacement never fires it. Correctness is identity-insensitive
+   * (read through a latest-ref), but an inline closure still defeats this
+   * shell's `memo` — prefer a stable reference.
+   */
+  onSmoothDrained?: () => void;
+}
+
+/**
+ * `<AIMarkdown>` with built-in typewriter pacing: the incoming `content`
+ * is revealed grapheme-by-grapheme at a backlog-adaptive rate, and the
+ * revealed prefix is what actually renders. Because the prefix grows
+ * append-only, every frame rides the incremental-parse fast path.
+ *
+ * `streaming` semantics shift one step: the value you pass marks the
+ * SOURCE stream's liveness; the inner component (and so the cursor slot
+ * and context consumers) sees `streaming === true` until the reveal has
+ * also drained — the cursor must not unmount while pixels still move.
+ *
+ * Footgun: `blockMemo={false}` also disables incremental parsing, which
+ * turns per-frame reveals into per-frame full reparses. Leave block-memo
+ * on (the default) when smoothing.
+ *
+ * For custom composition (mantine wrapper, skip-animation buttons), use
+ * {@link useSmoothStream} directly — its result spreads into any wrapper.
+ *
+ * @example
+ * ```tsx
+ * <AIMarkdownSmoothStream
+ *   content={accumulated}
+ *   streaming={!done}
+ *   streamingCursor={AIMarkdownStreamingCursor}
+ * />
+ * ```
+ */
+const AIMarkdownSmoothStreamComponent = <TMetadata extends AIMarkdownMetadata = AIMarkdownMetadata>({
+  smoothCharsPerSecond,
+  smoothCatchUpWindowMs,
+  smoothDrainMs,
+  onSmoothDrained,
+  content,
+  streaming,
+  ...rest
+}: AIMarkdownSmoothStreamProps<TMetadata>) => {
+  const smooth = useSmoothStream({
+    content,
+    streaming,
+    charsPerSecond: smoothCharsPerSecond,
+    catchUpWindowMs: smoothCatchUpWindowMs,
+    drainMs: smoothDrainMs,
+    onDrained: onSmoothDrained,
+  });
+  return <AIMarkdown {...rest} content={smooth.content} streaming={smooth.streaming} />;
+};
+
+const AIMarkdownSmoothStreamMemo = memo(AIMarkdownSmoothStreamComponent);
+AIMarkdownSmoothStreamMemo.displayName = 'AIMarkdownSmoothStream';
+export const AIMarkdownSmoothStream = AIMarkdownSmoothStreamMemo as typeof AIMarkdownSmoothStreamComponent;
+
 // ── Public API re-exports ───────────────────────────────────────────────────
 
 // Types
@@ -612,6 +693,13 @@ export type {
 } from './components/streamingCursor';
 
 // Cross-chunk coordination wrapper + hook
+// Smooth streaming — the shell component is defined above; these are the
+// composable layers beneath it (framework-free controller + React hook).
+export { createSmoothStreamController } from './components/smoothStream/controller';
+export type { SmoothStreamController, SmoothStreamOptions } from './components/smoothStream/controller';
+export { useSmoothStream } from './components/smoothStream/useSmoothStream';
+export type { UseSmoothStreamOptions, UseSmoothStreamResult } from './components/smoothStream/useSmoothStream';
+
 export { AIMarkdownDocuments, useDocumentRegistry } from './components/AIMarkdownDocuments';
 export type { AIMarkdownDocumentsProps } from './components/AIMarkdownDocuments';
 // Registry types — consumers writing typed helpers around useDocumentRegistry
