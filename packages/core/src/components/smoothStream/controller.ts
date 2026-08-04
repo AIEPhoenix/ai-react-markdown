@@ -301,10 +301,23 @@ export const createSmoothStreamController = (options: SmoothStreamOptions = {}):
     }
     const gap = Math.max(1, t - lastArrivalAt);
     lastArrivalAt = t;
-    const alpha = 1 - Math.exp(-gap / Math.max(1, resolveParams().emaTauMs));
+    const tau = Math.max(1, resolveParams().emaTauMs);
+    // A gap longer than the smoothing horizon is a PAUSE, not cadence: at
+    // that length α → 1 and this one sample would rewrite both estimates
+    // (R̂ → ~0, Î → the pause), making the resume crawl at the floor while
+    // B* pegs at its cap, then whoosh when Î decays. Start a new epoch
+    // instead — keep the pre-pause estimates and let normal samples adapt.
+    if (gap > tau) return;
+    const alpha = 1 - Math.exp(-gap / tau);
     const instantRate = (added * 1000) / gap;
-    rateEma = rateEma === undefined ? instantRate : rateEma + alpha * (instantRate - rateEma);
-    intervalEma = intervalEma === undefined ? gap : intervalEma + alpha * (gap - intervalEma);
+    // Zero-prior blend, no assignment special case: the FIRST sample also
+    // enters at weight α, so a connect-flush pair ~1ms apart seeds a
+    // bounded estimate instead of `added × 1000` chars/s (which would
+    // track a phantom rate and disable smoothing for seconds). Early
+    // under-estimation is harmless — with small R̂ the adaptive law
+    // algebraically coincides with the pre-stats reveal.
+    rateEma = (rateEma ?? 0) + alpha * (instantRate - (rateEma ?? 0));
+    intervalEma = (intervalEma ?? 0) + alpha * (gap - (intervalEma ?? 0));
   };
 
   const notify = () => {
@@ -342,9 +355,12 @@ export const createSmoothStreamController = (options: SmoothStreamOptions = {}):
       // feedback steering the backlog toward the target buffer. The
       // feedback dips below the source rate on purpose when the buffer
       // runs low — that is how it refills instead of running dry.
-      const targetBuffer = Math.min(
-        Math.max(1, params.bufferFactor * rateEma * (intervalEma / 1000)),
-        (rateEma * MAX_TARGET_BUFFER_MS) / 1000
+      // Clamp order matters: the "at least one grapheme" floor applies
+      // AFTER the lag cap, so a tiny-R̂ stream cannot end up with a
+      // sub-1 target.
+      const targetBuffer = Math.max(
+        1,
+        Math.min(params.bufferFactor * rateEma * (intervalEma / 1000), (rateEma * MAX_TARGET_BUFFER_MS) / 1000)
       );
       rate = Math.max(
         params.minCharsPerSecond,
@@ -438,6 +454,10 @@ export const createSmoothStreamController = (options: SmoothStreamOptions = {}):
       revive();
       if (finished) return;
       finished = true;
+      // The pause between rounds (tool call, user turn) must never become
+      // a gap sample: drop the arrival clock so the resume's first update
+      // re-seeds it. The EMAs persist — same stream, likely same cadence.
+      lastArrivalAt = undefined;
       drainDeadlineAt = now() + resolveParams().drainMs;
       if (tentativeEnd > (pending.length > 0 ? pending[pending.length - 1] : visibleEnd)) {
         pending.push(tentativeEnd);

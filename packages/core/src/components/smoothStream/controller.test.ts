@@ -163,6 +163,9 @@ describe('smoothStream controller — mechanics', () => {
   });
 
   test('banked credit does not dump the next chunk instantly', () => {
+    // Recipe margin note: the second append records one arrival sample
+    // (zero-prior blended, R̂ ≈ 4 « floor 10), so the floor still
+    // dominates every tick. Keep any edits to these numbers on that side.
     const { controller, advance } = makeHarness(fixedRate(10));
     controller.update('');
     controller.update('abc');
@@ -371,12 +374,85 @@ describe('smoothStream controller — adaptive law', () => {
 
   test('fast stream: lag converges to ~one burst instead of a fixed window', () => {
     // 50 chars / 100ms = 500 chars/s. Target buffer (balanced) ≈ one burst
-    // = 50 chars ≈ 100ms of lag. The old fixed 600ms window would have
-    // held ~300 chars of lag at this speed.
+    // = 50 chars ≈ 100ms of lag. The upper bound is deliberately tight:
+    // a feedback-only law (feedforward deleted) settles near ~120 here,
+    // and the old fixed 600ms window held ~300 — both must FAIL this band.
     const harness = makeHarness({ pacing: 'balanced' });
     const { lag } = runPattern(harness, { burst: 50, intervalMs: 100, bursts: 40 });
     expect(lag).toBeGreaterThanOrEqual(10);
-    expect(lag).toBeLessThanOrEqual(130);
+    expect(lag).toBeLessThanOrEqual(80);
+  });
+
+  test('mid-stream stall then resume: no crawl, no lag balloon, no whoosh', () => {
+    // A 30s stall is a PAUSE, not cadence. Feeding that gap into the EMAs
+    // at α≈1 would rewrite R̂≈1/s and Î≈30s in one sample: the resume then
+    // crawls at the anti-freeze floor while B* pegs at the 1.2s cap, and
+    // finally dumps the excess in a whoosh when Î decays. The epoch guard
+    // must discard pause-length gaps instead.
+    const harness = makeHarness({ pacing: 'balanced' });
+    const { controller, advance } = harness;
+    controller.update('');
+    let fed = '';
+    for (let round = 0; round < 20; round += 1) {
+      fed += 'x'.repeat(30);
+      controller.update(fed);
+      for (let f = 0; f < 6; f += 1) advance(16);
+    }
+    // Stall: half a minute of frames with no arrivals (backlog drains, idles).
+    for (let i = 0; i < 120; i += 1) advance(250);
+    // Resume at the same cadence; track worst lag and worst stall.
+    let maxLag = 0;
+    let maxStallMs = 0;
+    let lastGrowthClock = 0;
+    let clock = 0;
+    let lastLength = controller.getVisible().length;
+    for (let round = 0; round < 30; round += 1) {
+      fed += 'x'.repeat(30);
+      controller.update(fed);
+      for (let f = 0; f < 6; f += 1) {
+        advance(16);
+        clock += 16;
+        const length = controller.getVisible().length;
+        if (length > lastLength) {
+          lastLength = length;
+          lastGrowthClock = clock;
+        } else if (clock > 600) {
+          maxStallMs = Math.max(maxStallMs, clock - lastGrowthClock);
+        }
+        if (clock > 600) maxLag = Math.max(maxLag, fed.length - length);
+      }
+    }
+    // Poisoned estimates produce maxLag ≈ 300+ (1.2s cap at recovering R̂)
+    // and floor-crawl stalls; healthy resume stays near one burst.
+    expect(maxLag).toBeLessThanOrEqual(120);
+    expect(maxStallMs).toBeLessThanOrEqual(400);
+  });
+
+  test('connect-flush seeding: two near-simultaneous appends do not disable smoothing', () => {
+    // A socket buffer flushing queued events on connect delivers two big
+    // appends ~1ms apart. An UNBLENDED first sample would seed R̂ at
+    // added×1000 chars/s — the reveal then tracks that phantom rate and
+    // every later burst dumps on arrival (smoothing off for seconds).
+    const harness = makeHarness({ pacing: 'balanced' });
+    const { controller, advance } = harness;
+    controller.update('');
+    let fed = 'x'.repeat(200);
+    controller.update(fed);
+    advance(1);
+    fed += 'x'.repeat(200);
+    controller.update(fed);
+    // Normal cadence follows; smoothing must be ACTIVE (visible lags the
+    // source mid-interval instead of dumping each burst instantly).
+    let minMidIntervalLag = Number.POSITIVE_INFINITY;
+    for (let round = 0; round < 15; round += 1) {
+      fed += 'x'.repeat(50);
+      controller.update(fed);
+      for (let f = 0; f < 6; f += 1) advance(16);
+      if (round >= 10) {
+        minMidIntervalLag = Math.min(minMidIntervalLag, fed.length - controller.getVisible().length);
+      }
+    }
+    expect(minMidIntervalLag).toBeGreaterThanOrEqual(5);
   });
 
   test('slow stream: reveal keeps flowing between bursts (no stall-pop rhythm)', () => {
