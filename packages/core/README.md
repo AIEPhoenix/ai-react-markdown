@@ -17,6 +17,7 @@ A batteries-included React component for rendering AI-generated markdown with fi
 - **Extra syntax** -- highlight (`==text==`), definition lists
 - **Display optimizations** -- SmartyPants typography, pangu CJK spacing, HTML comment removal
 - **Streaming-aware** -- built-in `streaming` flag propagated via context for custom components
+- **Smooth streaming** -- `AIMarkdownSmoothStream` shell (and the `useSmoothStream` hook beneath it) reveals bursty token chunks as a steady grapheme-by-grapheme typewriter; see [docs/smooth-streaming.md](../../docs/smooth-streaming.md)
 - **Customizable** -- swap typography, color scheme, individual markdown element renderers, and inject extra style wrappers
 - **Metadata context** -- pass arbitrary data to deeply nested custom components without prop drilling, isolated from render state to avoid unnecessary re-renders
 - **TypeScript** -- fully typed flat props plus a metadata generic (`AIMarkdownProps<TMetadata>`)
@@ -663,6 +664,7 @@ State is deliberately split across five per-system contexts (document, metadata,
 
 - `AIMarkdownDocuments` -- optional outer wrapper enabling cross-chunk coordination
 - `AIMarkdownStreamingCursor` -- built-in inline cursor for the `streamingCursor` slot
+- `AIMarkdownSmoothStream` -- `<AIMarkdown>` plus typewriter pacing (`smooth*` props); see [docs/smooth-streaming.md](../../docs/smooth-streaming.md)
 
 ### Providers
 
@@ -674,6 +676,7 @@ State is deliberately split across five per-system contexts (document, metadata,
 - `useAIMarkdownState()`, `useAIMarkdownTheme()`, `useAIMarkdownDocument()`, `useAIMarkdownBehaviors()`, `useAIMarkdownMetadata<T>()` -- the five narrow hooks
 - `useAIMarkdown()` -- the aggregate (subscribes to all five contexts)
 - `useDocumentRegistry()`
+- `useSmoothStream()` -- typewriter pacing as a hook; returns a props-shaped `{ content, streaming, flush }` that spreads into any wrapper
 - `useStableValue()`
 - `useStableRecord()` -- the stability firewall, for wrapper authors
 
@@ -681,6 +684,7 @@ State is deliberately split across five per-system contexts (document, metadata,
 
 - `defineTheme`, `defineBehaviors`, `definePipeline` -- frozen, typed, reference-stable flat prop fragments (identity + types + `Object.freeze`, zero logic)
 - `createRemendPreprocessor()` -- opt-in streaming tail-repair factory for `contentPreprocessors` (tree-shakeable)
+- `createSmoothStreamController()` -- the framework-free pacing core beneath `useSmoothStream` (no React/DOM dependency)
 
 ### Constants and Helpers
 
@@ -711,6 +715,7 @@ State is deliberately split across five per-system contexts (document, metadata,
 - `AIMarkdownStabilityTable` -- table type for `useStableRecord`
 - Context payload types: `AIMarkdownDocumentInfo`, `AIMarkdownThemeInfo`, `AIMarkdownStateCore`, `AIMarkdownBehaviorsCore`, `AIMarkdownStateGroups`, `AIMarkdownBehaviorGroups`, `AIMarkdownExtensionGroups`, `AIMarkdownAggregate`
 - Streaming cursor types: `AIMarkdownStreamingCursorProps`, `AIMarkdownStreamingIndicatorProps`, `AIMarkdownStreamingIndicatorComponent`
+- Smooth streaming types: `AIMarkdownSmoothStreamProps`, `SmoothStreamController`, `SmoothStreamOptions`, `UseSmoothStreamOptions`, `UseSmoothStreamResult`
 - `UrlTransform`, `SanitizeSchema` -- prop-type aliases for the URL handling props (track upstream `react-markdown` / `rehype-sanitize` shapes)
 - Cross-chunk registry types: `Registry`, `ChunkData`, `FootnoteDef`, `LinkDef`, `RefRecord`, `RefKind`
 

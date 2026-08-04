@@ -1,0 +1,213 @@
+# Smooth Streaming (Typewriter Pacing)
+
+LLM tokens arrive in bursty network chunks — a 40-character clump, a 300 ms
+stall, three clumps back-to-back. Rendering each chunk the moment it lands
+makes the message jump in visible lurches. Smooth streaming decouples the
+_arrival_ cadence from the _reveal_ cadence: the full accumulated source is
+fed in as usual, and a controller reveals it as a steadily growing prefix,
+grapheme by grapheme, at a rate that adapts to how far behind it is.
+
+```tsx
+import { AIMarkdownSmoothStream, AIMarkdownStreamingCursor } from '@ai-react-markdown/core';
+
+<AIMarkdownSmoothStream
+  content={message.markdown}
+  streaming={message.pending}
+  streamingCursor={AIMarkdownStreamingCursor}
+/>;
+```
+
+`<AIMarkdownSmoothStream>` accepts the full `<AIMarkdown>` prop surface and
+adds four `smooth*`-prefixed knobs (see [API](#api-reference)). Everything
+else — plugins, custom components, sanitization, cross-chunk coordination —
+behaves identically, because the shell renders a plain `<AIMarkdown>` with a
+paced `content` string.
+
+## Why this composes well here
+
+A typewriter reveal multiplies render frequency: instead of one render per
+network chunk, the document re-renders up to once per animation frame. Most
+markdown renderers pay a full reparse per render, which makes smoothing a
+performance trade-off. Here the revealed prefix grows append-only, which is
+exactly the incremental-parse engine's fast path — each frame re-tokenizes
+only the appended tail, and block-level memoization skips every settled
+block. Smoothing costs one small splice parse per frame, not a document
+reparse per frame.
+
+## How pacing works
+
+One control law, two regimes:
+
+- **While streaming** — `rate = max(charsPerSecond, backlog / catchUpWindowMs)`.
+  The base rate (`smoothCharsPerSecond`, default 40/s) is a floor that keeps
+  text trickling through source stalls. The proportional term kicks in when
+  chunks arrive faster than the floor: the further behind the reveal falls,
+  the faster it runs, bounding the steady-state lag to roughly one
+  `smoothCatchUpWindowMs` (default 600 ms) worth of incoming text.
+- **After the stream ends** — a deadline is stamped `smoothDrainMs`
+  (default 250 ms) in the future, and the rate becomes
+  `remaining backlog / time to deadline`. The backlog empties _by_ the
+  deadline — a hard bound, not an asymptotic decay — so the message never
+  dribbles on long after the model has finished.
+
+Reveal steps are grapheme clusters (`Intl.Segmenter`): a surrogate pair,
+combining sequence, or emoji ZWJ family is revealed atomically, never as a
+lone half that would reach the parser as U+FFFD garbage. The final grapheme
+of the source is held back until it is _confirmed_ — by more text arriving
+behind it, or by the stream ending — because a trailing emoji sequence may
+still be growing.
+
+## The `streaming` prop shifts one step
+
+The value you pass describes the **source** stream: `true` while tokens are
+still arriving. The inner `<AIMarkdown>` — and therefore the
+`streamingCursor` slot and every context consumer — sees `streaming === true`
+until the _reveal_ has also drained. The cursor keeps tracking the animated
+tail instead of vanishing while text is still appearing. Once the backlog
+empties, the inner flag follows yours and `onSmoothDrained` fires.
+
+## Composing with wrappers
+
+The shell is sugar over `useSmoothStream`, whose result is deliberately
+props-shaped — spread it into the base component or any wrapper:
+
+```tsx
+import { useSmoothStream } from '@ai-react-markdown/core';
+import { MantineAIMarkdown } from '@ai-react-markdown/mantine';
+
+function ChatMessage({ markdown, pending }: { markdown: string; pending: boolean }) {
+  const smooth = useSmoothStream({ content: markdown, streaming: pending });
+  return <MantineAIMarkdown {...smooth} />;
+}
+```
+
+The result also carries a stable `flush()` for a "skip animation" affordance:
+
+```tsx
+const { flush, ...props } = useSmoothStream({ content, streaming });
+return (
+  <>
+    {props.streaming && <button onClick={flush}>Skip</button>}
+    <AIMarkdown {...props} />
+  </>
+);
+```
+
+(Spreading without destructuring `flush` off is also fine — unknown props are
+ignored by the base components.)
+
+## Outside React
+
+The pacing core is `createSmoothStreamController` — a plain object with no
+React (or DOM) dependency, exported for non-React hosts and future framework
+bindings:
+
+```ts
+import { createSmoothStreamController } from '@ai-react-markdown/core';
+
+const controller = createSmoothStreamController({ charsPerSecond: 60 });
+controller.subscribe(() => render(controller.getVisible()));
+socket.on('token', (accumulated) => controller.update(accumulated));
+socket.on('done', () => controller.finish());
+```
+
+Contract highlights (full JSDoc on the export):
+
+- `update(source)` takes the **full accumulated string**, not a delta —
+  idempotent, replay-safe (StrictMode), and framework-neutral. An
+  append-extension animates; anything else — including the first call —
+  snaps instantly.
+- `finish()` is **not terminal**: `update()` afterwards resumes animation.
+  Multi-round flows (stream → tool call → stream) keep one controller.
+- `snap(source)` / `flush()` jump without animation; `dispose()` cancels the
+  scheduled frame.
+
+## API reference
+
+### `<AIMarkdownSmoothStream>` extra props
+
+| Prop                    | Type         | Default | Description                                                                   |
+| ----------------------- | ------------ | ------- | ----------------------------------------------------------------------------- |
+| `smoothCharsPerSecond`  | `number`     | `40`    | Floor reveal rate, grapheme clusters per second                               |
+| `smoothCatchUpWindowMs` | `number`     | `600`   | Catch-up window; steady-state lag stays around one window of incoming text    |
+| `smoothDrainMs`         | `number`     | `250`   | Hard budget to reveal the remaining backlog once `streaming` flips to `false` |
+| `onSmoothDrained`       | `() => void` | —       | Fires when the post-stream drain completes — once per stream round            |
+
+All other props are forwarded to `<AIMarkdown>` untouched.
+
+### `useSmoothStream(options)`
+
+Options: `content`, `streaming`, plus the three pacing knobs under their
+unprefixed names (`charsPerSecond`, `catchUpWindowMs`, `drainMs`) and
+`onDrained`. Returns `{ content, streaming, flush }` where `content` is the
+revealed prefix and `streaming` stays `true` until drained.
+
+Pacing knobs are read live — changing them mid-stream retunes the reveal
+without resetting it.
+
+## Behavior details
+
+- **Mount snaps.** The first content a controller sees renders in full,
+  immediately. This is what makes SSR hydration match (the server renders
+  the full text) and keeps virtualized chat lists from replaying the
+  typewriter every time a message scrolls back into view. Only content that
+  _arrives after mount_ animates.
+- **Regeneration snaps.** A `content` value that isn't an append-extension
+  of the previous one (user hit "regenerate", an edit rewrote the message)
+  renders instantly — replacement is not a stream. It also does not fire
+  `onSmoothDrained`: the replaced message was aborted, not completed.
+- **Replacement applies one commit late.** The controller syncs to props in
+  an effect, so the render that delivers a replaced `content` still shows
+  the previous text for that single commit before snapping. Appends don't
+  exhibit this (the paced prefix is by definition behind the source); it
+  only matters if you interleave regeneration with same-frame screenshots
+  or DOM assertions.
+- **Stall behavior.** If the source stalls mid-stream, the reveal drains its
+  backlog at the base rate and then waits. The built-in cursor's stall
+  indicator takes over from there, exactly as without smoothing.
+- **`onSmoothDrained` fires at end-of-stream, once per stream round.** The
+  held-back trailing grapheme keeps the reveal one step short of the source
+  for as long as the stream is live, so mid-stream catch-ups (during source
+  stalls) do _not_ fire it — only the post-`finish` drain does. In a
+  multi-round flow (stream → tool call → stream), each round's drain fires
+  it once.
+
+## Footguns
+
+### Forgetting to flip `streaming` to `false`
+
+The end-of-stream signal does real work here: it confirms the held-back
+final grapheme and starts the timed drain. If `streaming` stays `true`
+forever, the last grapheme of the message never reveals and the returned
+`streaming` never settles (so the cursor never unmounts). Wire it to the
+actual completion event of your transport, not to a heuristic.
+
+### Disabling block-memo while smoothing
+
+`blockMemo={false}` also disables incremental parsing, so the per-frame
+reveal degrades into a per-frame **full document reparse** — the one
+combination where smoothing is genuinely expensive. Leave block-memo on
+(the default) when smoothing is enabled.
+
+### Stacking a second pacing layer
+
+If your transport already throttles or "types" the text (some SDK helpers
+do word-by-word reveal), feeding that output into the smooth shell double-
+paces the stream: two catch-up controllers fight, and the reveal turns
+rubber-bandy. Feed the rawest accumulated string you have and let one layer
+own the cadence.
+
+### Reduced-motion users
+
+A typewriter reveal is motion. The library doesn't auto-disable it (the
+paced string is ordinary content — there's no CSS to gate), so honor
+`prefers-reduced-motion` yourself where it matters: render plain
+`<AIMarkdown>` (or skip the `smooth*` props) when
+`matchMedia('(prefers-reduced-motion: reduce)').matches`.
+
+### Asserting on wall-clock timing in tests
+
+Pacing is deadline-based over an injectable clock. In unit tests, inject
+`now`/`schedule` (the hook accepts both as internal seams; the controller
+takes them in options) and advance time manually — racing real timers
+against assertions is exactly the flake the seams exist to prevent.
