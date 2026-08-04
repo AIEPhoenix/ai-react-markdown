@@ -1,8 +1,15 @@
 /**
- * Controller contract: pacing math on an injected clock/scheduler (never
- * the wall clock), grapheme integrity across chunk seams, and the
- * update/finish/snap state machine — including finish() re-entrancy for
- * multi-round LLM flows.
+ * Controller contract on an injected clock/scheduler (never the wall
+ * clock): the update/finish/snap state machine (incl. StrictMode replay
+ * revival), grapheme integrity across chunk seams, and the ADAPTIVE
+ * pacing law — arrival-rate tracking, target-buffer convergence, and the
+ * deadline drain.
+ *
+ * Determinism recipe for mechanics tests: `minCharsPerSecond` high plus
+ * `correctionTauMs` huge pins the reveal to a constant rate (the floor
+ * dominates both the pre-stats and the adaptive regime), reproducing
+ * fixed-rate traces exactly. Law tests instead feed timed arrival
+ * patterns and assert convergence bands.
  */
 import { describe, expect, test } from 'vitest';
 import { createSmoothStreamController, type SmoothStreamOptions } from './controller';
@@ -10,12 +17,13 @@ import { createSmoothStreamController, type SmoothStreamOptions } from './contro
 /**
  * Manual clock + frame QUEUE: advance(ms) moves time then runs ONE frame.
  * A queue (not a single slot) so a double-schedule bug shows up as
- * `frameCount() > 1` instead of silently overwriting itself.
+ * `frameCount() > 1` instead of silently overwriting itself. The options
+ * object is exposed so tests can retune fields live (the hook's channel).
  */
 const makeHarness = (options: SmoothStreamOptions = {}) => {
   let t = 0;
   const frames: Array<() => void> = [];
-  const controller = createSmoothStreamController({
+  const opts: SmoothStreamOptions = {
     now: () => t,
     schedule: (cb) => {
       frames.push(cb);
@@ -25,15 +33,22 @@ const makeHarness = (options: SmoothStreamOptions = {}) => {
       };
     },
     ...options,
-  });
+  };
+  const controller = createSmoothStreamController(opts);
   const advance = (ms: number) => {
     t += ms;
     frames.shift()?.();
   };
-  return { controller, advance, hasFrame: () => frames.length > 0, frameCount: () => frames.length };
+  return { controller, advance, hasFrame: () => frames.length > 0, frameCount: () => frames.length, opts };
 };
 
-describe('smoothStream controller', () => {
+/** Constant-rate mechanics options: floor dominates, feedback negligible. */
+const fixedRate = (charsPerSecond: number): SmoothStreamOptions => ({
+  minCharsPerSecond: charsPerSecond,
+  correctionTauMs: 100_000,
+});
+
+describe('smoothStream controller — mechanics', () => {
   test('first update snaps — no animation from empty on mount/remount', () => {
     const { controller, hasFrame } = makeHarness();
     controller.update('Hello **world**, already streamed.');
@@ -42,8 +57,8 @@ describe('smoothStream controller', () => {
     expect(hasFrame()).toBe(false);
   });
 
-  test('append-extension animates at the base rate', () => {
-    const { controller, advance } = makeHarness({ charsPerSecond: 10, catchUpWindowMs: 100_000 });
+  test('append-extension animates at the floor rate', () => {
+    const { controller, advance } = makeHarness(fixedRate(10));
     controller.update('ab');
     controller.update('abcdefgh');
     expect(controller.getVisible()).toBe('ab');
@@ -74,7 +89,7 @@ describe('smoothStream controller', () => {
   });
 
   test('non-append update snaps (content replacement is not a stream)', () => {
-    const { controller, advance } = makeHarness({ charsPerSecond: 10 });
+    const { controller, advance } = makeHarness(fixedRate(10));
     controller.update('abc');
     controller.update('abcdef');
     advance(100);
@@ -83,35 +98,19 @@ describe('smoothStream controller', () => {
     expect(controller.isDrained()).toBe(true);
   });
 
-  test('catch-up: backlog drains within roughly the window', () => {
-    const { controller, advance } = makeHarness({ charsPerSecond: 10, catchUpWindowMs: 500 });
-    controller.update('');
-    controller.update('x'.repeat(1_001));
-    // 1000 confirmed graphemes (last held back): proportional rate starts
-    // at 1000/0.5s = 2000/s ≫ base and decays exponentially with the
-    // backlog (~3.2%/frame). After 160 frames (2.56s) the backlog is down
-    // to a handful; base-rate-only pacing would have revealed ~26 chars.
-    for (let i = 0; i < 160; i += 1) advance(16);
-    expect(controller.getVisible().length).toBeGreaterThanOrEqual(900);
-    // The base-rate floor finishes the asymptotic tail (no Zeno stall).
-    controller.finish();
-    for (let i = 0; i < 200; i += 1) advance(16);
-    expect(controller.getVisible().length).toBe(1_001);
-  });
-
   test('finish() confirms the trailing grapheme and drains within drainMs', () => {
-    const { controller, advance } = makeHarness({ charsPerSecond: 1, drainMs: 200 });
+    const { controller, advance } = makeHarness({ ...fixedRate(1), drainMs: 200 });
     controller.update('');
     controller.update('abcdefghij');
     controller.finish();
-    // 10 pending / 0.2s window = 50/s: 5 frames of 50ms clear it. The
-    // base rate alone (1/s) would take 10 seconds.
+    // 10 pending, deadline in 200ms: remaining/remaining-time clears it in
+    // a few frames. The floor alone (1/s) would take 10 seconds.
     for (let i = 0; i < 5; i += 1) advance(50);
     expect(controller.getVisible()).toBe('abcdefghij');
   });
 
   test('finish() is re-enterable: a later update resumes animation', () => {
-    const { controller, advance } = makeHarness({ charsPerSecond: 10, catchUpWindowMs: 100_000 });
+    const { controller, advance } = makeHarness(fixedRate(10));
     controller.update('round one.');
     controller.finish();
     advance(2_000);
@@ -127,7 +126,7 @@ describe('smoothStream controller', () => {
 
   test('surrogate pair split across updates is never revealed as a half', () => {
     const emoji = '😀'; // U+1F600, two UTF-16 units
-    const { controller, advance } = makeHarness({ charsPerSecond: 1_000 });
+    const { controller, advance } = makeHarness(fixedRate(1_000));
     controller.update('');
     controller.update(`a${emoji[0]}`);
     advance(1_000);
@@ -141,7 +140,7 @@ describe('smoothStream controller', () => {
 
   test('ZWJ emoji sequence reveals atomically', () => {
     const family = '👨‍👩‍👧‍👦';
-    const { controller, advance } = makeHarness({ charsPerSecond: 10, catchUpWindowMs: 100_000 });
+    const { controller, advance } = makeHarness(fixedRate(10));
     controller.update('');
     controller.update(`${family}tail`);
     const seen = new Set<string>();
@@ -155,7 +154,7 @@ describe('smoothStream controller', () => {
   });
 
   test('flush reveals everything pending, including the tentative tail', () => {
-    const { controller } = makeHarness({ charsPerSecond: 1 });
+    const { controller } = makeHarness(fixedRate(1));
     controller.update('');
     controller.update('abcdef');
     controller.flush();
@@ -164,13 +163,13 @@ describe('smoothStream controller', () => {
   });
 
   test('banked credit does not dump the next chunk instantly', () => {
-    const { controller, advance } = makeHarness({ charsPerSecond: 10, catchUpWindowMs: 100_000 });
+    const { controller, advance } = makeHarness(fixedRate(10));
     controller.update('');
     controller.update('abc');
     // Drain the confirmed backlog (a, b — c is tentative), then idle.
     advance(1_000);
     expect(controller.getVisible()).toBe('ab');
-    // New chunk after an idle spell: the reveal must restart at the base
+    // New chunk after an idle spell: the reveal must restart at the floor
     // rate, not burn accumulated idle time as credit.
     controller.update('abcdefghijkl');
     advance(16);
@@ -178,7 +177,7 @@ describe('smoothStream controller', () => {
   });
 
   test('getVisible returns a reference-stable snapshot between changes', () => {
-    const { controller, advance } = makeHarness({ charsPerSecond: 10 });
+    const { controller, advance } = makeHarness(fixedRate(10));
     controller.update('abc');
     const before = controller.getVisible();
     advance(5);
@@ -186,7 +185,7 @@ describe('smoothStream controller', () => {
   });
 
   test('dispose cancels the scheduled frame and stops notifications', () => {
-    const { controller, advance, hasFrame } = makeHarness({ charsPerSecond: 10 });
+    const { controller, advance, hasFrame } = makeHarness(fixedRate(10));
     controller.update('');
     controller.update('abcdef');
     expect(hasFrame()).toBe(true);
@@ -204,7 +203,7 @@ describe('smoothStream controller', () => {
     // The dev-only replay disposes the state-held controller, then re-runs
     // the effects with UNCHANGED props: update() hits its identical-string
     // early-return, so revival must reschedule the backlog by itself.
-    const { controller, advance, hasFrame } = makeHarness({ charsPerSecond: 10, catchUpWindowMs: 100_000 });
+    const { controller, advance, hasFrame } = makeHarness(fixedRate(10));
     controller.update('');
     controller.update('abcdefgh');
     advance(100);
@@ -224,7 +223,7 @@ describe('smoothStream controller', () => {
   });
 
   test('StrictMode effect replay during the post-finish drain also revives', () => {
-    const { controller, advance, hasFrame } = makeHarness({ charsPerSecond: 1, drainMs: 200 });
+    const { controller, advance, hasFrame } = makeHarness({ ...fixedRate(1), drainMs: 200 });
     controller.update('');
     controller.update('abcdefghij');
     controller.finish();
@@ -242,7 +241,7 @@ describe('smoothStream controller', () => {
   });
 
   test('subscribe alone revives a disposed controller with backlog', () => {
-    const { controller, advance, hasFrame } = makeHarness({ charsPerSecond: 10 });
+    const { controller, advance, hasFrame } = makeHarness(fixedRate(10));
     controller.update('');
     controller.update('abcdef');
     controller.dispose();
@@ -255,7 +254,7 @@ describe('smoothStream controller', () => {
   });
 
   test('reentrant update inside notify does not fork the tick chain', () => {
-    const { controller, advance, frameCount } = makeHarness({ charsPerSecond: 1_000, catchUpWindowMs: 100_000 });
+    const { controller, advance, frameCount } = makeHarness(fixedRate(1_000));
     controller.update('');
     controller.update('abc');
     let grew = false;
@@ -278,11 +277,11 @@ describe('smoothStream controller', () => {
   });
 
   test('reentrant dispose inside notify schedules nothing past disposal', () => {
-    // Low rate on purpose: the first tick reveals PART of the backlog, so
-    // when the subscriber disposes, pending is still nonempty — the tick
-    // tail must be stopped by the `!disposed` guard itself, not by an
-    // incidentally empty queue.
-    const { controller, advance, frameCount } = makeHarness({ charsPerSecond: 1_000, catchUpWindowMs: 100_000 });
+    // Low advance on purpose: the first tick reveals PART of the backlog,
+    // so when the subscriber disposes, pending is still nonempty — the
+    // tick tail must be stopped by the `!disposed` guard itself, not by
+    // an incidentally empty queue.
+    const { controller, advance, frameCount } = makeHarness(fixedRate(1_000));
     controller.update('');
     controller.update('abcdefgh');
     controller.subscribe(() => controller.dispose());
@@ -296,7 +295,7 @@ describe('smoothStream controller', () => {
     // appended grapheme is tentative (held back), pending stays empty, so
     // nothing ticks and nothing notifies — the round's ONLY notify is the
     // post-finish drain. Arming off that first notify would be too late.
-    const { controller, advance, hasFrame } = makeHarness({ charsPerSecond: 1_000 });
+    const { controller, advance, hasFrame } = makeHarness(fixedRate(1_000));
     controller.update('round one.');
     let notifies = 0;
     controller.subscribe(() => {
@@ -313,40 +312,9 @@ describe('smoothStream controller', () => {
     expect(controller.getVisible()).toBe('round one.。');
   });
 
-  test('NaN pacing knobs fall back to defaults instead of freezing the reveal', () => {
-    // NaN is a `number`, so the TS surface cannot stop it — e.g.
-    // charsPerSecond={parseInt(missingSetting)}. Math.max PROPAGATES NaN
-    // rather than guarding it, so an unsanitized knob would poison credit
-    // and spin a permanent no-op frame loop.
-    const { controller, advance } = makeHarness({
-      charsPerSecond: Number.NaN,
-      catchUpWindowMs: Number.NaN,
-      drainMs: Number.NaN,
-    });
-    controller.update('');
-    controller.update('abcdefgh');
-    for (let i = 0; i < 30; i += 1) advance(100);
-    expect(controller.getVisible().length).toBeGreaterThan(0);
-    controller.finish();
-    for (let i = 0; i < 30; i += 1) advance(100);
-    expect(controller.getVisible()).toBe('abcdefgh');
-  });
-
-  test('Infinity charsPerSecond falls back instead of NaN-poisoning a zero-dt tick', () => {
-    const { controller, advance } = makeHarness({ charsPerSecond: Number.POSITIVE_INFINITY });
-    controller.update('');
-    controller.update('abcdef');
-    // Two ticks in the same clock quantum: dt = 0, and Infinity × 0 = NaN.
-    advance(0);
-    for (let i = 0; i < 20; i += 1) advance(100);
-    controller.finish();
-    for (let i = 0; i < 10; i += 1) advance(100);
-    expect(controller.getVisible()).toBe('abcdef');
-  });
-
   test('visible is always a prefix of the source across a chunked run', () => {
     const payload = '# Title\n\nSome **bold** text with 中文和 emoji 🎉 mixed in.\n\n- item one\n- item two\n';
-    const { controller, advance } = makeHarness({ charsPerSecond: 200, catchUpWindowMs: 300 });
+    const { controller, advance } = makeHarness();
     controller.update('');
     let fed = '';
     const chunks = payload.match(/.{1,7}/gs) ?? [];
@@ -357,7 +325,129 @@ describe('smoothStream controller', () => {
       expect(fed.startsWith(controller.getVisible())).toBe(true);
     }
     controller.finish();
-    for (let i = 0; i < 100; i += 1) advance(16);
+    for (let i = 0; i < 200; i += 1) advance(16);
     expect(controller.getVisible()).toBe(payload);
+  });
+});
+
+describe('smoothStream controller — adaptive law', () => {
+  /**
+   * Feeds `burst` chars every `intervalMs` for `bursts` rounds, running a
+   * frame per `frameMs`. Returns the final lag (chars) and the largest
+   * frame-gap (ms) between visible-length growth events in the LAST HALF
+   * of the run (the settled regime).
+   */
+  const runPattern = (
+    harness: ReturnType<typeof makeHarness>,
+    { burst, intervalMs, bursts, frameMs = 16 }: { burst: number; intervalMs: number; bursts: number; frameMs?: number }
+  ) => {
+    const { controller, advance } = harness;
+    controller.update('');
+    let fed = '';
+    let lastGrowthAt = 0;
+    let clock = 0;
+    let maxSettledStallMs = 0;
+    let lastVisibleLength = 0;
+    const settleAfter = (bursts * intervalMs) / 2;
+    const framesPerInterval = Math.floor(intervalMs / frameMs);
+    for (let round = 0; round < bursts; round += 1) {
+      fed += 'x'.repeat(burst);
+      controller.update(fed);
+      for (let f = 0; f < framesPerInterval; f += 1) {
+        advance(frameMs);
+        clock += frameMs;
+        const length = controller.getVisible().length;
+        if (length > lastVisibleLength) {
+          if (clock > settleAfter) {
+            maxSettledStallMs = Math.max(maxSettledStallMs, clock - lastGrowthAt);
+          }
+          lastGrowthAt = clock;
+          lastVisibleLength = length;
+        }
+      }
+    }
+    return { lag: fed.length - controller.getVisible().length, maxSettledStallMs, fedLength: fed.length };
+  };
+
+  test('fast stream: lag converges to ~one burst instead of a fixed window', () => {
+    // 50 chars / 100ms = 500 chars/s. Target buffer (balanced) ≈ one burst
+    // = 50 chars ≈ 100ms of lag. The old fixed 600ms window would have
+    // held ~300 chars of lag at this speed.
+    const harness = makeHarness({ pacing: 'balanced' });
+    const { lag } = runPattern(harness, { burst: 50, intervalMs: 100, bursts: 40 });
+    expect(lag).toBeGreaterThanOrEqual(10);
+    expect(lag).toBeLessThanOrEqual(130);
+  });
+
+  test('slow stream: reveal keeps flowing between bursts (no stall-pop rhythm)', () => {
+    // 8 chars / 400ms = 20 chars/s. A fixed 40/s floor would outrun the
+    // source, run dry each round, and pop on the next burst. The adaptive
+    // law tracks the source rate, so settled-regime growth gaps stay well
+    // under one burst interval.
+    const harness = makeHarness({ pacing: 'smooth' });
+    const { lag, maxSettledStallMs } = runPattern(harness, { burst: 8, intervalMs: 400, bursts: 24 });
+    expect(maxSettledStallMs).toBeLessThan(400);
+    expect(lag).toBeGreaterThanOrEqual(1);
+    expect(lag).toBeLessThanOrEqual(40);
+  });
+
+  test('preset retunes live: switching to responsive shrinks the lag', () => {
+    const harness = makeHarness({ pacing: 'smooth' });
+    const settled = runPattern(harness, { burst: 40, intervalMs: 100, bursts: 30 });
+    harness.opts.pacing = 'responsive';
+    const { controller, advance } = harness;
+    let fed = 'x'.repeat(settled.fedLength);
+    for (let round = 0; round < 30; round += 1) {
+      fed += 'x'.repeat(40);
+      controller.update(fed);
+      for (let f = 0; f < 6; f += 1) advance(16);
+    }
+    const lagAfter = fed.length - controller.getVisible().length;
+    expect(lagAfter).toBeLessThan(settled.lag);
+  });
+
+  test('stall mid-stream: backlog eases out and the reveal idles without finish', () => {
+    const harness = makeHarness({ pacing: 'balanced' });
+    const { controller, advance, hasFrame } = harness;
+    runPattern(harness, { burst: 30, intervalMs: 100, bursts: 20 });
+    // Source stalls: no more updates. The backlog drains, then the
+    // controller goes idle (no busy frame loop while waiting).
+    for (let i = 0; i < 600; i += 1) advance(16);
+    expect(hasFrame()).toBe(false);
+    // The held-back trailing grapheme is the only thing left unrevealed.
+    controller.finish();
+    for (let i = 0; i < 30; i += 1) advance(16);
+    expect(controller.isDrained()).toBe(true);
+  });
+
+  test('NaN in any knob (and a bogus preset) falls back instead of freezing', () => {
+    const harness = makeHarness({
+      pacing: 'bogus' as never,
+      bufferFactor: Number.NaN,
+      correctionTauMs: Number.NaN,
+      emaTauMs: Number.NaN,
+      minCharsPerSecond: Number.NaN,
+      drainMs: Number.NaN,
+    });
+    const { controller, advance } = harness;
+    controller.update('');
+    controller.update('abcdefgh');
+    for (let i = 0; i < 30; i += 1) advance(100);
+    expect(controller.getVisible().length).toBeGreaterThan(0);
+    controller.finish();
+    for (let i = 0; i < 30; i += 1) advance(100);
+    expect(controller.getVisible()).toBe('abcdefgh');
+  });
+
+  test('Infinity minCharsPerSecond falls back instead of NaN-poisoning a zero-dt tick', () => {
+    const { controller, advance } = makeHarness({ minCharsPerSecond: Number.POSITIVE_INFINITY });
+    controller.update('');
+    controller.update('abcdef');
+    // Two ticks in the same clock quantum: dt = 0, and Infinity × 0 = NaN.
+    advance(0);
+    for (let i = 0; i < 20; i += 1) advance(100);
+    controller.finish();
+    for (let i = 0; i < 10; i += 1) advance(100);
+    expect(controller.getVisible()).toBe('abcdef');
   });
 });

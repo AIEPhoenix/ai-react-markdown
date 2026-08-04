@@ -42,6 +42,7 @@ import { resolveEngineValues } from './resolveFlatProps';
 import type { AIMarkdownEnginePlugin } from './plugins/defs';
 import DefaultTypography from './components/typography/Default';
 import { useSmoothStream } from './components/smoothStream/useSmoothStream';
+import type { SmoothStreamPacing } from './components/smoothStream/controller';
 
 /**
  * Props for the `<AIMarkdown>` component.
@@ -529,12 +530,16 @@ export default AIMarkdown as typeof AIMarkdownComponent;
 export interface AIMarkdownSmoothStreamProps<
   TMetadata extends AIMarkdownMetadata = AIMarkdownMetadata,
 > extends AIMarkdownProps<TMetadata> {
-  /** Floor reveal rate, grapheme clusters per second. Default `40`. */
-  smoothCharsPerSecond?: number;
-  /** Catch-up window (ms) bounding steady-state lag while streaming. Default `600`. */
-  smoothCatchUpWindowMs?: number;
-  /** Budget (ms) to drain the backlog once `streaming` flips false. Default `250`. */
-  smoothDrainMs?: number;
+  /**
+   * Pacing preset — the whole tuning surface at this level: `'smooth'`
+   * (extra buffer, almost never runs dry between server flushes),
+   * `'balanced'` (default: minimal lag that still bridges typical
+   * bursts), `'responsive'` (lowest lag, accepts occasional pauses).
+   * The reveal rate itself is adaptive — it tracks the source's measured
+   * arrival cadence — so there are no numeric speed props here; advanced
+   * numeric overrides live on `createSmoothStreamController`.
+   */
+  smoothPacing?: SmoothStreamPacing;
   /**
    * Fires when the post-stream drain completes (once per stream round);
    * content replacement never fires it. Correctness is identity-insensitive
@@ -572,9 +577,7 @@ export interface AIMarkdownSmoothStreamProps<
  * ```
  */
 const AIMarkdownSmoothStreamComponent = <TMetadata extends AIMarkdownMetadata = AIMarkdownMetadata>({
-  smoothCharsPerSecond,
-  smoothCatchUpWindowMs,
-  smoothDrainMs,
+  smoothPacing,
   onSmoothDrained,
   content,
   streaming,
@@ -583,9 +586,7 @@ const AIMarkdownSmoothStreamComponent = <TMetadata extends AIMarkdownMetadata = 
   const smooth = useSmoothStream({
     content,
     streaming,
-    charsPerSecond: smoothCharsPerSecond,
-    catchUpWindowMs: smoothCatchUpWindowMs,
-    drainMs: smoothDrainMs,
+    pacing: smoothPacing,
     onDrained: onSmoothDrained,
   });
   return <AIMarkdown {...rest} content={smooth.content} streaming={smooth.streaming} />;
@@ -695,8 +696,13 @@ export type {
 // Cross-chunk coordination wrapper + hook
 // Smooth streaming — the shell component is defined above; these are the
 // composable layers beneath it (framework-free controller + React hook).
-export { createSmoothStreamController } from './components/smoothStream/controller';
-export type { SmoothStreamController, SmoothStreamOptions } from './components/smoothStream/controller';
+export { createSmoothStreamController, SMOOTH_STREAM_PACING_PRESETS } from './components/smoothStream/controller';
+export type {
+  SmoothStreamController,
+  SmoothStreamOptions,
+  SmoothStreamPacing,
+  SmoothStreamPacingParams,
+} from './components/smoothStream/controller';
 export { useSmoothStream } from './components/smoothStream/useSmoothStream';
 export type { UseSmoothStreamOptions, UseSmoothStreamResult } from './components/smoothStream/useSmoothStream';
 

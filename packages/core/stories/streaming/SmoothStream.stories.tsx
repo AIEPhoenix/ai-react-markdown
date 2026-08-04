@@ -16,7 +16,12 @@ import React, { StrictMode, useEffect, useState } from 'react';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, waitFor } from 'storybook/test';
 
-import AIMarkdown, { AIMarkdownSmoothStream, AIMarkdownStreamingCursor, useSmoothStream } from '../../src/index';
+import AIMarkdown, {
+  AIMarkdownSmoothStream,
+  AIMarkdownStreamingCursor,
+  useSmoothStream,
+  type SmoothStreamPacing,
+} from '../../src/index';
 import 'katex/dist/katex.min.css';
 import '../../src/components/typography/variants/all.scss';
 import { withThemedBackground } from '../decorators';
@@ -173,6 +178,77 @@ export const MultiRound: Story = {
     await waitFor(() => expect(root().dataset.settled).toBe('yes'), { timeout: 20_000 });
     // Once per stream round: the single-grapheme round 2 must fire too.
     await waitFor(() => expect(root().dataset.drains).toBe('2'), { timeout: 5_000 });
+  },
+};
+
+/**
+ * Calibration lane: one preset fed the shared bursty stream, with a live
+ * lag readout (chars behind the source). Perceptual tuning tool for the
+ * preset parameter bundles — no assertions on purpose.
+ */
+const PresetLane = ({
+  pacing,
+  content,
+  streaming,
+  theme,
+}: {
+  pacing: SmoothStreamPacing;
+  content: string;
+  streaming: boolean;
+  theme: 'light' | 'dark';
+}) => {
+  const smooth = useSmoothStream({ content, streaming, pacing });
+  const lag = content.length - smooth.content.length;
+  return (
+    <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ fontFamily: 'monospace', fontSize: 12, marginBottom: 8, opacity: 0.75 }}>
+        {pacing} · lag {String(lag).padStart(3, ' ')} chars
+      </div>
+      <AIMarkdown {...smooth} colorScheme={theme} streamingCursor={AIMarkdownStreamingCursor} />
+    </div>
+  );
+};
+
+const PACING_PRESETS: SmoothStreamPacing[] = ['smooth', 'balanced', 'responsive'];
+
+export const PacingCalibration: Story = {
+  render: (_args, context) => {
+    const currentTheme = context.globals.theme === 'dark' ? 'dark' : 'light';
+    const theme = getStreamingTheme(currentTheme);
+    return (
+      <StreamingReplay
+        text={STREAMING_DEMO_CONTENT}
+        // Server-buffer-like flushes: large clumps, irregular multi-hundred-ms
+        // gaps — the arrival pattern the adaptive law exists to absorb.
+        options={{ chunkSizeMin: 40, chunkSizeMax: 120, chunkDelayMin: 150, chunkDelayMax: 450 }}
+        style={{ color: theme.text }}
+        renderButton={(streaming, restart) => (
+          <button
+            onClick={restart}
+            style={{
+              background: streaming ? 'transparent' : theme.primaryBg,
+              border: `1px solid ${streaming ? theme.buttonBorder : theme.primaryBg}`,
+              borderRadius: 6,
+              color: streaming ? theme.buttonText : theme.primaryText,
+              cursor: 'pointer',
+              font: 'inherit',
+              marginBottom: 12,
+              padding: '4px 12px',
+            }}
+          >
+            {streaming ? 'Streaming…' : 'Restart'}
+          </button>
+        )}
+      >
+        {(content, streaming) => (
+          <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
+            {PACING_PRESETS.map((pacing) => (
+              <PresetLane key={pacing} pacing={pacing} content={content} streaming={streaming} theme={currentTheme} />
+            ))}
+          </div>
+        )}
+      </StreamingReplay>
+    );
   },
 };
 

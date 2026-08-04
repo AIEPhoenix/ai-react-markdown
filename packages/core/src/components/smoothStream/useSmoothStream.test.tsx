@@ -38,14 +38,7 @@ describe('<AIMarkdownSmoothStream> SSR', () => {
 
   test('smooth* props do not leak onto the base component or the DOM', () => {
     const smooth = renderToString(
-      <AIMarkdownSmoothStream
-        content={CONTENT}
-        streaming
-        smoothCharsPerSecond={80}
-        smoothCatchUpWindowMs={400}
-        smoothDrainMs={100}
-        onSmoothDrained={() => {}}
-      />
+      <AIMarkdownSmoothStream content={CONTENT} streaming smoothPacing="responsive" onSmoothDrained={() => {}} />
     );
     const plain = renderToString(<AIMarkdown content={CONTENT} streaming />);
     expect(smooth).toBe(plain);

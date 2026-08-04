@@ -25,13 +25,21 @@
  */
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { createSmoothStreamController, type SmoothStreamOptions } from './controller';
+import { createSmoothStreamController, type SmoothStreamOptions, type SmoothStreamPacing } from './controller';
 
-export interface UseSmoothStreamOptions extends Omit<SmoothStreamOptions, 'now' | 'schedule'> {
+export interface UseSmoothStreamOptions {
   /** Full accumulated markdown source (the same value you would pass to `content`). */
   content: string;
   /** Whether the stream is still producing (the same value you would pass to `streaming`). */
   streaming?: boolean;
+  /**
+   * Named pacing preset — the whole tuning surface at this level:
+   * `'smooth'` (extra buffer, never runs dry), `'balanced'` (default,
+   * minimal lag that still bridges typical bursts), `'responsive'`
+   * (lowest lag, accepts occasional pauses). Numeric parameters live on
+   * {@link createSmoothStreamController} for advanced hosts.
+   */
+  pacing?: SmoothStreamPacing;
   /**
    * Fires when the post-stream drain completes — the message is now
    * fully visible. In practice this is end-of-stream only (the held-back
@@ -64,15 +72,17 @@ export interface UseSmoothStreamResult {
 export const useSmoothStream = ({
   content,
   streaming = false,
+  pacing,
   onDrained,
-  ...pacing
+  now,
+  schedule,
 }: UseSmoothStreamOptions): UseSmoothStreamResult => {
-  // Live options object: the controller reads pacing fields at tick time,
-  // so refreshing the values (in the every-render effect below) retunes
+  // Live options object: the controller reads the preset at tick time, so
+  // refreshing the field (in the every-render effect below) retunes
   // pacing without controller churn. It lives in state, not a ref, so the
   // construction path never reads a ref during render.
   const [{ controller, liveOptions }] = useState(() => {
-    const initial: SmoothStreamOptions = { ...pacing };
+    const initial: SmoothStreamOptions = { pacing, now, schedule };
     const created = createSmoothStreamController(initial);
     created.snap(content);
     return { controller: created, liveOptions: initial };
@@ -80,18 +90,16 @@ export const useSmoothStream = ({
 
   const onDrainedRef = useRef(onDrained);
   useEffect(() => {
-    // Every-render sync: latest callback + live pacing retune. Explicit
-    // per-field writes (not Object.assign) so a knob a caller STOPS
-    // passing falls back to the controller default instead of sticking.
-    // `liveOptions` is not render state — it is the deliberately mutable
-    // channel the controller reads at tick time (its identity is fixed
-    // for the component's lifetime), so the immutability rule's premise
-    // doesn't apply here.
+    // Every-render sync: latest callback + live preset retune. An explicit
+    // write (not Object.assign) so a preset the caller STOPS passing falls
+    // back to the controller default instead of sticking. `liveOptions` is
+    // not render state — it is the deliberately mutable channel the
+    // controller reads at tick time (its identity is fixed for the
+    // component's lifetime), so the immutability rule's premise doesn't
+    // apply here.
     onDrainedRef.current = onDrained;
     // eslint-disable-next-line react-hooks/immutability
-    liveOptions.charsPerSecond = pacing.charsPerSecond;
-    liveOptions.catchUpWindowMs = pacing.catchUpWindowMs;
-    liveOptions.drainMs = pacing.drainMs;
+    liveOptions.pacing = pacing;
   });
 
   // Drained-edge latch (armed = "currently caught up"). Declared before
