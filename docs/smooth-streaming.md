@@ -33,15 +33,14 @@ exactly the incremental-parse engine's fast path — each frame re-tokenizes
 only the appended tail, and block-level memoization skips every settled
 block.
 
-Honest per-frame accounting: the _parse_ is O(appended tail), but the
-content **preprocessors** in front of it (the LaTeX normalizer, plus any
-`contentPreprocessors` you add, remend included) run on the full revealed
-prefix each frame — O(n) work that the math-free fast path skips entirely
-but a single `$` in the message re-enables (measured ~0.3 ms/frame on a
-20k-character math-bearing message; graceful, not free). Coordinated
-mode's per-chunk definition scan is incremental too (probe + frozen
-prefix); the residual multi-chunk consideration is registry fanout — see
-Footguns.
+Honest per-frame accounting: the _parse_ is O(appended tail), the built-in
+LaTeX normalizer is append-aware too (frozen-prefix caching, ~20µs/append
+on a 15k math-dense stream vs ~2ms for a full run), and coordinated mode's
+per-chunk definition scan is incremental as well (probe + frozen prefix).
+What remains O(full prefix) per frame is any **user-supplied
+`contentPreprocessors`** — they see the whole revealed string every frame,
+so keep them cheap or internally append-aware. The residual multi-chunk
+consideration is registry fanout — see Footguns.
 
 ## How pacing works
 
