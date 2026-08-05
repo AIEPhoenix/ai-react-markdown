@@ -21,11 +21,12 @@
 
 'use client';
 
-import { useMemo, memo, type ComponentType, type CSSProperties } from 'react';
+import { useMemo, useState, memo, type ComponentType, type CSSProperties } from 'react';
 import AIMarkdownProvider, { AIMarkdownMetadataProvider } from './context';
 import { AIMDContentPreprocessor } from './preprocessors/defs';
 import useStableValue from './hooks/useStableValue';
 import preprocessAIMDContent from './preprocessors';
+import { createIncrementalLatexPreprocessor } from './preprocessors/latex';
 import AIMarkdownContent from './components/MarkdownContent';
 import {
   AIMarkdownCustomComponents,
@@ -428,9 +429,16 @@ const AIMarkdownComponent = <TMetadata extends AIMarkdownMetadata = AIMarkdownMe
   );
 
   // Run the preprocessing pipeline (LaTeX normalization + user preprocessors).
+  // The LaTeX stage is a per-instance append-aware wrapper: byte-identical
+  // to the stateless preprocessLaTeX, but streaming appends re-process only
+  // the active tail instead of the whole document (relevant at per-frame
+  // reveal rates under smooth streaming). Identity-stable across renders,
+  // so the memo deps stay clean; same-source calls replay a cached output
+  // (StrictMode-safe), non-append content resets its state.
+  const [latexPreprocessor] = useState(() => createIncrementalLatexPreprocessor());
   const usedContent = useMemo(
-    () => (content ? preprocessAIMDContent(content, stable.contentPreprocessors) : content),
-    [content, stable.contentPreprocessors]
+    () => (content ? preprocessAIMDContent(content, stable.contentPreprocessors, latexPreprocessor) : content),
+    [content, stable.contentPreprocessors, latexPreprocessor]
   );
 
   // Stabilize the inline style passed to Typography; otherwise its memo wrapper

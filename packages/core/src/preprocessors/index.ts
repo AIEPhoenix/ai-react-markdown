@@ -25,11 +25,16 @@ const defaultExtraPreprocessors: AIMDContentPreprocessor[] = [];
  *
  * @param content - Raw markdown string.
  * @param extraPreprocessors - Optional user-supplied preprocessors appended after the built-in ones.
+ * @param latexPreprocessor - The LaTeX stage. Defaults to the stateless
+ *   {@link preprocessLaTeX}; the renderer passes a per-instance
+ *   append-aware wrapper (byte-identical output, O(active tail) on
+ *   streaming appends) so per-frame reveals stop paying O(document).
  * @returns The preprocessed markdown string ready for rendering.
  */
 export default function preprocessAIMDContent(
   content: string,
-  extraPreprocessors: AIMDContentPreprocessor[] = defaultExtraPreprocessors
+  extraPreprocessors: AIMDContentPreprocessor[] = defaultExtraPreprocessors,
+  latexPreprocessor: AIMDContentPreprocessor = preprocessLaTeX
 ) {
-  return applyPreprocessors(content, preprocessLaTeX, ...extraPreprocessors);
+  return applyPreprocessors(content, latexPreprocessor, ...extraPreprocessors);
 }

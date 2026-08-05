@@ -523,7 +523,7 @@ function convertSingleToDoubleDollar(text: string): string {
  */
 export function preprocessLaTeX(str: string): string {
   // Return early if no LaTeX patterns are found
-  if (!str.includes('$') && !str.includes('\\[') && !str.includes('\\(')) return str;
+  if (!hasLatexTrigger(str)) return str;
 
   // Step 1: split by code blocks
   const segments = splitByProtectedRegions(str);
@@ -545,4 +545,230 @@ export function preprocessLaTeX(str: string): string {
   });
 
   return result.join('');
+}
+
+// ─── Incremental (append-aware) wrapper ─────────────────────────────────────
+//
+// `preprocessLaTeX` is O(n) per call and runs on every revealed frame during
+// smooth streaming. The wrapper below freezes the transformed output of the
+// settled prefix and re-processes only the active tail, byte-identical to
+// `preprocessLaTeX(full)` at every step — INCLUDING the whole-string
+// early-exit's quirks (that equivalence, not idealized semantics, is the
+// contract; pinned by the replay/property suites in latex.incremental.test.ts).
+//
+// Safe-cut rules (oracle-amended design, 2026-08-05 review):
+// - a cut sits at a LINE START (preceding char strictly `\n`; lone-`\r`
+//   documents never cut and gracefully degrade to full reprocessing),
+// - inside a TEXT segment of the active region's own split (never inside a
+//   fence / inline span / protected tag region),
+// - with no dangling backtick run before it (an unmatched run can pair with
+//   a run arriving later and re-segment the past),
+// - with no LATENT html tag before it — a viable `<`+letter start whose `>`
+//   has not arrived: HTML_TAG_REGEX admits newlines in attributes, so the
+//   match window spans lines and only a `>` anywhere after the `<` settles
+//   it permanently (B1 counterexample),
+// - and, decided on the TRANSFORMED slice (raw-text checks are unsound both
+//   ways because currency escaping rewrites the `$` token stream — B5):
+//   quiescence — no tail-sensitive transform engaged at slice end.
+
+/** The original whole-string early-exit predicate (shared verbatim). */
+function hasLatexTrigger(str: string): boolean {
+  return str.includes('$') || str.includes('\\[') || str.includes('\\(');
+}
+
+/** Does `text` contain an unclosed `\text{` body? Mirrors the escape-aware
+ *  brace walk of `escapeTextUnderscores`'s unclosed branch. */
+function hasUnclosedTextCommand(text: string): boolean {
+  let i = 0;
+  while (i < text.length) {
+    const start = text.indexOf(TEXT_COMMAND, i);
+    if (start === -1) return false;
+    let depth = 1;
+    let j = start + TEXT_COMMAND.length;
+    while (j < text.length && depth > 0) {
+      const c = text[j];
+      if (c === '\\' && j + 1 < text.length) {
+        j += 2;
+        continue;
+      }
+      if (c === '{') depth++;
+      else if (c === '}') depth--;
+      j++;
+    }
+    if (depth !== 0) return true;
+    i = j;
+  }
+  return false;
+}
+
+/** A convertible (non-image) `\[` still present after delimiter conversion —
+ *  its `\]` has not arrived, so a later append changes this segment. */
+const RESIDUAL_OPEN_BRACKET_RE = /(?<!!)\\\[/;
+
+interface InstrumentedSlice {
+  out: string;
+  /** No tail-sensitive transform engaged: safe to freeze this output. */
+  quiescent: boolean;
+  /** `truncateUnclosedLatexBlock` fired in the slice's FIRST segment with
+   *  only whitespace before the `$$` opener — the original's `trimEnd`
+   *  would cross the seam into the frozen output (B3). */
+  truncatedAtSeamStart: boolean;
+}
+
+/** The exact per-segment pipeline of {@link preprocessLaTeX}, instrumented
+ *  with quiescence flags and WITHOUT the whole-string early-exit (a slice
+ *  must not re-decide the early-exit: `\text{a_b}` in a trigger-free slice
+ *  still transforms when the FULL string carries a `$` elsewhere). */
+function processSliceInstrumented(slice: string): InstrumentedSlice {
+  const segments = splitByProtectedRegions(slice);
+  let out = '';
+  let quiescent = true;
+  let truncatedAtSeamStart = false;
+  for (let index = 0; index < segments.length; index++) {
+    const segment = segments[index];
+    if (segment.isCode) {
+      out += segment.text;
+      continue;
+    }
+    let text = segment.text;
+    text = escapeMhchemCommands(text);
+    text = escapeCurrencyDollarSigns(text);
+    text = convertLatexDelimiters(text);
+    if (RESIDUAL_OPEN_BRACKET_RE.test(text)) quiescent = false;
+    text = escapeLatexPipes(text);
+    if (findUnclosedDelimiterStart(text, 'both') !== -1) quiescent = false;
+    text = escapeLatexPipesInUnclosed(text);
+    if (hasUnclosedTextCommand(text)) quiescent = false;
+    text = escapeTextUnderscores(text);
+    text = convertSingleToDoubleDollar(text);
+    const unclosedDouble = findUnclosedDelimiterStart(text, 'double-only');
+    if (unclosedDouble !== -1) {
+      quiescent = false;
+      if (index === 0 && text.slice(0, unclosedDouble).trim() === '') {
+        truncatedAtSeamStart = true;
+      }
+    }
+    text = truncateUnclosedLatexBlock(text);
+    out += text;
+  }
+  return { out, quiescent, truncatedAtSeamStart };
+}
+
+/**
+ * Last raw-safe cut in `active`, or -1. Raw conditions only (line start
+ * inside a text segment, no dangling backtick run before, no latent `<`);
+ * the transformed-output quiescence check happens on the candidate slice
+ * afterwards.
+ */
+function findRawSafeCut(active: string): number {
+  const segments = splitByProtectedRegions(active);
+  let offset = 0;
+  let lastCut = -1;
+  let backtickHazard = false;
+  let latentLt = false;
+  for (const segment of segments) {
+    if (segment.isCode) {
+      // Protected regions contain no cuts; a matched tag/span/fence carries
+      // no cross-append state. `>` inside one still discharges a latent `<`
+      // (HTML_TAG_REGEX scans raw text, blind to our segmentation).
+      if (segment.text.includes('>')) latentLt = false;
+      offset += segment.text.length;
+      continue;
+    }
+    const text = segment.text;
+    let lineStart = 0;
+    while (lineStart <= text.length) {
+      const nl = text.indexOf('\n', lineStart);
+      const lineEnd = nl === -1 ? text.length : nl;
+      for (let i = lineStart; i < lineEnd; i++) {
+        const ch = text[i];
+        if (ch === '`') backtickHazard = true;
+        else if (ch === '>') latentLt = false;
+        else if (ch === '<') {
+          const next = text[i + 1];
+          if (next !== undefined && (next === '/' || /[A-Za-z]/.test(next))) latentLt = true;
+        }
+      }
+      if (nl === -1) break;
+      if (!backtickHazard && !latentLt) lastCut = offset + nl + 1;
+      lineStart = nl + 1;
+    }
+    offset += text.length;
+  }
+  return lastCut;
+}
+
+/** Only attempt a freeze once the unfrozen region exceeds this many chars —
+ *  below it the extra pipeline pass costs more than it saves. */
+const DEFAULT_FREEZE_ATTEMPT_THRESHOLD = 512;
+
+/**
+ * Append-aware `preprocessLaTeX`: one instance per streaming lineage (the
+ * component holds it like the smooth-stream controller). Byte-identical to
+ * `preprocessLaTeX(full)` on every call; non-append input resets all state;
+ * identical input replays the cached output (StrictMode/idempotence).
+ *
+ * @param options.freezeThreshold Active-region size below which no freeze
+ *   is attempted. Tests pass `0` so SHORT pinned counterexamples actually
+ *   exercise the freeze path instead of passing vacuously through the
+ *   full-reprocess fallback.
+ * @internal Wired by the renderer; not part of the public API.
+ */
+export function createIncrementalLatexPreprocessor(options?: {
+  freezeThreshold?: number;
+}): (content: string) => string {
+  const freezeThreshold = options?.freezeThreshold ?? DEFAULT_FREEZE_ATTEMPT_THRESHOLD;
+  let prevSource = '';
+  let prevOutput = '';
+  let frozenSrcEnd = 0;
+  let frozenOut = '';
+  let triggered = false;
+
+  return function incrementalPreprocessLaTeX(source: string): string {
+    if (source === prevSource) return prevOutput;
+    const isAppend = source.length > prevSource.length && source.startsWith(prevSource);
+    if (!isAppend) {
+      frozenSrcEnd = 0;
+      frozenOut = '';
+      triggered = false;
+    }
+    if (!triggered) {
+      // Monotone gate (B4): while the ACCUMULATED string has no trigger, the
+      // original early-exits with the identity — freezing transformed output
+      // in that regime would diverge the moment a later `$` arrives and the
+      // full run starts transforming the prefix (`\text{a_b}` quirk). Only
+      // the appended chunk plus one char of overlap needs checking (`\[` /
+      // `\(` can straddle the seam).
+      const checkFrom = isAppend ? Math.max(0, prevSource.length - 1) : 0;
+      if (!hasLatexTrigger(source.slice(checkFrom))) {
+        prevSource = source;
+        prevOutput = source;
+        return source;
+      }
+      triggered = true;
+    }
+    let active = source.slice(frozenSrcEnd);
+    if (active.length > freezeThreshold) {
+      const cut = findRawSafeCut(active);
+      if (cut > 0) {
+        const candidate = processSliceInstrumented(active.slice(0, cut));
+        if (candidate.quiescent) {
+          frozenOut += candidate.out;
+          frozenSrcEnd += cut;
+          active = source.slice(frozenSrcEnd);
+        }
+      }
+    }
+    const tail = processSliceInstrumented(active);
+    // B3 seam correction: the original's segment-level `trimEnd` reaches
+    // back across our cut when the truncated `$$` block's segment starts
+    // with nothing but whitespace. Applied at COMPOSE time only — the
+    // frozen output itself stays untrimmed, because the block will close
+    // in a later append and the untrimmed bytes become correct again.
+    const head = tail.truncatedAtSeamStart ? frozenOut.replace(/\s+$/, '') : frozenOut;
+    const out = head + tail.out;
+    prevSource = source;
+    prevOutput = out;
+    return out;
+  };
 }
