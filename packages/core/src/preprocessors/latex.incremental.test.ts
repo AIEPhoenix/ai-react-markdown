@@ -7,6 +7,7 @@
  */
 import { describe, expect, test } from 'vitest';
 import { preprocessLaTeX, createIncrementalLatexPreprocessor } from './latex';
+import { testEnv } from '../components/incrementalParse/spliceArbiterHarness';
 
 /** Replay `chunks` as an append stream, asserting byte-equality per step.
  *  `freezeThreshold: 0` forces a freeze attempt on EVERY call — without it,
@@ -164,7 +165,7 @@ describe('createIncrementalLatexPreprocessor — property fuzz', () => {
 
   // Scale for the soak gate via LATEX_FUZZ_STREAMS (default keeps the unit
   // suite fast); TIMEOUT scales along.
-  const STREAMS = Number(process.env.LATEX_FUZZ_STREAMS ?? 60);
+  const STREAMS = Number(testEnv('LATEX_FUZZ_STREAMS') ?? 60);
   const FUZZ_TIMEOUT_MS = Math.max(120_000, STREAMS * 250);
 
   test(
