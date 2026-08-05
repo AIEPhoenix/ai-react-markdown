@@ -241,9 +241,12 @@ const BlockMemoizedRenderer = memo(
     // stream appends prose that can't contain a definition, the previous
     // result is returned by REFERENCE — no re-parse, and the register
     // effect below (which lists `ownLabels` as a dep) stops re-registering
-    // the chunk on every token. The scanner is convergent (falls back to a
-    // full parse on any doubt), so StrictMode double-invokes and aborted
-    // renders can't poison it.
+    // the chunk on every token. When a definition MAY be present, the
+    // scanner freezes the settled prefix at an engine-verified boundary and
+    // re-parses only the live tail. It stays convergent — equal to a full
+    // parse at every step, with non-append input resetting all cached
+    // state — so StrictMode double-invokes and aborted renders can't
+    // poison it.
     const defScannerRef = useRef<DefLabelScanner | null>(null);
     const ownLabels = useMemo(() => {
       if (!registry) return EMPTY_DEF_LABELS;
