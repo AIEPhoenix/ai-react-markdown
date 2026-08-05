@@ -237,6 +237,8 @@ import { AIMarkdownSmoothStream, AIMarkdownStreamingCursor } from '@ai-react-mar
 />;
 ```
 
+Smooth chunks that share a `documentId` inside `<AIMarkdownDocuments>` take turns automatically: chunk N reveals completely before chunk N+1 starts — one typewriter, one cursor, even when the sources stream concurrently ([details](./docs/smooth-streaming.md#multi-chunk-documents-turn-taking)).
+
 ### Render chunked chat messages with cross-chunk references
 
 When a single logical document is delivered in multiple `<AIMarkdown>` instances (e.g. one per chunk, or one per turn within a thread), wrap them in `<AIMarkdownDocuments>` and pass the **same** `documentId` so footnotes, link refs, and image refs resolve across chunks:

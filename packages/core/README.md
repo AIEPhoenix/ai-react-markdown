@@ -664,7 +664,7 @@ State is deliberately split across five per-system contexts (document, metadata,
 
 - `AIMarkdownDocuments` -- optional outer wrapper enabling cross-chunk coordination
 - `AIMarkdownStreamingCursor` -- built-in inline cursor for the `streamingCursor` slot
-- `AIMarkdownSmoothStream` -- `<AIMarkdown>` plus typewriter pacing (`smooth*` props); see [docs/smooth-streaming.md](../../docs/smooth-streaming.md)
+- `AIMarkdownSmoothStream` -- `<AIMarkdown>` plus typewriter pacing (`smooth*` props); chunks sharing a `documentId` under `<AIMarkdownDocuments>` reveal turn-by-turn (one typewriter, one cursor); see [docs/smooth-streaming.md](../../docs/smooth-streaming.md)
 
 ### Providers
 
@@ -677,6 +677,7 @@ State is deliberately split across five per-system contexts (document, metadata,
 - `useAIMarkdown()` -- the aggregate (subscribes to all five contexts)
 - `useDocumentRegistry()`
 - `useSmoothStream()` -- typewriter pacing as a hook; returns a props-shaped `{ content, streaming, flush }` that spreads into any wrapper
+- `useDocumentSmoothStream()` -- `useSmoothStream` plus document turn-taking: pass a `documentId` and, under `<AIMarkdownDocuments>`, chunks reveal in mount order (one typewriter, one cursor); degrades to plain `useSmoothStream` without one
 - `useStableValue()`
 - `useStableRecord()` -- the stability firewall, for wrapper authors
 
@@ -716,7 +717,7 @@ State is deliberately split across five per-system contexts (document, metadata,
 - `AIMarkdownStabilityTable` -- table type for `useStableRecord`
 - Context payload types: `AIMarkdownDocumentInfo`, `AIMarkdownThemeInfo`, `AIMarkdownStateCore`, `AIMarkdownBehaviorsCore`, `AIMarkdownStateGroups`, `AIMarkdownBehaviorGroups`, `AIMarkdownExtensionGroups`, `AIMarkdownAggregate`
 - Streaming cursor types: `AIMarkdownStreamingCursorProps`, `AIMarkdownStreamingIndicatorProps`, `AIMarkdownStreamingIndicatorComponent`
-- Smooth streaming types: `AIMarkdownSmoothStreamProps`, `SmoothStreamController`, `SmoothStreamOptions`, `SmoothStreamPacing`, `SmoothStreamPacingParams`, `UseSmoothStreamOptions`, `UseSmoothStreamResult`
+- Smooth streaming types: `AIMarkdownSmoothStreamProps`, `SmoothStreamController`, `SmoothStreamOptions`, `SmoothStreamPacing`, `SmoothStreamPacingParams`, `UseSmoothStreamOptions`, `UseSmoothStreamResult`, `UseDocumentSmoothStreamOptions`
 - `UrlTransform`, `SanitizeSchema` -- prop-type aliases for the URL handling props (track upstream `react-markdown` / `rehype-sanitize` shapes)
 - Cross-chunk registry types: `Registry`, `ChunkData`, `FootnoteDef`, `LinkDef`, `RefRecord`, `RefKind`
 

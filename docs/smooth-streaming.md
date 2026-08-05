@@ -128,6 +128,55 @@ return (
 (Spreading without destructuring `flush` off is also fine — unknown props are
 ignored by the base components.)
 
+## Multi-chunk documents: turn-taking
+
+Inside `<AIMarkdownDocuments>`, chunks that share a `documentId` and smooth-
+stream coordinate automatically (since 2.2.0): chunks that mount with empty
+content reveal **in mount order** — chunk N finishes (source ended AND
+reveal drained) before chunk N+1 starts. The document reads as one
+typewriter with one cursor, even when the sources stream concurrently.
+
+```tsx
+<AIMarkdownDocuments>
+  <AIMarkdownSmoothStream documentId={id} content={a} streaming={aLive} />
+  <AIMarkdownSmoothStream documentId={id} content={b} streaming={bLive} />
+</AIMarkdownDocuments>
+```
+
+For custom wrappers, `useDocumentSmoothStream` is the hook behind the
+shell — `useSmoothStream` plus the gate, same props-shaped result:
+
+```tsx
+const smooth = useDocumentSmoothStream({ documentId: id, content, streaming });
+return <MantineAIMarkdown {...smooth} documentId={id} />;
+```
+
+Behavior notes:
+
+- **Only empty-content mounts queue.** A chunk that mounts with text
+  already present (hydration, virtualized scroll-back, mid-stream remount)
+  renders instantly — the mount snap — and never blanks out or replays. It
+  still holds its queue slot: later empty-mounted chunks wait for it.
+- **A gated chunk renders nothing** (no text, no cursor) until its turn;
+  its backlog then plays out through the normal drain law — a fast,
+  continuous pour bounded by `drainMs`, not a flash and not per-character
+  grinding.
+- **Completion is sticky.** A finished chunk that streams again (tool-call
+  round 2) does not re-gate successors that already started — hiding
+  visible text is worse than the brief overlap you get instead.
+- **Unmounting releases.** A chunk removed from the tree (virtualized away)
+  leaves the queue; successors don't wait for it.
+- **Different `documentId`s are independent queues** — two documents
+  streaming at once each get their own typewriter. Cross-document
+  serialization is intentionally not a thing.
+- Opt out per chunk with `smoothCoordination={false}` on the shell (or use
+  plain `useSmoothStream` / omit `documentId` on the hook), or wholesale
+  with `smoothTurnTaking={false}` on `<AIMarkdownDocuments>`. Flipping
+  either off on a chunk that is currently gated releases it immediately —
+  and if its source has already ended, the accumulated text appears in one
+  frame (a snap, not an animation). That flash is the intended degradation:
+  with coordination off there is no queue left to pace against.
+
 ## Outside React
 
 The pacing core is `createSmoothStreamController` — a plain object with no
@@ -158,18 +207,31 @@ Contract highlights (full JSDoc on the export):
 
 ### `<AIMarkdownSmoothStream>` extra props
 
-| Prop              | Type                                     | Default      | Description                                                        |
-| ----------------- | ---------------------------------------- | ------------ | ------------------------------------------------------------------ |
-| `smoothPacing`    | `'smooth' \| 'balanced' \| 'responsive'` | `'balanced'` | Latency-vs-smoothness preset (see the table above); read live      |
-| `onSmoothDrained` | `() => void`                             | —            | Fires when the post-stream drain completes — once per stream round |
+| Prop                 | Type                                     | Default      | Description                                                         |
+| -------------------- | ---------------------------------------- | ------------ | ------------------------------------------------------------------- |
+| `smoothPacing`       | `'smooth' \| 'balanced' \| 'responsive'` | `'balanced'` | Latency-vs-smoothness preset (see the table above); read live       |
+| `onSmoothDrained`    | `() => void`                             | —            | Fires when the post-stream drain completes — once per stream round  |
+| `smoothCoordination` | `boolean`                                | `true`       | Document turn-taking for this chunk; `false` = reveal independently |
 
-All other props are forwarded to `<AIMarkdown>` untouched.
+All other props are forwarded to `<AIMarkdown>` untouched. The wrapper-side
+switch is `smoothTurnTaking` on `<AIMarkdownDocuments>` (default `true`).
 
 ### `useSmoothStream(options)`
 
 Options: `content`, `streaming`, `pacing` (the same preset, unprefixed),
 and `onDrained`. Returns `{ content, streaming, flush }` where `content` is
 the revealed prefix and `streaming` stays `true` until drained.
+
+### `useDocumentSmoothStream(options)`
+
+Everything `useSmoothStream` takes plus `documentId`. With a `documentId`
+and an `<AIMarkdownDocuments>` ancestor it joins that document's
+turn-taking queue; without either it behaves exactly like
+`useSmoothStream`. The `documentId` must match the one the rendered
+component receives and must not change while mounted. While gated, the
+returned `flush()` is a no-op (there is nothing playing yet), and
+`onDrained` fires only after the chunk's turn — potentially long after its
+source stream ended.
 
 ### Advanced numeric control
 
@@ -211,7 +273,11 @@ it affects the next drain, not one already in progress.
   for as long as the stream is live, so mid-stream catch-ups (during source
   stalls) do _not_ fire it — only the post-`finish` drain does. In a
   multi-round flow (stream → tool call → stream), each round's drain fires
-  it once.
+  it once. Under turn-taking a gated chunk drains only after its turn, so
+  the callback can fire long after the source ended — and a regeneration
+  that happened entirely while gated is invisible to the reveal (it only
+  ever saw empty → final), so that drain DOES fire it, unlike a visible
+  regeneration.
 
 ## Footguns
 
@@ -220,25 +286,57 @@ it affects the next drain, not one already in progress.
 The end-of-stream signal does real work here: it confirms the held-back
 final grapheme and starts the timed drain. If `streaming` stays `true`
 forever, the last grapheme of the message never reveals and the returned
-`streaming` never settles (so the cursor never unmounts). Wire it to the
-actual completion event of your transport, not to a heuristic.
+`streaming` never settles (so the cursor never unmounts). Under
+turn-taking the failure escalates: every later chunk in the document stays
+gated behind the stuck one and **never appears at all** — which reads as
+data loss, not as a cosmetic lingering cursor. A dev-build warning fires
+when a chunk stays gated behind a predecessor that shows no reveal
+progress for ~10 s; in production, wire `streaming` to the actual
+completion event of your transport, not to a heuristic.
 
-### Per-chunk smoothing inside `<AIMarkdownDocuments>`
+### Chunks inserted out of mount order
+
+The turn-taking queue is mount-ordered — the same assumption cross-chunk
+footnote numbering already makes. A chunk mounted mid-conversation
+(regenerating an earlier message, inserting at the top of a list) lands at
+the END of the queue and waits for every existing chunk, including ones
+visually below it: the symptom is a hole in the middle of the
+conversation. Put `smoothCoordination={false}` on chunks you insert out of
+order (they reveal independently and don't block anyone).
+
+### `documentId` written twice on the manual path
+
+With `useDocumentSmoothStream` you pass `documentId` to the hook AND to
+the rendered component, and the hook cannot cross-check them. If they
+drift apart, nothing crashes — the chunk silently stops coordinating (or
+coordinates under the wrong document). The shell doesn't have this
+problem; it wires its own prop through.
+
+### Recycling the actively-streaming chunk in a virtualized list
+
+Scroll-back itself is safe: a remounted chunk with accumulated text snaps
+instantly and continues (no replay, no blanking). But unmounting the chunk
+that is _currently revealing_ releases its successors (by design — a
+gone chunk must not deadlock the queue), so scrolling back shows its tail
+and the successor animating together briefly. If your list virtualizes,
+pin the actively-streaming item so it isn't recycled.
+
+### Registry fanout with many sibling chunks
 
 Coordinated (cross-chunk) mode runs a definition scan over the chunk's
-source on every content change. The scan is append-aware and now
-incremental in both directions — link/task lists ride a signature probe
-without parsing at all, and while a genuine def block streams (a
-citation footer) only the live tail is reparsed (measured
-~0.8 ms/append on a 12k-char chunk, down from a ~30 ms full reparse).
-What remains at per-frame reveal rates is the coordination fanout
-itself: a chunk revealing a def body bumps the shared registry version
-each frame and wakes sibling chunks. That's bounded and usually fine —
-but if you have MANY sibling chunks on screen, prefer smoothing the
-message _before_ it enters coordinated chunking (one
-`<AIMarkdownSmoothStream>` per message), which is also the shape that
-gives you a single cursor and a single typewriter. Standalone usage has
-none of this — the scan only runs in coordinated mode.
+source on every content change. The scan is append-aware and incremental
+in both directions — link/task lists ride a signature probe without
+parsing at all, and while a genuine def block streams (a citation footer)
+only the live tail is reparsed (measured ~0.8 ms/append on a 12k-char
+chunk, down from a ~30 ms full reparse). What remains at per-frame reveal
+rates is the coordination fanout itself: a chunk revealing a def body
+bumps the shared registry version each frame and wakes sibling chunks.
+Turn-taking already gives you the single-typewriter shape, and gated
+chunks contribute nothing while they wait; if you still see fanout cost
+with very many mounted siblings, smoothing the message _before_ it enters
+coordinated chunking (one paced stream, split downstream) remains the
+zero-fanout alternative. Standalone usage has none of this — the scan
+only runs in coordinated mode.
 
 ### Disabling block-memo while smoothing
 
