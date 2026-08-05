@@ -162,24 +162,38 @@ describe('createIncrementalLatexPreprocessor — property fuzz', () => {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 
-  test('seeded random streams equal the full run at every append', () => {
-    for (let stream = 0; stream < 60; stream++) {
-      const pieceCount = 10 + Math.floor(rand() * 30);
-      let doc = '';
-      for (let i = 0; i < pieceCount; i++) doc += PIECES[Math.floor(rand() * PIECES.length)];
-      // Three chunkings per doc: tiny (splits every token), medium, large.
-      for (const size of [1 + Math.floor(rand() * 2), 7, 64]) {
-        replaySized(doc, size);
-      }
-    }
-  });
+  // Scale for the soak gate via LATEX_FUZZ_STREAMS (default keeps the unit
+  // suite fast); TIMEOUT scales along.
+  const STREAMS = Number(process.env.LATEX_FUZZ_STREAMS ?? 60);
+  const FUZZ_TIMEOUT_MS = Math.max(120_000, STREAMS * 250);
 
-  test('long streams cross the freeze threshold and stay byte-identical', () => {
-    for (let stream = 0; stream < 6; stream++) {
-      const pieceCount = 250 + Math.floor(rand() * 100);
-      let doc = '';
-      for (let i = 0; i < pieceCount; i++) doc += PIECES[Math.floor(rand() * PIECES.length)];
-      replaySized(doc, 48);
-    }
-  });
+  test(
+    'seeded random streams equal the full run at every append',
+    () => {
+      for (let stream = 0; stream < STREAMS; stream++) {
+        const pieceCount = 10 + Math.floor(rand() * 30);
+        let doc = '';
+        for (let i = 0; i < pieceCount; i++) doc += PIECES[Math.floor(rand() * PIECES.length)];
+        // Three chunkings per doc: tiny (splits every token), medium, large.
+        for (const size of [1 + Math.floor(rand() * 2), 7, 64]) {
+          replaySized(doc, size);
+        }
+      }
+    },
+    FUZZ_TIMEOUT_MS
+  );
+
+  test(
+    'long streams cross the freeze threshold and stay byte-identical',
+    () => {
+      const longStreams = Math.max(6, Math.floor(STREAMS / 10));
+      for (let stream = 0; stream < longStreams; stream++) {
+        const pieceCount = 250 + Math.floor(rand() * 100);
+        let doc = '';
+        for (let i = 0; i < pieceCount; i++) doc += PIECES[Math.floor(rand() * PIECES.length)];
+        replaySized(doc, 48);
+      }
+    },
+    FUZZ_TIMEOUT_MS
+  );
 });
