@@ -12,6 +12,12 @@
  */
 import { createContext, useContext, useMemo, useRef, type PropsWithChildren, type FC } from 'react';
 import { createRegistry, type Registry, type RegistryInternal } from './documentRegistry';
+import {
+  createSmoothCoordinator,
+  SmoothCoordinatorContext,
+  type SmoothCoordinatorContextValue,
+  type SmoothCoordinatorInternal,
+} from './smoothStream/coordinator';
 
 interface AIMarkdownDocumentsContextValue {
   /** Returns the registry for a given documentId. Holds the internal
@@ -34,6 +40,17 @@ export interface AIMarkdownDocumentsProps extends PropsWithChildren {
    * coordination itself (that's gated by wrapper presence + `documentId`).
    */
   preserveOrphanReferences?: boolean;
+  /**
+   * Default `true`. Turn-taking for smooth-streaming chunks: chunks that
+   * share a `documentId` and stream from empty reveal sequentially (chunk
+   * N fully revealed before chunk N+1 starts — one typewriter, one
+   * cursor). `false` disables coordination wholesale; every
+   * `AIMarkdownSmoothStream` / `useDocumentSmoothStream` under this
+   * wrapper then behaves like plain `useSmoothStream`. Per-chunk opt-out
+   * exists too (`smoothCoordination={false}` on the shell). Has no effect
+   * on chunks that don't smooth-stream.
+   */
+  smoothTurnTaking?: boolean;
 }
 
 /** Message body for the "nested wrapper" misuse error / warning. Centralised
@@ -51,8 +68,8 @@ const NESTED_WRAPPER_MESSAGE =
  * the hooks in the same order.
  */
 const AIMarkdownDocumentsRoot: FC<
-  Required<Pick<AIMarkdownDocumentsProps, 'preserveOrphanReferences'>> & PropsWithChildren
-> = ({ preserveOrphanReferences, children }) => {
+  Required<Pick<AIMarkdownDocumentsProps, 'preserveOrphanReferences' | 'smoothTurnTaking'>> & PropsWithChildren
+> = ({ preserveOrphanReferences, smoothTurnTaking, children }) => {
   // Registries are persistent across renders. Map<documentId, Registry>.
   //
   // Eviction: each registry receives an `onEmpty` callback that the
@@ -79,6 +96,31 @@ const AIMarkdownDocumentsRoot: FC<
   // insert to chunk-subscription time, but that breaks the synchronous-
   // getter contract `useDocumentRegistry` relies on. Deferred.
   const registriesRef = useRef<Map<string, RegistryInternal>>(new Map());
+  // Smooth turn-taking coordinators, one per documentId — a sibling
+  // structure to the registries Map with the same lifecycle: created
+  // lazily at render time by the getter, evicted via onEmpty with the
+  // identity check (a stale cleanup microtask must not evict a freshly
+  // re-created coordinator under the same documentId).
+  const coordinatorsRef = useRef<Map<string, SmoothCoordinatorInternal>>(new Map());
+
+  const smoothValue = useMemo<SmoothCoordinatorContextValue | null>(() => {
+    if (!smoothTurnTaking) return null;
+    return {
+      getCoordinator(documentId: string) {
+        let c = coordinatorsRef.current.get(documentId);
+        if (!c) {
+          const created = createSmoothCoordinator(() => {
+            if (coordinatorsRef.current.get(documentId) === created) {
+              coordinatorsRef.current.delete(documentId);
+            }
+          });
+          c = created;
+          coordinatorsRef.current.set(documentId, c);
+        }
+        return c;
+      },
+    };
+  }, [smoothTurnTaking]);
 
   const value = useMemo<AIMarkdownDocumentsContextValue>(
     () => ({
@@ -104,10 +146,18 @@ const AIMarkdownDocumentsRoot: FC<
     [preserveOrphanReferences]
   );
 
-  return <AIMarkdownDocumentsContext.Provider value={value}>{children}</AIMarkdownDocumentsContext.Provider>;
+  return (
+    <AIMarkdownDocumentsContext.Provider value={value}>
+      <SmoothCoordinatorContext.Provider value={smoothValue}>{children}</SmoothCoordinatorContext.Provider>
+    </AIMarkdownDocumentsContext.Provider>
+  );
 };
 
-export const AIMarkdownDocuments: FC<AIMarkdownDocumentsProps> = ({ preserveOrphanReferences = true, children }) => {
+export const AIMarkdownDocuments: FC<AIMarkdownDocumentsProps> = ({
+  preserveOrphanReferences = true,
+  smoothTurnTaking = true,
+  children,
+}) => {
   const parent = useContext(AIMarkdownDocumentsContext);
   if (parent !== null) {
     // Dev: fail fast. The error makes the misuse obvious in any non-
@@ -142,7 +192,9 @@ export const AIMarkdownDocuments: FC<AIMarkdownDocumentsProps> = ({ preserveOrph
     return <>{children}</>;
   }
   return (
-    <AIMarkdownDocumentsRoot preserveOrphanReferences={preserveOrphanReferences}>{children}</AIMarkdownDocumentsRoot>
+    <AIMarkdownDocumentsRoot preserveOrphanReferences={preserveOrphanReferences} smoothTurnTaking={smoothTurnTaking}>
+      {children}
+    </AIMarkdownDocumentsRoot>
   );
 };
 

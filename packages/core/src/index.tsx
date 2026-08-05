@@ -42,7 +42,7 @@ import useStableRecord, { AIMarkdownStabilityPolicy, type AIMarkdownStabilityTab
 import { resolveEngineValues } from './resolveFlatProps';
 import type { AIMarkdownEnginePlugin } from './plugins/defs';
 import DefaultTypography from './components/typography/Default';
-import { useSmoothStream } from './components/smoothStream/useSmoothStream';
+import { useDocumentSmoothStream } from './components/smoothStream/useDocumentSmoothStream';
 import type { SmoothStreamPacing } from './components/smoothStream/controller';
 
 /**
@@ -553,8 +553,24 @@ export interface AIMarkdownSmoothStreamProps<
    * content replacement never fires it. Correctness is identity-insensitive
    * (read through a latest-ref), but an inline closure still defeats this
    * shell's `memo` — prefer a stable reference.
+   *
+   * Under document turn-taking, a gated chunk drains only after its turn:
+   * this can fire long after the source stream ended — and a regeneration
+   * that happened entirely while the chunk was still gated is invisible to
+   * the reveal, so the eventual drain DOES fire it (the finally-revealed
+   * message did complete).
    */
   onSmoothDrained?: () => void;
+  /**
+   * Default `true`. Inside `<AIMarkdownDocuments>`, chunks sharing a
+   * `documentId` take turns revealing (one typewriter, one cursor); see
+   * {@link useDocumentSmoothStream}. Set `false` to keep this chunk's
+   * reveal independent — it neither waits for predecessors nor blocks
+   * successors (the escape hatch for chunks inserted out of mount order,
+   * e.g. a regenerated middle message). Coordination also requires an
+   * explicit `documentId` prop; without one this flag is moot.
+   */
+  smoothCoordination?: boolean;
 }
 
 /**
@@ -573,7 +589,8 @@ export interface AIMarkdownSmoothStreamProps<
  * on (the default) when smoothing.
  *
  * For custom composition (mantine wrapper, skip-animation buttons), use
- * {@link useSmoothStream} directly — its result spreads into any wrapper.
+ * {@link useDocumentSmoothStream} (coordinated) or {@link useSmoothStream}
+ * (standalone) directly — either result spreads into any wrapper.
  *
  * @example
  * ```tsx
@@ -587,11 +604,17 @@ export interface AIMarkdownSmoothStreamProps<
 const AIMarkdownSmoothStreamComponent = <TMetadata extends AIMarkdownMetadata = AIMarkdownMetadata>({
   smoothPacing,
   onSmoothDrained,
+  smoothCoordination = true,
   content,
   streaming,
   ...rest
 }: AIMarkdownSmoothStreamProps<TMetadata>) => {
-  const smooth = useSmoothStream({
+  const smooth = useDocumentSmoothStream({
+    // The same documentId the inner <AIMarkdown> receives below — the only
+    // public supply path for the id, so shell auto-wiring cannot drift.
+    // Withholding it (opt-out, or no id at all) degrades the hook to plain
+    // useSmoothStream behavior.
+    documentId: smoothCoordination ? rest.documentId : undefined,
     content,
     streaming,
     pacing: smoothPacing,
@@ -712,6 +735,8 @@ export type {
 } from './components/smoothStream/controller';
 export { useSmoothStream } from './components/smoothStream/useSmoothStream';
 export type { UseSmoothStreamOptions, UseSmoothStreamResult } from './components/smoothStream/useSmoothStream';
+export { useDocumentSmoothStream } from './components/smoothStream/useDocumentSmoothStream';
+export type { UseDocumentSmoothStreamOptions } from './components/smoothStream/useDocumentSmoothStream';
 
 // Cross-chunk coordination wrapper + hook
 export { AIMarkdownDocuments, useDocumentRegistry } from './components/AIMarkdownDocuments';
