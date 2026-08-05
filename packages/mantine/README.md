@@ -343,6 +343,17 @@ function ChatMessage({ markdown, pending }: { markdown: string; pending: boolean
 }
 ```
 
+For multi-chunk documents under `<AIMarkdownDocuments>`, swap in `useDocumentSmoothStream` and chunks sharing a `documentId` reveal turn-by-turn (one typewriter, one cursor). Pass the SAME id to the hook and the component — the hook can't cross-check the two:
+
+```tsx
+import { useDocumentSmoothStream } from '@ai-react-markdown/core';
+
+function ChatChunk({ id, markdown, pending }: { id: string; markdown: string; pending: boolean }) {
+  const smooth = useDocumentSmoothStream({ documentId: id, content: markdown, streaming: pending });
+  return <MantineAIMarkdown {...smooth} documentId={id} />;
+}
+```
+
 See [docs/smooth-streaming.md](../../docs/smooth-streaming.md) for the pacing model, presets, and footguns.
 
 ## Architecture Overview
