@@ -31,7 +31,16 @@ import { normalizeId } from './normalizeId';
 // or prefixes containing `user-content-fn-` are handled by string slicing.
 const FN_LI_ID_RE = /(?:^|-)user-content-fn-(.+)$/;
 
-function sourceIdFromFootnoteLiId(idProp: string, clobberPrefix?: string): string | null {
+/**
+ * Extract the SOURCE identifier from a footnote `<li>` id, covering both id
+ * shapes in the codebase — standalone (mdast-util-to-hast `fn-` +
+ * `normalizeUri`, then the sanitize clobber + rehypeRebaseHashLinks linkage)
+ * and aggregate (`${clobberPrefix}fn-${sourceIdentifier}`, raw). Exported as
+ * the single source of truth for li-id parsing: the streaming cursor's
+ * anchor targeting (`detectAnchor`) reuses it so a clobber-linkage change
+ * can never drift the two consumers apart.
+ */
+export function sourceIdFromFootnoteLiId(idProp: string, clobberPrefix?: string): string | null {
   let raw: string | null = null;
   if (clobberPrefix !== undefined) {
     const exactPrefix = `${clobberPrefix}fn-`;

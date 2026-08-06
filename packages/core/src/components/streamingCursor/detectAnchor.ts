@@ -10,15 +10,33 @@
  * on the next mutation).
  *
  * Only a tiny structural surface of the DOM is touched (`nodeType`,
- * `childNodes`, `tagName`, `classList.contains`, `hasAttribute`, `data`),
- * so the walk is unit-testable in the node environment with plain-object
- * fakes — no jsdom required.
+ * `childNodes`, `tagName`, `classList.contains`, `hasAttribute`,
+ * `getAttribute`, `data`), so the walk is unit-testable in the node
+ * environment with plain-object fakes — no jsdom required.
+ *
+ * Definition tails: the renderer stamps a hidden tail marker while a
+ * (footnote / link-reference) definition is streaming (see
+ * `tailSignal.ts`), because definitions render in the relocated footer —
+ * the DOM tail and the source tail diverge and no DOM-only heuristic can
+ * reconcile them. With a marker present the walk anchors inside the
+ * TARGETED footer `<li>` (or hides); without one it keeps its original
+ * bet: skip the footer, anchor at the body tail.
  *
  * @module components/streamingCursor/detectAnchor
  */
 
+import { sourceIdFromFootnoteLiId } from '../extractDefBodiesFromHast';
+import { normalizeId } from '../normalizeId';
+
 const ELEMENT_NODE = 1;
 const TEXT_NODE = 3;
+
+/** Attribute names of the tail marker `MarkdownContent` stamps while
+ *  streaming (see `tailSignal.ts`). Read via `getAttribute` so the walk's
+ *  plain-object fake surface stays tiny. */
+const TAIL_KIND_ATTR = 'data-aimd-tail-kind';
+const TAIL_LABEL_ATTR = 'data-aimd-tail-label';
+const TAIL_CLOBBER_ATTR = 'data-aimd-clobber-prefix';
 
 /**
  * Elements the walk may enter. Block-level containers markdown rendering
@@ -95,9 +113,84 @@ function isFootnoteSection(node: Node): boolean {
   return el.tagName === 'SECTION' && el.hasAttribute('data-footnotes');
 }
 
+function isTailMarker(node: Node): boolean {
+  return node.nodeType === ELEMENT_NODE && (node as Element).hasAttribute(TAIL_KIND_ATTR);
+}
+
+function isFootnoteBackref(node: Node): boolean {
+  return node.nodeType === ELEMENT_NODE && (node as Element).hasAttribute('data-footnote-backref');
+}
+
+/** Whitelist descent to the deepest last text, threading `skip` through
+ *  EVERY level — the footer descent needs it because a definition body
+ *  ending in a paragraph carries its backref `<a>↩</a>` INSIDE that
+ *  trailing paragraph, not as a direct `<li>` child. */
+function descendToText(start: Node | null, skip?: (node: Node) => boolean): Text | null {
+  let node = start;
+  while (node) {
+    if (node.nodeType === TEXT_NODE) return node as Text;
+    if (node.nodeType !== ELEMENT_NODE) return null;
+    const el = node as Element;
+    if (!SAFE_CONTAINERS.has(el.tagName)) return null;
+    if (el.classList.contains('katex') || el.classList.contains('katex-display')) return null;
+    node = lastMeaningfulChild(el, skip);
+  }
+  return null;
+}
+
+/** The last tail-marker element among `root`'s children, or null. The
+ *  renderer appends it after the content blocks, so scan from the end. */
+function findTailMarker(root: Element): Element | null {
+  const children = root.childNodes;
+  for (let i = children.length - 1; i >= 0; i--) {
+    const child = children[i];
+    if (isTailMarker(child)) return child as Element;
+  }
+  return null;
+}
+
+/** Locate the footnote `<li>` whose id encodes `label`, using the exact
+ *  same two-tier id parsing the aggregate-footer harvest uses
+ *  (`sourceIdFromFootnoteLiId`): exact clobber-prefix slice when the
+ *  marker supplies one, `user-content-fn-` regex fallback otherwise. */
+function findFootnoteLi(root: Element, label: string, clobberPrefix: string | null): Element | null {
+  const section = ((): Element | null => {
+    const children = root.childNodes;
+    for (let i = children.length - 1; i >= 0; i--) {
+      if (isFootnoteSection(children[i])) return children[i] as Element;
+    }
+    return null;
+  })();
+  if (!section) return null;
+  const target = normalizeId(label);
+  // section children: sr-only heading + <ol>; defs are the <ol>'s <li>s.
+  for (const child of Array.from(section.childNodes)) {
+    if (child.nodeType !== ELEMENT_NODE || (child as Element).tagName !== 'OL') continue;
+    for (const li of Array.from(child.childNodes)) {
+      if (li.nodeType !== ELEMENT_NODE || (li as Element).tagName !== 'LI') continue;
+      const id = (li as Element).getAttribute('id');
+      if (!id) continue;
+      const sourceId = sourceIdFromFootnoteLiId(id, clobberPrefix ?? undefined);
+      if (sourceId !== null && normalizeId(sourceId) === target) return li as Element;
+    }
+  }
+  return null;
+}
+
 /**
  * Find the text node the streaming cursor anchors after, or `null` when the
  * cursor must hide for this frame.
+ *
+ * When the renderer's tail marker says the source tail is inside a footnote
+ * definition, the anchor is the deepest last text of THAT definition's
+ * footer `<li>` (targeted by label — footer `<li>` order is first-reference
+ * order, not definition source order, so "last li" would mis-anchor on
+ * out-of-order references), skipping backref links at every level. A
+ * missing li (aggregate footer living in another chunk's root, an
+ * unreferenced definition, an id whose encoding defeats matching) hides the
+ * cursor — conservative, never wrong-place. An `invisible-def` tail (link
+ * reference definitions render nothing) hides too. Without a marker the
+ * walk keeps its original bet: skip the footer, anchor at the body tail.
  *
  * @param root - The content root: the DOM element whose children are the
  *   rendered top-level blocks (the cursor shell's `parentElement`).
@@ -105,14 +198,19 @@ function isFootnoteSection(node: Node): boolean {
  *   skipped so the cursor never anchors to itself.
  */
 export function detectAnchorTextNode(root: Element, exclude: Element | null): Text | null {
-  let node: Node | null = lastMeaningfulChild(root, (n) => n === exclude || isFootnoteSection(n));
-  while (node) {
-    if (node.nodeType === TEXT_NODE) return node as Text;
-    if (node.nodeType !== ELEMENT_NODE) return null;
-    const el = node as Element;
-    if (!SAFE_CONTAINERS.has(el.tagName)) return null;
-    if (el.classList.contains('katex') || el.classList.contains('katex-display')) return null;
-    node = lastMeaningfulChild(el);
+  const marker = findTailMarker(root);
+  if (marker) {
+    const kind = marker.getAttribute(TAIL_KIND_ATTR);
+    if (kind === 'invisible-def') return null;
+    if (kind === 'footnote-def') {
+      const label = marker.getAttribute(TAIL_LABEL_ATTR);
+      if (!label) return null;
+      const li = findFootnoteLi(root, label, marker.getAttribute(TAIL_CLOBBER_ATTR));
+      if (!li) return null;
+      return descendToText(li, isFootnoteBackref);
+    }
+    // Unknown kind (a future marker version): fall through to the default
+    // walk rather than hiding — fail toward today's behavior.
   }
-  return null;
+  return descendToText(lastMeaningfulChild(root, (n) => n === exclude || isFootnoteSection(n) || isTailMarker(n)));
 }

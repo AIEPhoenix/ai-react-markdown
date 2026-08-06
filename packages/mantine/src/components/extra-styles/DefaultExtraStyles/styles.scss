@@ -46,7 +46,7 @@
      typography/variants/default.scss). Separate ruleset on purpose:
      `:nth-child(… of …)` is Baseline 2023 and a comma-joined list would be
      dropped whole on older engines, taking `:last-child` down with it. */
-  :nth-last-child(1 of :not([data-aimd-streaming-cursor])) {
+  :nth-last-child(1 of :not([data-aimd-streaming-cursor], [data-aimd-tail-kind])) {
     margin-bottom: 0;
   }
 
@@ -92,7 +92,7 @@
     }
 
     /* Separate ruleset — see the note on the top-level rule above. */
-    &:nth-last-child(1 of :not([data-aimd-streaming-cursor])) {
+    &:nth-last-child(1 of :not([data-aimd-streaming-cursor], [data-aimd-tail-kind])) {
       margin-bottom: 0;
     }
   }
