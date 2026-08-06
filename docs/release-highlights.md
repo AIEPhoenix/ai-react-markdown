@@ -8,6 +8,13 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 ## 2.2.x — Document-level turn-taking
 
+### 2.2.1 — The streaming cursor follows footnote definitions; turn-taking polish
+
+Two user-visible fixes, no engine changes:
+
+- **The streaming cursor now follows a streaming footnote definition into the footer.** Definitions render in the relocated end-of-document footer, so the DOM tail and the source tail diverge — the cursor used to blink at the body tail while a citation footer streamed (the standard LLM ending). The renderer now derives the tail kind from the parse tree it is already holding (lazy continuation lines, blockquoted/listed/nested definitions all classified by micromark's own decisions, phantom injections filtered) and stamps a hidden same-commit marker the cursor reads: the indicator anchors inside the RIGHT footer entry by label (footer order is first-reference order, not source order), skips the backref arrows, returns to the body when prose resumes, and hides for tails it cannot truthfully point at — a streaming link-reference definition (renders nothing) or a definition whose footer entry lives in another chunk under cross-chunk coordination. A token-by-token citation Demo story shows the whole behavior live.
+- **Turn-taking: an empty chunk released after its source ended no longer flashes one frame of cursor** (the release handshake's forced beat is scoped to non-empty backlogs), and the dev-only stuck-flag warning's judgment moved into a unit-tested pure function.
+
 ### 2.2.0 — Multi-chunk smooth streams reveal as one typewriter
 
 Smooth-streaming chunks that share a `documentId` under `<AIMarkdownDocuments>` now coordinate automatically: a chunk that mounts with empty content waits until every earlier chunk is done (source ended AND reveal drained), then plays its backlog out through the normal drain law — one typewriter, one cursor, even when the sources stream concurrently. No engine, controller, `useSmoothStream`, or registry changes; the gate is a thin coordination layer on top.
