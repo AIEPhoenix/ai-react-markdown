@@ -56,6 +56,8 @@ const ScriptedChunk = ({
   onDrained,
   flushProbeRef,
   onFlushUnstable,
+  onGhostStreaming,
+  pacing,
   theme,
 }: {
   doc: string;
@@ -73,12 +75,18 @@ const ScriptedChunk = ({
   flushProbeRef?: React.RefObject<(() => void) | null>;
   /** The returned `flush` changed identity between commits. */
   onFlushUnstable?: () => void;
+  /** Returned `streaming` was true on a commit where the SOURCE had
+   *  already stopped and nothing was left to reveal — a ghost cursor
+   *  frame (the empty-chunk forced-beat regression). */
+  onGhostStreaming?: () => void;
+  pacing?: 'smooth' | 'balanced' | 'responsive';
   theme: 'light' | 'dark';
 }) => {
   const smooth = useDocumentSmoothStream({
     documentId: doc,
     content: phase.content,
     streaming: phase.streaming,
+    pacing,
     onDrained,
   });
   const prevVisibleRef = useRef(0);
@@ -107,6 +115,9 @@ const ScriptedChunk = ({
     if (flushProbeRef) flushProbeRef.current = smooth.flush;
     if (onFlushUnstable && prevFlushRef.current && prevFlushRef.current !== smooth.flush) onFlushUnstable();
     prevFlushRef.current = smooth.flush;
+    if (onGhostStreaming && !phase.streaming && smooth.streaming && smooth.content === phase.content) {
+      onGhostStreaming();
+    }
   });
   return (
     <div data-chunk={`${doc}:${index}`}>
@@ -301,6 +312,12 @@ const ReleaseHarness = ({ theme }: { theme: 'light' | 'dark' }) => {
           onDrained={() => setDrains((d) => d + 1)}
           flushProbeRef={flushProbeRef}
           onFlushUnstable={() => setFlushUnstable(true)}
+          // 'smooth' widens the drain window (320ms vs 240ms): the partial
+          // latch needs ≥1 commit inside it, so the wider window keeps a
+          // briefly-stalled runner from collapsing the reveal into one
+          // frame and turning the story spuriously red (fail-closed, but
+          // noisy).
+          pacing="smooth"
           theme={theme}
         />
       </AIMarkdownDocuments>
@@ -608,6 +625,7 @@ export const DualDocumentIndependence: Story = {
   },
 };
 
+const BEFORE_EMPTY_TEXT = 'A first chunk with real text, so the empty one is released mid-queue.';
 const NEVER_TEXT = 'The successor drains even though its predecessor never produced a byte.';
 
 /**
@@ -619,30 +637,53 @@ const NEVER_TEXT = 'The successor drains even though its predecessor never produ
  * successor forever. Value-derived reporting marks it done from plain
  * values. Every other story's chunks all eventually carry text, so only
  * this one turns red if done reporting regresses to edge-driven.
+ *
+ * The empty chunk sits MID-queue so its release necessarily happens after
+ * its own source ended — the construction for the ghost-cursor latch: an
+ * unconditional forced beat would flash one frame of `streaming: true` on
+ * an empty, already-finished chunk (the fix scopes the forced beat to
+ * non-empty backlogs).
  */
 const EmptyChunkHarness = ({ theme }: { theme: 'light' | 'dark' }) => {
   const [phases, setPhases] = useState<ChunkPhase[]>([
     { content: '', streaming: true },
     { content: '', streaming: true },
+    { content: '', streaming: true },
   ]);
   const patch = (i: number, phase: ChunkPhase) => setPhases((prev) => prev.map((p, k) => (k === i ? phase : p)));
   useTimerScript([
-    // Chunk 1: the conditional message that never materializes — its
-    // stream ends with the content still ''.
-    [100, () => patch(0, { content: '', streaming: false })],
-    [60, () => patch(1, { content: NEVER_TEXT, streaming: true })],
-    [200, () => patch(1, { content: NEVER_TEXT, streaming: false })],
+    [40, () => patch(0, { content: BEFORE_EMPTY_TEXT, streaming: true })],
+    [150, () => patch(0, { content: BEFORE_EMPTY_TEXT, streaming: false })],
+    // Chunk 2: the conditional message that never materializes — its
+    // stream ends (before chunk 1 finishes revealing) with content ''.
+    [100, () => patch(1, { content: '', streaming: false })],
+    [60, () => patch(2, { content: NEVER_TEXT, streaming: true })],
+    [200, () => patch(2, { content: NEVER_TEXT, streaming: false })],
   ]);
   const board = useRef<Scoreboard>(new Map());
   const [drains, setDrains] = useState(0);
+  const [ghosts, setGhosts] = useState(0);
   return (
-    <div data-testid="empty-chunk" data-drains={drains} style={{ color: getStreamingTheme(theme).text }}>
+    <div
+      data-testid="empty-chunk"
+      data-drains={drains}
+      data-ghosts={ghosts}
+      style={{ color: getStreamingTheme(theme).text }}
+    >
       <AIMarkdownDocuments>
         <ScriptedChunk doc="doc" index={0} phase={phases[0]} board={board} theme={theme} />
         <ScriptedChunk
           doc="doc"
           index={1}
           phase={phases[1]}
+          board={board}
+          onGhostStreaming={() => setGhosts((g) => g + 1)}
+          theme={theme}
+        />
+        <ScriptedChunk
+          doc="doc"
+          index={2}
+          phase={phases[2]}
           board={board}
           onDrained={() => setDrains((d) => d + 1)}
           theme={theme}
@@ -664,10 +705,14 @@ export const EmptyChunkReportsDone: Story = {
       if (!el) throw new Error('harness not mounted');
       return el;
     };
-    // The successor drains — possible only if the never-materialized
-    // chunk reported done despite producing zero controller notifies.
+    // The final chunk drains — possible only if the never-materialized
+    // mid-queue chunk reported done despite zero controller notifies.
     await waitFor(() => expect(root().dataset.drains).toBe('1'), { timeout: 25_000 });
+    expect(root().textContent).toContain(BEFORE_EMPTY_TEXT);
     expect(root().textContent).toContain(NEVER_TEXT);
+    // The empty chunk's release never produced a ghost cursor frame
+    // (streaming=true on a finished, empty chunk).
+    expect(root().dataset.ghosts).toBe('0');
   },
 };
 
