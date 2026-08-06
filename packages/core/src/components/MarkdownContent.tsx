@@ -51,7 +51,8 @@ import { buildBlocks, createCache, renderBlocksWithCache, type Cache, type PostO
 import { buildCoreRehypePlugins, buildCoreRemarkPlugins, buildCoreRemarkRehypeOptions } from './pluginChain';
 import { advanceIncrementalParse, type IncrementalParseState } from './incrementalParse';
 import { measureStage } from './devStageTimings';
-import { useAIMarkdownDocument } from '../context';
+import { useAIMarkdownDocument, useAIMarkdownState } from '../context';
+import { deriveTailSignal } from './streamingCursor/tailSignal';
 import { AIMarkdownCustomComponents } from '../defs';
 import type { AIMarkdownEnginePlugin } from '../plugins/defs';
 import { collectDefLabels, createDefLabelScanner, type DefLabelScanner } from './collectDefLabels';
@@ -577,6 +578,20 @@ const BlockMemoizedRenderer = memo(
       [pipeline, content, measureHere]
     );
 
+    // Streaming-cursor tail signal: classify whether the source tail sits
+    // inside a (footnote / link-reference) definition — derived from the
+    // SAME mdast this render draws, with phantom-suffix nodes filtered by
+    // offset against the preprocessed content. Only computed while
+    // streaming: the marker it drives must not exist in static documents
+    // (see the marker's own comment in the render tail). The legacy
+    // (blockMemo:false) path has no pipeline mdast and renders no marker —
+    // the cursor keeps today's body-tail behavior there.
+    const { streaming } = useAIMarkdownState();
+    const tailSignal = useMemo(
+      () => (streaming ? deriveTailSignal(pipeline.mdast, (content ?? '').length) : null),
+      [streaming, pipeline, content]
+    );
+
     const postOptions = useMemo<PostOptions>(
       () => ({
         components: { ...crossChunkComponents, ...usedComponents },
@@ -775,6 +790,25 @@ const BlockMemoizedRenderer = memo(
               clobberPrefix={clobberPrefix}
               postOptions={postOptions}
               preserveOrphanReferences={effectivePreserveOrphan}
+            />
+          ) : null}
+          {tailSignal ? (
+            // Streaming-cursor tail marker: tells the cursor shell (same
+            // commit as the content DOM it will measure — no React timing
+            // skew) that the source tail is inside a definition, and which
+            // footer <li> the text is streaming into. Rendered ONLY while
+            // streaming with a definition tail: a permanent marker would
+            // re-break the `:last-child` margin-trim fallbacks the SCSS
+            // keeps for pre-Baseline-2023 engines (the modern rulesets
+            // exclude it explicitly, same as the cursor wrapper). display:
+            // none keeps it out of layout; the anchor walk skips it by
+            // attribute. Mount/unmount on signal flips doubles as the
+            // childList mutation that wakes the shell's observer.
+            <span
+              data-aimd-tail-kind={tailSignal.kind}
+              data-aimd-tail-label={tailSignal.kind === 'footnote-def' ? tailSignal.identifier : undefined}
+              data-aimd-clobber-prefix={tailSignal.kind === 'footnote-def' ? clobberPrefix : undefined}
+              style={{ display: 'none' }}
             />
           ) : null}
         </ChunkSymbolContext.Provider>

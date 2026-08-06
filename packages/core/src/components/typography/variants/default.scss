@@ -91,14 +91,15 @@
     margin-bottom: 0;
   }
 
-  /* The streaming-cursor wrapper (a zero-height overlay) may sit after the
-     last content block; without this rule the real last block would regain
-     its bottom margin while the cursor is mounted and the container would
-     visibly snap shorter when streaming ends. Kept as a SEPARATE ruleset on
-     purpose: `:nth-child(… of …)` is Baseline 2023, and a comma-joined
-     selector list is non-forgiving — engines without support would drop the
-     plain `:last-child` trim along with it. */
-  :nth-last-child(1 of :not([data-aimd-streaming-cursor])) {
+  /* The streaming-cursor wrapper (a zero-height overlay) and the cursor's
+     tail marker (a display:none signal span, streaming-only) may sit after
+     the last content block; without this rule the real last block would
+     regain its bottom margin while they are mounted and the container
+     would visibly snap shorter when streaming ends. Kept as a SEPARATE
+     ruleset on purpose: `:nth-child(… of …)` is Baseline 2023, and a
+     comma-joined selector list is non-forgiving — engines without support
+     would drop the plain `:last-child` trim along with it. */
+  :nth-last-child(1 of :not([data-aimd-streaming-cursor], [data-aimd-tail-kind])) {
     margin-bottom: 0;
   }
 
