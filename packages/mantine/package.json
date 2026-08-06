@@ -69,16 +69,16 @@
   },
   "devDependencies": {
     "@ai-react-markdown/core": "workspace:*",
-    "@mantine/code-highlight": "^9.4.1",
-    "@mantine/core": "^9.4.1",
-    "@mantine/hooks": "^9.4.1",
+    "@mantine/code-highlight": "^9.5.0",
+    "@mantine/core": "^9.5.0",
+    "@mantine/hooks": "^9.5.0",
     "@types/lodash-es": "^4.17.12",
     "@types/node": "^25.9.5",
     "autoprefixer": "^10.5.4",
     "esbuild-sass-plugin": "^3.7.0",
     "highlight.js": "^11.11.1",
     "lodash-es": "^4.18.0",
-    "postcss": "^8.5.19",
+    "postcss": "^8.5.25",
     "tsup": "^8.5.1"
   }
 }
