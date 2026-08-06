@@ -496,8 +496,12 @@ sound by the implementation-review round:
 - A chunk released while still empty whose content later arrives complete
   with `streaming=false` takes the inner snap path — no animation, no
   `onDrained` — matching v2.1.0 static-content semantics.
-- Accepted cosmetic: an empty chunk released with `streaming=false` shows
-  one frame of cursor (the forced beat) before beat 2 clears it.
+- ~~Accepted cosmetic: an empty chunk released with `streaming=false` shows
+  one frame of cursor (the forced beat) before beat 2 clears it.~~ FIXED in
+  the post-release cleanup: the forced beat is scoped to non-empty backlogs
+  (an empty chunk has nothing to protect from the snap branch). Pinned by
+  the ghost-cursor latch in the EmptyChunkReportsDone story,
+  falsification-verified (an unconditional forced beat turns it red).
 - Accepted narrow races (same shape and acceptance as the registry): a
   coordinator-generation swap landing between a chunk's render and its
   registration effect forks the queue (coordination degrades, no deadlock);
@@ -505,9 +509,16 @@ sound by the implementation-review round:
   wrapper unmounts.
 - The dev-only stuck-flag warning uses a real `setTimeout` (not the injected
   scheduler) and does not name the blocker (a `useId` is meaningless to
-  users); it consequently has no automated test — the unit environment is
-  node (no effects) and the browser suite has no fake timers. Predicate
-  pieces (`earliestBlockerOf`, heartbeat staleness) are unit-covered.
+  users). Post-release cleanup narrowed the untested surface: the
+  warn/re-arm/clear judgment now lives in `evaluateGateWarn` (pure,
+  unit-tested in node — stale blocker, fresh progress, never-stamped
+  blocker, unblocked); only the timer wiring itself remains untested (the
+  unit environment is node with no effects, the browser suite has no fake
+  timers).
+- The ReleaseAnimatesNotSnaps partial latch is fail-closed but
+  flake-sensitive (needs ≥1 commit inside the drain window); the
+  post-release cleanup widened the window by running that chunk on the
+  `smooth` preset (320 ms vs 240 ms).
 - Two §7 slivers are implemented but not directly test-mirrored, accepted:
   the degradation byte-equality tests don't thread the `now`/`schedule`
   seams through the wrapper (forwarding is a one-line passthrough), and the

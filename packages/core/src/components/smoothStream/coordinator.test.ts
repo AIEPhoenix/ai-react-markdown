@@ -5,7 +5,7 @@
  * refcount-deferred reclaim (Strict Mode), and version/fanout coalescing.
  */
 import { describe, expect, test, vi } from 'vitest';
-import { createSmoothCoordinator } from './coordinator';
+import { createSmoothCoordinator, evaluateGateWarn } from './coordinator';
 
 const microtasks = () => new Promise<void>((r) => queueMicrotask(() => queueMicrotask(r)));
 
@@ -113,6 +113,29 @@ describe('createSmoothCoordinator', () => {
     expect(c.earliestBlockerOf('c')).toBe('b');
     expect(c.earliestBlockerOf('b')).toBe(null); // a is done
     expect(c.earliestBlockerOf('a')).toBe(null); // nothing before it
+  });
+
+  test('evaluateGateWarn: warn on stale blocker, rearm on progress, clear when unblocked', () => {
+    const c = createSmoothCoordinator();
+    c.register('a');
+    c.register('b');
+
+    // Fresh progress within the threshold → slow model, keep quiet.
+    c.stampProgress('a', 9_500);
+    expect(evaluateGateWarn(c, 'b', 10_000, 10_000)).toBe('rearm');
+
+    // A full threshold with no reveal progress → stuck flag, warn.
+    expect(evaluateGateWarn(c, 'b', 19_500, 10_000)).toBe('warn');
+
+    // A blocker that never stamped at all counts as stale from t=0.
+    c.register('x');
+    c.markDone('a');
+    expect(evaluateGateWarn(c, 'x', 10_000, 10_000)).toBe('warn');
+    expect(evaluateGateWarn(c, 'x', 9_999, 10_000)).toBe('rearm');
+
+    // No not-done predecessor left → release is propagating, stop.
+    c.markDone('b');
+    expect(evaluateGateWarn(c, 'x', 99_999, 10_000)).toBe('clear');
   });
 
   test('onEmpty fires once when the last chunk leaves, not on Strict Mode churn', async () => {

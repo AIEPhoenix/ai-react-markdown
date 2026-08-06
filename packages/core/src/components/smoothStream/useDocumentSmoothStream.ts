@@ -34,9 +34,9 @@
  * @module components/smoothStream/useDocumentSmoothStream
  */
 
-import { useContext, useEffect, useId, useState } from 'react';
+import { useContext, useEffect, useId, useRef, useState } from 'react';
 import { useSmoothStream, type UseSmoothStreamOptions, type UseSmoothStreamResult } from './useSmoothStream';
-import { SmoothCoordinatorContext, type SmoothCoordinatorInternal } from './coordinator';
+import { evaluateGateWarn, SmoothCoordinatorContext, type SmoothCoordinatorInternal } from './coordinator';
 
 export interface UseDocumentSmoothStreamOptions extends UseSmoothStreamOptions {
   /**
@@ -86,6 +86,15 @@ export const useDocumentSmoothStream = ({
   // backlog — precisely on the main scenario (source finished while queued).
   const [forcedStreaming, setForcedStreaming] = useState(false);
 
+  // Latest content for the release check below. A ref (synced in an
+  // every-render effect, declared BEFORE the watcher so it is fresh within
+  // the same commit) because the watcher effect must not re-subscribe on
+  // every token append.
+  const contentRef = useRef(content);
+  useEffect(() => {
+    contentRef.current = content;
+  });
+
   // ── Registration (effect time; refcounted for Strict Mode) ───────────────
   useEffect(() => {
     if (!coordinator) return;
@@ -112,9 +121,14 @@ export const useDocumentSmoothStream = ({
     }
     const check = () => {
       if (coordinator.isReleased(reactId)) {
-        // Both set in one callback → one batched commit = beat 1.
+        // Both set in one callback → one batched commit = beat 1. The
+        // forced beat exists to protect a non-empty backlog from the snap
+        // branch; an EMPTY chunk has nothing to protect, and forcing it
+        // would render one frame of cursor on a chunk whose source already
+        // ended (content that arrives later takes the normal update/snap
+        // paths regardless).
         setReleased(true);
-        setForcedStreaming(true);
+        if (contentRef.current !== '') setForcedStreaming(true);
       }
     };
     check();
@@ -176,10 +190,11 @@ export const useDocumentSmoothStream = ({
     let timer: ReturnType<typeof setTimeout>;
     const arm = () => {
       timer = setTimeout(() => {
-        const blocker = coordinator.earliestBlockerOf(reactId);
-        if (!blocker) return; // release is propagating
-        const progressedAt = coordinator.lastProgressAt.get(blocker) ?? 0;
-        if ((now ?? Date.now)() - progressedAt < GATE_WARN_THRESHOLD_MS) {
+        // The warn/re-arm/clear decision lives in a pure function
+        // (unit-tested in node); this timer body only wires it up.
+        const verdict = evaluateGateWarn(coordinator, reactId, (now ?? Date.now)(), GATE_WARN_THRESHOLD_MS);
+        if (verdict === 'clear') return; // release is propagating
+        if (verdict === 'rearm') {
           arm(); // blocker is still revealing — a slow model, not a stuck flag
           return;
         }
