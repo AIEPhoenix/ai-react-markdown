@@ -177,6 +177,35 @@ export function createSmoothCoordinator(onEmpty?: () => void): SmoothCoordinator
   return coord;
 }
 
+/** Outcome of one stuck-flag warning timer firing (dev-only diagnostics). */
+export type GateWarnVerdict = 'warn' | 'rearm' | 'clear';
+
+/**
+ * The warn / re-arm / clear decision behind the dev-only stuck-flag
+ * warning, extracted as a pure function so the judgment is unit-testable
+ * in node — the `setTimeout` wiring in `useDocumentSmoothStream` reduces
+ * to "call this when the timer fires".
+ *
+ * - `'clear'`: no blocker left — the release is propagating; stop.
+ * - `'rearm'`: the earliest blocker showed reveal progress within the
+ *   threshold — a slow model still emitting, not a stuck flag; check
+ *   again later.
+ * - `'warn'`: the blocker has made no visible progress for a full
+ *   threshold while this chunk stayed gated — the predecessor's
+ *   `streaming` flag is likely stuck.
+ */
+export function evaluateGateWarn(
+  coordinator: SmoothCoordinator,
+  reactId: string,
+  nowMs: number,
+  thresholdMs: number
+): GateWarnVerdict {
+  const blocker = coordinator.earliestBlockerOf(reactId);
+  if (!blocker) return 'clear';
+  const progressedAt = coordinator.lastProgressAt.get(blocker) ?? 0;
+  return nowMs - progressedAt < thresholdMs ? 'rearm' : 'warn';
+}
+
 /**
  * Context value provided by `<AIMarkdownDocuments>` (a sibling of the def
  * registry context — the two never reference each other). `null` when
