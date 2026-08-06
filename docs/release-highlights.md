@@ -6,6 +6,17 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 ---
 
+## 2.2.x — Document-level turn-taking
+
+### 2.2.0 — Multi-chunk smooth streams reveal as one typewriter
+
+Smooth-streaming chunks that share a `documentId` under `<AIMarkdownDocuments>` now coordinate automatically: a chunk that mounts with empty content waits until every earlier chunk is done (source ended AND reveal drained), then plays its backlog out through the normal drain law — one typewriter, one cursor, even when the sources stream concurrently. No engine, controller, `useSmoothStream`, or registry changes; the gate is a thin coordination layer on top.
+
+- **`useDocumentSmoothStream`**: `useSmoothStream` plus the gate, same props-shaped result for custom wrappers (`<MantineAIMarkdown {...smooth} documentId={id} />`). Without a `documentId` or outside the wrapper it degrades byte-identically to `useSmoothStream`. The shell routes through it automatically.
+- **Safe by construction for real chat UIs**: non-empty mounts pass through ungated (hydration, virtualized scroll-back, and mid-stream remounts keep their instant snap — nothing blanks out or replays); completion is sticky (a tool-call round 2 never re-hides a successor's visible text); unmounting releases successors (virtualization can't deadlock the queue); different `documentId`s are independent queues; a chunk whose stream ends without producing text still passes its turn.
+- **Escape hatches and observability**: per-chunk `smoothCoordination={false}` (releases immediately even mid-gate — the escape for chunks inserted out of mount order), wholesale `smoothTurnTaking={false}` on the wrapper, and a dev-only warning when the queue is stuck behind a predecessor whose `streaming` flag was never flipped false (heartbeat-based, so a slow model that is still emitting never trips it).
+- **Verification**: three design-review rounds before implementation, two implementation-review rounds plus a final audit after; a seven-story convergence-only browser suite covers sequencing with a single-cursor latch, release-animates-not-snaps, sticky-done overlap, virtualization scroll-away/back, dual-document independence, the wedged-queue escape, and the zero-notify empty chunk — the last falsification-verified (an edge-driven done regression turns it red). Full preflight: 1119 tests. Engine byte-untouched, so no soak gate applies.
+
 ## 2.1.x — Smooth streaming
 
 ### 2.1.0 — Typewriter pacing on an adaptive jitter buffer; the per-frame hot path goes fully incremental
