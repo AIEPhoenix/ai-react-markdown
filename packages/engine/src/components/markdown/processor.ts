@@ -12,7 +12,7 @@ import remarkParse from 'remark-parse';
 import remarkRehype, { type Options as RemarkRehypeOptions } from 'remark-rehype';
 import { type PluggableList, type Processor, unified } from 'unified';
 import { VFile } from 'vfile';
-import type { Options } from './types';
+import type { PipelineOptions } from './types';
 
 const emptyPlugins: PluggableList = [];
 const emptyRemarkRehypeOptions: Readonly<RemarkRehypeOptions> = { allowDangerousHtml: true };
@@ -23,7 +23,7 @@ const emptyRemarkRehypeOptions: Readonly<RemarkRehypeOptions> = { allowDangerous
  * `.parse()` and `.runSync()` (or `.run()`) on it.
  */
 export function createProcessor(
-  options: Readonly<Options>
+  options: Readonly<PipelineOptions>
 ): Processor<MdastRoot, MdastRoot, HastRoot, undefined, undefined> {
   const rehypePlugins = options.rehypePlugins || emptyPlugins;
   const remarkPlugins = options.remarkPlugins || emptyPlugins;
@@ -40,7 +40,7 @@ export function createProcessor(
  * for non-string `children`; in prod it silently no-ops, leaving `file.value`
  * undefined and unified treating the input as empty.
  */
-export function createFile(options: Readonly<Options>): VFile {
+export function createFile(options: Readonly<PipelineOptions>): VFile {
   const children = options.children || '';
   const file = new VFile();
 

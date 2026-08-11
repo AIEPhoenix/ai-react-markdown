@@ -8,5 +8,5 @@
 
 export { default, Markdown, parseStage, transformStage, renderHastSubtree } from './Markdown';
 export type { ParsedMarkdown } from './Markdown';
-export { defaultUrlTransform } from './urlTransform';
+export { defaultUrlTransform } from '@ai-react-markdown/engine';
 export type { AllowElement, Components, Deprecation, ExtraProps, Options, UrlTransform } from './types';
