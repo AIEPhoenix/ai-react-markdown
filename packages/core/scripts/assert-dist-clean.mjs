@@ -25,3 +25,30 @@ if (offenders.length > 0) {
   );
   process.exit(1);
 }
+
+// Engine must never be inlined into core's bundle: engine holds module-level
+// state (documentRegistry etc.), and an inlined copy coexisting with the
+// external dependency means double instantiation — a correctness bug that
+// only surfaces in real distribution, never in the workspace. Guard: once
+// core source imports the engine package, every executable dist entry that
+// mentions engine symbols must reach them through the bare specifier.
+const ENGINE_SPECIFIER = '@ai-react-markdown/engine';
+const srcImportsEngine = readdirSync('src', { recursive: true })
+  .map(String)
+  .filter((f) => (f.endsWith('.ts') || f.endsWith('.tsx')) && !f.includes('.test.'))
+  .some((f) => readFileSync(`src/${f}`, 'utf8').includes(ENGINE_SPECIFIER));
+
+if (srcImportsEngine) {
+  const inlined = readdirSync('dist', { recursive: true })
+    .map(String)
+    .filter((f) => (f.endsWith('.js') || f.endsWith('.cjs')) && f.startsWith('index'))
+    .filter((f) => !readFileSync(`dist/${f}`, 'utf8').includes(ENGINE_SPECIFIER));
+
+  if (inlined.length > 0) {
+    console.error(
+      `assert-dist-clean: ${inlined.join(', ')} does not reference "${ENGINE_SPECIFIER}" ` +
+        'while src imports it — engine code was likely inlined (check tsup external/noExternal).'
+    );
+    process.exit(1);
+  }
+}
