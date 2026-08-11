@@ -12,6 +12,7 @@
  */
 
 // ── M1: zero-dependency leaves ───────────────────────────────────────────
+export * from './components/hastPredicates';
 export * from './components/normalizeId';
 export * from './components/shortenDocumentId';
 export * from './components/devStageTimings';
