@@ -6,7 +6,7 @@
  * @module components/markdown
  */
 
-export { default, Markdown, parseStage, transformStage, renderHastSubtree } from './Markdown';
-export type { ParsedMarkdown } from './Markdown';
+export { default, Markdown, renderHastSubtree } from './Markdown';
+export { parseStage, transformStage, type ParsedMarkdown } from '@ai-react-markdown/engine';
 export { defaultUrlTransform } from '@ai-react-markdown/engine';
 export type { AllowElement, Components, Deprecation, ExtraProps, Options, UrlTransform } from './types';
