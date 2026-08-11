@@ -48,19 +48,23 @@ type RehypePlugins = NonNullable<MarkdownOptions['rehypePlugins']>;
 type RemarkRehypeOptions = NonNullable<MarkdownOptions['remarkRehypeOptions']>;
 import { sanitizeSchema } from '@ai-react-markdown/engine';
 import { buildBlocks, createCache, renderBlocksWithCache, type Cache, type PostOptions } from './blockMemo';
-import { buildCoreRehypePlugins, buildCoreRemarkPlugins, buildCoreRemarkRehypeOptions } from './pluginChain';
+import {
+  buildCoreRehypePlugins,
+  buildCoreRemarkPlugins,
+  buildCoreRemarkRehypeOptions,
+} from '@ai-react-markdown/engine';
 import { advanceIncrementalParse, type IncrementalParseState } from './incrementalParse';
 import { measureStage } from '@ai-react-markdown/engine';
 import { useAIMarkdownDocument, useAIMarkdownState } from '../context';
 import { deriveTailSignal } from './streamingCursor/tailSignal';
 import { AIMarkdownCustomComponents } from '../defs';
-import type { AIMarkdownEnginePlugin } from '../plugins/defs';
+import type { AIMarkdownEnginePlugin } from '@ai-react-markdown/engine';
 import { collectDefLabels, createDefLabelScanner, type DefLabelScanner } from './collectDefLabels';
 import { useDocumentRegistry, usePreserveOrphanReferences } from './AIMarkdownDocuments';
 import type { RegistryInternal } from './documentRegistry';
 import type { SanitizeSchema } from '@ai-react-markdown/engine';
-import { buildPhantomSuffix } from './remarkInjectPhantomDefs';
-import { buildCrossChunkHandlers } from './customMdastHandlers';
+import { buildPhantomSuffix } from '@ai-react-markdown/engine';
+import { buildCrossChunkHandlers } from '@ai-react-markdown/engine';
 import { normalizeForMatch } from '@ai-react-markdown/engine';
 import { crossChunkComponents } from './crossChunkPlaceholders';
 import { CrossChunkUrlContext, type CrossChunkUrlPolicy } from './crossChunkUrlContext';

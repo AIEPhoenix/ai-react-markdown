@@ -16,7 +16,7 @@ import { useAIMarkdownDocument } from '../context';
 import { useDocumentRegistry } from './AIMarkdownDocuments';
 import { ChunkSymbolContext } from './chunkSymbolContext';
 import { CrossChunkUrlContext } from './crossChunkUrlContext';
-import { sanitizeCrossChunkUrl } from './crossChunkUrlSanitize';
+import { sanitizeCrossChunkUrl } from '@ai-react-markdown/engine';
 import { defaultUrlTransform } from './markdown';
 import { sanitizeSchema as defaultSanitizeSchema } from '@ai-react-markdown/engine';
 import type { LinkDef } from './documentRegistry';

@@ -55,9 +55,9 @@ import rehypeSanitize from 'rehype-sanitize';
 import rehypeKatex from 'rehype-katex';
 import rehypeUnwrapImages from 'rehype-unwrap-images';
 import { sanitizeSchema } from '@ai-react-markdown/engine';
-import rehypeRebaseHashLinks from './rehypeRebaseHashLinks';
-import rehypeFooterAdorn from './rehypeFooterAdorn';
-import { highlight, definitionList, removeComments, smartypants, pangu } from '../plugins/catalog';
+import { rehypeRebaseHashLinks } from '@ai-react-markdown/engine';
+import { rehypeFooterAdorn } from '@ai-react-markdown/engine';
+import { highlight, definitionList, removeComments, smartypants, pangu } from '@ai-react-markdown/engine';
 
 type ExtraSyntaxName = 'highlight' | 'definitionList';
 type DisplayOptimizeName = 'removeComments' | 'smartypants' | 'pangu';

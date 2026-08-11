@@ -7,7 +7,7 @@ import { describe, expect, test } from 'vitest';
 import { renderToString } from 'react-dom/server';
 import AIMarkdown from '.';
 import { useAIMarkdownBehaviors, useAIMarkdownState, useAIMarkdownTheme } from './context';
-import { highlight, pangu } from './plugins/catalog';
+import { highlight, pangu } from '@ai-react-markdown/engine';
 
 /** Renders `<AIMarkdown>` with a Typography-slot probe capturing the behaviors payload. */
 function captureBehaviors(props: Partial<Parameters<typeof AIMarkdown>[0]>) {

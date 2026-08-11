@@ -40,7 +40,7 @@ import type { SanitizeSchema } from '@ai-react-markdown/engine';
 import type { UrlTransform } from './components/markdown';
 import useStableRecord, { AIMarkdownStabilityPolicy, type AIMarkdownStabilityTable } from './hooks/useStableRecord';
 import { resolveEngineValues } from './resolveFlatProps';
-import type { AIMarkdownEnginePlugin } from './plugins/defs';
+import type { AIMarkdownEnginePlugin } from '@ai-react-markdown/engine';
 import DefaultTypography from './components/typography/Default';
 import { useDocumentSmoothStream } from './components/smoothStream/useDocumentSmoothStream';
 import type { SmoothStreamPacing } from '@ai-react-markdown/engine';
@@ -678,7 +678,7 @@ export type {
 // Sealed engine plugin type. The plugin VALUES live in the
 // `@ai-react-markdown/core/plugins` subpath (see `enginePlugins` prop JSDoc);
 // only the type travels through the root entry.
-export type { AIMarkdownEnginePlugin, AIMarkdownEnginePluginName } from './plugins/defs';
+export type { AIMarkdownEnginePlugin, AIMarkdownEnginePluginName } from '@ai-react-markdown/engine';
 
 // `define*` factories — frozen, typed, reference-stable flat prop fragments.
 export { defineTheme, defineBehaviors, definePipeline } from './define';

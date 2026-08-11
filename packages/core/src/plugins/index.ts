@@ -13,5 +13,12 @@
  * @module @ai-react-markdown/core/plugins
  */
 
-export { highlight, definitionList, smartypants, pangu, removeComments, defaultEnginePlugins } from './catalog';
-export type { AIMarkdownEnginePlugin, AIMarkdownEnginePluginName } from './defs';
+export {
+  highlight,
+  definitionList,
+  smartypants,
+  pangu,
+  removeComments,
+  defaultEnginePlugins,
+} from '@ai-react-markdown/engine';
+export type { AIMarkdownEnginePlugin, AIMarkdownEnginePluginName } from '@ai-react-markdown/engine';

@@ -13,6 +13,17 @@
 
 // ── M2: pipeline assembly ────────────────────────────────────────────────
 export * from './components/markdown';
+export * from './components/pluginChain';
+export {
+  default as rehypeRebaseHashLinks,
+  type RehypeRebaseHashLinksOptions,
+} from './components/rehypeRebaseHashLinks';
+export { default as rehypeFooterAdorn } from './components/rehypeFooterAdorn';
+export * from './components/remarkInjectPhantomDefs';
+export * from './components/customMdastHandlers';
+export * from './components/crossChunkUrlSanitize';
+export * from './plugins/defs';
+export * from './plugins/catalog';
 
 // ── M1: zero-dependency leaves ───────────────────────────────────────────
 export * from './components/hastPredicates';

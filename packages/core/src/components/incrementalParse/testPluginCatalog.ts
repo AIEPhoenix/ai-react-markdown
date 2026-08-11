@@ -21,9 +21,9 @@
 import { defListHastHandlers } from 'remark-definition-list';
 
 import { sanitizeSchema } from '@ai-react-markdown/engine';
-import { buildCoreRehypePlugins, buildCoreRemarkPlugins } from '../pluginChain';
-import { buildCrossChunkHandlers } from '../customMdastHandlers';
-import { highlight, definitionList, removeComments, smartypants, pangu } from '../../plugins/catalog';
+import { buildCoreRehypePlugins, buildCoreRemarkPlugins } from '@ai-react-markdown/engine';
+import { buildCrossChunkHandlers } from '@ai-react-markdown/engine';
+import { highlight, definitionList, removeComments, smartypants, pangu } from '@ai-react-markdown/engine';
 import type { AdvanceOptions } from './advanceIncrementalParse';
 
 export interface CatalogConfig {
