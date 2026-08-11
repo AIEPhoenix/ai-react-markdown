@@ -22,7 +22,7 @@ import type { Root as MdastRoot, RootContent as MdastContent, Nodes as MdastNode
 import type { ReactNode } from 'react';
 import { visit } from 'unist-util-visit';
 import { renderHastSubtree, type Options } from './markdown';
-import { normalizeId } from '@ai-react-markdown/engine';
+import { isFootnoteSection, normalizeId } from '@ai-react-markdown/engine';
 import type { Registry } from './documentRegistry';
 
 /**
@@ -188,17 +188,11 @@ function extractRaw(node: MdastNodes, source: string): string {
   return source.slice(node.position.start.offset, node.position.end.offset);
 }
 
-/**
- * Detect mdast-util-to-hast's synthesized footnote `<section data-footnotes>`.
- * Position-based detection alone would be too broad — any future rehype plugin
- * that appends a position-less node would be misclassified. We assert by
- * `tagName === 'section'` AND presence of the `dataFootnotes` property.
- */
-export function isFootnoteSection(node: HastElement): boolean {
-  if (node.tagName !== 'section') return false;
-  const props = node.properties as Record<string, unknown> | undefined;
-  return props?.dataFootnotes !== undefined;
-}
+// isFootnoteSection lives in the engine now (boundary action ①): the
+// incremental-parse engine's attributeHastChildren needs it too, and
+// engine→core imports are forbidden. Re-exported so this module's export
+// surface (and its tests) stay unchanged.
+export { isFootnoteSection };
 
 /** Dev invariant: every block hast child must retain its mdast `position`. */
 export function hasMdastSource(node: HastElement): boolean {
