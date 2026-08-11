@@ -175,7 +175,7 @@ Long ids (>16 chars) are hashed via MurmurHash3 → Base62 before encoding, to k
 
 ## The cross-chunk registry
 
-Located at `packages/core/src/components/documentRegistry.ts`. Key invariants:
+Located at `packages/engine/src/components/documentRegistry.ts` (framework-agnostic; core re-exports its public types). Key invariants:
 
 1. **Per-`documentId` partitioning**. The wrapper holds a `Map<documentId, Registry>`. Each unique id gets its own registry.
 2. **Symbol-keyed contributions**. Each chunk allocates a `Symbol(reactId)` on mount and contributes to the registry under that symbol. The symbol is the chunk's identity for the registry's lifetime.
@@ -244,7 +244,7 @@ Every one of these uses **public** extension points from core. No internal acces
 
 ## Why a vendored `react-markdown`?
 
-The library imports `react-markdown` as an internal module (`packages/core/src/components/markdown/`). This is a _vendor fork_, not a redistribution — the source is bundled and adapted for the library's needs:
+The library imports `react-markdown` as an internal module, split along the engine boundary: the pure pipeline half (processor, transform, the parse/transform stages) lives in `packages/engine/src/components/markdown/`, and the React half (`renderHastSubtree`, the `<Markdown>` component) stays in `packages/core/src/components/markdown/`. This is a _vendor fork_, not a redistribution — the source is bundled and adapted for the library's needs:
 
 - Block-level memoization needs control over the conversion stage (`toJsxRuntime`) that the upstream component encapsulates.
 - The pipeline is exposed as **three independent stages** (parse, plan, render) so block memoization can intercept between stages.
@@ -257,37 +257,60 @@ The fork is intentional and the surface area is small. Consumers don't need to i
 ## Module layout
 
 ```text
-packages/core/src/
-├── index.tsx                   ← <AIMarkdown> + public API re-exports
-├── defs.ts                     ← prop payload types, variant/scheme types
-├── resolveFlatProps.ts         ← single-point flat-prop resolution vs shipped defaults
-├── context.tsx                 ← five contexts + narrow hooks + additive Providers
-├── define.ts                   ← defineTheme / defineBehaviors / definePipeline factories
+packages/engine/src/                ← @ai-react-markdown/engine (framework-agnostic)
+├── index.ts                    ← entry barrel (internal supplier for core)
 ├── plugins/
 │   ├── catalog.ts              ← the five sealed engine plugins + defaultEnginePlugins
 │   └── defs.ts                 ← AIMarkdownEnginePlugin type + seal brand
 ├── preprocessors/
 │   ├── index.ts                ← preprocessing pipeline orchestrator
 │   ├── defs.ts                 ← AIMDContentPreprocessor type
-│   └── latex.ts                ← built-in LaTeX normalizer
+│   ├── latex.ts                ← built-in LaTeX normalizer
+│   └── remend.ts               ← remend streaming-repair preprocessor
+├── fixtures/                   ← shared streaming payload fixtures (tests + stories)
+├── experiments/prefixFreeze/   ← freeze-boundary measurement study
+└── components/
+    ├── incrementalParse/       ← splice engine + arbiter harness + fuzz batteries
+    ├── markdown/               ← pure pipeline half of the vendored react-markdown
+    │                             (processor, transform, parse/transform stages)
+    ├── smoothStream/controller.ts ← framework-agnostic pacing controller
+    ├── pluginChain.ts          ← remark/rehype chain assembly
+    ├── collectDefLabels.ts     ← def-label scanner
+    ├── extractDefBodiesFromHast.ts / extractContributions.ts
+    ├── documentRegistry.ts     ← cross-chunk shared state (pure data structure)
+    ├── sanitizeSchema.ts       ← library default schema
+    ├── extendSanitizeSchema.ts ← public schema-extension helper
+    ├── crossChunkUrlSanitize.ts ← cross-chunk URL filter
+    ├── customMdastHandlers.ts  ← mdast → hast handlers (phantom defs, footnote sup, …)
+    ├── rehypeRebaseHashLinks.ts / rehypeFooterAdorn.ts
+    ├── remarkInjectPhantomDefs.ts
+    ├── hastPredicates.ts       ← shared hast detection helpers
+    ├── normalizeId.ts / shortenDocumentId.ts / devStageTimings.ts
+    └── …
+```
+
+```text
+packages/core/src/                  ← @ai-react-markdown/core (React)
+├── index.tsx                   ← <AIMarkdown> + public API re-exports
+├── defs.ts                     ← prop payload types, variant/scheme types
+├── resolveFlatProps.ts         ← single-point flat-prop resolution vs shipped defaults
+├── context.tsx                 ← five contexts + narrow hooks + additive Providers
+├── define.ts                   ← defineTheme / defineBehaviors / definePipeline factories
+├── plugins/index.ts            ← /plugins subpath (re-exports the engine catalog)
 ├── hooks/
 │   ├── useStableRecord.ts      ← stability firewall (table-driven, policy per prop)
 │   ├── useStableValue.ts       ← deep-equal reference stabilizer
 │   └── useReferenceFlipWarning.ts ← dev-only identity-flip detector
 ├── components/
 │   ├── MarkdownContent.tsx     ← the actual markdown renderer
-│   ├── markdown/               ← vendored react-markdown wrapper
+│   ├── markdown/               ← React half of the vendored react-markdown
+│   │                             (renderHastSubtree, <Markdown>)
 │   ├── typography/             ← default typography variant
 │   ├── blockMemo.ts            ← block-level memoization
-│   ├── AIMarkdownDocuments.tsx ← cross-chunk wrapper
-│   ├── documentRegistry.ts     ← cross-chunk shared state
+│   ├── AIMarkdownDocuments.tsx ← cross-chunk wrapper (React shell over the registry)
 │   ├── crossChunkPlaceholders.tsx ← placeholder element renderers
-│   ├── sanitizeSchema.ts       ← library default schema (internal)
-│   ├── extendSanitizeSchema.ts ← public schema-extension helper
-│   ├── crossChunkUrlSanitize.ts ← cross-chunk URL filter
-│   ├── shortenDocumentId.ts    ← MurmurHash3 → Base62
-│   ├── customMdastHandlers.ts  ← mdast → hast handlers (phantom defs, footnote sup, …)
-│   └── rehypeRebaseHashLinks.ts ← rehype plugin to prefix hash hrefs
+│   ├── streamingCursor/        ← streaming cursor feature
+│   └── smoothStream/           ← useSmoothStream / useDocumentSmoothStream / coordinator
 └── typings/                    ← ambient type shims
 ```
 

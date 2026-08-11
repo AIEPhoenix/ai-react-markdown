@@ -57,10 +57,11 @@ This library is opinionated around those problems. Out of the box you get safe L
 
 ## Packages
 
-| Package                                            | Description                                                                                                                                                                 |
-| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`@ai-react-markdown/core`](./packages/core)       | Framework-agnostic core renderer. GFM, LaTeX, CJK, streaming, metadata context, custom components, cross-chunk coordination.                                                |
-| [`@ai-react-markdown/mantine`](./packages/mantine) | Mantine UI integration. Adds themed typography, code highlighting via `@mantine/code-highlight`, Mermaid diagrams, JSON pretty-print, and automatic color scheme detection. |
+| Package                                            | Description                                                                                                                                                                                                   |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`@ai-react-markdown/core`](./packages/core)       | UI-library-agnostic React renderer. GFM, LaTeX, CJK, streaming, metadata context, custom components, cross-chunk coordination.                                                                                |
+| [`@ai-react-markdown/mantine`](./packages/mantine) | Mantine UI integration. Adds themed typography, code highlighting via `@mantine/code-highlight`, Mermaid diagrams, JSON pretty-print, and automatic color scheme detection.                                   |
+| [`@ai-react-markdown/engine`](./packages/engine)   | Framework-agnostic Markdown engine — incremental parsing, LaTeX preprocessing, the unified plugin pipeline. Internal supplier for `core`; install `core` instead unless you are building a framework adapter. |
 
 ## Installation
 
