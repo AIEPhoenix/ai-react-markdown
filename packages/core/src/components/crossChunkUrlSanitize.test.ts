@@ -8,8 +8,8 @@
 import { describe, expect, test } from 'vitest';
 import type { Element as HastElement } from 'hast';
 import { sanitizeCrossChunkUrl } from './crossChunkUrlSanitize';
-import { sanitizeSchema as defaultLibrarySchema } from './sanitizeSchema';
-import { extendSanitizeSchema } from './extendSanitizeSchema';
+import { sanitizeSchema as defaultLibrarySchema } from '@ai-react-markdown/engine';
+import { extendSanitizeSchema } from '@ai-react-markdown/engine';
 import { defaultUrlTransform } from './markdown';
 
 describe('sanitizeCrossChunkUrl — default library policy', () => {

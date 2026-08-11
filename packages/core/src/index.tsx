@@ -23,10 +23,10 @@
 
 import { useMemo, useState, memo, type ComponentType, type CSSProperties } from 'react';
 import AIMarkdownProvider, { AIMarkdownMetadataProvider } from './context';
-import { AIMDContentPreprocessor } from './preprocessors/defs';
+import { AIMDContentPreprocessor } from '@ai-react-markdown/engine';
 import useStableValue from './hooks/useStableValue';
-import preprocessAIMDContent from './preprocessors';
-import { createIncrementalLatexPreprocessor } from './preprocessors/latex';
+import { preprocessAIMDContent } from '@ai-react-markdown/engine';
+import { createIncrementalLatexPreprocessor } from '@ai-react-markdown/engine';
 import AIMarkdownContent from './components/MarkdownContent';
 import {
   AIMarkdownCustomComponents,
@@ -36,14 +36,14 @@ import {
   AIMarkdownVariant,
   AIMarkdownColorScheme,
 } from './defs';
-import type { SanitizeSchema } from './components/extendSanitizeSchema';
+import type { SanitizeSchema } from '@ai-react-markdown/engine';
 import type { UrlTransform } from './components/markdown';
 import useStableRecord, { AIMarkdownStabilityPolicy, type AIMarkdownStabilityTable } from './hooks/useStableRecord';
 import { resolveEngineValues } from './resolveFlatProps';
 import type { AIMarkdownEnginePlugin } from './plugins/defs';
 import DefaultTypography from './components/typography/Default';
 import { useDocumentSmoothStream } from './components/smoothStream/useDocumentSmoothStream';
-import type { SmoothStreamPacing } from './components/smoothStream/controller';
+import type { SmoothStreamPacing } from '@ai-react-markdown/engine';
 
 /**
  * Props for the `<AIMarkdown>` component.
@@ -631,7 +631,7 @@ export const AIMarkdownSmoothStream = AIMarkdownSmoothStreamMemo as typeof AIMar
 
 // Types
 export type { AIMDContentPreprocessor };
-export type { RemendPreprocessorOptions } from './preprocessors/remend';
+export type { RemendPreprocessorOptions } from '@ai-react-markdown/engine';
 export type {
   AIMarkdownCustomComponents,
   AIMarkdownMetadata,
@@ -693,7 +693,7 @@ export type { AIMarkdownStabilityTable } from './hooks/useStableRecord';
 // Content preprocessors — opt-in factories for the `contentPreprocessors`
 // prop. Tree-shakeable: `remend` only enters a consumer bundle when this
 // factory is imported.
-export { createRemendPreprocessor } from './preprocessors/remend';
+export { createRemendPreprocessor } from '@ai-react-markdown/engine';
 
 // URL handling — primitives for the `urlTransform` prop and a factory
 // helper for the `sanitizeSchema` prop on `<AIMarkdown>`.
@@ -712,8 +712,8 @@ export { createRemendPreprocessor } from './preprocessors/remend';
 // typed helpers around the prop.
 export { defaultUrlTransform } from './components/markdown';
 export type { UrlTransform } from './components/markdown';
-export { extendSanitizeSchema } from './components/extendSanitizeSchema';
-export type { SanitizeSchema } from './components/extendSanitizeSchema';
+export { extendSanitizeSchema } from '@ai-react-markdown/engine';
+export type { SanitizeSchema } from '@ai-react-markdown/engine';
 
 // Streaming cursor — positioner shell for the `streamingCursor` slot, plus
 // the indicator contract for custom visuals.
@@ -726,13 +726,13 @@ export type {
 
 // Smooth streaming — the shell component is defined above; these are the
 // composable layers beneath it (framework-free controller + React hook).
-export { createSmoothStreamController, SMOOTH_STREAM_PACING_PRESETS } from './components/smoothStream/controller';
+export { createSmoothStreamController, SMOOTH_STREAM_PACING_PRESETS } from '@ai-react-markdown/engine';
 export type {
   SmoothStreamController,
   SmoothStreamOptions,
   SmoothStreamPacing,
   SmoothStreamPacingParams,
-} from './components/smoothStream/controller';
+} from '@ai-react-markdown/engine';
 export { useSmoothStream } from './components/smoothStream/useSmoothStream';
 export type { UseSmoothStreamOptions, UseSmoothStreamResult } from './components/smoothStream/useSmoothStream';
 export { useDocumentSmoothStream } from './components/smoothStream/useDocumentSmoothStream';

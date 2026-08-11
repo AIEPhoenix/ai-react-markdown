@@ -18,7 +18,7 @@
  */
 import { createContext } from 'react';
 import type { UrlTransform } from './markdown';
-import type { SanitizeSchema } from './extendSanitizeSchema';
+import type { SanitizeSchema } from '@ai-react-markdown/engine';
 
 export interface CrossChunkUrlPolicy {
   /** Resolved urlTransform — caller's prop or {@link defaultUrlTransform}. */

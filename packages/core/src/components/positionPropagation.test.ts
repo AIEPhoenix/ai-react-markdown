@@ -27,7 +27,7 @@ import rehypeKatex from 'rehype-katex';
 import rehypeUnwrapImages from 'rehype-unwrap-images';
 import rehypeRebaseHashLinks from './rehypeRebaseHashLinks';
 import rehypeFooterAdorn from './rehypeFooterAdorn';
-import { sanitizeSchema } from './sanitizeSchema';
+import { sanitizeSchema } from '@ai-react-markdown/engine';
 import type { Root, Element } from 'hast';
 
 function runFullPipeline(content: string): Root {

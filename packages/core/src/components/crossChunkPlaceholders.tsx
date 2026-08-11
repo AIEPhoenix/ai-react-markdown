@@ -18,7 +18,7 @@ import { ChunkSymbolContext } from './chunkSymbolContext';
 import { CrossChunkUrlContext } from './crossChunkUrlContext';
 import { sanitizeCrossChunkUrl } from './crossChunkUrlSanitize';
 import { defaultUrlTransform } from './markdown';
-import { sanitizeSchema as defaultSanitizeSchema } from './sanitizeSchema';
+import { sanitizeSchema as defaultSanitizeSchema } from '@ai-react-markdown/engine';
 import type { LinkDef } from './documentRegistry';
 
 type RefType = 'full' | 'collapsed' | 'shortcut' | undefined;

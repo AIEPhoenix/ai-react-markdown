@@ -25,7 +25,11 @@
  */
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { createSmoothStreamController, type SmoothStreamOptions, type SmoothStreamPacing } from './controller';
+import {
+  createSmoothStreamController,
+  type SmoothStreamOptions,
+  type SmoothStreamPacing,
+} from '@ai-react-markdown/engine';
 
 export interface UseSmoothStreamOptions {
   /** Full accumulated markdown source (the same value you would pass to `content`). */

@@ -8,7 +8,7 @@ import rehypeSanitize from 'rehype-sanitize';
 import { visit } from 'unist-util-visit';
 import { buildCrossChunkHandlers } from './customMdastHandlers';
 import { buildPhantomSuffix } from './remarkInjectPhantomDefs';
-import { sanitizeSchema } from './sanitizeSchema';
+import { sanitizeSchema } from '@ai-react-markdown/engine';
 import type { Root as HastRoot, Element } from 'hast';
 import type { Root as MdastRoot } from 'mdast';
 

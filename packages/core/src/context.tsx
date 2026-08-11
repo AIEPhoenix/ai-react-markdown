@@ -10,7 +10,7 @@
 
 import { PropsWithChildren, createContext, useContext, useId, useMemo, useRef, type Context, type FC } from 'react';
 import { AIMarkdownMetadata, AIMarkdownVariant, AIMarkdownColorScheme } from './defs';
-import { shortenDocumentId } from './components/shortenDocumentId';
+import { shortenDocumentId } from '@ai-react-markdown/engine';
 import { SHIPPED_BEHAVIOR_DEFAULTS } from './resolveFlatProps';
 import useReferenceFlipWarning from './hooks/useReferenceFlipWarning';
 

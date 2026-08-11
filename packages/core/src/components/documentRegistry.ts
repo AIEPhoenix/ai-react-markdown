@@ -7,7 +7,7 @@
  */
 
 import type { ElementContent as HastElementContent } from 'hast';
-import { normalizeId } from './normalizeId';
+import { normalizeId } from '@ai-react-markdown/engine';
 
 export interface FootnoteDef {
   /** Already-normalized identifier (uppercase). Used as dictionary key for

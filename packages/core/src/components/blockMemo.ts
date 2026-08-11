@@ -22,7 +22,7 @@ import type { Root as MdastRoot, RootContent as MdastContent, Nodes as MdastNode
 import type { ReactNode } from 'react';
 import { visit } from 'unist-util-visit';
 import { renderHastSubtree, type Options } from './markdown';
-import { normalizeId } from './normalizeId';
+import { normalizeId } from '@ai-react-markdown/engine';
 import type { Registry } from './documentRegistry';
 
 /**

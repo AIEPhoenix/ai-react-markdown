@@ -7,8 +7,8 @@ import { CrossChunkUrlContext, type CrossChunkUrlPolicy } from './crossChunkUrlC
 import AIMarkdownProvider from '../context';
 import { CrossChunkImage, CrossChunkLink, FootnoteSupNumber } from './crossChunkPlaceholders';
 import { defaultUrlTransform } from './markdown';
-import { extendSanitizeSchema } from './extendSanitizeSchema';
-import { sanitizeSchema as defaultLibrarySchema } from './sanitizeSchema';
+import { extendSanitizeSchema } from '@ai-react-markdown/engine';
+import { sanitizeSchema as defaultLibrarySchema } from '@ai-react-markdown/engine';
 
 function WithProvider({
   children,

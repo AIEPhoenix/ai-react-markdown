@@ -35,7 +35,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ProfilerOnRenderCallback, RefObject } from 'react';
-import { subscribeStageTimings } from '../../src/components/devStageTimings';
+import { subscribeStageTimings } from '@ai-react-markdown/engine';
 
 export interface ChunkSample {
   index: number;
