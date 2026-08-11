@@ -1,7 +1,7 @@
 'use client';
 
 import type { CSSProperties, ReactNode } from 'react';
-import { PIPELINE_STAGES } from '../../src/components/devStageTimings';
+import { PIPELINE_STAGES } from '@ai-react-markdown/engine';
 import type { RenderProfilerSnapshot } from './useRenderProfiler';
 import { getStreamingTheme, type ColorScheme } from './theme';
 

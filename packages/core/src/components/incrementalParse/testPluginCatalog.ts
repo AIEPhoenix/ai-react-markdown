@@ -20,7 +20,7 @@
 
 import { defListHastHandlers } from 'remark-definition-list';
 
-import { sanitizeSchema } from '../sanitizeSchema';
+import { sanitizeSchema } from '@ai-react-markdown/engine';
 import { buildCoreRehypePlugins, buildCoreRemarkPlugins } from '../pluginChain';
 import { buildCrossChunkHandlers } from '../customMdastHandlers';
 import { highlight, definitionList, removeComments, smartypants, pangu } from '../../plugins/catalog';

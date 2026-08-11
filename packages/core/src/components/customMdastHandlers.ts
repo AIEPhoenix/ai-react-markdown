@@ -21,7 +21,7 @@
 import type { Handlers } from 'mdast-util-to-hast';
 import type { LinkReference, ImageReference, FootnoteReference, FootnoteDefinition } from 'mdast';
 import type { Element as HastElement } from 'hast';
-import { normalizeId } from './normalizeId';
+import { normalizeId } from '@ai-react-markdown/engine';
 
 export interface CrossChunkHandlerOptions {
   /** Set of labels (already normalized) that this chunk phantom-injected

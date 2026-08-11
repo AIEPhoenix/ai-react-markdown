@@ -37,8 +37,8 @@
 
 import type { Element as HastElement } from 'hast';
 import type { UrlTransform } from './markdown';
-import type { SanitizeSchema } from './extendSanitizeSchema';
-import { sanitizeSchema as libraryDefaultSchema } from './sanitizeSchema';
+import type { SanitizeSchema } from '@ai-react-markdown/engine';
+import { sanitizeSchema as libraryDefaultSchema } from '@ai-react-markdown/engine';
 
 export type UrlAttrKey = 'href' | 'src';
 export type UrlAttrTag = 'a' | 'img';

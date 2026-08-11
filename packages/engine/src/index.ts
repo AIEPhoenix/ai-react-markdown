@@ -11,4 +11,14 @@
  * before 3.0.0.
  */
 
-export {};
+// ── M1: zero-dependency leaves ───────────────────────────────────────────
+export * from './components/normalizeId';
+export * from './components/shortenDocumentId';
+export * from './components/devStageTimings';
+export * from './components/sanitizeSchema';
+export * from './components/extendSanitizeSchema';
+export * from './components/smoothStream/controller';
+export * from './preprocessors/defs';
+export { default as preprocessAIMDContent } from './preprocessors';
+export * from './preprocessors/latex';
+export * from './preprocessors/remend';

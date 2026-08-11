@@ -18,7 +18,7 @@ import { expect, waitFor } from 'storybook/test';
 
 import AIMarkdown from '../../src/index';
 import { AIMarkdownDocuments } from '../../src/components/AIMarkdownDocuments';
-import { subscribeStageTimings } from '../../src/components/devStageTimings';
+import { subscribeStageTimings } from '@ai-react-markdown/engine';
 import { computeFreezeBoundary } from '../../src/components/incrementalParse';
 import { buildChunkSources, sliceChunkContents } from './crossChunkFixtures';
 import 'katex/dist/katex.min.css';

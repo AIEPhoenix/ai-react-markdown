@@ -26,7 +26,7 @@
  */
 
 import { sourceIdFromFootnoteLiId } from '../extractDefBodiesFromHast';
-import { normalizeId } from '../normalizeId';
+import { normalizeId } from '@ai-react-markdown/engine';
 
 const ELEMENT_NODE = 1;
 const TEXT_NODE = 3;

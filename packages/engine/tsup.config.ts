@@ -10,6 +10,7 @@ import { defineConfig, type Options } from 'tsup';
 const shared: Options = {
   format: ['cjs', 'esm'],
   sourcemap: true,
+  noExternal: ['lodash-es'],
   // NO `treeshake: true` here: tsup's rollup treeshake pass strips
   // module-level directives (verified in core), and the cost of the env
   // replacement leaving inert `if (false)` bodies is a few KB that never

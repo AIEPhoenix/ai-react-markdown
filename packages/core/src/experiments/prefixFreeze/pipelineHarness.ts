@@ -51,7 +51,7 @@ import {
   buildCoreRemarkPlugins,
   buildCoreRemarkRehypeOptions,
 } from '../../components/pluginChain';
-import { sanitizeSchema } from '../../components/sanitizeSchema';
+import { sanitizeSchema } from '@ai-react-markdown/engine';
 import { detectFreezeBoundaries, FREEZE_TIERS, type FreezeTier } from './detectFreezeBoundaries';
 
 export interface PipelineResult {

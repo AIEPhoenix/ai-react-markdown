@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useRef, type RefObject } from 'react';
 
-import { shortenDocumentId } from '../../src/components/shortenDocumentId';
+import { shortenDocumentId } from '@ai-react-markdown/engine';
 
 export interface DomEqualityStats {
   frames: number;
