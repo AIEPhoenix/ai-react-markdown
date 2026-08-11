@@ -11,6 +11,9 @@
  * before 3.0.0.
  */
 
+// ── Fixtures (boundary action ⑦) ─────────────────────────────────────────
+export * from './fixtures/scenarios';
+
 // ── M2: pipeline assembly ────────────────────────────────────────────────
 export * from './components/markdown';
 export * from './components/pluginChain';
