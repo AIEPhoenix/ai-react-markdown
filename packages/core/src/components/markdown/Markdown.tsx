@@ -24,11 +24,9 @@ import { jsx, jsxs } from 'react/jsx-runtime';
 import type { Processor } from 'unified';
 import { visit } from 'unist-util-visit';
 import type { VFile } from 'vfile';
+import { buildTransform, createFile, createProcessor, defaultUrlTransform } from '@ai-react-markdown/engine';
 import { cloneHastForRender } from '../cloneHastForRender';
-import { createFile, createProcessor } from './processor';
-import { buildTransform } from './transform';
 import type { Deprecation, Options } from './types';
-import { defaultUrlTransform } from './urlTransform';
 
 const changelog = 'https://github.com/remarkjs/react-markdown/blob/main/changelog.md';
 

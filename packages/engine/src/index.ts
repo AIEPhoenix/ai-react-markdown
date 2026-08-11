@@ -11,6 +11,9 @@
  * before 3.0.0.
  */
 
+// ── M2: pipeline assembly ────────────────────────────────────────────────
+export * from './components/markdown';
+
 // ── M1: zero-dependency leaves ───────────────────────────────────────────
 export * from './components/hastPredicates';
 export * from './components/normalizeId';
