@@ -90,6 +90,7 @@
     }
   },
   "dependencies": {
+    "@ai-react-markdown/engine": "workspace:*",
     "@ai-react-markdown/remark-mark-highlight": "workspace:^",
     "@types/hast": "^3.0.5",
     "devlop": "^1.1.0",

@@ -5,7 +5,13 @@ import { defineConfig, type Options } from 'tsup';
 const shared: Options = {
   format: ['cjs', 'esm'],
   sourcemap: true,
-  external: ['react', 'react-dom'],
+  // `@ai-react-markdown/engine` is external as a drift guard, not because
+  // tsup would otherwise inline it (deps are auto-externalized): if a future
+  // noExternal pattern ever catches it, engine's module-level state
+  // (documentRegistry etc.) would be double-instantiated — a correctness
+  // bug that only surfaces in real distribution, never in the workspace.
+  // assert-dist-clean.mjs holds the matching dist-side assertion.
+  external: ['react', 'react-dom', '@ai-react-markdown/engine'],
   noExternal: ['lodash-es'],
   // NO `treeshake: true` here: tsup's rollup treeshake pass strips the
   // module-level "use client" directive (verified), which would break RSC
