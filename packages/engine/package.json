@@ -1,0 +1,57 @@
+{
+  "name": "@ai-react-markdown/engine",
+  "version": "2.2.1",
+  "description": "Framework-agnostic Markdown engine for ai-react-markdown — incremental parsing, LaTeX preprocessing, and the unified plugin pipeline. Internal supplier for @ai-react-markdown/core; no public API stability promised before 3.0.0.",
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "license": "MIT",
+  "author": "Brian Lee <aiephoenixbl@gmail.com> (https://github.com/AIEPhoenix)",
+  "homepage": "https://github.com/AIEPhoenix/ai-react-markdown/tree/main/packages/engine#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AIEPhoenix/ai-react-markdown.git",
+    "directory": "packages/engine"
+  },
+  "bugs": {
+    "url": "https://github.com/AIEPhoenix/ai-react-markdown/issues"
+  },
+  "keywords": [
+    "markdown",
+    "ai",
+    "llm",
+    "streaming",
+    "incremental",
+    "remark",
+    "rehype",
+    "unified",
+    "hast"
+  ],
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": {
+        "import": "./dist/index.d.ts",
+        "require": "./dist/index.d.cts"
+      },
+      "development": {
+        "import": "./dist/index.dev.js",
+        "require": "./dist/index.dev.cjs"
+      },
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsup && node scripts/assert-dist-clean.mjs",
+    "test": "vitest --run --passWithNoTests",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}
