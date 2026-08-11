@@ -1,8 +1,8 @@
 import { describe, test, expect, vi } from 'vitest';
 import { renderToString } from 'react-dom/server';
 import { AIMarkdownDocuments, useDocumentRegistry, __internalGetContext } from './AIMarkdownDocuments';
-import type { Registry } from './documentRegistry';
-import * as registryModule from './documentRegistry';
+import type { Registry } from '@ai-react-markdown/engine';
+import * as registryModule from '@ai-react-markdown/engine';
 import { FootnoteSupNumber } from './crossChunkPlaceholders';
 import AIMarkdownProvider from '../context';
 

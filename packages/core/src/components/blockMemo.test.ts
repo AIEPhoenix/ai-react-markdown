@@ -34,7 +34,7 @@ import {
   type Cache,
   type PostOptions,
 } from './blockMemo';
-import { createRegistry, type Registry } from './documentRegistry';
+import { createRegistry, type Registry } from '@ai-react-markdown/engine';
 
 interface PipelineOptions {
   removeComments?: boolean;

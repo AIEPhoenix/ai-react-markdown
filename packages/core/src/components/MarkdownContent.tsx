@@ -53,23 +53,23 @@ import {
   buildCoreRemarkPlugins,
   buildCoreRemarkRehypeOptions,
 } from '@ai-react-markdown/engine';
-import { advanceIncrementalParse, type IncrementalParseState } from './incrementalParse';
+import { advanceIncrementalParse, type IncrementalParseState } from '@ai-react-markdown/engine';
 import { measureStage } from '@ai-react-markdown/engine';
 import { useAIMarkdownDocument, useAIMarkdownState } from '../context';
 import { deriveTailSignal } from './streamingCursor/tailSignal';
 import { AIMarkdownCustomComponents } from '../defs';
 import type { AIMarkdownEnginePlugin } from '@ai-react-markdown/engine';
-import { collectDefLabels, createDefLabelScanner, type DefLabelScanner } from './collectDefLabels';
+import { collectDefLabels, createDefLabelScanner, type DefLabelScanner } from '@ai-react-markdown/engine';
 import { useDocumentRegistry, usePreserveOrphanReferences } from './AIMarkdownDocuments';
-import type { RegistryInternal } from './documentRegistry';
+import type { RegistryInternal } from '@ai-react-markdown/engine';
 import type { SanitizeSchema } from '@ai-react-markdown/engine';
 import { buildPhantomSuffix } from '@ai-react-markdown/engine';
 import { buildCrossChunkHandlers } from '@ai-react-markdown/engine';
 import { normalizeForMatch } from '@ai-react-markdown/engine';
 import { crossChunkComponents } from './crossChunkPlaceholders';
 import { CrossChunkUrlContext, type CrossChunkUrlPolicy } from './crossChunkUrlContext';
-import { extractContributions } from './extractContributions';
-import { extractDefBodiesFromHast } from './extractDefBodiesFromHast';
+import { extractContributions } from '@ai-react-markdown/engine';
+import { extractDefBodiesFromHast } from '@ai-react-markdown/engine';
 import { AggregateFootnotesIfLast } from './aggregateFootnotesIfLast';
 import { ChunkSymbolContext } from './chunkSymbolContext';
 import type { ElementContent as HastElementContent } from 'hast';

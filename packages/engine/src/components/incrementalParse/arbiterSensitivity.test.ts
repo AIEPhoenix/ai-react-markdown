@@ -21,7 +21,7 @@
 import { describe, expect, test, vi } from 'vitest';
 import isEqual from 'lodash-es/isEqual';
 
-import { DEFAULT_PAYLOAD } from '../../../stories/streaming/scenarios';
+import { DEFAULT_PAYLOAD } from '../../fixtures/scenarios';
 import { advanceIncrementalParse, type IncrementalParseState } from './advanceIncrementalParse';
 import { buildAdvanceOptions, CATALOG } from './testPluginCatalog';
 import { assertStreamEquivalence, runFull } from './spliceArbiterHarness';

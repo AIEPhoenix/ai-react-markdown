@@ -22,7 +22,7 @@
 
 import { describe, expect, test } from 'vitest';
 
-import { DEFAULT_PAYLOAD, withDefs } from '../../../stories/streaming/scenarios';
+import { DEFAULT_PAYLOAD, withDefs } from '../../fixtures/scenarios';
 import { detectFreezeBoundaries } from '../../experiments/prefixFreeze/detectFreezeBoundaries';
 import { computeFreezeBoundary } from './computeFreezeBoundary';
 

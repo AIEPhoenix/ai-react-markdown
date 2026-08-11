@@ -47,7 +47,7 @@
 import type { Root as HastRoot } from 'hast';
 import type { Root as MdastRoot } from 'mdast';
 
-import { parseStage, transformStage, type Options as MarkdownOptions } from '../markdown';
+import { parseStage, transformStage, type PipelineOptions as MarkdownOptions } from '../markdown';
 import { computeFreezeBoundary, type FreezeScanCheckpoint } from './computeFreezeBoundary';
 import {
   buildInjectionPrefix,

@@ -744,4 +744,4 @@ export type { AIMarkdownDocumentsProps } from './components/AIMarkdownDocuments'
 // Registry types — consumers writing typed helpers around useDocumentRegistry
 // (`function helper(r: Registry)`) need these. The Registry shape itself is a
 // public contract: we maintain backwards compat across minor versions.
-export type { Registry, ChunkData, FootnoteDef, LinkDef, RefRecord, RefKind } from './components/documentRegistry';
+export type { Registry, ChunkData, FootnoteDef, LinkDef, RefRecord, RefKind } from '@ai-react-markdown/engine';

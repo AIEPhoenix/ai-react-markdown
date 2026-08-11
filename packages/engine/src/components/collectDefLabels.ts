@@ -15,7 +15,7 @@ import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
 import { visit } from 'unist-util-visit';
 import type { Root as MdastRoot } from 'mdast';
-import { normalizeId } from '@ai-react-markdown/engine';
+import { normalizeId } from './normalizeId';
 import { computeFreezeBoundary, type FreezeScanCheckpoint } from './incrementalParse/computeFreezeBoundary';
 
 /**

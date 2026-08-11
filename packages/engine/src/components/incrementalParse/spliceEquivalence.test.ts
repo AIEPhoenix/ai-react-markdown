@@ -21,7 +21,7 @@
 
 import { describe, expect, test } from 'vitest';
 
-import { DEFAULT_PAYLOAD, withDefs } from '../../../stories/streaming/scenarios';
+import { DEFAULT_PAYLOAD, withDefs } from '../../fixtures/scenarios';
 import { collectPrefixInjection, type InjectionEvent } from './spliceParse';
 import { advanceIncrementalParse, type IncrementalParseState } from './advanceIncrementalParse';
 import { buildAdvanceOptions, buildCrossChunkAdvanceOptions, CATALOG, type CatalogConfig } from './testPluginCatalog';

@@ -28,7 +28,7 @@ import { memo, useMemo, type FC } from 'react';
 import type { Element as HastElement, ElementContent as HastElementContent } from 'hast';
 import { renderHastSubtree } from './markdown';
 import { cloneHastForRender } from './cloneHastForRender';
-import type { Registry } from './documentRegistry';
+import type { Registry } from '@ai-react-markdown/engine';
 import type { PostOptions } from './blockMemo';
 
 interface AggregateFootnotesIfLastProps {

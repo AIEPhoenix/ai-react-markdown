@@ -11,7 +11,7 @@
  * @module components/AIMarkdownDocuments
  */
 import { createContext, useContext, useMemo, useRef, type PropsWithChildren, type FC } from 'react';
-import { createRegistry, type Registry, type RegistryInternal } from './documentRegistry';
+import { createRegistry, type Registry, type RegistryInternal } from '@ai-react-markdown/engine';
 import {
   createSmoothCoordinator,
   SmoothCoordinatorContext,

@@ -269,6 +269,12 @@ importers:
       mdast-util-to-hast:
         specifier: ^13.2.1
         version: 13.2.1
+      micromark-util-html-tag-name:
+        specifier: ^2.0.1
+        version: 2.0.1
+      micromark-util-normalize-identifier:
+        specifier: ^2.0.1
+        version: 2.0.1
       rehype-katex:
         specifier: ^7.0.1
         version: 7.0.1
@@ -333,9 +339,21 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
     devDependencies:
+      '@stryker-mutator/core':
+        specifier: ^9.6.1
+        version: 9.6.1(@types/node@25.9.5)
+      '@stryker-mutator/vitest-runner':
+        specifier: ^9.6.1
+        version: 9.6.1(@stryker-mutator/core@9.6.1(@types/node@25.9.5))(vitest@4.1.10)
       '@types/lodash-es':
         specifier: ^4.17.12
         version: 4.17.12
+      '@types/unist':
+        specifier: ^3.0.3
+        version: 3.0.3
+      fast-check:
+        specifier: ^4.9.0
+        version: 4.9.0
       hast-util-sanitize:
         specifier: ^5.0.2
         version: 5.0.2

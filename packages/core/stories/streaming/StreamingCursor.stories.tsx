@@ -28,7 +28,7 @@ import AIMarkdown, {
 import 'katex/dist/katex.min.css';
 import '../../src/components/typography/variants/all.scss';
 import { withThemedBackground } from '../decorators';
-import { codePointSnapshots } from '../../src/components/incrementalParse/codePointSnapshots';
+import { codePointSnapshots } from '@ai-react-markdown/engine';
 
 const CHUNK_CODE_POINTS = 7;
 const FRAME_INTERVAL_MS = 15;

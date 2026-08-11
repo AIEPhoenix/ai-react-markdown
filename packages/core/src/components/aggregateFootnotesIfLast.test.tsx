@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { createRegistry } from './documentRegistry';
+import { createRegistry } from '@ai-react-markdown/engine';
 import { AggregateFootnotesIfLast } from './aggregateFootnotesIfLast';
 import type { PostOptions } from './blockMemo';
 import type { ElementContent as HastElementContent } from 'hast';
