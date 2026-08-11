@@ -8,6 +8,7 @@
  */
 
 export { createFile, createProcessor } from './processor';
+export { parseStage, transformStage, type ParsedMarkdown } from './stages';
 export { buildTransform, type TransformContext } from './transform';
 export { defaultUrlTransform } from './urlTransform';
 export type { AllowElement, Deprecation, PipelineOptions, UrlTransform } from './types';
