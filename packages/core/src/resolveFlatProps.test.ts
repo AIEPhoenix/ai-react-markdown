@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { resolveEngineValues, sanitizeEnginePlugins } from './resolveFlatProps';
-import { highlight, definitionList, smartypants, pangu, removeComments, defaultEnginePlugins } from './plugins/catalog';
+import {
+  highlight,
+  definitionList,
+  smartypants,
+  pangu,
+  removeComments,
+  defaultEnginePlugins,
+} from '@ai-react-markdown/engine';
 
 afterEach(() => {
   vi.restoreAllMocks();

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { defineBehaviors, definePipeline, defineTheme } from './define';
-import { highlight } from './plugins/catalog';
+import { highlight } from '@ai-react-markdown/engine';
 
 describe('define* factories — identity + types + freeze, zero logic', () => {
   test('defineTheme returns the same object, frozen, without filling defaults', () => {

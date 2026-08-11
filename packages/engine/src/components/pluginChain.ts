@@ -36,10 +36,10 @@ import remarkSmartypants from 'remark-smartypants';
 import remarkPangu from 'remark-pangu';
 import remarkRemoveComments from 'remark-remove-comments';
 
-import type { Options as MarkdownOptions } from './markdown';
+import type { PipelineOptions as MarkdownOptions } from './markdown';
 import rehypeRebaseHashLinks from './rehypeRebaseHashLinks';
 import rehypeFooterAdorn from './rehypeFooterAdorn';
-import type { SanitizeSchema } from '@ai-react-markdown/engine';
+import type { SanitizeSchema } from './extendSanitizeSchema';
 import type { AIMarkdownEnginePlugin, AIMarkdownEnginePluginName } from '../plugins/defs';
 
 export type RemarkPlugins = NonNullable<MarkdownOptions['remarkPlugins']>;

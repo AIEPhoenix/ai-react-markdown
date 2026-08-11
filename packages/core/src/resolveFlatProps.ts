@@ -18,8 +18,8 @@
  * @module resolveFlatProps
  */
 
-import { defaultEnginePlugins } from './plugins/catalog';
-import { getEnginePluginInternals, type AIMarkdownEnginePlugin } from './plugins/defs';
+import { defaultEnginePlugins } from '@ai-react-markdown/engine';
+import { getEnginePluginInternals, type AIMarkdownEnginePlugin } from '@ai-react-markdown/engine';
 
 /** Module-scope dev flag — resolved at build time (see `useReferenceFlipWarning`'s docblock). */
 const __DEV__ = process.env.NODE_ENV !== 'production';

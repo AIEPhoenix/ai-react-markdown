@@ -21,7 +21,7 @@ import { VFile } from 'vfile';
 import type { Element as HastElement, Root as HastRoot } from 'hast';
 import type { Root as MdastRoot } from 'mdast';
 import { sanitizeSchema } from '@ai-react-markdown/engine';
-import rehypeRebaseHashLinks from './rehypeRebaseHashLinks';
+import { rehypeRebaseHashLinks } from '@ai-react-markdown/engine';
 import { createElement, Fragment, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import {

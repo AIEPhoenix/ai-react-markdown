@@ -50,7 +50,7 @@ import {
   buildCoreRehypePlugins,
   buildCoreRemarkPlugins,
   buildCoreRemarkRehypeOptions,
-} from '../../components/pluginChain';
+} from '@ai-react-markdown/engine';
 import { sanitizeSchema } from '@ai-react-markdown/engine';
 import { detectFreezeBoundaries, FREEZE_TIERS, type FreezeTier } from './detectFreezeBoundaries';
 

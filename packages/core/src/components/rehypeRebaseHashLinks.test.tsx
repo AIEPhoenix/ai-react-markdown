@@ -8,7 +8,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, test } from 'vitest';
 import AIMarkdown, { extendSanitizeSchema } from '../index';
-import rehypeRebaseHashLinks from './rehypeRebaseHashLinks';
+import { rehypeRebaseHashLinks } from '@ai-react-markdown/engine';
 import type { Element, Root } from 'hast';
 
 // Pin a deterministic documentId across the integration tests so we can
