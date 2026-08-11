@@ -23,7 +23,7 @@ import type { ReactNode } from 'react';
 import { visit } from 'unist-util-visit';
 import { renderHastSubtree, type Options } from './markdown';
 import { isFootnoteSection, normalizeId } from '@ai-react-markdown/engine';
-import type { Registry } from './documentRegistry';
+import type { Registry } from '@ai-react-markdown/engine';
 
 /**
  * mdast types whose presence in a block makes that block dependent on

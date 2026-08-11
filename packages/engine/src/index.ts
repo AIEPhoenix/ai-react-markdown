@@ -14,6 +14,14 @@
 // ── Fixtures (boundary action ⑦) ─────────────────────────────────────────
 export * from './fixtures/scenarios';
 
+// ── M3: incremental-parse engine + definition machinery ──────────────────
+export * from './components/incrementalParse';
+export { codePointSnapshots } from './components/incrementalParse/codePointSnapshots';
+export * from './components/collectDefLabels';
+export * from './components/extractDefBodiesFromHast';
+export * from './components/extractContributions';
+export * from './components/documentRegistry';
+
 // ── M2: pipeline assembly ────────────────────────────────────────────────
 export * from './components/markdown';
 export * from './components/pluginChain';

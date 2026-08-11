@@ -28,7 +28,7 @@
 import type { Root as HastRoot } from 'hast';
 import type { Root as MdastRoot } from 'mdast';
 
-import { isFootnoteSection } from '@ai-react-markdown/engine';
+import { isFootnoteSection } from '../hastPredicates';
 
 export function attributeHastChildren(mdast: MdastRoot, hast: HastRoot, stopAt = Infinity): number[] {
   const mdastStarts: number[] = [];

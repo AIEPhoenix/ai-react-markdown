@@ -21,7 +21,7 @@ import { expect } from 'vitest';
 import isEqual from 'lodash-es/isEqual';
 
 import { parseStage, transformStage } from '../markdown';
-import { buildPhantomSuffix } from '@ai-react-markdown/engine';
+import { buildPhantomSuffix } from '../remarkInjectPhantomDefs';
 import { advanceIncrementalParse, type AdvanceOptions, type IncrementalParseState } from './advanceIncrementalParse';
 import { buildAdvanceOptions, type CatalogConfig } from './testPluginCatalog';
 

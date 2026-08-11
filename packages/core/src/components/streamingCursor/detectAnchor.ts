@@ -25,7 +25,7 @@
  * @module components/streamingCursor/detectAnchor
  */
 
-import { sourceIdFromFootnoteLiId } from '../extractDefBodiesFromHast';
+import { sourceIdFromFootnoteLiId } from '@ai-react-markdown/engine';
 import { normalizeId } from '@ai-react-markdown/engine';
 
 const ELEMENT_NODE = 1;

@@ -16,8 +16,8 @@
 import { SKIP, visit } from 'unist-util-visit';
 import type { Root as MdastRoot } from 'mdast';
 import type { Element as HastElement } from 'hast';
-import { normalizeId } from '@ai-react-markdown/engine';
-import { SENTINEL_LINK_URL } from '@ai-react-markdown/engine';
+import { normalizeId } from './normalizeId';
+import { SENTINEL_LINK_URL } from './remarkInjectPhantomDefs';
 import type { UrlTransform } from './markdown';
 
 export type Contribution =

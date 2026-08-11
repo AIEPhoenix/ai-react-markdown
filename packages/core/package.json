@@ -1,7 +1,7 @@
 {
   "name": "@ai-react-markdown/core",
   "version": "2.2.1",
-  "description": "Core rendering engine for ai-react-markdown — LaTeX preprocessing, plugin pipeline, and React components.",
+  "description": "Core rendering engine for ai-react-markdown \u2014 LaTeX preprocessing, plugin pipeline, and React components.",
   "publishConfig": {
     "access": "public"
   },
@@ -75,9 +75,7 @@
     "build:css": "sass src/components/typography/variants/:dist/typography/ && postcss dist/typography/*.css --replace",
     "build": "pnpm run build:js && pnpm run build:css",
     "test": "vitest --run",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
-    "fuzz:splice": "vitest --run src/components/incrementalParse/spliceFuzz.test.ts",
-    "soak": "./scripts/run-soak.sh"
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "peerDependencies": {
     "katex": "^0.16.0 || ^0.17.0",

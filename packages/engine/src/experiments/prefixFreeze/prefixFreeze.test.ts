@@ -20,7 +20,7 @@
 
 import { describe, expect, test } from 'vitest';
 
-import { DEFAULT_PAYLOAD, withDefs } from '../../../stories/streaming/scenarios';
+import { DEFAULT_PAYLOAD, withDefs } from '../../fixtures/scenarios';
 import { FREEZE_TIERS, type FreezeTier } from './detectFreezeBoundaries';
 import { simulateStream, type SimulationReport } from './pipelineHarness';
 

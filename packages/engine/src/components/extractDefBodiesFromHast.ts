@@ -24,7 +24,7 @@
  */
 import { SKIP, visit } from 'unist-util-visit';
 import type { Element as HastElement, Root as HastRoot, ElementContent } from 'hast';
-import { normalizeId } from '@ai-react-markdown/engine';
+import { normalizeId } from './normalizeId';
 
 // Fallback for callers that do not know the exact clobberPrefix. The main
 // renderer passes the prefix explicitly so labels containing regex metacharacters

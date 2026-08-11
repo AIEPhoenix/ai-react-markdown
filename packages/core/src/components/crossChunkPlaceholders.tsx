@@ -19,7 +19,7 @@ import { CrossChunkUrlContext } from './crossChunkUrlContext';
 import { sanitizeCrossChunkUrl } from '@ai-react-markdown/engine';
 import { defaultUrlTransform } from './markdown';
 import { sanitizeSchema as defaultSanitizeSchema } from '@ai-react-markdown/engine';
-import type { LinkDef } from './documentRegistry';
+import type { LinkDef } from '@ai-react-markdown/engine';
 
 type RefType = 'full' | 'collapsed' | 'shortcut' | undefined;
 

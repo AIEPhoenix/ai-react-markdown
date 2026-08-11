@@ -19,14 +19,14 @@ import { expect, waitFor } from 'storybook/test';
 import AIMarkdown from '../../src/index';
 import { AIMarkdownDocuments } from '../../src/components/AIMarkdownDocuments';
 import { subscribeStageTimings } from '@ai-react-markdown/engine';
-import { computeFreezeBoundary } from '../../src/components/incrementalParse';
+import { computeFreezeBoundary } from '@ai-react-markdown/engine';
 import { buildChunkSources, sliceChunkContents } from './crossChunkFixtures';
 import 'katex/dist/katex.min.css';
 import '../../src/components/typography/variants/all.scss';
 import { withThemedBackground } from '../decorators';
 import { getStreamingTheme } from './theme';
 import { DEFAULT_PAYLOAD, withDefs } from './scenarios';
-import { codePointSnapshots } from '../../src/components/incrementalParse/codePointSnapshots';
+import { codePointSnapshots } from '@ai-react-markdown/engine';
 import { normalizeClobberPrefix, useDomEqualityStats } from './useDomEqualityStats';
 
 /** Shared documentId so both sides emit identical clobber-prefixed ids. */

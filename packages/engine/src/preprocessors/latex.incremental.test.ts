@@ -6,7 +6,7 @@
  * with 1-char chunking that splits every straddle-able token.
  */
 import { describe, expect, test } from 'vitest';
-import { preprocessLaTeX, createIncrementalLatexPreprocessor } from '@ai-react-markdown/engine';
+import { preprocessLaTeX, createIncrementalLatexPreprocessor } from './latex';
 import { testEnv } from '../components/incrementalParse/spliceArbiterHarness';
 
 /** Replay `chunks` as an append stream, asserting byte-equality per step.
