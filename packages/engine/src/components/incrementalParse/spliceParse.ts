@@ -440,6 +440,23 @@ export function spliceTrees(input: SpliceInput): { mdast: MdastRoot; hast: HastR
       isTrailingLiteralText(node)
     ) {
       cutRegion.push(node);
+      break;
+    }
+    // Stripped-construct remnant look-ahead (seeds 20260821/20260893): a
+    // position-less NON-whitespace text in the run right past the cut
+    // point is a stripped construct's remnant, and its owner carries no
+    // position. If the owner is fully FROZEN, the tail re-parse cannot
+    // reproduce the text and the model below would synthesize its gap
+    // slot as a plain '\n' — swallowing it (`<?instr <b> ?> after the pi`
+    // froze three blocks back; sanitize stripped the bogus comment and
+    // left ` ?> after the pi\n` behind). If tail-owned, freezing it here
+    // would duplicate it. Ownership is undecidable — bail to a full
+    // parse. The scan stops at the first element or positioned node:
+    // remnants further out belong to blocks the tail re-parses anyway.
+    for (let j = i; j < prevHast.children.length; j++) {
+      const look = prevHast.children[j];
+      if (look.type === 'element' || look.position !== undefined) break;
+      if (isTrailingLiteralText(look)) return null;
     }
     break;
   }
@@ -463,8 +480,10 @@ export function spliceTrees(input: SpliceInput): { mdast: MdastRoot; hast: HastR
   // Align the cut region against the prefix mdast (stripped-node aware) and
   // rebuild its trailing separators. Bails null on any layout the model
   // does not cover — the caller falls back to a full parse for the frame.
-  const hastChildren = alignPrefixCut(prefixMdast, cutRegion, tailWrapVisible);
-  if (hastChildren === null) return null;
+  const aligned = alignPrefixCut(prefixMdast, cutRegion, tailWrapVisible);
+  if (aligned === null) return null;
+  const hastChildren = aligned.children;
+  const interiorFinalLiteral = aligned.interiorFinalLiteral;
 
   // --- tail: strip the injected region's hast, then re-base ---
   const stripResult = stripInjectedHast(tailMdast, tailHast, injectedLen, tailWrapVisible);
@@ -512,6 +531,21 @@ export function spliceTrees(input: SpliceInput): { mdast: MdastRoot; hast: HastR
       return null;
     }
     if (firstTailChild && tailEnd && tailEnd.type === 'text' && child.type === 'text' && child.position === undefined) {
+      // Interior-literal gate (seed-20260838, join side): when the cut
+      // ends in an INTERIOR raw literal (classified by alignPrefixCut —
+      // its stripped following sibling kept it un-merged at reparse
+      // time), the full parse keeps it verbatim with a SEPARATE
+      // separator after it, never merged. Push the tail child as its own
+      // node; a hoist-merge verdict against it is out of model — bail.
+      // Block-final positioned literals do NOT take this path: the full
+      // parse merges them with the seam separator exactly like the
+      // position-less artifacts this branch models.
+      if (interiorFinalLiteral && tailEnd.value.trim() !== '') {
+        if (seamMergeAllowed) return null;
+        firstTailChild = false;
+        hastChildren.push(child);
+        continue;
+      }
       // A trailing html-block literal absorbs adjacent tail text the same
       // way (footer separator of an all-invisible tail — no wrap slot sat
       // between them at reparse time), and the merge drops the source
@@ -610,7 +644,7 @@ function alignPrefixCut(
   prefixMdast: MdastContent[],
   cutRegion: HastContent[],
   tailWrapVisible: boolean
-): HastContent[] | null {
+): { children: HastContent[]; interiorFinalLiteral: boolean } | null {
   const visibles = prefixMdast.filter((c) => !isWrapInvisible(c));
 
   const out: HastContent[] = [];
@@ -736,11 +770,41 @@ function alignPrefixCut(
   // join merges the tail's own leading text back in. Stripped children
   // after a trailing literal are out of model — bail to the full parse.
   const last = out[out.length - 1];
-  if (last !== undefined && last.type === 'text' && last.value.trim() !== '') {
+  // Interior-literal gate (seed-20260838): this branch models BLOCK-FINAL
+  // literals — the ones the full parse merges with the seam separator
+  // (position dropped). A POSITIONED literal whose source ends BEFORE its
+  // owner html node's end is an INTERIOR raw literal: a sanitize-stripped
+  // sibling (`</details>` text `<embed/>`) followed it at reparse time, so
+  // the full parse keeps it verbatim — positioned, un-merged, with its own
+  // separator. Route those to the plain-slot rebuild (and tell the join to
+  // keep its hands off — see `interiorFinalLiteral`). A positioned literal
+  // whose end EQUALS the owner's end is block-final like the position-less
+  // ones and stays in this branch (first freeze straight from a full-parse
+  // tree — later frames see the merged, position-less artifact).
+  const lastIsLiteral = last !== undefined && last.type === 'text' && last.value.trim() !== '';
+  const litOwnerEnd = pairIdx >= 0 ? visibles[pairIdx].position?.end?.offset : undefined;
+  const litEnd = lastIsLiteral ? last.position?.end?.offset : undefined;
+  if (lastIsLiteral && last.position !== undefined && (litEnd === undefined || litOwnerEnd === undefined)) {
+    // Positioned literal with an unclassifiable owner — out of model.
+    return null;
+  }
+  const interiorFinalLiteral =
+    lastIsLiteral && litEnd !== undefined && litOwnerEnd !== undefined && litEnd < litOwnerEnd;
+  if (lastIsLiteral && !interiorFinalLiteral) {
     if (trailingGaps > 0 || sepBuffer.length > 0) return null;
     const body = last.value.replace(/\n+$/, '');
+    if (last.position !== undefined && body !== last.value) {
+      // A positioned block-final literal never carries trailing newlines
+      // (its source ends at line content; merges drop the position) — a
+      // trailing '\n' here is out of model.
+      return null;
+    }
     if (seam > 0) {
       out[out.length - 1] = { type: 'text', value: `${body}\n` };
+    } else if (last.position !== undefined) {
+      // Positioned block-final literal fresh from a full-parse tree: its
+      // own position IS the source truth — keep the node verbatim (the
+      // trailing-'\n' guard above proved body === value).
     } else {
       // Document-final literal (nothing wrap-visible follows): hast-util-raw
       // keeps its SOURCE position — [previous element's end, owner html
@@ -756,7 +820,7 @@ function alignPrefixCut(
       if (!start || !end) return null;
       out[out.length - 1] = { type: 'text', value: body, position: { start, end } };
     }
-    return out;
+    return { children: out, interiorFinalLiteral: false };
   }
 
   // A trailing separator whose value is not a PLAIN '\n' carries a merged
@@ -787,7 +851,7 @@ function alignPrefixCut(
   for (let i = 0; i < trailingGaps + seam; i++) {
     out.push({ type: 'text', value: '\n' });
   }
-  return out;
+  return { children: out, interiorFinalLiteral };
 }
 
 /**
