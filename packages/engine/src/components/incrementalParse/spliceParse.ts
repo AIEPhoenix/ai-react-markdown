@@ -440,6 +440,12 @@ export function spliceTrees(input: SpliceInput): { mdast: MdastRoot; hast: HastR
       isTrailingLiteralText(node)
     ) {
       cutRegion.push(node);
+      // NOTE: this break skips the remnant look-ahead below. Safe today
+      // because a frozen stripped construct AFTER a pushed trailing
+      // literal always leaves an orphan separator that alignPrefixCut's
+      // block-final branch rejects via `trailingGaps > 0 || sepBuffer` —
+      // a NON-LOCAL invariant: loosening that bail re-opens the swallow
+      // through this path (final-review cross-reference).
       break;
     }
     // Stripped-construct remnant look-ahead (seeds 20260821/20260893): a
@@ -788,9 +794,23 @@ function alignPrefixCut(
     // Positioned literal with an unclassifiable owner — out of model.
     return null;
   }
+  if (litEnd !== undefined && litOwnerEnd !== undefined && litEnd > litOwnerEnd) {
+    // A positioned literal extending PAST its owner is unreachable by the
+    // model (positioned ⟹ never merged ⟹ span stays inside the owner) —
+    // if it ever shows up the model diverged, and folding it into the
+    // block-final branch would merge bytes we cannot account for. Bail
+    // explicitly: "unreachable" becomes "safe when reached" (final-review
+    // MINOR, echoing the first-fix regression lesson).
+    return null;
+  }
   const interiorFinalLiteral =
     lastIsLiteral && litEnd !== undefined && litOwnerEnd !== undefined && litEnd < litOwnerEnd;
   if (lastIsLiteral && !interiorFinalLiteral) {
+    // This bail is also the backstop for the cut loop's trailing-literal
+    // break path (see the cross-reference note there): a frozen stripped
+    // construct after the literal surfaces here as trailing gaps or a
+    // leftover separator run. Do not loosen without restoring a remnant
+    // check at the cut.
     if (trailingGaps > 0 || sepBuffer.length > 0) return null;
     const body = last.value.replace(/\n+$/, '');
     if (last.position !== undefined && body !== last.value) {

@@ -51,7 +51,7 @@
   },
   "scripts": {
     "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsup && node scripts/assert-dist-clean.mjs",
-    "test": "vitest --run --passWithNoTests",
+    "test": "vitest --run",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "fuzz:splice": "vitest --run src/components/incrementalParse/spliceFuzz.test.ts",
     "soak": "./scripts/run-soak.sh"
