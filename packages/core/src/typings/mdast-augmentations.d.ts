@@ -7,7 +7,7 @@
  * types like `'math'` that only exist via augmentation.
  *
  * Type-only imports — zero runtime bytes; the packages remain declared in
- * core's dependencies.
+ * core's devDependencies (internal type-graph consumption only).
  */
 
 import type {} from 'remark-math';
