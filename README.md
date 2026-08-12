@@ -65,7 +65,9 @@ This library is opinionated around those problems. Out of the box you get safe L
 
 ## Installation
 
-### Core (framework-agnostic)
+### Core (React, any UI library)
+
+`@ai-react-markdown/engine` comes along as a pinned transitive dependency — you never install or declare it yourself.
 
 ```bash
 # npm
@@ -88,15 +90,15 @@ pnpm add @ai-react-markdown/mantine @ai-react-markdown/core \
 
 ### Peer Dependencies
 
-| Peer                      | Required by                                    | Version                |
-| ------------------------- | ---------------------------------------------- | ---------------------- |
-| `react` / `react-dom`     | both packages                                  | `>=19.0.0`             |
-| `katex`                   | `core` (optional — only if you import its CSS) | `^0.16.0 \|\| ^0.17.0` |
-| `@mantine/core`           | `mantine`                                      | `^9.0.0`               |
-| `@mantine/code-highlight` | `mantine`                                      | `^9.0.0`               |
-| `highlight.js`            | `mantine`                                      | `^11.11.1`             |
+| Peer                      | Required by                                            | Version                |
+| ------------------------- | ------------------------------------------------------ | ---------------------- |
+| `react` / `react-dom`     | `core`, `mantine`                                      | `>=19.0.0`             |
+| `katex`                   | `core` + `engine` (optional — only if you render math) | `^0.16.0 \|\| ^0.17.0` |
+| `@mantine/core`           | `mantine`                                              | `^9.0.0`               |
+| `@mantine/code-highlight` | `mantine`                                              | `^9.0.0`               |
+| `highlight.js`            | `mantine`                                              | `^11.11.1`             |
 
-> `katex` is an **optional peer**. It ships transitively via `rehype-katex`, so hoisted installers (npm, yarn classic, default pnpm) resolve `'katex/dist/katex.min.css'` automatically. Strict-isolation installers (yarn PnP, `pnpm --node-linker=isolated`) must install it explicitly. Skip this only if you never render math.
+> `katex` is an **optional peer**, declared by both `core` and `engine` (the engine owns the `rehype-katex` step, core owns the CSS contract). It ships transitively via `rehype-katex`, so hoisted installers (npm, yarn classic, default pnpm) resolve `'katex/dist/katex.min.css'` automatically. Strict-isolation installers (yarn PnP, `pnpm --node-linker=isolated`) must install it explicitly, in your own app — not alongside the engine. Skip this only if you never render math.
 
 ### React version & framework compatibility
 

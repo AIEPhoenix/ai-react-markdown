@@ -85,6 +85,9 @@ The library follows semver:
 | `UrlTransform`, `SanitizeSchema` types                                                                               | Track upstream `react-markdown` / `rehype-sanitize`; may change with their majors |
 | `Registry` interface                                                                                                 | Stable read-only surface; mutator methods are intentionally not exported          |
 | Internal byte-for-byte HTML output                                                                                   | Not stable — never assert on raw HTML; use semantic queries                       |
+| Everything exported by `@ai-react-markdown/engine`                                                                   | **Not stable before 3.0.0** — see below                                           |
+
+**On `@ai-react-markdown/engine`.** Since 2.3.0 the Markdown engine ships as its own package. It is public on npm because `@ai-react-markdown/core` depends on it, not because it is a product: its export surface tracks whatever core happens to consume and may change in any release, patch bumps included. You get it automatically when you install `core`, pinned to core's exact version, and nothing in this guide asks you to import from it. Depend on it directly only if you are building a framework adapter of your own — and if you do, pin both packages to the same exact version.
 
 When in doubt, pin your overrides explicitly rather than relying on defaults.
 

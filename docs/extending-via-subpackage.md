@@ -4,6 +4,10 @@
 
 The pattern composes only the public extension points of core: `Typography`, `ExtraStyles`, `customComponents`, the additive Providers (`AIMarkdownBehaviorsProvider` / `AIMarkdownStateProvider`), the stability firewall (`useStableRecord`), and the widened `define*` factories. No internal API access required.
 
+> **Depend on `core`, not on `@ai-react-markdown/engine`.** Since 2.3.0 the Markdown engine ships as its own package, and it is visible on npm — but a React integration has no reason to reach for it. Everything below goes through core's public surface, and core already re-exports the engine types you might need (`Registry`, the payload types, …). Importing from the engine directly buys you nothing and costs you its stability: its exports track what core consumes and can change in any release before 3.0.0.
+>
+> The one case that _is_ engine-level: a **non-React renderer** — a Vue or Svelte adapter, or Markdown-to-hast in a worker with no rendering at all. That is a different document than this one; this recipe is about composing core in React. If you go there, pin the engine to an exact version and expect to move with it.
+
 ---
 
 ## The extension points, at a glance

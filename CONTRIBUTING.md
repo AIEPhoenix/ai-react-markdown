@@ -4,12 +4,16 @@ Thanks for your interest in contributing. This file covers the practical "how" �
 
 ## Quick orientation
 
-This is a **pnpm monorepo** with two packages:
+This is a **pnpm monorepo** with four packages:
 
-- [`packages/core`](./packages/core) — framework-agnostic renderer (the heart).
+- [`packages/engine`](./packages/engine) — the Markdown engine: incremental parsing, LaTeX preprocessing, the definition/footnote machinery, and the unified plugin pipeline. No React anywhere in its tree.
+- [`packages/core`](./packages/core) — the React renderer built on the engine (the public entry point most users install).
 - [`packages/mantine`](./packages/mantine) — Mantine UI integration (lives on top of core).
+- [`packages/remark-mark-highlight`](./packages/remark-mark-highlight) — standalone `==highlight==` remark plugin, published on its own semver track.
 
-Source of truth for the public API surface, sanitization model, cross-chunk coordination, and block-level memoization invariants is in [`docs/`](./docs/). If you're touching internals, **read [`docs/architecture.md`](./docs/architecture.md) first**.
+The engine/core line is where most orientation mistakes happen. **Anything that turns Markdown text into a hast tree belongs in the engine; anything that turns a hast tree into React belongs in core.** If a change needs `useState`, a context, or a DOM node, it is core-side by construction. `core` depends on `engine` at an exact version (pnpm rewrites `workspace:*` to the published version), so the two always ship in lockstep.
+
+Source of truth for the public API surface, sanitization model, cross-chunk coordination, and block-level memoization invariants is in [`docs/`](./docs/). If you're touching internals, **read [`docs/architecture.md`](./docs/architecture.md) first** — its module-layout tree shows which package owns which file.
 
 ## Setup
 
@@ -31,19 +35,38 @@ You'll need:
 # Run Storybook for interactive development
 pnpm storybook
 
-# Run tests once
+# Run tests once — one package, or `pnpm -r test` for all of them
 pnpm --filter @ai-react-markdown/core test
+pnpm --filter @ai-react-markdown/engine test
 
 # Typecheck
-pnpm --filter @ai-react-markdown/core typecheck
+pnpm -r typecheck
 
 # Lint / format
 pnpm lint
 pnpm format:check
 pnpm format          # auto-fix
+
+# Everything CI checks, in one command
+pnpm preflight
 ```
 
 CI runs lint + format:check + typecheck + test + build on every PR.
+
+### Changing the incremental-parse engine
+
+`packages/engine` carries its own falsification suites on top of the unit tests, because the splice path's contract (a spliced tree is deep-equal, positions included, to a full parse of the same content) cannot be covered by examples alone. Run these when you touch `spliceParse`, the boundary scanner, or the definition machinery:
+
+```bash
+# Fast feedback: the splice fuzz suite on its own
+pnpm --filter @ai-react-markdown/engine fuzz:splice
+
+# Release gate: the three-leg soak (fuzz + direction battery + bounded-exhaustive
+# census). Long-running — keep the machine awake or macOS will suspend it.
+cd packages/engine && caffeinate -dims ./scripts/run-soak.sh
+```
+
+A green soak is a **release** gate, not a per-PR one; CI does not run it. If your PR changes engine behavior, say in the description whether you ran it and what the result was.
 
 ## Branching & PRs
 
@@ -78,12 +101,13 @@ the gate exactly where it matters (this bug shipped once; see the history note
 in `useReferenceFlipWarning.ts`).
 
 What makes the bare text safe everywhere: `process.env.NODE_ENV` is resolved at
-**build time**. Both entries of core's `tsup.config.ts` carry
-`env: { NODE_ENV: ... }` — those two keys are **load-bearing**; removing either
+**build time**. Both entries of core's `tsup.config.ts` — and both entries of
+engine's, which repeats the arrangement for the same reason — carry
+`env: { NODE_ENV: ... }`. Those keys are **load-bearing**; removing any of them
 would ship a dist that evaluates `process.env` at import and crashes no-bundler
 consumers (browser native ESM/CDN, Deno). The build fails if that ever regresses:
-`scripts/assert-dist-clean.mjs` greps the emitted artifacts for `process.env`
-after every `build:js`.
+each package's `scripts/assert-dist-clean.mjs` greps its emitted artifacts for
+`process.env` after every build.
 
 ## Larger changes
 
@@ -97,7 +121,7 @@ By participating in this project you agree to abide by the [Contributor Covenant
 
 ## Releasing (maintainer-only)
 
-Releases publish from CI via [npm trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC — no token secret anywhere) with provenance attached automatically. Pushing a `v*` tag triggers `.github/workflows/release.yml`, which re-runs the full quality gate (lint, format, typecheck, tests, build), verifies the tag matches `package.json`, and publishes both packages:
+Releases publish from CI via [npm trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC — no token secret anywhere) with provenance attached automatically. Pushing a `v*` tag triggers `.github/workflows/release.yml`, which re-runs the full quality gate (lint, format, typecheck, tests, build), verifies the tag matches `package.json`, and publishes every package whose version is not yet on the registry (`pnpm publish -r` skips the rest). Packages on an independent semver track — `remark-mark-highlight` — either ride the train tag when their version was bumped, or get released alone via a `<pkg>-vX.Y.Z` tag:
 
 ```bash
 # Sync versions across the monorepo (also rewrites README version refs)
