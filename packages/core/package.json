@@ -1,7 +1,7 @@
 {
   "name": "@ai-react-markdown/core",
-  "version": "2.2.1",
-  "description": "Core rendering engine for ai-react-markdown \u2014 LaTeX preprocessing, plugin pipeline, and React components.",
+  "version": "2.3.0",
+  "description": "Core rendering engine for ai-react-markdown — LaTeX preprocessing, plugin pipeline, and React components.",
   "publishConfig": {
     "access": "public"
   },
