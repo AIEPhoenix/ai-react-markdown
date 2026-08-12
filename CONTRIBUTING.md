@@ -27,7 +27,9 @@ pnpm build
 You'll need:
 
 - Node ≥ 20 (LTS recommended)
-- pnpm 10.x (this repo pins via `packageManager` field — Corepack will fetch the right version)
+- pnpm 11.x (this repo pins the exact version via the `packageManager` field — Corepack, or pnpm itself, will fetch it)
+
+> pnpm settings live in `pnpm-workspace.yaml`, not in a `pnpm` field in `package.json` — pnpm 11 ignores that field. `pnpm check:overrides` fails the build if one reappears, or if the lockfile no longer matches the declared overrides.
 
 ## Daily workflow
 

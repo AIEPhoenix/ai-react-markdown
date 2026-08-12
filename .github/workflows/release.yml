@@ -21,9 +21,9 @@ name: Release
 # Auth is npm "trusted publishing" (OIDC): this repo+workflow is registered
 # as a trusted publisher for both packages on npmjs.com, so no token secret
 # exists at all — npm mints a short-lived credential from the id-token
-# permission below, and provenance is attached automatically. The publish
-# step runs under pnpm 11 (via npx) because native OIDC support landed in
-# pnpm 11.1.3; the rest of the workflow stays on the workspace-pinned pnpm.
+# permission below, and provenance is attached automatically. pnpm's own
+# native OIDC support landed in 11.1.3, below the version pinned here, so the
+# workflow-wide pnpm publishes directly — no npx side-channel.
 
 on:
   push:
@@ -48,17 +48,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
-
-      # No registry-url: with trusted publishing there is no auth token, and
-      # registry-url would write an .npmrc with an unresolved ${NODE_AUTH_TOKEN}
-      # placeholder that interferes with the OIDC flow.
-      - name: Setup Node
-        uses: actions/setup-node@v7
+      # pnpm/setup (not pnpm/action-setup, which stops at pnpm 10) installs
+      # pnpm and Node in one step, taking the pnpm version from
+      # `packageManager`. No registry-url equivalent is configured anywhere:
+      # with trusted publishing there is no auth token, and writing an .npmrc
+      # with an unresolved ${NODE_AUTH_TOKEN} placeholder would interfere with
+      # the OIDC flow.
+      - name: Setup pnpm + Node
+        uses: pnpm/setup@v2
         with:
-          node-version: '22'
-          cache: pnpm
+          runtime: node@22
+          cache: true
+          install: false
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -131,11 +132,11 @@ jobs:
         run: |
           case "$GITHUB_REF_NAME" in
             v*)
-              npx -y pnpm@^11.1.3 publish -r --access public --no-git-checks
+              pnpm publish -r --access public --no-git-checks
               ;;
             *-v*)
               PKG_DIR="${GITHUB_REF_NAME%-v*}"
-              npx -y pnpm@^11.1.3 publish --filter "./packages/${PKG_DIR}" --access public --no-git-checks
+              pnpm publish --filter "./packages/${PKG_DIR}" --access public --no-git-checks
               ;;
           esac
 

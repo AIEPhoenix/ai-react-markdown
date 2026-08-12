@@ -1,17 +1,18 @@
 /* global process, console */
 
 /**
- * pnpm reads dependency overrides from exactly ONE of two places, and which
- * one depends on its major version:
+ * Asserts that the `overrides:` block in pnpm-workspace.yaml matches what the
+ * lockfile records as actually applied. A disagreement means the lockfile is
+ * stale — someone edited the overrides without re-running `pnpm install` — and
+ * the rules people believe are in force are not the rules that resolved the
+ * tree.
  *
- *   pnpm 10  →  package.json  #pnpm.overrides   (this block is ignored, silently)
- *   pnpm 11  →  pnpm-workspace.yaml  overrides: (package.json is ignored, with a warning)
- *
- * There is no merge and no fallback. This repo therefore keeps both copies,
- * identical, so the rules hold across the version boundary — and this script
- * is what stops them from drifting apart. It also checks the lockfile, which
- * records what the installed pnpm actually applied: if that disagrees, the
- * lockfile is stale and someone needs to re-run `pnpm install`.
+ * Why a script exists for this at all: overrides used to live in
+ * package.json#pnpm.overrides, which pnpm 10 read and pnpm 11 ignores. During
+ * the 10→11 transition this repo carried both copies and this script kept the
+ * three in agreement. pnpm is pinned to 11 now, package.json#pnpm is gone, and
+ * only the workspace-file-vs-lockfile check remains — the part that catches a
+ * stale lockfile, which is version-independent.
  *
  * Runs first in `pnpm preflight`. Exit code 1 on any mismatch.
  */
@@ -47,53 +48,42 @@ function readYamlOverrides(file) {
   return out;
 }
 
-function readJsonOverrides(file) {
-  const pkg = JSON.parse(readFileSync(join(root, file), 'utf8'));
-  const overrides = pkg.pnpm?.overrides;
-  if (!overrides) throw new Error(`${file}: no \`pnpm.overrides\` block found`);
-  return overrides;
-}
-
 /** Order is irrelevant to pnpm, so compare as sorted key=value pairs. */
 const normalize = (o) =>
   Object.entries(o)
     .map(([k, v]) => `${k} = ${v}`)
     .sort();
 
-const sources = {
-  'package.json (pnpm 10 reads this)': readJsonOverrides('package.json'),
-  'pnpm-workspace.yaml (pnpm 11 reads this)': readYamlOverrides('pnpm-workspace.yaml'),
-  'pnpm-lock.yaml (what was actually applied)': readYamlOverrides('pnpm-lock.yaml'),
-};
+const DECLARED = 'pnpm-workspace.yaml (the source of truth)';
+const APPLIED = 'pnpm-lock.yaml (what was actually applied)';
 
-const [reference, ...others] = Object.entries(sources);
-const failures = [];
+const declared = normalize(readYamlOverrides('pnpm-workspace.yaml'));
+const applied = normalize(readYamlOverrides('pnpm-lock.yaml'));
 
-for (const [name, overrides] of others) {
-  const a = normalize(reference[1]);
-  const b = normalize(overrides);
-  if (a.join('\n') === b.join('\n')) continue;
+// A stray `pnpm` field would be silently ignored by pnpm 11 — flag it rather
+// than let someone add rules there that never take effect.
+const strayPnpmField = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).pnpm;
 
-  const missing = a.filter((line) => !b.includes(line));
-  const extra = b.filter((line) => !a.includes(line));
-  failures.push(
-    [
-      `${name} disagrees with ${reference[0]}:`,
-      ...missing.map((l) => `    only in ${reference[0]}:  ${l}`),
-      ...extra.map((l) => `    only in ${name}:  ${l}`),
-    ].join('\n')
-  );
-}
-
-if (failures.length > 0) {
+if (declared.join('\n') !== applied.join('\n') || strayPnpmField) {
   console.error('\npnpm overrides are out of sync.\n');
-  console.error(failures.join('\n\n'));
-  console.error(
-    '\nEvery override must be written identically in package.json and' +
-      '\npnpm-workspace.yaml, then applied with `pnpm install`. See the comment' +
-      '\nat the top of pnpm-workspace.yaml for why both copies exist.\n'
-  );
+
+  if (strayPnpmField) {
+    console.error(
+      `package.json has a \`pnpm\` field (${Object.keys(strayPnpmField).join(', ')}).` +
+        '\npnpm 11 does not read it — move those settings into pnpm-workspace.yaml.\n'
+    );
+  }
+
+  const missing = declared.filter((line) => !applied.includes(line));
+  const extra = applied.filter((line) => !declared.includes(line));
+  if (missing.length > 0 || extra.length > 0) {
+    console.error(`${APPLIED} disagrees with ${DECLARED}:`);
+    for (const l of missing) console.error(`    only in ${DECLARED}:  ${l}`);
+    for (const l of extra) console.error(`    only in ${APPLIED}:  ${l}`);
+    console.error('\nThe lockfile is stale — run `pnpm install` to apply the declared overrides.\n');
+  }
+
   process.exit(1);
 }
 
-console.log(`pnpm overrides in sync across all three files (${normalize(reference[1]).length} rules).`);
+console.log(`pnpm overrides in sync (${declared.length} rules).`);
