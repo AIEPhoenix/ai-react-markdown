@@ -1,27 +1,32 @@
 packages:
   - 'packages/*'
 
-# ⚠️ KEEP IN SYNC with the `pnpm.overrides` block in the root package.json.
+# Dependency install scripts, allowed one by one (pnpm 11 replaced
+# onlyBuiltDependencies / neverBuiltDependencies / ignoredBuiltDependencies
+# with this single map). Both entries are `false` because neither script is
+# needed: modern esbuild ships per-platform binaries as optionalDependencies
+# rather than fetching them in a postinstall, and @parcel/watcher — an
+# optional transitive of sass — ships prebuilds too. This repo never had a
+# built-dependencies allowlist under pnpm 10 either, so these scripts have
+# always been skipped, across every green build to date. Flip one to `true`
+# only with evidence that its absence broke something.
+allowBuilds:
+  '@parcel/watcher': false
+  esbuild: false
+
+# This file is the ONLY place pnpm reads settings from (11.x behavior). The
+# root package.json used to carry a `pnpm.overrides` block for pnpm 10; it is
+# gone, and `pnpm check:overrides` fails the build if one reappears, because
+# pnpm 11 would ignore it without applying anything.
 #
-# Which of the two locations pnpm reads depends on its major version, and it
-# reads exactly ONE of them — there is no merge, and no fallback:
-#
-#   pnpm 10 (what `packageManager` pins today): reads package.json#pnpm,
-#           and ignores this block entirely. Silently — no warning.
-#   pnpm 11: reads this block, and ignores package.json#pnpm (with a warning).
-#
-# So a rule that lives in only one file is a rule that is off half the time.
-# Both copies below carry the same content, verified against pnpm 10.28.1 and
-# pnpm 11.20.0. When this repo moves to pnpm 11, delete the package.json block
-# and this warning — until then, every edit goes in both places.
-#
-# Two rules that were in this file before and are deliberately NOT here now:
+# Two rules that lived here before the pnpm 11 move and are deliberately NOT
+# here now (this block had never actually taken effect under pnpm 10, so they
+# had gone unexercised):
 #
 #   picomatch: ^4.0.4  — no advisory has ever been filed against picomatch in
 #     this repo, and micromatch@4.0.8 / anymatch@3.1.3 declare `^2.3.1` /
 #     `^2.0.4`. Forcing 4.x on them crosses two majors against their own
-#     declared range, buying nothing. (This block never took effect, so the
-#     rule had never actually been exercised.)
+#     declared range, buying nothing.
 #   typescript: ^6.0.3 — the unscoped form also rewrites packages that pin an
 #     exact older TS (react-doctor pins 5.6.1-rc). Narrowed to `typescript@>=7`
 #     below, which is what the intent was: keep TS 7 out, touch nothing else.
