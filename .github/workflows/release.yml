@@ -89,6 +89,9 @@ jobs:
       # Full quality gate — mirrors CI so a tag can't ship anything main
       # wouldn't accept. Build runs first: mantine's typecheck/tests resolve
       # @ai-react-markdown/core through its exports map, which points at dist/.
+      - name: Overrides in sync
+        run: pnpm check:overrides
+
       - name: Lint
         run: pnpm lint
 
