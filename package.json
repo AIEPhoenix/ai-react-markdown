@@ -13,7 +13,8 @@
     "format:check": "prettier --check .",
     "version-packages": "node scripts/version-packages.mjs",
     "packcheck": "pnpm --filter './packages/*' -r exec attw --pack . && pnpm --filter './packages/*' -r exec publint",
-    "preflight": "pnpm lint && pnpm format:check && pnpm build && pnpm packcheck && pnpm -r typecheck && pnpm typecheck && pnpm vitest run",
+    "check:overrides": "node scripts/assert-overrides-in-sync.mjs",
+    "preflight": "pnpm check:overrides && pnpm lint && pnpm format:check && pnpm build && pnpm packcheck && pnpm -r typecheck && pnpm typecheck && pnpm vitest run",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build"
   },
@@ -74,10 +75,13 @@
   },
   "pnpm": {
     "overrides": {
+      "dompurify": "^3.4.0",
+      "uuid": "^11.1.1",
       "qs@<6.15.2": ">=6.15.2",
-      "esbuild@<0.28.1": ">=0.28.1",
       "fast-uri@>=3.0.0 <3.1.5": ">=3.1.5 <4",
       "brace-expansion@>=3.0.0 <5.0.7": ">=5.0.7",
+      "esbuild@<0.28.1": ">=0.28.1",
+      "typescript@>=7": "^6.0.3",
       "react-doctor": "0.8.1",
       "react-grab": "0.1.48"
     }

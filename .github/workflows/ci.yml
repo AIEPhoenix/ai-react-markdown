@@ -48,6 +48,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # pnpm reads overrides from package.json on 10.x and from
+      # pnpm-workspace.yaml on 11.x — one or the other, never merged. Both
+      # copies are kept identical; this asserts they (and the lockfile) agree.
+      - name: Overrides in sync
+        if: matrix.task == 'lint'
+        run: pnpm check:overrides
+
       - name: Lint
         if: matrix.task == 'lint'
         run: pnpm lint
