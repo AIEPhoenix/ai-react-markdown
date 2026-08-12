@@ -35,6 +35,8 @@ pnpm add @ai-react-markdown/core
 yarn add @ai-react-markdown/core
 ```
 
+Since 2.3.0 the Markdown engine lives in a separate package, [`@ai-react-markdown/engine`](https://www.npmjs.com/package/@ai-react-markdown/engine). It is an ordinary transitive dependency pinned to core's exact version, so **you never install, declare, or upgrade it yourself** — and it cannot drift out of step with core. The public API of this package did not change in the split.
+
 ### Peer Dependencies
 
 ```json
@@ -52,7 +54,7 @@ For LaTeX math rendering, include the KaTeX stylesheet:
 import 'katex/dist/katex.min.css';
 ```
 
-`katex` is declared as an **optional peer dependency**. It ships transitively via `rehype-katex`, so hoisted installers (npm, yarn classic, default pnpm) resolve the import automatically. Strict-isolation installers (yarn PnP, `pnpm --node-linker=isolated`) need it installed explicitly:
+`katex` is declared as an **optional peer dependency** — by this package and by `@ai-react-markdown/engine`, which owns the `rehype-katex` pipeline step. It ships transitively via `rehype-katex`, so hoisted installers (npm, yarn classic, default pnpm) resolve the import automatically. Strict-isolation installers (yarn PnP, `pnpm --node-linker=isolated`) need it installed explicitly in your own app:
 
 ```bash
 npm install katex
