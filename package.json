@@ -60,7 +60,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "katex": "^0.17.0",
     "playwright": "^1.61.1",
-    "postcss": "^8.5.19",
+    "postcss": "^8.5.26",
     "postcss-cli": "^11.0.1",
     "prettier": "^3.9.5",
     "publint": "^0.3.22",
@@ -76,7 +76,7 @@
     "overrides": {
       "qs@<6.15.2": ">=6.15.2",
       "esbuild@<0.28.1": ">=0.28.1",
-      "fast-uri@>=3.0.0 <3.1.4": ">=3.1.4",
+      "fast-uri@>=3.0.0 <3.1.5": ">=3.1.5 <4",
       "brace-expansion@>=3.0.0 <5.0.7": ">=5.0.7",
       "react-doctor": "0.8.1",
       "react-grab": "0.1.48"

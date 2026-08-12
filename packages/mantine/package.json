@@ -65,7 +65,7 @@
   },
   "dependencies": {
     "deep-parse-json": "^2.0.0",
-    "mermaid": "^11.15.0"
+    "mermaid": "^11.16.1"
   },
   "devDependencies": {
     "@ai-react-markdown/core": "workspace:*",
@@ -78,7 +78,7 @@
     "esbuild-sass-plugin": "^3.7.0",
     "highlight.js": "^11.11.1",
     "lodash-es": "^4.18.0",
-    "postcss": "^8.5.19",
+    "postcss": "^8.5.26",
     "tsup": "^8.5.1"
   }
 }
