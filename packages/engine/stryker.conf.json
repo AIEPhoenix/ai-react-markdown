@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/stryker-mutator/stryker-js/master/packages/core/schema/stryker-schema.json",
-  "_comment": "One-off mutation AUDIT of the incremental-parse engine (not wired into CI — run manually: pnpm --filter @ai-react-markdown/core exec stryker run). Killer suite = the fast arbiter set, see stryker.vitest.config.ts. Score + surviving-mutant dispositions are recorded in src/experiments/prefixFreeze/README.md.",
+  "_comment": "One-off mutation AUDIT of the incremental-parse engine (not wired into CI — run manually: pnpm --filter @ai-react-markdown/engine exec stryker run). Killer suite = the fast arbiter set, see stryker.vitest.config.ts. Score + surviving-mutant dispositions are recorded in src/experiments/prefixFreeze/README.md.",
   "plugins": ["@stryker-mutator/vitest-runner"],
   "testRunner": "vitest",
   "vitest": {
