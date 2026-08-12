@@ -65,7 +65,7 @@
   },
   "dependencies": {
     "deep-parse-json": "^2.0.0",
-    "mermaid": "^11.15.0"
+    "mermaid": "^11.16.1"
   },
   "devDependencies": {
     "@ai-react-markdown/core": "workspace:*",
