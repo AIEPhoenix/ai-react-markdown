@@ -11,7 +11,7 @@
 #   leg 2  direction battery — 20k prefixes, single chain (cheap).
 #   leg 3  exhaustive census — K=4 stride=2, sharded EXHAUSTIVE_SHARD=i/N.
 #
-# Run from packages/core, under caffeinate:
+# Run from packages/engine, under caffeinate:
 #   caffeinate -dims ./scripts/run-soak.sh
 # Env knobs: SOAK_FUZZ_TOTAL (default 50000), SOAK_SHARDS (default 12),
 # SOAK_SEED (default 20260750).

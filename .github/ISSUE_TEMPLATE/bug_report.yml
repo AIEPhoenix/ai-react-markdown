@@ -14,8 +14,8 @@ body:
     id: version
     attributes:
       label: Package + version
-      description: Run `pnpm list @ai-react-markdown/core @ai-react-markdown/mantine` and paste the relevant lines.
-      placeholder: '@ai-react-markdown/core@1.4.5 / @ai-react-markdown/mantine@1.4.5'
+      description: Run `pnpm list @ai-react-markdown/core @ai-react-markdown/mantine` and paste the relevant lines. `@ai-react-markdown/engine` installs transitively at the same version as core — no need to report it separately unless it somehow differs.
+      placeholder: '@ai-react-markdown/core@2.3.0 / @ai-react-markdown/mantine@2.3.0'
     validations:
       required: true
 
@@ -27,7 +27,8 @@ body:
       options:
         - '@ai-react-markdown/core'
         - '@ai-react-markdown/mantine'
-        - 'Not sure / both'
+        - '@ai-react-markdown/engine'
+        - 'Not sure'
     validations:
       required: true
 

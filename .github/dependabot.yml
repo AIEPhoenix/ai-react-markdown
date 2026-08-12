@@ -1,7 +1,13 @@
 version: 2
 
-# Shared ignore policy (copied verbatim across the three npm ecosystems
+# Shared ignore policy (copied verbatim across every npm ecosystem below
 # because dependabot.yml does not support YAML anchors at the top level).
+#
+# Every published package needs its own entry: dependabot reads one
+# manifest per `directory`, so a package that is missing here is a blind
+# spot. After the 2.3.0 engine split that matters more than it used to —
+# the remark/rehype/micromark dependency mass lives in
+# packages/engine, not packages/core.
 #
 # - Major bumps across the dependency graph: blocked. Breaking changes,
 #   peer-dep ripples, and migration cost need hands-on evaluation; we
@@ -102,6 +108,49 @@ updates:
           - minor
           - patch
 
+  # @ai-react-markdown/engine — carries the remark / rehype / micromark
+  # dependency mass that core shed in the 2.3.0 split.
+  - package-ecosystem: npm
+    directory: /packages/engine
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+      semver-minor-days: 7
+      semver-patch-days: 3
+    labels:
+      - dependencies
+      - 'scope:engine'
+    ignore:
+      - dependency-name: '*'
+        update-types:
+          - version-update:semver-major
+      - dependency-name: 'eslint'
+        update-types:
+          - version-update:semver-minor
+      - dependency-name: 'eslint-plugin-*'
+        update-types:
+          - version-update:semver-minor
+      - dependency-name: '@typescript-eslint/*'
+        update-types:
+          - version-update:semver-minor
+      - dependency-name: 'typescript-eslint'
+        update-types:
+          - version-update:semver-minor
+      - dependency-name: 'typescript'
+        update-types:
+          - version-update:semver-minor
+    groups:
+      runtime-deps:
+        dependency-type: production
+        update-types:
+          - minor
+          - patch
+
   # @ai-react-markdown/mantine
   - package-ecosystem: npm
     directory: /packages/mantine
@@ -118,6 +167,49 @@ updates:
     labels:
       - dependencies
       - 'scope:mantine'
+    ignore:
+      - dependency-name: '*'
+        update-types:
+          - version-update:semver-major
+      - dependency-name: 'eslint'
+        update-types:
+          - version-update:semver-minor
+      - dependency-name: 'eslint-plugin-*'
+        update-types:
+          - version-update:semver-minor
+      - dependency-name: '@typescript-eslint/*'
+        update-types:
+          - version-update:semver-minor
+      - dependency-name: 'typescript-eslint'
+        update-types:
+          - version-update:semver-minor
+      - dependency-name: 'typescript'
+        update-types:
+          - version-update:semver-minor
+    groups:
+      runtime-deps:
+        dependency-type: production
+        update-types:
+          - minor
+          - patch
+
+  # @ai-react-markdown/remark-mark-highlight — published on its own semver
+  # track, but its micromark/mdast deps need the same watch as the rest.
+  - package-ecosystem: npm
+    directory: /packages/remark-mark-highlight
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+      semver-minor-days: 7
+      semver-patch-days: 3
+    labels:
+      - dependencies
+      - 'scope:remark-mark-highlight'
     ignore:
       - dependency-name: '*'
         update-types:
