@@ -6,6 +6,19 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 ---
 
+## 2.3.x — The framework-agnostic engine
+
+### 2.3.0 — The engine moves into its own package; two long-latent splice seam bugs die on the way out
+
+The Markdown engine — incremental parsing, LaTeX preprocessing, the definition/footnote machinery, and the sealed plugin pipeline — now lives in **`@ai-react-markdown/engine`**, a framework-agnostic package with zero React anywhere in its dependency tree. `@ai-react-markdown/core` consumes it and keeps a byte-identical public surface: every import you have today keeps working, nothing is renamed, and the runtime output is equivalent down to the parse tree. This is the structural prerequisite for non-React adapters (a Vue package is the motivating case) and, further out, embedded-runtime use — the engine is pure computation over strings and syntax trees, with no DOM access and no Node-only APIs on any runtime path.
+
+- **What moved**: the splice/freeze incremental engine and its entire verification arsenal (fuzz batteries, exhaustive census, arbiter harness, soak scripts), the preprocessors (LaTeX, remend), the remark/rehype chain assembly with the sealed plugin catalog, sanitize schema machinery, the cross-chunk definition registry, and the pure parse/transform stages of the vendored react-markdown. The React half — rendering, hooks, block memoization, smooth streaming's React layer, the streaming cursor — stays in core. Core's runtime dependency list drops from 30 packages to 4.
+- **Versioning**: the engine versions in lockstep with core and mantine, and core pins it exactly (`2.3.0`, not a caret range) — the engine's internal API carries no stability promise before 3.0.0, so a range would let a future engine drift under an older core. Treat the engine as core's internal supplier; depend on it directly only if you are building a framework adapter.
+- **Two pre-existing engine bugs fixed** — found by a 1.7M-sample fresh-seed fuzz campaign run to validate the split, both reproduced byte-identically on 2.2.1 (they date back to the incremental engine's introduction, and their discovery doubles as the strongest byte-equivalence evidence for the migration itself):
+  - **A processing-instruction-headed raw block could swallow trailing text.** parse5 ends a `<?…` bogus comment at the first `>` while micromark's flow construct runs to `?>`; a PI containing an interior `>` (`<?instr <b> ?> after the pi`) leaves a position-less text remnant that the splice cut could strand — the frozen side dropped it and the tail re-parse couldn't reproduce it. The cut now detects stranded remnants past the cut point and falls back to a full parse for that frame.
+  - **An interior raw literal could lose its source position.** A positioned text between two elements of one html block (`</details>` text `<embed/>`, where sanitize strips the embed) was fed through the merge path that models block-final literals, shedding its trailing newline and dropping its position — a hazard for block-memo cache keying. A classifier now separates interior literals (kept verbatim, own separator) from block-final ones (merged with the seam, position dropped, as the full parse does), keyed on whether the literal's source ends at its owner's end.
+- **Verification**: the full release gate (splice fuzz 50k, direction battery 20k, K=4 census across 12 shards, def-scanner 30k, LaTeX 5000 streams) plus a 1.5M-sample re-run of every discovery seed batch — all clean; the counterexamples are pinned as ~50ms deterministic tests; preflight 1153 tests across 70 files. Two independent review rounds (architecture + adversarial mutation testing) signed off, with the mutation pass confirming each half of the seam fix is guarded by its own pin.
+
 ## 2.2.x — Document-level turn-taking
 
 ### 2.2.1 — The streaming cursor follows footnote definitions; turn-taking polish
