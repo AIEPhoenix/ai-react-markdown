@@ -8,6 +8,10 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 ## 2.3.x — The framework-agnostic engine
 
+### 2.3.2 — Mermaid diagram controls work without a pointer
+
+The Mantine Mermaid block's interactive surface was pointer-only: the rendered diagram opened in a new window on click but sat outside the tab order, and the two icon-only controls (show source, copy) exposed no accessible names. The diagram container is now a focusable `role="button"` that activates on Enter or Space, and both controls carry explicit `aria-label`s — keyboard and screen-reader users get the same interaction path pointer users always had. First external contribution, by @alectimison-maker. (#31)
+
 ### 2.3.1 — An unpaired surrogate in `documentId` no longer crashes the render
 
 A consumer-supplied `documentId` containing an unpaired UTF-16 surrogate — typically a string truncated mid-emoji by an upstream pipeline — made the clobber-prefix derivation throw `URIError: URI malformed` synchronously, taking down the whole render before any markdown was parsed. The failure was length-dependent: ids over 16 chars survived only because the hash path's `TextEncoder` lossily folds lone surrogates to U+FFFD. Ill-formed ids of any length now route to the hash path over their raw UTF-16 code units with a domain-separating seed, so they render, stay deterministic, and distinct corrupted ids keep distinct prefixes — a lossy-projection fix was explicitly rejected because it silently merges ids truncated at different points. Well-formed ids derive byte-identical prefixes to 2.3.0. Dev builds log a once-per-id warning pointing at the upstream corruption, and the engine now exports `hasLoneSurrogate` as the single owner of the detection semantics. (#32)
