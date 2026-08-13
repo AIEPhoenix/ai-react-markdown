@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { shortenDocumentId } from './shortenDocumentId';
+import { hasLoneSurrogate, shortenDocumentId } from './shortenDocumentId';
 
 describe('shortenDocumentId — threshold gating', () => {
   test('returns the input unchanged when at or below threshold', () => {
@@ -73,6 +73,77 @@ describe('shortenDocumentId — algorithmic properties', () => {
     const out = new Set<string>();
     for (let i = 0; i < 1000; i++) out.add(shortenDocumentId(`doc-uuid-stream-${i}`));
     expect(out.size).toBe(1000);
+  });
+});
+
+describe('shortenDocumentId — ill-formed UTF-16 (always hashed, issue #32)', () => {
+  test('lone surrogates no longer leak verbatim into the caller’s encodeURIComponent', () => {
+    // Regression for #32: '\uD800' is ≤16 code units, so pre-fix it passed
+    // through unchanged and `encodeURIComponent` at the prefix-derivation
+    // site threw `URIError: URI malformed` synchronously during render.
+    // Post-fix, ill-formed ids of ANY length go to the hash path, so the
+    // output is always plain Base62.
+    expect(shortenDocumentId('\uD800')).toMatch(/^[A-Za-z0-9]{1,6}$/);
+    expect(shortenDocumentId('a\uDC00b')).toMatch(/^[A-Za-z0-9]{1,6}$/);
+    expect(() => encodeURIComponent(shortenDocumentId('\uD800'))).not.toThrow();
+    expect(() => encodeURIComponent(shortenDocumentId('a\uDC00b'))).not.toThrow();
+  });
+
+  test('valid surrogate pairs stay on the well-formed contract (hasLoneSurrogate must not misfire)', () => {
+    // The detection regex carries the `u` flag, so a valid pair reads as one
+    // astral code point outside [U+D800, U+DFFF]. Without the flag the class
+    // would match each HALF of the pair and reroute ordinary emoji ids to
+    // the hash path. Pin the passthrough round-trip.
+    expect(hasLoneSurrogate('doc-\u{1F600}')).toBe(false);
+    expect(shortenDocumentId('doc-\u{1F600}')).toBe('doc-\u{1F600}');
+    expect(() => encodeURIComponent(shortenDocumentId('doc-\u{1F600}'))).not.toThrow();
+  });
+
+  test('hasLoneSurrogate detects lone surrogates in any position', () => {
+    expect(hasLoneSurrogate('\uD800')).toBe(true);
+    expect(hasLoneSurrogate('\uDC00')).toBe(true);
+    expect(hasLoneSurrogate('a\uD800b')).toBe(true);
+    expect(hasLoneSurrogate('\u{1F600}\uD800')).toBe(true); // pair THEN lone
+    expect(hasLoneSurrogate('plain-ascii')).toBe(false);
+    expect(hasLoneSurrogate('\uFFFD')).toBe(false); // literal U+FFFD is well-formed
+  });
+
+  test('distinct ill-formed ids derive DISTINCT outputs (no lossy-projection merging)', () => {
+    // The UTF-16LE byte encoding is injective on raw strings, so ids that a
+    // WHATWG lossy projection would merge (every lone surrogate → U+FFFD)
+    // keep distinct hashes. This is the reason the hash input is raw code
+    // units and NOT TextEncoder output.
+    expect(shortenDocumentId('\uD800')).not.toBe(shortenDocumentId('\uDC00'));
+    expect(shortenDocumentId('m-\uD800')).not.toBe(shortenDocumentId('m-\uDC00'));
+    // … and none of them merges with a well-formed id containing a literal
+    // U+FFFD (which stays on the passthrough branch).
+    expect(shortenDocumentId('m-\uD800')).not.toBe(shortenDocumentId('m-\uFFFD'));
+    expect(shortenDocumentId('m-\uFFFD')).toBe('m-\uFFFD');
+  });
+
+  test('deterministic: same ill-formed id always yields the same output', () => {
+    expect(shortenDocumentId('m-\uDC00')).toBe(shortenDocumentId('m-\uDC00'));
+  });
+
+  test('ill-formed ids ignore the threshold — short and long both hash', () => {
+    // Short ill-formed (would have passed through pre-fix and crashed the
+    // caller) and long ill-formed (hashed pre-fix, but lossily) both take
+    // the UTF-16LE + ILL_FORMED_SEED path now.
+    expect(shortenDocumentId('\uD800', 100)).toMatch(/^[A-Za-z0-9]{1,6}$/);
+    expect(shortenDocumentId('\uD800'.repeat(20))).toMatch(/^[A-Za-z0-9]{1,6}$/);
+    // Long ill-formed ids differing only in the lone surrogate are distinct
+    // too — pre-fix they collided via TextEncoder's lossy fold.
+    expect(shortenDocumentId(`${'x'.repeat(20)}\uD800`)).not.toBe(shortenDocumentId(`${'x'.repeat(20)}\uDC00`));
+  });
+
+  test('frozen vectors: ill-formed hash outputs are pinned (anchor stability across versions)', () => {
+    // Computed from THIS implementation (murmur3 over UTF-16LE bytes,
+    // seed=1) and frozen so a refactor that silently changes the byte
+    // source, the seed, or the domain separation is caught immediately.
+    expect(shortenDocumentId('\uD800')).toBe('LmJCa');
+    expect(shortenDocumentId('\uDC00')).toBe('DYy8B1');
+    expect(shortenDocumentId('\uD800'.repeat(20))).toBe('CujiAa');
+    expect(shortenDocumentId(`${'x'.repeat(20)}\uDC00`)).toBe('CKOFYq');
   });
 });
 
