@@ -201,8 +201,8 @@ importers:
         specifier: ^1.1.1
         version: 1.1.1
       remark-smartypants:
-        specifier: ^3.0.2
-        version: 3.0.2
+        specifier: ^3.0.3
+        version: 3.0.3
       remark-squeeze-paragraphs:
         specifier: ^6.0.0
         version: 6.0.0
@@ -291,8 +291,8 @@ importers:
         specifier: ^1.1.1
         version: 1.1.1
       remark-smartypants:
-        specifier: ^3.0.2
-        version: 3.0.2
+        specifier: ^3.0.3
+        version: 3.0.3
       remark-squeeze-paragraphs:
         specifier: ^6.0.0
         version: 6.0.0
@@ -4828,8 +4828,8 @@ packages:
   remark-remove-comments@1.1.1:
     resolution: {integrity: sha512-Z0OONcdhf3I7lKJcR3TRCKqpgGnhugtn/xBWdPZuEpLm67y5hf7Z0CI4p8j6zq1uX2koyUxo2O6y2MNZyPA0JA==}
 
-  remark-smartypants@3.0.2:
-    resolution: {integrity: sha512-ILTWeOriIluwEvPjv67v7Blgrcx+LZOkAUVtKI3putuhlZm84FnqDORNXPPm+HY3NdZOMhyDwZ1E+eZB/Df5dA==}
+  remark-smartypants@3.0.3:
+    resolution: {integrity: sha512-gCaK+ndZ0hYezlqFegHFCVh2CQemsi0Npdh1qVM9bxlUFknjkbP6VmojWhddOCrbK0PbbacmYLWfTULRiT1eWA==}
     engines: {node: '>=16.0.0'}
 
   remark-squeeze-paragraphs@6.0.0:
@@ -10425,7 +10425,7 @@ snapshots:
       unist-util-visit: 5.1.0
       vfile: 6.0.3
 
-  remark-smartypants@3.0.2:
+  remark-smartypants@3.0.3:
     dependencies:
       retext: 9.0.0
       retext-smartypants: 6.2.0
