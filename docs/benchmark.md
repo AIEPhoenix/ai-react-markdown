@@ -17,7 +17,8 @@ methodology section tells you exactly which story and which toggles.
 
 ## Methodology
 
-- **Harness**: the Storybook A/B stories under `Core/AIMarkdown` —
+- **Harness**: the Storybook A/B stories under
+  `Core/Performance Lab/Streaming Comparisons` —
   `BlockMemoCompare`, `IncrementalParseCompare`, `BoostCompare` (plus
   `*Isolated` process-isolated variants, not used for this run — same-page
   is the fairest JS-layer A/B since both sides share one main thread and
@@ -164,7 +165,7 @@ memo-enabled baseline).
 pnpm storybook   # → http://localhost:6006
 ```
 
-Open `Core/AIMarkdown` → `BlockMemoCompare` / `IncrementalParseCompare` /
+Open `Core/Performance Lab/Streaming Comparisons` → `BlockMemoCompare` / `IncrementalParseCompare` /
 `BoostCompare` / `CrossChunkIncrementalCompare`; set payload scale, turn
 spies off, hit **Run ×3**; read the verdict banner (block-memo axis) or the
 summary strip (incremental/boost/cross-chunk axes). For per-side
