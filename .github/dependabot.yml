@@ -59,6 +59,21 @@ updates:
       - dependency-name: 'typescript'
         update-types:
           - version-update:semver-minor
+      # katex: minors blocked. On 0.x a minor IS a breaking change, and this
+      # dependency is a two-part contract that dependabot cannot see. The
+      # rendering is done by the katex that rehype-katex bundles as a regular
+      # dependency (0.16.x); the katex declared here supplies only the
+      # stylesheet, via `import 'katex/dist/katex.min.css'`. The two must emit
+      # and target the same class names. 0.18.0 prefixed KaTeX's internal
+      # classes — its stylesheet has no `.base` / `.strut` / `.sizing` rules at
+      # all — so pairing a 0.18 stylesheet with a 0.16 renderer silently breaks
+      # formula layout, with every test still green. (PR #37 did exactly this;
+      # see issue #39.) Lift only when rehype-katex ships a version that
+      # bundles the matching katex, and move the core/engine peer ranges in the
+      # same commit.
+      - dependency-name: 'katex'
+        update-types:
+          - version-update:semver-minor
     groups:
       dev-deps:
         dependency-type: development
