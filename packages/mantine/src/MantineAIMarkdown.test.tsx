@@ -86,8 +86,12 @@ describe('MantineAIMarkdown smoke', () => {
     expect(html).toContain('data-scheme="light"');
   });
 
-  test('mermaid code fence renders without crashing under SSR', () => {
+  test('mermaid code fence exposes keyboard-accessible controls under SSR', () => {
     const html = renderMarkdown(<MantineAIMarkdown content={'```mermaid\ngraph TD;\nA-->B;\n```'} />);
-    expect(html.length).toBeGreaterThan(0);
+    expect(html).toContain('aria-label="Show Mermaid code"');
+    expect(html).toContain('aria-label="Copy Mermaid code"');
+    expect(html).toMatch(
+      /<pre[^>]+role="button"[^>]+tabindex="0"[^>]+aria-label="Open Mermaid diagram in a new window"/
+    );
   });
 });
