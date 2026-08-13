@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Markdown document">
+  <title>Markdown document</title>
+  <rect x="6" y="4" width="52" height="56" rx="6" fill="none" stroke="#8a8f98" stroke-width="3" />
+  <path d="M16 22h12l4 8 4-8h12" fill="none" stroke="#8a8f98" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M16 22v18M28 22v18M48 22v12" fill="none" stroke="#8a8f98" stroke-width="3" stroke-linecap="round" />
+  <path d="M42 34l6 7 6-7" fill="none" stroke="#8a8f98" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+</svg>

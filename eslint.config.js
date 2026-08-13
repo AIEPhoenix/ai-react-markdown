@@ -9,7 +9,9 @@ export default defineConfig(
     ignores: [
       '**/dist/**',
       '**/node_modules/**',
-      '**/.storybook/**',
+      // NOTE: `.storybook/` is deliberately NOT ignored. It holds the shared
+      // decorators, the color-scheme context and the react-scan gate — real
+      // code that the story files import, and that lint has to see.
       // Build output — companion to `3a1b045 chore: gitignore storybook-static/`,
       // which added the artifact dir to .gitignore but missed the eslint
       // config. Linting bundled JS produces tens of thousands of false-
