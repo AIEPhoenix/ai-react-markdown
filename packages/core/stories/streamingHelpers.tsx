@@ -1,12 +1,14 @@
 'use client';
 
-import { useEffect, useReducer, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useReducer, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 
 export interface UseStreamedContentOptions {
   chunkSizeMin?: number;
   chunkSizeMax?: number;
   chunkDelayMin?: number;
   chunkDelayMax?: number;
+  /** Override the PRNG seed to get a different — but still repeatable — cadence. */
+  seed?: number;
 }
 
 export interface StreamedContent {
@@ -15,14 +17,40 @@ export interface StreamedContent {
   restart: () => void;
 }
 
-const randInt = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
+/**
+ * Deterministic PRNG (mulberry32) — the same generator the benchmark
+ * scenarios use. Chunk sizes and inter-chunk delays are jitter, not entropy:
+ * seeding them means a replay produces the identical arrival pattern every
+ * time, so a story that looks wrong can be looked at twice.
+ */
+const mulberry32 = (seed: number) => {
+  let s = seed | 0;
+  return () => {
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+};
+
+/** Default seed for `useStreamedContent`. */
+export const STREAM_JITTER_SEED = 0x5eed1e;
+
+const randInt = (random: () => number, min: number, max: number) => Math.floor(random() * (max - min + 1)) + min;
 
 export const useStreamedContent = (
   fullText: string,
-  { chunkSizeMin = 2, chunkSizeMax = 8, chunkDelayMin = 15, chunkDelayMax = 60 }: UseStreamedContentOptions = {}
+  {
+    chunkSizeMin = 2,
+    chunkSizeMax = 8,
+    chunkDelayMin = 15,
+    chunkDelayMax = 60,
+    seed = STREAM_JITTER_SEED,
+  }: UseStreamedContentOptions = {}
 ): StreamedContent => {
   const [position, setPosition] = useState(0);
   const [generation, restart] = useReducer((n: number) => n + 1, 0);
+  const randomRef = useRef<() => number>(mulberry32(seed));
 
   useEffect(() => {
     // Reset streaming position when the source text or generation counter changes.
@@ -30,14 +58,18 @@ export const useStreamedContent = (
     // synchronous setState-in-effect as a cascade-render hazard, but here it's
     // the only correct way to reset *this* hook's local state when one of its
     // inputs changes from the outside. Storybook-demo code only.
+    // Reseeding here (and not in the timer effect) is what makes a restart
+    // replay the exact same cadence as the first run.
+    randomRef.current = mulberry32(seed);
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setPosition(0);
-  }, [fullText, generation]);
+  }, [fullText, generation, seed]);
 
   useEffect(() => {
     if (position >= fullText.length) return;
-    const size = randInt(chunkSizeMin, chunkSizeMax);
-    const delay = randInt(chunkDelayMin, chunkDelayMax);
+    const random = randomRef.current;
+    const size = randInt(random, chunkSizeMin, chunkSizeMax);
+    const delay = randInt(random, chunkDelayMin, chunkDelayMax);
     const id = window.setTimeout(() => {
       setPosition((prev) => Math.min(fullText.length, prev + size));
     }, delay);

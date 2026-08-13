@@ -6,7 +6,9 @@ export interface ScenarioConfig {
   run: (push: (chunk: string) => void, done: () => void) => () => void;
 }
 
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+/** Wall-clock pause. Shared with the play-function suites, which use it to
+ *  hold a window open long enough for a negative assertion to mean something. */
+export const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /**
  * Deterministic PRNG (mulberry32). Scenario F's "random" token jitter is
