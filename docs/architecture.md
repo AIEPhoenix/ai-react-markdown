@@ -167,7 +167,7 @@ The fix: prefix every clobberable attribute with a per-document namespace. `<AIM
 clobberPrefix = `${encodeURIComponent(shortenDocumentId(documentId))}-user-content-`;
 ```
 
-Long ids (>16 chars) are hashed via MurmurHash3 → Base62 before encoding, to keep the rendered HTML compact when consumers pass UUIDs/nanoids. The shortening only affects the rendered prefix — `state.documentId` retains the raw value, so registry keying and consumer code reading `documentId` see the original.
+Long ids (>16 chars) are hashed via MurmurHash3 → Base62 before encoding, to keep the rendered HTML compact when consumers pass UUIDs/nanoids. The shortening only affects the rendered prefix — `state.documentId` retains the raw value, so registry keying and consumer code reading `documentId` see the original. Ill-formed UTF-16 ids (unpaired surrogates, e.g. from a string truncated mid-emoji upstream) are always hashed regardless of length — over their raw UTF-16 code units with a domain-separating seed — so they derive a valid prefix instead of throwing `URIError`, and distinct corrupted ids keep distinct prefixes (up to the same 2^32 hash bound long ids always had). The raw value in `state.documentId` is still untouched, and dev builds log a warning pointing at the upstream corruption.
 
 **Chunks of the same logical document share `documentId`**, so their prefixes align. This is the bridge between [`<AIMarkdownDocuments>`](./cross-chunk-coordination.md) and cross-chunk anchor navigation.
 
