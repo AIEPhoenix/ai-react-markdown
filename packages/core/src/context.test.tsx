@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { renderToString } from 'react-dom/server';
 import AIMarkdownProvider, {
   AIMarkdownMetadataProvider,
@@ -90,6 +90,77 @@ describe('AIMarkdownProvider documentId shortening', () => {
     const html = renderWithProvider(<DocumentIdProbe />, 'msg-7');
     expect(html).toContain('data-testid="documentId">msg-7</span>');
     expect(html).toContain('data-testid="clobberPrefix">msg-7-user-content-</span>');
+  });
+});
+
+describe('AIMarkdownProvider ill-formed documentId (issue #32)', () => {
+  // All tests in this block render corrupted ids, which trip the dev-mode
+  // console.warn probe — spy once here instead of per-test try/finally.
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    warnSpy.mockRestore();
+  });
+  const surrogateWarnings = () =>
+    warnSpy.mock.calls.filter(
+      (args: unknown[]) => typeof args[0] === 'string' && args[0].includes('unpaired UTF-16 surrogate')
+    );
+  const prefixOf = (html: string) => {
+    const m = html.match(/data-testid="clobberPrefix">([^<]*)</);
+    if (!m) throw new Error('clobberPrefix span not found');
+    return m[1];
+  };
+
+  test('a short documentId with an unpaired surrogate renders instead of throwing URIError', () => {
+    // #32: '\uD800' is ≤16 code units, so pre-fix it reached
+    // `encodeURIComponent` verbatim and aborted the whole render
+    // synchronously with `URIError: URI malformed`. Post-fix, ill-formed
+    // ids are hashed — the prefix is plain Base62 + the constant tail.
+    const html = renderWithProvider(<DocumentIdProbe />, '\uD800');
+    expect(prefixOf(html)).toMatch(/^[A-Za-z0-9]{1,6}-user-content-$/);
+    // The raw documentId stays untouched for registry keying and consumers.
+    expect(html).toContain('data-testid="documentId">\uD800</span>');
+  });
+
+  test('distinct ill-formed ids derive DISTINCT prefixes (no silent cross-document collision)', () => {
+    // Two ids corrupted at different points must NOT share a prefix —
+    // otherwise footnote anchors of two documents on one page cross-link.
+    // (A lossy U+FFFD projection would merge all three of these.)
+    const a = prefixOf(renderWithProvider(<DocumentIdProbe />, 'm-\uD800'));
+    const b = prefixOf(renderWithProvider(<DocumentIdProbe />, 'm-\uDC00'));
+    const c = prefixOf(renderWithProvider(<DocumentIdProbe />, 'm-\uFFFD')); // well-formed lookalike
+    expect(a).not.toBe(b);
+    expect(a).not.toBe(c);
+    expect(b).not.toBe(c);
+    // Determinism across documents: the same corrupted id aligns.
+    expect(prefixOf(renderWithProvider(<DocumentIdProbe />, 'm-\uD800'))).toBe(a);
+  });
+
+  test('dev mode warns once about the unpaired surrogate (upstream truncation signal)', () => {
+    renderWithProvider(<DocumentIdProbe />, '\uD800');
+    expect(surrogateWarnings()).toHaveLength(1);
+  });
+
+  test('a well-formed emoji documentId never trips the surrogate warning', () => {
+    // The detection predicate (engine's hasLoneSurrogate) matches lone
+    // surrogates only — a valid pair reads as one astral code point.
+    const html = renderWithProvider(<DocumentIdProbe />, 'doc-\u{1F600}');
+    expect(html).toContain(`data-testid="documentId">doc-\u{1F600}</span>`);
+    expect(surrogateWarnings()).toHaveLength(0);
+  });
+
+  test('an omitted documentId renders warning-free (smoke)', () => {
+    // NOTE (review 2026-08-13): this only asserts the trivially-true
+    // outcome — useId() output cannot contain surrogates, so zero warnings
+    // here does NOT prove the documentIdExplicit gate exists (deleting the
+    // gate keeps this green). The gate and the warnedFor per-id dedup are
+    // an accepted coverage gap: pinning them needs a client-side rerender
+    // (react-dom/client + jsdom), and the repo's test environment is
+    // deliberately node-only. Kept as a smoke test for the fallback path.
+    renderWithProvider(<DocumentIdProbe />);
+    expect(surrogateWarnings()).toHaveLength(0);
   });
 });
 

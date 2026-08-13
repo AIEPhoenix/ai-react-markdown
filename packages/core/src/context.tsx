@@ -10,7 +10,7 @@
 
 import { PropsWithChildren, createContext, useContext, useId, useMemo, useRef, type Context, type FC } from 'react';
 import { AIMarkdownMetadata, AIMarkdownVariant, AIMarkdownColorScheme } from './defs';
-import { shortenDocumentId } from '@ai-react-markdown/engine';
+import { hasLoneSurrogate, shortenDocumentId } from '@ai-react-markdown/engine';
 import { SHIPPED_BEHAVIOR_DEFAULTS } from './resolveFlatProps';
 import useReferenceFlipWarning from './hooks/useReferenceFlipWarning';
 
@@ -427,6 +427,37 @@ const AIMarkdownProvider = ({
   const fallbackId = useId();
   const documentIdExplicit = !!(documentId && documentId.length > 0);
   const resolvedDocumentId = documentIdExplicit ? documentId! : fallbackId;
+
+  // Dev probe (issue #32): an unpaired surrogate in a consumer-supplied
+  // documentId almost always means an upstream pipeline truncated a string
+  // mid-surrogate-pair (e.g. `.slice()` through an emoji). The derivation
+  // below survives it — `shortenDocumentId` reroutes ill-formed ids to the
+  // hash path — but the corruption is a real upstream bug worth surfacing.
+  // `hasLoneSurrogate` is the engine's own branch predicate, so detection
+  // here can never drift from what `shortenDocumentId` actually does.
+  // Gated on `documentIdExplicit`: the `useId()` fallback cannot contain
+  // surrogates, so only consumer-supplied ids are ever tested.
+  // Warn-once-per-ID: `warnedFor` tracks the last id warned about, so a
+  // reused provider that swaps to a DIFFERENT corrupted id warns again
+  // (a plain boolean latch would silently skip every id after the first).
+  // State lives in a lazily-initialized ref, same discipline as the
+  // core-key misuse warning above.
+  const surrogateWarnRef = useRef<{ warnedFor: string | null } | null>(null);
+  const surrogateWarn = (surrogateWarnRef.current ??= { warnedFor: null });
+  if (
+    __DEV__ &&
+    documentIdExplicit &&
+    surrogateWarn.warnedFor !== resolvedDocumentId &&
+    hasLoneSurrogate(resolvedDocumentId)
+  ) {
+    surrogateWarn.warnedFor = resolvedDocumentId;
+    console.warn(
+      `[AIMarkdown] documentId contains an unpaired UTF-16 surrogate — usually a string ` +
+        `truncated mid-emoji upstream. The id still works (ill-formed ids are hashed into ` +
+        `the prefix, distinctness preserved), but fix the id at its source: the corruption ` +
+        `likely affects more than this prop.`
+    );
+  }
 
   // URI-fragment safe per-document prefix derived ONCE here so downstream
   // consumers (MarkdownContent, cross-chunk placeholder components, and the
