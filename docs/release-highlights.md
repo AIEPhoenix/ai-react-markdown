@@ -8,6 +8,10 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 ## 2.3.x — The framework-agnostic engine
 
+### 2.3.1 — An unpaired surrogate in `documentId` no longer crashes the render
+
+A consumer-supplied `documentId` containing an unpaired UTF-16 surrogate — typically a string truncated mid-emoji by an upstream pipeline — made the clobber-prefix derivation throw `URIError: URI malformed` synchronously, taking down the whole render before any markdown was parsed. The failure was length-dependent: ids over 16 chars survived only because the hash path's `TextEncoder` lossily folds lone surrogates to U+FFFD. Ill-formed ids of any length now route to the hash path over their raw UTF-16 code units with a domain-separating seed, so they render, stay deterministic, and distinct corrupted ids keep distinct prefixes — a lossy-projection fix was explicitly rejected because it silently merges ids truncated at different points. Well-formed ids derive byte-identical prefixes to 2.3.0. Dev builds log a once-per-id warning pointing at the upstream corruption, and the engine now exports `hasLoneSurrogate` as the single owner of the detection semantics. (#32)
+
 ### 2.3.0 — The engine moves into its own package; two long-latent splice seam bugs die on the way out
 
 The Markdown engine — incremental parsing, LaTeX preprocessing, the definition/footnote machinery, and the sealed plugin pipeline — now lives in **`@ai-react-markdown/engine`**, a framework-agnostic package with zero React anywhere in its dependency tree. `@ai-react-markdown/core` consumes it and keeps a byte-identical public surface: every import you have today keeps working, nothing is renamed, and the runtime output is equivalent down to the parse tree. This is the structural prerequisite for non-React adapters (a Vue package is the motivating case) and, further out, embedded-runtime use — the engine is pure computation over strings and syntax trees, with no DOM access and no Node-only APIs on any runtime path.
