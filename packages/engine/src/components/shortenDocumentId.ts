@@ -79,7 +79,17 @@ const UTF8_ENCODER = /* @__PURE__ */ new TextEncoder();
  * @returns Unsigned 32-bit integer.
  */
 function murmur3_32(s: string, seed: number = 0): number {
-  const bytes = UTF8_ENCODER.encode(s);
+  return murmur3_32_bytes(UTF8_ENCODER.encode(s), seed);
+}
+
+/**
+ * MurmurHash3 x86 32-bit over an explicit byte sequence. Split out from
+ * `murmur3_32` so the ill-formed-id branch of `shortenDocumentId` can hash
+ * raw UTF-16LE code units — `TextEncoder` is lossy on unpaired surrogates
+ * (WHATWG USVString conversion folds every lone surrogate to U+FFFD), so
+ * feeding it an ill-formed string would silently merge distinct ids.
+ */
+function murmur3_32_bytes(bytes: Uint8Array, seed: number = 0): number {
   const len = bytes.length;
   let h1 = seed >>> 0;
   const nblocks = len >>> 2;
@@ -126,16 +136,91 @@ function murmur3_32(s: string, seed: number = 0): number {
   return h1 >>> 0;
 }
 
+// With the `u` flag this character class matches ONLY unpaired surrogates:
+// a valid pair reads as one astral code point, which lies outside
+// [U+D800, U+DFFF]. Dropping the flag would make it match each HALF of a
+// valid pair and misclassify ordinary emoji ids — the flag is load-bearing.
+const LONE_SURROGATE_RE = /[\uD800-\uDFFF]/u;
+
+/**
+ * Whether `id` is ill-formed UTF-16 (contains at least one unpaired
+ * surrogate — typically the fallout of an upstream pipeline slicing a
+ * string mid-emoji). Exported as the single owner of the detection
+ * semantics so consumers (e.g. core's dev-mode documentId warning) cannot
+ * drift from the branch condition inside `shortenDocumentId`.
+ */
+export function hasLoneSurrogate(id: string): boolean {
+  return LONE_SURROGATE_RE.test(id);
+}
+
+/**
+ * Domain-separation seed for hashing ill-formed ids. Ill-formed ids hash
+ * over raw UTF-16LE code-unit bytes while long well-formed ids hash over
+ * UTF-8 bytes — and the two byte encodings can collide: a lone-surrogate
+ * id's UTF-16LE byte sequence can equal some well-formed id's UTF-8 byte
+ * sequence (e.g. utf16le("\uD800\u4E80") === utf8("\u0000\u0600N")
+ * === [00 D8 80 4E]; both sides padded past the threshold to actually
+ * reach the two hash branches). A distinct seed makes equal byte inputs
+ * produce unrelated hashes, reducing cross-domain collisions to the
+ * generic 2^32 class.
+ */
+const ILL_FORMED_SEED = 1;
+
+/**
+ * Raw UTF-16LE code-unit bytes of `s` — total and trivially injective on
+ * ALL JavaScript strings, unlike UTF-8 encoding, which is lossy on
+ * ill-formed input (`TextEncoder` folds every lone surrogate to U+FFFD).
+ */
+function utf16leBytes(s: string): Uint8Array {
+  const bytes = new Uint8Array(s.length * 2);
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    bytes[i * 2] = c & 0xff;
+    bytes[i * 2 + 1] = c >>> 8;
+  }
+  return bytes;
+}
+
 /**
  * Shorten a `documentId` for use inside an HTML id prefix.
  *
+ * Well-formed ids keep the original contract byte-for-byte: at or below
+ * `threshold` they pass through verbatim; above it they hash via
+ * MurmurHash3 over UTF-8 bytes to a 1–6 char Base62 form.
+ *
+ * Ill-formed UTF-16 ids (unpaired surrogates, e.g. from an upstream
+ * pipeline slicing a string mid-emoji) are ALWAYS hashed, regardless of
+ * length — over their raw UTF-16LE code units, seeded with
+ * `ILL_FORMED_SEED`. Rationale (issue #32):
+ *
+ *   - Returned verbatim, a lone surrogate makes the caller's
+ *     `encodeURIComponent` throw `URIError: URI malformed` synchronously,
+ *     aborting the whole render before any markdown is parsed.
+ *   - Hashing the WHATWG lossy projection (lone surrogates → U+FFFD, what
+ *     `TextEncoder`/`toWellFormed()` do) was rejected: it silently merges
+ *     distinct corrupted ids — and merges them with a well-formed id
+ *     containing a literal U+FFFD — turning the old loud error into a
+ *     silent cross-document anchor collision.
+ *   - Escaping into a well-formed string before hashing was rejected too:
+ *     a naive marker scheme is not injective (marker-lookalike content
+ *     forges it), and an escape-the-escape scheme is strictly more code
+ *     than hashing the raw code units, which is injective for free.
+ *
+ * Distinct ids therefore produce distinct prefixes up to the generic 2^32
+ * birthday bound — the same guarantee long well-formed ids always had —
+ * with no equivalence-class carve-out for corrupted input.
+ *
  * @param id - The raw documentId (consumer-supplied or `useId()` fallback).
- * @param threshold - Only ids strictly longer than this get hashed.
- *   Defaults to `16`, which leaves short hand-picked ids and React's
- *   `useId()` outputs unchanged but catches UUIDs (36 chars) and nanoids.
- * @returns Either the original `id` (when short) or a 1–6 char Base62 hash.
+ *   Any JavaScript string is accepted, including ill-formed UTF-16.
+ * @param threshold - Only well-formed ids strictly longer than this get
+ *   hashed. Defaults to `16`, which leaves short hand-picked ids and
+ *   React's `useId()` outputs unchanged but catches UUIDs (36 chars) and
+ *   nanoids. Ill-formed ids ignore the threshold — they always hash.
+ * @returns The original `id` (well-formed and short) or a 1–6 char Base62
+ *   hash (well-formed long, or ill-formed of any length).
  */
 export function shortenDocumentId(id: string, threshold: number = 16): string {
+  if (hasLoneSurrogate(id)) return toBase62(murmur3_32_bytes(utf16leBytes(id), ILL_FORMED_SEED));
   if (id.length <= threshold) return id;
   return toBase62(murmur3_32(id));
 }
