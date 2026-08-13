@@ -127,7 +127,12 @@ export interface AIMarkdownProps<TMetadata extends AIMarkdownMetadata = AIMarkdo
    *
    * Consumer-supplied values pass through `encodeURIComponent` at the prefix
    * construction site, so any string is safe — including ids with reserved
-   * characters like `:`, `/`, or spaces.
+   * characters like `:`, `/`, or spaces. Even ill-formed UTF-16 (an unpaired
+   * surrogate from a string truncated mid-emoji upstream) is accepted: such
+   * ids are hashed into the prefix, keeping distinct ids on distinct
+   * prefixes (up to the same 2^32 hash bound long ids always had).
+   * Dev builds log a warning when this happens, since
+   * the corruption usually indicates an upstream bug worth fixing.
    */
   documentId?: string;
   /**
