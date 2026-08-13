@@ -1,0 +1,85 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+import { DOCS_LINKS } from '../_shared/docsLinks';
+
+<Meta title="Core/Performance Lab/About" />
+
+# Performance Lab
+
+Instruments, not demos. Every number in the <a href={DOCS_LINKS.benchmark}>benchmark guide</a> is
+reproducible from the stories in this section, on your machine, with your content.
+
+## What is being measured
+
+Two engine strategies, each of which claims to make streaming cheaper without changing what is
+rendered:
+
+- **Block-level memoization** (`blockMemo`) — each markdown block is keyed by its source bytes, so
+  an unchanged block skips both the hast-to-JSX conversion and React reconciliation on the next
+  frame.
+- **Incremental parsing** (`incrementalParse`) — when a frame is a byte-append of the previous
+  one, the parser re-parses the tail rather than the document.
+
+Both are **output-invariant**: the rendered DOM is byte-identical whether they are on or off. That
+claim is not taken on trust here. The same-page comparison stories run a per-frame DOM-equality
+verifier across both paths and report any divergence as a failure, so a run that shows a speed-up
+and no divergence is evidence for both halves at once.
+
+## How a comparison story works
+
+Each story renders the same content, through the same streaming scenario, down two render paths at
+once, and reports per-side:
+
+- commit counts and total commit time, from a React Profiler wrapped around each side;
+- per-stage engine timings — preprocess, parse, convert — where the path emits them;
+- frame health: fps, slow frames, and long tasks;
+- DOM equality between the sides, per frame.
+
+The scenario picker chooses the arrival pattern (steady tokens, random bursts, whole paragraphs),
+because the two strategies are sensitive to different shapes. Incremental parsing pays off on
+clean appends; block memoization pays off when many blocks are already settled. A payload that is
+one long paragraph will show close to nothing, and that is a real result rather than a broken
+measurement.
+
+The `content` control is live. Paste your own worst-case answer into it — the numbers that matter
+are the ones your content produces.
+
+## Reading the numbers honestly
+
+- **A single run is noise.** Restart a comparison several times. Background tabs, extensions, and
+  thermal state move these numbers more than most code changes do.
+- **Small payloads show a delta near zero.** The strategies have fixed overhead; below a few
+  kilobytes there is nothing for them to save.
+- **The commit-total delta is the headline**, but only the per-stage panels say _where_ a win came
+  from. `BoostCompare` answers "how much"; `BlockMemoCompare` and `IncrementalParseCompare` answer
+  "from what".
+- **Same-page comparisons share a main thread.** That makes them the fairest JavaScript-layer A/B
+  — both sides suffer the same GC pauses — and it makes their per-side fps figures meaningless,
+  since the two sides are one frame loop.
+
+## The Isolated stories need a loopback pair
+
+`BlockMemoCompareIsolated`, `IncrementalParseCompareIsolated`, and `BoostCompareIsolated` put each
+side in its own cross-site iframe — `localhost` on one side, `127.0.0.1` on the other — which
+Chrome's Site Isolation places in separate renderer processes. That is what makes per-side fps,
+slow frames, and long tasks genuinely per-side.
+
+The cost is a setup requirement: both origins must serve the same Storybook, so these three stories
+only work on a dev server or a static build reachable at **both** `localhost` and `127.0.0.1`. Open
+them anywhere else and they render a "not ready" panel rather than pretending to measure. They are
+also excluded from the automated test run for the same reason — the handshake cannot complete
+there — while staying in the sidebar, because a human with the right setup can still run them.
+
+The other limitation is inherent: cross-origin frames cannot be compared in the DOM. The isolated
+stories therefore report timings only, and the same-page stories remain the place where
+output-invariance is verified.
+
+## A note on the panels
+
+The readouts are dense monospace instrument panels rather than prose, and their a11y checks are
+turned off rather than merely deferred. That is a deliberate trade — the panels are tuned for
+reading a measurement at a glance, and the accessibility budget is spent on the user-facing
+stories instead.
+
+Full methodology, the recorded results, and the hardware they were taken on:
+
+<a href={DOCS_LINKS.benchmark}>docs/benchmark.md</a>.

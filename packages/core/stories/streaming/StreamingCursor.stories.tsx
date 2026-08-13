@@ -27,7 +27,7 @@ import AIMarkdown, {
 } from '../../src/index';
 import 'katex/dist/katex.min.css';
 import '../../src/components/typography/variants/all.scss';
-import { withThemedBackground } from '../decorators';
+import { sleep } from './scenarios';
 import { codePointSnapshots } from '@ai-react-markdown/engine';
 
 const CHUNK_CODE_POINTS = 7;
@@ -235,9 +235,9 @@ function CursorSmoke({
 }
 
 const meta: Meta<typeof CursorSmoke> = {
-  title: 'Core/Streaming/StreamingCursor',
+  title: 'Core/QA/Streaming Cursor',
+  tags: ['qa'],
   component: CursorSmoke,
-  decorators: [withThemedBackground],
   parameters: {
     // Live streaming — mid-stream markup is unstable by design.
     chromatic: { disableSnapshot: true },
@@ -251,8 +251,6 @@ const indicatorIn = (canvasElement: HTMLElement) =>
   canvasElement.querySelector<HTMLElement>('[data-aimd-streaming-indicator]');
 
 const smokeIn = (canvasElement: HTMLElement) => canvasElement.querySelector('[data-testid="cursor-smoke"]');
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export const ProseFollow: Story = {
   args: { payload: PROSE_PAYLOAD, finish: true },
@@ -292,7 +290,9 @@ export const CodeTailHides: Story = {
     expect(smokeIn(canvasElement)?.getAttribute('data-indicator-seen')).toBe('true');
     // "Stays hidden" needs a real window, not a single instant — late
     // re-measures (fonts.ready, ResizeObserver) must not re-show it while
-    // the tail block is still <pre>.
+    // the tail block is still <pre>. Deliberately wall-clock: the thing under
+    // test is browser-scheduled work that no fake timer would advance, and a
+    // negative assertion has to outlast it to mean anything.
     await sleep(600);
     expect(indicatorIn(canvasElement)).toBeNull();
   },

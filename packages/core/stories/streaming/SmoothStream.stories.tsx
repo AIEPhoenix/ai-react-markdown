@@ -16,17 +16,12 @@ import React, { StrictMode, useEffect, useState } from 'react';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, waitFor } from 'storybook/test';
 
-import AIMarkdown, {
-  AIMarkdownSmoothStream,
-  AIMarkdownStreamingCursor,
-  useSmoothStream,
-  type SmoothStreamPacing,
-} from '../../src/index';
+import AIMarkdown, { AIMarkdownStreamingCursor, useSmoothStream, type SmoothStreamPacing } from '../../src/index';
 import 'katex/dist/katex.min.css';
 import '../../src/components/typography/variants/all.scss';
-import { withThemedBackground } from '../decorators';
+import { WithScheme } from '../_shared/colorScheme';
 import { getStreamingTheme } from './theme';
-import { StreamingReplay, useStreamedContent, STREAMING_DEMO_CONTENT } from '../streamingHelpers';
+import { StreamingReplay, ThemedReplayButton, useStreamedContent, STREAMING_DEMO_CONTENT } from '../_shared/streaming';
 
 /**
  * Instruments the hook layer directly (the shell is a thin composition of
@@ -119,9 +114,9 @@ const MultiRoundSmoke = ({ theme }: { theme: 'light' | 'dark' }) => {
 };
 
 const meta: Meta<typeof SmoothStreamSmoke> = {
-  title: 'Core/Streaming/SmoothStream',
+  title: 'Core/QA/Smooth Stream',
+  tags: ['qa'],
   component: SmoothStreamSmoke,
-  decorators: [withThemedBackground],
   parameters: {
     // Mid-reveal markup is nondeterministic by construction.
     chromatic: { disableSnapshot: true },
@@ -137,10 +132,14 @@ export const Smoke: Story = {
   // only where the test runner serves a development React build — the
   // environment-independent pin for the dispose/revive contract is
   // `controller.test.ts` ("StrictMode effect replay" cases).
-  render: (_args, context) => (
-    <StrictMode>
-      <SmoothStreamSmoke theme={context.globals.theme === 'dark' ? 'dark' : 'light'} />
-    </StrictMode>
+  render: () => (
+    <WithScheme>
+      {(colorScheme) => (
+        <StrictMode>
+          <SmoothStreamSmoke theme={colorScheme} />
+        </StrictMode>
+      )}
+    </WithScheme>
   ),
   play: async ({ canvasElement }) => {
     const root = () => {
@@ -165,10 +164,14 @@ export const Smoke: Story = {
 };
 
 export const MultiRound: Story = {
-  render: (_args, context) => (
-    <StrictMode>
-      <MultiRoundSmoke theme={context.globals.theme === 'dark' ? 'dark' : 'light'} />
-    </StrictMode>
+  render: () => (
+    <WithScheme>
+      {(colorScheme) => (
+        <StrictMode>
+          <MultiRoundSmoke theme={colorScheme} />
+        </StrictMode>
+      )}
+    </WithScheme>
   ),
   play: async ({ canvasElement }) => {
     const root = () => {
@@ -213,84 +216,26 @@ const PresetLane = ({
 const PACING_PRESETS: SmoothStreamPacing[] = ['smooth', 'balanced', 'responsive'];
 
 export const PacingCalibration: Story = {
-  render: (_args, context) => {
-    const currentTheme = context.globals.theme === 'dark' ? 'dark' : 'light';
-    const theme = getStreamingTheme(currentTheme);
-    return (
-      <StreamingReplay
-        text={STREAMING_DEMO_CONTENT}
-        // Server-buffer-like flushes: large clumps, irregular multi-hundred-ms
-        // gaps — the arrival pattern the adaptive law exists to absorb.
-        options={{ chunkSizeMin: 40, chunkSizeMax: 120, chunkDelayMin: 150, chunkDelayMax: 450 }}
-        style={{ color: theme.text }}
-        renderButton={(streaming, restart) => (
-          <button
-            onClick={restart}
-            style={{
-              background: streaming ? 'transparent' : theme.primaryBg,
-              border: `1px solid ${streaming ? theme.buttonBorder : theme.primaryBg}`,
-              borderRadius: 6,
-              color: streaming ? theme.buttonText : theme.primaryText,
-              cursor: 'pointer',
-              font: 'inherit',
-              marginBottom: 12,
-              padding: '4px 12px',
-            }}
-          >
-            {streaming ? 'Streaming…' : 'Restart'}
-          </button>
-        )}
-      >
-        {(content, streaming) => (
-          <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
-            {PACING_PRESETS.map((pacing) => (
-              <PresetLane key={pacing} pacing={pacing} content={content} streaming={streaming} theme={currentTheme} />
-            ))}
-          </div>
-        )}
-      </StreamingReplay>
-    );
-  },
-};
-
-export const Demo: Story = {
-  render: (_args, context) => {
-    const currentTheme = context.globals.theme === 'dark' ? 'dark' : 'light';
-    const theme = getStreamingTheme(currentTheme);
-    return (
-      <StreamingReplay
-        text={STREAMING_DEMO_CONTENT}
-        // Feed large, bursty chunks: the typewriter smoothing is what keeps
-        // the visual cadence steady anyway — that contrast is the demo.
-        options={{ chunkSizeMin: 24, chunkSizeMax: 96, chunkDelayMin: 40, chunkDelayMax: 400 }}
-        style={{ color: theme.text }}
-        renderButton={(streaming, restart) => (
-          <button
-            onClick={restart}
-            style={{
-              background: streaming ? 'transparent' : theme.primaryBg,
-              border: `1px solid ${streaming ? theme.buttonBorder : theme.primaryBg}`,
-              borderRadius: 6,
-              color: streaming ? theme.buttonText : theme.primaryText,
-              cursor: 'pointer',
-              font: 'inherit',
-              marginBottom: 12,
-              padding: '4px 12px',
-            }}
-          >
-            {streaming ? 'Streaming…' : 'Restart'}
-          </button>
-        )}
-      >
-        {(content, streaming) => (
-          <AIMarkdownSmoothStream
-            content={content}
-            streaming={streaming}
-            colorScheme={currentTheme}
-            streamingCursor={AIMarkdownStreamingCursor}
-          />
-        )}
-      </StreamingReplay>
-    );
-  },
+  render: () => (
+    <WithScheme>
+      {(colorScheme) => (
+        <StreamingReplay
+          text={STREAMING_DEMO_CONTENT}
+          // Server-buffer-like flushes: large clumps, irregular multi-hundred-ms
+          // gaps — the arrival pattern the adaptive law exists to absorb.
+          options={{ chunkSizeMin: 40, chunkSizeMax: 120, chunkDelayMin: 150, chunkDelayMax: 450 }}
+          style={{ color: getStreamingTheme(colorScheme).text }}
+          renderButton={(streaming, restart) => <ThemedReplayButton streaming={streaming} onRestart={restart} />}
+        >
+          {(content, streaming) => (
+            <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
+              {PACING_PRESETS.map((pacing) => (
+                <PresetLane key={pacing} pacing={pacing} content={content} streaming={streaming} theme={colorScheme} />
+              ))}
+            </div>
+          )}
+        </StreamingReplay>
+      )}
+    </WithScheme>
+  ),
 };

@@ -17,7 +17,6 @@ import { expect, waitFor } from 'storybook/test';
 import AIMarkdown, { createRemendPreprocessor } from '../../src/index';
 import 'katex/dist/katex.min.css';
 import '../../src/components/typography/variants/all.scss';
-import { withThemedBackground } from '../decorators';
 import { codePointSnapshots } from '@ai-react-markdown/engine';
 
 const SMOKE_DOCUMENT_ID = 'remend-smoke';
@@ -113,9 +112,9 @@ function RemendSmoke() {
 }
 
 const meta: Meta<typeof RemendSmoke> = {
-  title: 'Core/Streaming/Remend',
+  title: 'Core/QA/Remend',
+  tags: ['qa'],
   component: RemendSmoke,
-  decorators: [withThemedBackground],
   parameters: {
     // Live streaming comparison — mid-stream markup is unstable by design.
     chromatic: { disableSnapshot: true },

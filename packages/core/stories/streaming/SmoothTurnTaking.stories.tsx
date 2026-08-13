@@ -26,7 +26,7 @@ import AIMarkdown, {
 } from '../../src/index';
 import 'katex/dist/katex.min.css';
 import '../../src/components/typography/variants/all.scss';
-import { withThemedBackground } from '../decorators';
+import { WithScheme } from '../_shared/colorScheme';
 import { getStreamingTheme } from './theme';
 
 interface ChunkPhase {
@@ -193,9 +193,9 @@ const TurnTakingHarness = ({ theme }: { theme: 'light' | 'dark' }) => {
 };
 
 const meta: Meta<typeof TurnTakingHarness> = {
-  title: 'Core/Streaming/SmoothTurnTaking',
+  title: 'Core/QA/Turn Taking',
+  tags: ['qa'],
   component: TurnTakingHarness,
-  decorators: [withThemedBackground],
   parameters: {
     // Mid-reveal markup is nondeterministic by construction.
     chromatic: { disableSnapshot: true },
@@ -209,10 +209,14 @@ export const TurnTaking: Story = {
   // StrictMode on purpose: coordinator registration must survive the
   // dev-build effect replay (refcount + deferred reclaim) without ghost
   // queue slots that would deadlock the gate.
-  render: (_args, context) => (
-    <StrictMode>
-      <TurnTakingHarness theme={context.globals.theme === 'dark' ? 'dark' : 'light'} />
-    </StrictMode>
+  render: () => (
+    <WithScheme>
+      {(colorScheme) => (
+        <StrictMode>
+          <TurnTakingHarness theme={colorScheme} />
+        </StrictMode>
+      )}
+    </WithScheme>
   ),
   play: async ({ canvasElement }) => {
     const root = () => {
@@ -326,10 +330,14 @@ const ReleaseHarness = ({ theme }: { theme: 'light' | 'dark' }) => {
 };
 
 export const ReleaseAnimatesNotSnaps: Story = {
-  render: (_args, context) => (
-    <StrictMode>
-      <ReleaseHarness theme={context.globals.theme === 'dark' ? 'dark' : 'light'} />
-    </StrictMode>
+  render: () => (
+    <WithScheme>
+      {(colorScheme) => (
+        <StrictMode>
+          <ReleaseHarness theme={colorScheme} />
+        </StrictMode>
+      )}
+    </WithScheme>
   ),
   play: async ({ canvasElement }) => {
     const root = () => {
@@ -421,10 +429,14 @@ const StickyDoneHarness = ({ theme }: { theme: 'light' | 'dark' }) => {
 };
 
 export const StickyDoneNoRegate: Story = {
-  render: (_args, context) => (
-    <StrictMode>
-      <StickyDoneHarness theme={context.globals.theme === 'dark' ? 'dark' : 'light'} />
-    </StrictMode>
+  render: () => (
+    <WithScheme>
+      {(colorScheme) => (
+        <StrictMode>
+          <StickyDoneHarness theme={colorScheme} />
+        </StrictMode>
+      )}
+    </WithScheme>
   ),
   play: async ({ canvasElement }) => {
     const root = () => {
@@ -504,10 +516,14 @@ const VirtualizationHarness = ({ theme }: { theme: 'light' | 'dark' }) => {
 };
 
 export const VirtualizationScrollBack: Story = {
-  render: (_args, context) => (
-    <StrictMode>
-      <VirtualizationHarness theme={context.globals.theme === 'dark' ? 'dark' : 'light'} />
-    </StrictMode>
+  render: () => (
+    <WithScheme>
+      {(colorScheme) => (
+        <StrictMode>
+          <VirtualizationHarness theme={colorScheme} />
+        </StrictMode>
+      )}
+    </WithScheme>
   ),
   play: async ({ canvasElement }) => {
     const root = () => {
@@ -603,10 +619,14 @@ const DualDocHarness = ({ theme }: { theme: 'light' | 'dark' }) => {
 };
 
 export const DualDocumentIndependence: Story = {
-  render: (_args, context) => (
-    <StrictMode>
-      <DualDocHarness theme={context.globals.theme === 'dark' ? 'dark' : 'light'} />
-    </StrictMode>
+  render: () => (
+    <WithScheme>
+      {(colorScheme) => (
+        <StrictMode>
+          <DualDocHarness theme={colorScheme} />
+        </StrictMode>
+      )}
+    </WithScheme>
   ),
   play: async ({ canvasElement }) => {
     const root = () => {
@@ -694,10 +714,14 @@ const EmptyChunkHarness = ({ theme }: { theme: 'light' | 'dark' }) => {
 };
 
 export const EmptyChunkReportsDone: Story = {
-  render: (_args, context) => (
-    <StrictMode>
-      <EmptyChunkHarness theme={context.globals.theme === 'dark' ? 'dark' : 'light'} />
-    </StrictMode>
+  render: () => (
+    <WithScheme>
+      {(colorScheme) => (
+        <StrictMode>
+          <EmptyChunkHarness theme={colorScheme} />
+        </StrictMode>
+      )}
+    </WithScheme>
   ),
   play: async ({ canvasElement }) => {
     const root = () => {
@@ -783,10 +807,14 @@ const OptOutEscapeHarness = ({ theme }: { theme: 'light' | 'dark' }) => {
 };
 
 export const OptOutEscapesWedgedQueue: Story = {
-  render: (_args, context) => (
-    <StrictMode>
-      <OptOutEscapeHarness theme={context.globals.theme === 'dark' ? 'dark' : 'light'} />
-    </StrictMode>
+  render: () => (
+    <WithScheme>
+      {(colorScheme) => (
+        <StrictMode>
+          <OptOutEscapeHarness theme={colorScheme} />
+        </StrictMode>
+      )}
+    </WithScheme>
   ),
   play: async ({ canvasElement }) => {
     const root = () => {

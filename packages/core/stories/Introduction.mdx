@@ -1,0 +1,121 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+import { DOCS_LINKS, REPO_URL } from './_shared/docsLinks';
+
+<Meta title="Introduction" />
+
+# @ai-react-markdown
+
+A React markdown renderer built for text that arrives one token at a time.
+
+## What this is
+
+Most markdown renderers assume a finished document. A model's output is not finished — it is a
+prefix that grows a few characters at a time, and every one of those prefixes has to render as
+valid, non-flickering UI. Half a code fence, a footnote reference whose definition has not been
+written yet, a `$$` that is still waiting for its closing pair: those are the normal states, not
+the edge cases.
+
+That assumption is what this library is built around. Parsing is incremental, so an append
+re-parses the tail rather than the document; rendering is memoized per block, so a new chunk
+touches the blocks that changed and leaves the rest alone; and references resolve across the
+chunk boundaries a chat UI splits a single answer into. On top of that sit the things assistants
+actually emit — GFM, KaTeX math, mermaid diagrams, CJK text, and untrusted URLs that need
+sanitizing before they reach the DOM.
+
+```bash
+npm install @ai-react-markdown/core
+```
+
+```tsx
+import AIMarkdown from '@ai-react-markdown/core';
+
+export function Answer({ text, done }: { text: string; done: boolean }) {
+  return <AIMarkdown content={text} streaming={!done} />;
+}
+```
+
+That is the whole integration. Everything else in this Storybook is an option you may never need
+to reach for.
+
+## Packages
+
+| Package                                    | Install it when                                                                                                             | In this Storybook                            |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| `@ai-react-markdown/core`                  | You are rendering markdown in React, with any UI library or none.                                                           | The **Core** branch.                         |
+| `@ai-react-markdown/mantine`               | Your app already uses Mantine and you want highlighted code blocks, mermaid diagrams, and automatic color-scheme following. | The **Mantine** branch.                      |
+| `@ai-react-markdown/engine`                | You are building a renderer for another framework. It is the parsing engine, with no React in it.                           | Not shown — it has no UI to demonstrate.     |
+| `@ai-react-markdown/remark-mark-highlight` | You want `==highlight==` syntax in some other remark pipeline.                                                              | Not shown — it is a plugin, not a component. |
+
+The Mantine package **wraps** core rather than replacing it: same props, same engine, same
+streaming behaviour, plus its own renderers. Nothing in the Core branch stops being true over
+there, which is why the Mantine stories only cover the differences.
+
+You never install `engine` yourself — `core` pins it as a transitive dependency.
+
+## How this Storybook is organized
+
+The sidebar is a reading order, top to bottom: evaluate, then integrate, then dig.
+
+- **Core / Playground** — every prop wired to a control. Start here to judge output quality.
+- **Core / Features** — what the renderer does with markdown: GFM basics, footnotes and
+  definition lists, math, CJK and international text, and the engine plugin catalog.
+- **Core / Theming** — design tokens, font size, color scheme.
+- **Core / Configuration** — custom components, metadata, URL sanitization, orphan references.
+- **Core / Streaming** — the streaming feature set: basics, the cursor, smooth streaming,
+  incremental parsing.
+- **Core / Documents** — coordinating one answer split across several components.
+- **Core / Extending** — the `define*` factories and the context/hook surface, from the point of
+  view of someone writing a wrapper package.
+- **Core / Performance Lab** — the reproducible measurement harnesses behind the numbers in the
+  benchmark guide. They are instruments, not demos: they start streaming on mount and report
+  render counts, DOM equality, and long-task budgets.
+- **Core / QA** — `play`-function assertion suites. They run in CI and are visible here for
+  debugging; they are not documentation.
+- **Mantine / …** — overview, playground, code blocks, mermaid diagrams, color scheme, and a
+  kitchen-sink showcase.
+
+## Using the canvas
+
+- **Theme toolbar** (the mirror icon) switches the whole preview between light and dark,
+  including this docs shell. Stories that pin their own scheme say so.
+- **Controls** are narrowed per story to the props that story is about, so the panel stays a
+  short list of relevant knobs rather than the whole prop surface. The Playground stories are the
+  exception — they expose everything.
+- **Replay buttons** restart a stream from the beginning. Streaming stories render a settled
+  document once the replay finishes, so if you arrived late, press it.
+- **React Scan** (the lightning icon) outlines re-renders. One caveat: the outlines only appear
+  in the standalone iframe view, so use "Open canvas in new tab" first — inside the docs page
+  they will not show.
+
+## Deeper docs
+
+Story descriptions link to the relevant guide as they go. The full index lives in the
+repository: <a href={DOCS_LINKS.readme}>docs/README.md</a>, alongside the{' '}
+
+<a href={DOCS_LINKS.architecture}>architecture overview</a> and the
+<a href={DOCS_LINKS.benchmark}>benchmark methodology</a>. Source, issues, and releases are at
+<a href={REPO_URL}>the repository root</a>.
+
+## Honest capability notes
+
+Things worth knowing before you adopt this, all of them deliberate:
+
+- **Core does not highlight code.** It emits `<pre><code class="language-ts">` and stops.
+  Bundling a highlighter would charge every consumer for a dependency many of them already
+  solve differently. Use `@ai-react-markdown/mantine`, or bring your own via a custom `pre`
+  component.
+- **Mermaid diagrams render in the Mantine package only.** Same reason — mermaid is a large
+  dependency, and it does not belong in the base renderer.
+- **Core ships one typography variant.** The token surface is large and fully overridable, but
+  there is no library of prebuilt looks to pick from.
+- **The engine plugin catalog is sealed.** You enable and disable what is in it; you cannot add
+  arbitrary remark or rehype plugins through that prop. Content preprocessors and custom
+  components are the extension points, and they cover most of what plugins were being used for.
+- **Directive syntax (`::: warning`) is not rendered.** Documents containing it parse and render
+  cleanly, but the directive blocks come through as ordinary paragraphs.
+- **React 19 is the floor.** The library uses native `useId()` and is typed against React 19.
+
+There are also two known accessibility gaps in the shipped defaults, tracked in the repository:
+GFM task checkboxes have no accessible name, and the default link colour is 3.55:1 against white
+rather than the 4.5:1 WCAG AA asks for. Several stories keep their a11y check in report-only mode
+because of them, and each one names the rule in a comment where it does.

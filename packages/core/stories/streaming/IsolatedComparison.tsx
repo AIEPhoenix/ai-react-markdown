@@ -120,9 +120,9 @@ function pickSideHosts(ipv6Available: boolean): SideHosts {
   return { memo: hostname, legacy: usable[0] ?? '127.0.0.1', symmetric: false };
 }
 
-/** Build one side's iframe URL. `globals=theme:` keeps the side story's
- *  withThemedBackground decorator in sync with the host's theme; the bmc*
- *  params configure the side itself. */
+/** Build one side's iframe URL. `globals=theme:` keeps the side story's page
+ *  chrome (the global `withColorScheme` decorator) in sync with the host's
+ *  theme; the bmc* params configure the side itself. */
 function buildSideUrl(
   host: string,
   side: AxisSideSpec & { axis: ComparisonAxis },

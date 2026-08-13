@@ -73,10 +73,14 @@ function IsolationHarness() {
   );
 }
 
-const meta = {
-  title: 'Core/StateIsolation',
+const meta: Meta<typeof IsolationHarness> = {
+  title: 'Core/Performance Lab/State Isolation',
   component: IsolationHarness,
-} satisfies Meta<typeof IsolationHarness>;
+  parameters: {
+    // Render-count probes, not prose.
+    a11y: { test: 'off' },
+  },
+};
 export default meta;
 
 export const StreamingFlipWakesOnlyStateSubscribers: StoryObj<typeof meta> = {

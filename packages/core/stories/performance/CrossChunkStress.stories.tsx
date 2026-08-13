@@ -1,0 +1,203 @@
+/**
+ * Coordination under load: 30 chunks in one document, then 60 chunks across
+ * three documents. These are the scale cases — the per-chunk fingerprint
+ * cache, the phantom-def injection, and the per-documentId registry isolation
+ * all have to hold when the chunk count stops being a handful.
+ *
+ * They live in the Performance Lab rather than under Documents because they
+ * teach nothing about the API: the small scenarios next door do that, and a
+ * 60-chunk wall of prose is a measurement, not an example.
+ */
+
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { expect } from 'storybook/test';
+import AIMarkdown from '../../src';
+import { AIMarkdownDocuments } from '../../src/components/AIMarkdownDocuments';
+import { WithScheme } from '../_shared/colorScheme';
+
+const meta: Meta<typeof AIMarkdownDocuments> = {
+  title: 'Core/Performance Lab/Cross-Chunk Stress',
+  component: AIMarkdownDocuments,
+  parameters: {
+    // Sixty stacked documents each render their own footnote <section>, which
+    // trips landmark-unique. That duplication IS the scenario — the isolation
+    // being verified is exactly that each document keeps its own footer.
+    a11y: { test: 'off' },
+  },
+};
+export default meta;
+// ─── Stress: 30 chunks, single document ──────────────────────────────────────
+//
+// One document split into exactly 30 streaming chunks. Mix of paragraph,
+// heading, list, code, table, math, raw HTML, footnote refs/defs, link defs,
+// and image refs scattered across chunks. Verifies:
+//   - aggregate footer renders only at chunk 30
+//   - per-chunk fingerprint cache stays stable as chunks mount in order
+//   - phantom-def injection covers chunks that ref labels defined later
+//   - multi-ref to the same label keeps global numbering consistent
+//
+// Label set: footnote labels `note-1`..`note-6`, link labels `ref-1`..`ref-4`,
+// image label `img-1`. Some labels are referenced multiple times.
+
+function buildThirtyChunkSingleDoc(): string[] {
+  // Exactly 30 chunks. Each entry is the full markdown for one chunk; chunks
+  // may contain multiple paragraphs separated by `\n\n` internally.
+  return [
+    // 1
+    '# A Long Streaming Response\n\nBroken into 30 short chunks to exercise per-chunk coordination.',
+    // 2
+    'Section 1 introduces the concept of streaming with [^note-1] embedded references.',
+    // 3
+    '## Architecture\n\nSee the [overview docs][ref-1] for the high-level shape.',
+    // 4
+    'Each chunk is parsed independently. Refs to [^note-2] inside a chunk that has no local def get phantom-injected.',
+    // 5
+    '## Use cases\n\n1. **Token streaming** — chunks arrive over time and mount in order.\n2. **Stable IDs** — `useId` gives each chunk a deterministic React key.\n3. **Coordinated footers** — only the last chunk renders the aggregate.',
+    // 6
+    'When a model emits [^note-3] in the middle of streaming, the renderer handles it gracefully.',
+    // 7
+    '## Implementation notes\n\nThe [API reference][ref-2] covers the full surface.',
+    // 8
+    'Internally we rely on a few invariants:\n\n- Each chunk subscribes to the registry via `useSyncExternalStore`.\n- Contributions are guarded by a fingerprint to avoid re-entry.\n- Phantom defs carry a sentinel URL so the registry can ignore them.',
+    // 9
+    'The [glossary][ref-3] disambiguates terms used here.',
+    // 10
+    'Concept: a *block* is one top-level hast element. Block-level memoization keys by `(raw, occurrence, ctx, position)`.',
+    // 11
+    'Concept: a *fingerprint* is a stable string capturing the registry slice a block depends on.',
+    // 12
+    'See [^note-4] for a deeper discussion of cache invariants.',
+    // 13
+    'Another paragraph that does not reference anything in particular. Just prose for bulk.',
+    // 14
+    'And another. Streaming responses often look like this — many short paragraphs in sequence.',
+    // 15
+    '## Edge cases',
+    // 16
+    'Edge case A: raw HTML — <span>inline span</span>.',
+    // 17
+    'Edge case B: code block:\n\n```ts\nexport function f(x: number) {\n  return x + 1;\n}\n```',
+    // 18
+    'Edge case C: GFM tables:\n\n| col A | col B |\n| ----- | ----- |\n| 1     | 2     |\n| 3     | 4     |',
+    // 19
+    'Edge case D: math: $$\\sum_{i=0}^{n} i = \\frac{n(n+1)}{2}$$',
+    // 20
+    '## Wrap up',
+    // 21
+    'Multiple refs to the same label sanity-check global numbering: [^note-1] and [^note-3] appear in two places each.',
+    // 22
+    'And one image reference for completeness: ![lazy preview][img-1]',
+    // 23
+    'See [^note-5] and the [conclusion][ref-4] for the summary.',
+    // 24
+    'Final remark before the def chunks: [^note-6] is intentionally only ever referenced once.',
+    // 25
+    '[^note-1]: First footnote — referenced multiple times across the doc.\n\n[^note-2]: Second footnote — referenced once.',
+    // 26
+    '[^note-3]: Third footnote — referenced twice including at the wrap-up.\n\n[^note-4]: Fourth footnote — discusses cache invariants and TAINT semantics.',
+    // 27
+    '[^note-5]: Fifth footnote — covers the wrap-up case.\n\n[^note-6]: Sixth footnote — singleton ref, included for coverage.',
+    // 28
+    '[ref-1]: https://example.com/docs "Overview documentation"\n\n[ref-2]: https://example.com/api "API reference"',
+    // 29
+    '[ref-3]: https://example.com/glossary\n\n[ref-4]: https://example.com/conclusion',
+    // 30
+    '[img-1]: ./placeholder-200x300.svg',
+  ];
+}
+
+const THIRTY_CHUNKS: string[] = buildThirtyChunkSingleDoc();
+
+export const ThirtyChunksSingleDoc: StoryObj<typeof meta> = {
+  render: () => (
+    <WithScheme>
+      {(colorScheme) => (
+        <AIMarkdownDocuments>
+          {THIRTY_CHUNKS.map((c, i) => (
+            <AIMarkdown key={i} content={c} documentId="msg-stress-30" colorScheme={colorScheme} />
+          ))}
+        </AIMarkdownDocuments>
+      )}
+    </WithScheme>
+  ),
+  // Keeps the chunk count in the story name truthful. This lives in `play`
+  // rather than in render: a render-phase throw takes the story down with a
+  // React error boundary instead of reporting a failed expectation.
+  play: async () => {
+    await expect(THIRTY_CHUNKS).toHaveLength(30);
+  },
+};
+
+// ─── Stress: 60 chunks, three documents ──────────────────────────────────────
+//
+// Three independent documents (msg-stress-A/B/C), 20 chunks each, 60 total.
+// Verifies:
+//   - per-documentId registry isolation (each doc has its own clobberPrefix +
+//     footnote namespace; identifiers `a`/`b`/`c` overlap across docs without
+//     clobbering)
+//   - aggregate footer appears at the end of each document's last chunk
+//   - cross-document refs never resolve to a different document's defs
+//
+// Each document uses the same labels (`a`, `b`, `c`) intentionally so any
+// leak across registries would show up as a wrong number / wrong link / wrong
+// def body.
+
+function buildDocChunks(tag: string): string[] {
+  // Exactly 20 chunks per document. Chunks 1-17 are body content, 18-20 are defs.
+  const body: string[] = [
+    `# Document ${tag}`,
+    `First chunk of ${tag}. Intro paragraph with a ref [^a].`,
+    `Section overview for ${tag}. References [^b] and the [glossary][site].`,
+    `Paragraph 4 of ${tag}. Plain prose, no refs.`,
+    `Paragraph 5 of ${tag}. A list:\n\n- alpha\n- beta\n- gamma`,
+    `Section 6 of ${tag} references [^b] again to test ref-count > 1.`,
+    `Paragraph 7 of ${tag}. Some \`inline code\` and a back-ref to [^a].`,
+    `## Subsection in ${tag}\n\nA shortish heading break.`,
+    `Paragraph 9 of ${tag}. Plain prose, no refs.`,
+    `Paragraph 10 of ${tag}. Plain prose, no refs.`,
+    `Paragraph 11 of ${tag} references the [glossary][site] a second time.`,
+    `Paragraph 12 of ${tag}. Plain prose, no refs.`,
+    `Paragraph 13 of ${tag}. Plain prose, no refs.`,
+    `Paragraph 14 of ${tag}. Plain prose, no refs.`,
+    `Paragraph 15 of ${tag}. A code block:\n\n\`\`\`\nhello ${tag}\n\`\`\``,
+    `Paragraph 16 of ${tag}. Plain prose, no refs.`,
+    `Final body paragraph in ${tag}, with a last ref [^c].`,
+  ];
+  const defs: string[] = [
+    `[^a]: Footnote A in ${tag}.`,
+    `[^b]: Footnote B in ${tag}.`,
+    `[^c]: Footnote C in ${tag}.\n\n[site]: https://example.com/${tag.toLowerCase()}/glossary "${tag} glossary"`,
+  ];
+  return [...body, ...defs];
+}
+
+const DOC_A: string[] = buildDocChunks('A');
+const DOC_B: string[] = buildDocChunks('B');
+const DOC_C: string[] = buildDocChunks('C');
+
+export const SixtyChunksThreeDocs: StoryObj<typeof meta> = {
+  render: () => (
+    <WithScheme>
+      {(colorScheme) => (
+        <AIMarkdownDocuments>
+          {DOC_A.map((ch, i) => (
+            <AIMarkdown key={`a-${i}`} content={ch} documentId="msg-stress-A" colorScheme={colorScheme} />
+          ))}
+          {DOC_B.map((ch, i) => (
+            <AIMarkdown key={`b-${i}`} content={ch} documentId="msg-stress-B" colorScheme={colorScheme} />
+          ))}
+          {DOC_C.map((ch, i) => (
+            <AIMarkdown key={`c-${i}`} content={ch} documentId="msg-stress-C" colorScheme={colorScheme} />
+          ))}
+        </AIMarkdownDocuments>
+      )}
+    </WithScheme>
+  ),
+  // 20 chunks × 3 documents = the 60 the story name claims. Same reasoning as
+  // ThirtyChunksSingleDoc for asserting here instead of throwing in render.
+  play: async () => {
+    for (const doc of [DOC_A, DOC_B, DOC_C]) {
+      await expect(doc).toHaveLength(20);
+    }
+  },
+};

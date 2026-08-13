@@ -21,9 +21,8 @@ import { expect, waitFor } from 'storybook/test';
 import AIMarkdown, { AIMarkdownStreamingCursor } from '../../src/index';
 import 'katex/dist/katex.min.css';
 import '../../src/components/typography/variants/all.scss';
-import { withThemedBackground } from '../decorators';
+import { WithScheme } from '../_shared/colorScheme';
 import { getStreamingTheme } from './theme';
-import { StreamingReplay } from '../streamingHelpers';
 
 const BODY = 'Body paragraph with a citation [^1] in it.\n\n';
 const DEF_TAIL = '[^1]: A long citation title that keeps on streaming for a while';
@@ -64,9 +63,9 @@ const FootnoteTailHarness = ({ theme }: { theme: 'light' | 'dark' }) => {
 };
 
 const meta: Meta<typeof FootnoteTailHarness> = {
-  title: 'Core/Streaming/FootnoteCursor',
+  title: 'Core/QA/Footnote Cursor',
+  tags: ['qa'],
   component: FootnoteTailHarness,
-  decorators: [withThemedBackground],
   parameters: {
     chromatic: { disableSnapshot: true },
   },
@@ -84,10 +83,14 @@ const click = (root: HTMLElement, id: string) => {
 };
 
 export const DefinitionTailAnchorsInFooter: Story = {
-  render: (_args, context) => (
-    <StrictMode>
-      <FootnoteTailHarness theme={context.globals.theme === 'dark' ? 'dark' : 'light'} />
-    </StrictMode>
+  render: () => (
+    <WithScheme>
+      {(colorScheme) => (
+        <StrictMode>
+          <FootnoteTailHarness theme={colorScheme} />
+        </StrictMode>
+      )}
+    </WithScheme>
   ),
   play: async ({ canvasElement }) => {
     const root = () => {
@@ -155,10 +158,14 @@ const OutOfOrderHarness = ({ theme }: { theme: 'light' | 'dark' }) => {
 };
 
 export const OutOfOrderTargetsTheRightLi: Story = {
-  render: (_args, context) => (
-    <StrictMode>
-      <OutOfOrderHarness theme={context.globals.theme === 'dark' ? 'dark' : 'light'} />
-    </StrictMode>
+  render: () => (
+    <WithScheme>
+      {(colorScheme) => (
+        <StrictMode>
+          <OutOfOrderHarness theme={colorScheme} />
+        </StrictMode>
+      )}
+    </WithScheme>
   ),
   play: async ({ canvasElement }) => {
     const root = () => {
@@ -203,73 +210,15 @@ const LinkDefHarness = ({ theme }: { theme: 'light' | 'dark' }) => {
   );
 };
 
-const CITATION_DOC = `## Research summary
-
-Recent work on adaptive buffering shows measurable gains in perceived latency[^smith2024]. Follow-up studies confirmed the effect across device classes[^lee2025], though replication in embedded contexts remains an open question[^embedded].
-
-The consensus recommendation is to hold roughly one burst of content in the buffer[^smith2024], trading a bounded delay for a steady cadence.
-
-[^smith2024]: Smith, A. et al. (2024). *Adaptive jitter buffering for text streams.* Journal of Interface Latency, 12(3), 45–67. https://example.com/smith2024
-[^lee2025]: Lee, B. (2025). *Typewriter pacing in production chat systems.* Proceedings of the Streaming UI Workshop. https://example.com/lee2025
-[^embedded]: Preliminary results only — see the workshop notes at https://example.com/embedded-notes for raw data and the replication checklist.
-`;
-
-/**
- * THE reported scenario, live: a citation-heavy document streamed token by
- * token, ending in a run of footnote definitions. Watch the cursor follow
- * the body prose, then drop into the footnote footer and track each
- * definition's entry in turn as the model writes it (before the fix it
- * stayed blinking at the body tail throughout the footer stream). Replay
- * with the restart button. No assertions — this is the eyeball story; the
- * geometry pins live in the sibling stories.
- */
-export const Demo: Story = {
-  render: (_args, context) => {
-    const currentTheme = context.globals.theme === 'dark' ? 'dark' : 'light';
-    const theme = getStreamingTheme(currentTheme);
-    return (
-      <StreamingReplay
-        text={CITATION_DOC}
-        // Small tokens, brisk cadence: slow enough to watch the cursor jump
-        // between footer entries, fast enough to replay comfortably.
-        options={{ chunkSizeMin: 3, chunkSizeMax: 14, chunkDelayMin: 25, chunkDelayMax: 90 }}
-        style={{ color: theme.text }}
-        renderButton={(streaming, restart) => (
-          <button
-            onClick={restart}
-            style={{
-              background: streaming ? 'transparent' : theme.primaryBg,
-              border: `1px solid ${streaming ? theme.buttonBorder : theme.primaryBg}`,
-              borderRadius: 6,
-              color: streaming ? theme.buttonText : theme.primaryText,
-              cursor: 'pointer',
-              font: 'inherit',
-              marginBottom: 12,
-              padding: '4px 12px',
-            }}
-          >
-            {streaming ? 'Streaming…' : 'Restart'}
-          </button>
-        )}
-      >
-        {(content, streaming) => (
-          <AIMarkdown
-            content={content}
-            streaming={streaming}
-            colorScheme={currentTheme}
-            streamingCursor={AIMarkdownStreamingCursor}
-          />
-        )}
-      </StreamingReplay>
-    );
-  },
-};
-
 export const InvisibleDefinitionHidesTheCursor: Story = {
-  render: (_args, context) => (
-    <StrictMode>
-      <LinkDefHarness theme={context.globals.theme === 'dark' ? 'dark' : 'light'} />
-    </StrictMode>
+  render: () => (
+    <WithScheme>
+      {(colorScheme) => (
+        <StrictMode>
+          <LinkDefHarness theme={colorScheme} />
+        </StrictMode>
+      )}
+    </WithScheme>
   ),
   play: async ({ canvasElement }) => {
     const root = () => {
