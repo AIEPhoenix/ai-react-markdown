@@ -1,0 +1,88 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+import { DOCS_LINKS } from '../../core/stories/_shared/docsLinks';
+
+<Meta title="Mantine/Overview" />
+
+# @ai-react-markdown/mantine
+
+Core, plus the renderers that need a UI library to build on.
+
+`<MantineAIMarkdown>` wraps `<AIMarkdown>` and passes everything through. Same props, same
+parsing engine, same streaming behaviour — the Core branch of this Storybook applies here without
+qualification. What the wrapper adds is a set of default component overrides that only make sense
+once you have a component library to draw them from, plus one extra prop to configure them.
+
+These stories cover the differences and nothing else. For everything the two packages share, read
+the Core branch.
+
+## What changes
+
+| Feature                 | Core                                                                                                           | Mantine                                                                                                                                                                        |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Code blocks             | `<pre><code class="language-ts">`, unstyled. Colouring is left to your stylesheet or your own `pre` component. | Syntax highlighting through `@mantine/code-highlight` and `highlight.js`, with a language tab, a copy button, and a collapse control.                                          |
+| Long code blocks        | Rendered in full; capping the height is your CSS.                                                              | Optionally collapsed at 320px with an expand button (`codeBlock.defaultExpanded`).                                                                                             |
+| Fences with no language | Rendered as plain preformatted text.                                                                           | The same by default, or run through `hljs.highlightAuto()` when `codeBlock.autoDetectUnknownLanguage` is on.                                                                   |
+| `json` fences           | Shown exactly as written, minified payloads included.                                                          | Deep-parsed and pretty-printed, including fields whose value is itself a JSON string.                                                                                          |
+| `mermaid` fences        | Rendered as a code block — mermaid is a large dependency and stays out of the base renderer.                   | Rendered as an interactive SVG diagram, with a source toggle, a copy button, and open-in-new-tab.                                                                              |
+| Color scheme            | Required: pass `colorScheme="light" \| "dark"`.                                                                | Optional. Absent, it resolves from `useComputedColorScheme()`, so the markdown follows the surrounding `MantineProvider`.                                                      |
+| Typography              | The library's own typography root, carrying the `--aim-*` design tokens.                                       | Mantine's `<Typography>` instead. It inherits Mantine's font stack, colours, and element spacing — and, because it replaces the root, core's token surface is not in the tree. |
+| Configuration surface   | The core prop set.                                                                                             | The same, plus the `codeBlock` behavior group.                                                                                                                                 |
+
+The `variant` prop is the one thing that goes away: the wrapper substitutes its own Typography, so
+core's typography variants have nothing to select.
+
+## Setting it up
+
+Three providers, once, at the top of your app. This is verbatim what these stories do.
+
+```tsx
+import { MantineProvider, createTheme } from '@mantine/core';
+import { CodeHighlightAdapterProvider, createHighlightJsAdapter } from '@mantine/code-highlight';
+import hljs from 'highlight.js';
+import MantineAIMarkdown from '@ai-react-markdown/mantine';
+
+import '@mantine/core/styles.css';
+import '@mantine/code-highlight/styles.css';
+import 'katex/dist/katex.min.css';
+
+// Build the adapter once at module scope — a new one per render would discard
+// the highlighter's caches on every keystroke of a stream.
+const highlightJsAdapter = createHighlightJsAdapter(hljs);
+const theme = createTheme({});
+
+export function App({ answer }: { answer: string }) {
+  return (
+    <MantineProvider theme={theme}>
+      <CodeHighlightAdapterProvider adapter={highlightJsAdapter}>
+        <MantineAIMarkdown content={answer} streaming />
+      </CodeHighlightAdapterProvider>
+    </MantineProvider>
+  );
+}
+```
+
+Three things about that snippet are load-bearing:
+
+- **The highlight adapter is not optional.** `@mantine/code-highlight` ships no highlighter of its
+  own; without an adapter provider above it, code blocks render but stay uncoloured.
+- **The stylesheets are yours to import.** The package ships components, not CSS side effects.
+  KaTeX's stylesheet is only needed if your content contains math, but math is on by default, so
+  in practice you want it.
+- **`highlight.js` is a peer-level choice.** The adapter interface accepts other highlighters;
+  `highlight.js` is simply what these stories use, and what the auto-detection option calls into.
+
+A dark theme needs no extra wiring. Set `forceColorScheme` — or let Mantine's own color-scheme
+manager do it — and the markdown follows, as the Color Scheme story demonstrates with two pinned
+providers side by side.
+
+## Where to read next
+
+- **Code Blocks** — the `codeBlock` group, the collapse control, the JSON printer, and the
+  language-tab behaviour that is not what its syntax suggests.
+- **Mermaid Diagrams** — static rendering, and the streaming contract for source that is
+  syntactically invalid most of the time it is on screen.
+- **Color Scheme** — automatic resolution from the provider, and how to scope two of them to one
+  page.
+- **Kitchen Sink** — one full answer, streamed and settled.
+- <a href={DOCS_LINKS['extending-via-subpackage']}>Extending via a subpackage</a> — the guide to writing a wrapper like
+  this one, including how a package contributes its own behavior group.

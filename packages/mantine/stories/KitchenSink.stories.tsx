@@ -1,0 +1,124 @@
+import React from 'react';
+import { Button } from '@mantine/core';
+import MantineAIMarkdown from '../src/index';
+import 'katex/dist/katex.min.css';
+import { baseMantineMeta, type MantineMeta, type MantineStory } from './_shared/meta';
+import { MANTINE_SHOWCASE } from './_shared/fixtures';
+import { StreamingReplay } from '../../core/stories/_shared/streaming';
+import { docsLink } from '../../core/stories/_shared/docsLinks';
+
+/**
+ * Everything the Mantine package renders, in one answer.
+ */
+const meta: MantineMeta = {
+  ...baseMantineMeta,
+  title: 'Mantine/Kitchen Sink',
+  tags: ['autodocs'],
+  component: MantineAIMarkdown,
+  // Streaming stories cannot gate on a11y — axe samples a partially typed DOM,
+  // where a heading that is mid-word is briefly an empty `<h1>`. `Full` sets
+  // its own value.
+  parameters: {
+    a11y: { test: 'todo' },
+    controls: { include: ['content', 'codeBlock', 'fontSize'] },
+    docs: {
+      description: {
+        component: [
+          'One document that touches every renderer this package substitutes — three',
+          'highlighted languages, a mermaid flowchart, a minified JSON payload, KaTeX',
+          'math, a GFM table, a footnote, and a CJK paragraph — first as a live stream and',
+          'then as a finished page.',
+          '',
+          'It is a front door rather than a test: this is what a consumer sees after',
+          'wrapping their app in `MantineProvider` and `CodeHighlightAdapterProvider` and',
+          'passing a model response straight through. Everything on screen comes from the',
+          'defaults; no story here configures anything.',
+          '',
+          "This is deliberately not core's Playground fixture. That one carries malformed",
+          "LaTeX and stray delimiters on purpose, because core's job there is to survive",
+          'bad input. This document is the one you would screenshot.',
+          '',
+          `The streaming machinery underneath is core's — see ${docsLink('streaming-and-performance', 'streaming & performance')}`,
+          'for how partial markdown is parsed without re-rendering the whole answer.',
+        ].join('\n'),
+      },
+    },
+  },
+  render: (args) => <MantineAIMarkdown {...args} />,
+};
+
+export default meta;
+
+/**
+ * The showcase document arriving token by token, which is the only state a
+ * chat UI ever actually renders.
+ *
+ * Worth watching, in the order it happens:
+ *
+ * - The **mermaid flowchart** shows its raw source until enough of the diagram
+ *   has arrived to parse, then swaps to the SVG and refreshes on each later
+ *   successful parse. Half-written diagram source is invalid source, so parse
+ *   failures during the stream are the normal case and are never surfaced as
+ *   errors.
+ * - The **JSON block** is reformatted only once it is complete enough to
+ *   parse; before that it renders as the raw text that has arrived so far.
+ * - **Code fences re-highlight** as lines land, and the collapse cap applies
+ *   from the moment a block outgrows it.
+ * - The **footnote reference** in the cost-model section resolves the moment
+ *   its definition arrives at the very bottom — the reference is rendered long
+ *   before the definition exists.
+ * - The **table** renders row by row rather than waiting for the closing row.
+ *
+ * The replay button is Mantine's own `Button`, not the plain restart control
+ * the core stories use. That is a small deliberate inconsistency: the Mantine
+ * branch demonstrates a Mantine application, so its chrome is Mantine's.
+ */
+export const RichStreaming: MantineStory = {
+  args: {
+    content: MANTINE_SHOWCASE,
+    fontSize: '',
+  },
+  argTypes: {
+    streaming: { table: { disable: true } },
+  },
+  parameters: {
+    controls: { exclude: ['streaming'] },
+  },
+  render: (args) => (
+    <StreamingReplay
+      text={args.content ?? ''}
+      renderButton={(streaming, restart) => (
+        <Button size="xs" variant={streaming ? 'default' : 'filled'} onClick={restart} mb={12}>
+          {streaming ? 'Streaming…' : 'Restart'}
+        </Button>
+      )}
+    >
+      {(content, streaming) => <MantineAIMarkdown {...args} content={content} streaming={streaming} />}
+    </StreamingReplay>
+  ),
+};
+
+/**
+ * The same document with the stream already finished — the settled output, and
+ * the one to read if you want to judge the typography rather than the
+ * behaviour.
+ *
+ * Everything that had to resolve has resolved: both diagrams are SVG, the JSON
+ * is formatted, the footnote link round-trips to its definition and back, and
+ * the math is typeset. Flip the toolbar theme here to see the whole page
+ * follow the provider, diagrams included.
+ */
+export const Full: MantineStory = {
+  args: {
+    content: MANTINE_SHOWCASE,
+    streaming: false,
+  },
+  parameters: {
+    // Trialled at 'error' and reverted: `color-contrast` on the highlight.js
+    // token colours in the four code fences — the `atom-one-light` palette's
+    // strings, function names, and literals all land under 4.5:1 against the
+    // code background. Same third-party theme limitation the Code Blocks
+    // stories hit.
+    a11y: { test: 'todo' },
+  },
+};

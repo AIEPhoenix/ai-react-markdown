@@ -1,142 +1,47 @@
 import React from 'react';
-import type { Meta, StoryObj } from '@storybook/react-vite';
-import { Button } from '@mantine/core';
 import MantineAIMarkdown from '../src/index';
 import 'katex/dist/katex.min.css';
-import { withMantineProvider } from './decorators';
-import { StreamingReplay } from '../../core/stories/streamingHelpers';
+import { baseMantineMeta, type MantineMeta, type MantineStory } from './_shared/meta';
+import { GFM_BASICS } from '../../core/stories/_shared/fixtures';
 
-const meta: Meta<typeof MantineAIMarkdown> = {
-  title: 'Mantine/MantineAIMarkdown',
+/**
+ * The Mantine wrapper with every prop wired to a control — core's surface plus
+ * `codeBlock`. Color scheme follows the toolbar through Mantine's own
+ * provider, so there is no `colorScheme` prop to set here.
+ */
+const meta: MantineMeta = {
+  ...baseMantineMeta,
+  title: 'Mantine/Playground',
+  tags: ['autodocs'],
   component: MantineAIMarkdown,
-  argTypes: {
-    content: { control: 'text', description: 'Raw markdown content to render.' },
-    streaming: { control: 'boolean', description: 'Whether content is actively being streamed.' },
-    fontSize: { control: 'text', description: 'Base font size (e.g. `"0.9375rem"`, `"14px"`, or a number for px).' },
-    colorScheme: { table: { disable: true } },
-    // Behaviors-system flat props.
-    blockMemo: { control: 'boolean', description: 'Block-level memoization (output-invariant). Default `true`.' },
-    incrementalParse: {
-      control: 'boolean',
-      description: 'Incremental (prefix-freeze) parsing for streaming appends (output-invariant). Default `true`.',
-    },
-    preserveOrphanReferences: {
-      control: 'boolean',
-      description: 'Protect orphan reference definitions in incomplete/streaming documents. Default `true`.',
-    },
-    codeBlock: {
-      control: 'object',
-      description:
-        'Code-block behavior group (`defaultExpanded`, `autoDetectUnknownLanguage`). ' +
-        'Replaces atomically; omitted fields fall to the shipped defaults.',
-    },
-    enginePlugins: { table: { disable: true } },
-    metadata: { control: 'object', description: 'Arbitrary data passed to custom components via context.' },
-    contentPreprocessors: { table: { disable: true } },
-    customComponents: { table: { disable: true } },
-    Typography: { table: { disable: true } },
-    ExtraStyles: { table: { disable: true } },
+  parameters: {
+    // Was 'error' while this story rendered empty content. The GFM baseline
+    // brings in an autolink, and Mantine's default link blue (#228be6) is
+    // 3.55:1 against white — a theme-level decision this story cannot fix.
+    a11y: { test: 'todo' },
   },
-  decorators: [withMantineProvider],
   render: (args) => <MantineAIMarkdown {...args} />,
 };
 
 export default meta;
-type Story = StoryObj<typeof MantineAIMarkdown>;
 
-export const Default: Story = {
+/** The GFM baseline, rendered through Mantine's typography and code blocks. */
+export const Default: MantineStory = {
   args: {
-    content: '',
-  },
-};
-
-export const CJKRenderErrorFix: Story = {
-  args: {
-    content:
-      '这是一个**“会引起”**渲染错误的**“已知问题”**，当加重符号\\*\\*遇到某些中文标点时，可能就会出现**“识别不了”**的情况。就如这句话展现的一样。\n\n**このアスタリスクは強調記号として認識されず、そのまま表示されます。**この文のせいで。\n\n**该星号不会被识别，而是直接显示。**这是因为它没有被识别为强调符号。\n\n**이 별표는 강조 표시로 인식되지 않고 그대로 표시됩니다(이 괄호 때문에)**이 문장 때문에.\n\n**~~このアスタリスクは強調記号として認識されず、そのまま表示されます。~~**この文のせいで。\n\n**~~该星号不会被识别，而是直接显示。~~**这是因为它没有被识别为强调符号。\n\n**~~이 별표는 강조 표시로 인식되지 않고 그대로 표시됩니다(이 괄호 때문에)~~**이 문장 때문에.',
+    content: GFM_BASICS,
   },
 };
 
 /**
- * Streaming demo focused on the Mantine-specific renderers — mermaid diagrams
- * and highlighted code — arriving token by token.
- *
- * What to watch while it streams:
- * - Mermaid blocks show their raw source (plain code block) until the first
- *   prefix parses, then switch to the live SVG and refresh on each further
- *   successful parse. Parse failures mid-stream never flash the error tab;
- *   only the post-stream corrective pass may surface a real error.
- * - Code blocks re-highlight as lines arrive.
- *
- * Edit `content` in the Controls panel to stream your own markdown.
+ * The CJK emphasis fix, verified through the Mantine wrapper too — the
+ * correction lives in the shared engine, so the wrapper must inherit it.
+ * The core story under Features covers the same ground for readers; this one
+ * exists to catch a regression that only shows up here.
  */
-export const Streaming: Story = {
+export const CJKRenderErrorFix: MantineStory = {
+  tags: ['qa'],
   args: {
-    content: [
-      '# Mermaid 流式渲染演示',
-      '',
-      '下面的图会随着 token 流入逐步成形：先显示源码，首个可解析前缀出现后切换为 SVG，之后每次解析成功就刷新。',
-      '',
-      '```mermaid',
-      'flowchart LR',
-      '    A[用户提问] --> B{是否需要工具?}',
-      '    B -- 是 --> C[调用工具]',
-      '    B -- 否 --> D[直接回答]',
-      '    C --> E[整合结果]',
-      '    D --> E',
-      '    E --> F[回复用户]',
-      '```',
-      '',
-      '中间穿插一段普通内容，验证流式期间其他块不受影响：**加粗**、`行内代码`、公式 $E = mc^2$。',
-      '',
-      '```python',
-      'def fibonacci(n: int) -> int:',
-      '    a, b = 0, 1',
-      '    for _ in range(n):',
-      '        a, b = b, a + b',
-      '    return a',
-      '```',
-      '',
-      '## 第二张图：时序图',
-      '',
-      '```mermaid',
-      'sequenceDiagram',
-      '    participant U as 用户',
-      '    participant A as 助手',
-      '    participant T as 工具',
-      '    U->>A: 提问',
-      '    A->>T: 调用检索',
-      '    T-->>A: 返回结果',
-      '    A-->>U: 流式回答',
-      '```',
-      '',
-      '| 阶段 | 显示内容 |',
-      '| ---- | -------- |',
-      '| 首个可解析前缀之前 | mermaid 源码 |',
-      '| 流式中 | 最近一次成功渲染的 SVG |',
-      '| 流式结束 | 最终代码的校正渲染 |',
-      '',
-      '流式结束后，所有图都应停在最终形态。',
-      '',
-    ].join('\n'),
-    fontSize: '',
+    content:
+      '这是一个**“会引起”**渲染错误的**“已知问题”**，当加重符号\\*\\*遇到某些中文标点时，可能就会出现**“识别不了”**的情况。就如这句话展现的一样。\n\n**このアスタリスクは強調記号として認識されず、そのまま表示されます。**この文のせいで。\n\n**该星号不会被识别，而是直接显示。**这是因为它没有被识别为强调符号。\n\n**이 별표는 강조 표시로 인식되지 않고 그대로 표시됩니다(이 괄호 때문에)**이 문장 때문에.\n\n**~~このアスタリスクは強調記号として認識されず、そのまま表示されます。~~**この文のせいで。\n\n**~~该星号不会被识别，而是直接显示。~~**这是因为它没有被识别为强调符号。\n\n**~~이 별표는 강조 표시로 인식되지 않고 그대로 표시됩니다(이 괄호 때문에)~~**이 문장 때문에.',
   },
-  argTypes: {
-    streaming: { table: { disable: true } },
-  },
-  parameters: {
-    controls: { exclude: ['streaming'] },
-  },
-  render: (args) => (
-    <StreamingReplay
-      text={args.content ?? ''}
-      renderButton={(streaming, restart) => (
-        <Button size="xs" variant={streaming ? 'default' : 'filled'} onClick={restart} mb={12}>
-          {streaming ? 'Streaming…' : 'Restart'}
-        </Button>
-      )}
-    >
-      {(content, streaming) => <MantineAIMarkdown {...args} content={content} streaming={streaming} />}
-    </StreamingReplay>
-  ),
 };

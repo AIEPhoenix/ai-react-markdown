@@ -1,0 +1,35 @@
+// Highlight.js themes, scoped per Mantine color scheme.
+//
+// Why Sass `@import` and not `@use`:
+//   `@use` is always top-level — it cannot be nested inside a selector, so it
+//   can't scope a third-party stylesheet. Sass's `@import` can, and with an
+//   EXTENSIONLESS url it *inlines* the plain-CSS file and re-nests every rule
+//   under the wrapping selector. Writing the `.css` extension instead would
+//   leave a passthrough `@import` in the output — which is what the previous
+//   globals.css did. That is spec-invalid inside a selector: the dev server
+//   silently dropped it (so the dark hljs theme never applied anywhere), and
+//   the production bundler hoisted it to the top of the built CSS as an
+//   unresolved bare specifier, 404-ing `assets/highlight.js/...` and taking
+//   the whole Mantine story chunk down with a CSS preload rejection.
+//
+// Why the `@layer` wrapper:
+//   The rules must stay in the `highlight-js` cascade layer. Layered rules
+//   lose to unlayered ones regardless of specificity, and that is deliberate:
+//   @mantine/code-highlight ships unlayered styles that are supposed to win.
+//   Dropping the layer would silently invert that priority.
+//
+// Fallback if Sass 3.0 removes `@import`:
+//   hand-vendor the two theme files' rule bodies into this file, keeping the
+//   same two selector scopes and the same layer. Deprecation noise from
+//   Sass 1.80+ is silenced via `css.preprocessorOptions.scss.silenceDeprecations`
+//   in .storybook/main.ts.
+
+@layer highlight-js {
+  [data-mantine-color-scheme='light'] {
+    @import 'highlight.js/styles/atom-one-light.min';
+  }
+
+  [data-mantine-color-scheme='dark'] {
+    @import 'highlight.js/styles/agate.min';
+  }
+}

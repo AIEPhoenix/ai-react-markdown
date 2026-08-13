@@ -1,0 +1,39 @@
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import MantineAIMarkdown from '../../src/index';
+import { withMantineProvider } from '../decorators';
+import { coreArgTypes } from '../../../core/stories/_shared/argTypes';
+
+export type MantineMeta = Meta<typeof MantineAIMarkdown>;
+export type MantineStory = StoryObj<typeof MantineAIMarkdown>;
+
+/**
+ * Core's controls plus the one prop the Mantine wrapper adds. `variant` is
+ * deliberately absent: the wrapper substitutes its own Typography, so a
+ * typography-variant control would be inert here.
+ */
+export const mantineArgTypes: NonNullable<MantineMeta['argTypes']> = {
+  ...coreArgTypes,
+  codeBlock: {
+    control: 'object',
+    description:
+      'Code-block behavior group (`defaultExpanded`, `autoDetectUnknownLanguage`). ' +
+      'Replaces atomically; omitted fields fall to the shipped defaults.',
+  },
+};
+
+/**
+ * Everything a Mantine meta shares. Same rule as `baseCoreMeta`: spread it,
+ * then write `title` and `tags` as literal properties.
+ *
+ * No themed render wrapper here — `<MantineAIMarkdown>` reads Mantine's own
+ * `useComputedColorScheme()`, so it follows the provider the decorator sets
+ * up. That automatic tracking is a feature of the package, not scaffolding to
+ * work around.
+ */
+export const baseMantineMeta: Partial<MantineMeta> = {
+  component: MantineAIMarkdown,
+  decorators: [withMantineProvider],
+  argTypes: mantineArgTypes,
+};
+
+export { storyTheme } from './theme';

@@ -1,22 +1,32 @@
-import React from 'react';
+import React, { type ReactNode } from 'react';
 import type { Decorator } from '@storybook/react-vite';
-import { MantineProvider, createTheme } from '@mantine/core';
+import { MantineProvider } from '@mantine/core';
 import { CodeHighlightAdapterProvider, createHighlightJsAdapter } from '@mantine/code-highlight';
 import hljs from 'highlight.js';
+import { useStoryColorScheme } from '../../core/stories/_shared/colorScheme';
+import { storyTheme } from './_shared/theme';
 import '@mantine/core/styles.css';
 import '@mantine/code-highlight/styles.css';
-import './globals.css';
+import './globals.scss';
 
-const theme = createTheme({});
 const highlightJsAdapter = createHighlightJsAdapter(hljs);
 
-export const withMantineProvider: Decorator = (Story, context) => {
-  const colorScheme = context.globals.theme === 'dark' ? 'dark' : 'light';
+/**
+ * Inner component so the context read is an ordinary React hook call. This
+ * renders inside `withColorScheme`, which is a global decorator and therefore
+ * always wraps outside component-level decorators like this one.
+ */
+const MantineScope = ({ children }: { children: ReactNode }) => {
+  const colorScheme = useStoryColorScheme();
   return (
-    <MantineProvider theme={theme} forceColorScheme={colorScheme}>
-      <CodeHighlightAdapterProvider adapter={highlightJsAdapter}>
-        <Story />
-      </CodeHighlightAdapterProvider>
+    <MantineProvider theme={storyTheme} forceColorScheme={colorScheme}>
+      <CodeHighlightAdapterProvider adapter={highlightJsAdapter}>{children}</CodeHighlightAdapterProvider>
     </MantineProvider>
   );
 };
+
+export const withMantineProvider: Decorator = (Story) => (
+  <MantineScope>
+    <Story />
+  </MantineScope>
+);
