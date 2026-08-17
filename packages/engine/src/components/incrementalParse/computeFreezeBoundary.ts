@@ -19,7 +19,10 @@
  *    tracked outside fences; while any tag, comment, or raw block
  *    (`<?…?>` / `<!DECL…>` / `<![CDATA[…]]>` — CommonMark html block types
  *    3–5) is open, candidates are blocked. Line-truncated tag starts
- *    (`<div` at EOL, attributes wrapping) count as opens.
+ *    (`<div` at EOL, attributes wrapping) count as opens. Closers that
+ *    OVERLAP their opener (`<!-->`, `<!--->`, line-start `<?>`) close on
+ *    the spot — CommonMark and parse5 agree — so the markup after them is
+ *    scanned, not skipped as construct interior.
  * 2. **`$$` flow math** — remark-math's flow math swallows blank lines and
  *    runs to EOF when unclosed (verified empirically); its closing fence
  *    must sit at LINE START (a mid-line `$$` does not close it). Math
@@ -53,16 +56,24 @@
  *    reproduced on v1.8.0). The candidate adjacent to such a run is
  *    rejected until a later confirmed content line pins the seam from the
  *    frozen side; dropping candidates only over-blocks (safe direction).
+ *    A type 2-5 block that opens AND closes on its first line owns the
+ *    rest of that line as raw content too (`<!-- c --> tail`) — same seam.
  * 7. **Phase poison** (`phasePoisonedAt`) — points where this line-level
  *    model may have DIVERGED from micromark and provably cannot resync:
  *    a fence/math open suppressed by `htmlFlowSinceBlank` (only certainly
  *    swallowed at top level — in a container it really opens and the
  *    open/close phase inverts permanently), and a paragraph-inline `<!--`
  *    that fails to close by end of line (literal text to micromark, but
- *    the comment scan would skip real markup as comment interior). Every
- *    candidate past the first such point is rejected, sticky; candidates
- *    at or before it stay valid — the ambiguous region then re-parses
- *    inside the tail (pure over-block).
+ *    the comment scan would skip real markup as comment interior), and
+ *    every point where CommonMark's terminator and parse5's tokenizer
+ *    DISAGREE about where a raw construct ends (`--!>` closes a comment
+ *    for parse5 only; a `<?…`/`<![CDATA[…` bogus comment ends at its
+ *    first `>` for parse5 but at `?>`/`]]>` for CommonMark; a paragraph-
+ *    inline `<?>` is open to micromark, closed to parse5) — the bytes in
+ *    between are raw text to one grammar and real markup to the other, and
+ *    the hast is parse5's. Every candidate past the first such point is
+ *    rejected, sticky; candidates at or before it stay valid — the
+ *    ambiguous region then re-parses inside the tail (pure over-block).
  *
  * ## Incremental scanning (checkpoint resume)
  *
@@ -281,7 +292,14 @@ const FENCE_RE = /^ {0,3}(`{3,}|~{3,})/;
 const MATH_RUN_RE = /^ {0,3}(\$\$+)/;
 /** Opening/closing tags (name must be followed by attr/close syntax, which
  *  excludes autolinks like `<https://…>`), plus comment delimiters. */
-const TAG_OR_COMMENT_RE = /<(\/?)([A-Za-z][A-Za-z0-9-]*)(?=[\s/>])([^>]*)>|<!--|-->/g;
+const TAG_OR_COMMENT_RE = /<(\/?)([A-Za-z][A-Za-z0-9-]*)(?=[\s/>])([^>]*)>|<!--|-->|--!>/g;
+// Empty comments whose closer OVERLAPS the opener (`<!-->`, `<!--->`):
+// CommonMark 0.31 (html flow AND text) and parse5 all close them on the
+// spot. A `<!--` match followed by `>`/`->` must not open a comment — the
+// scan would then skip REAL markup up to the next stray `-->` (2026-08
+// project-review P1: `<!-->\n<details>\n-->` froze past a parse5-open
+// `<details>`, the v1.5.1 swallow class). Handled inline in the token
+// scan and in `floatingResidue`, which share the state machine.
 /** A tag START whose `>` has not arrived on this line — `<div` at EOL, or
  *  `<div class="a"` with attributes continuing on the next line. Counted as
  *  an open (probe-confirmed hazard); prose like `a<b` at EOL only costs
@@ -414,15 +432,8 @@ function freshCheckpoint(defListEnabled: boolean, mathFlow: boolean, referenceTa
 function isPlausibleLinkDefRest(rest: string): boolean {
   const t = rest.trim();
   if (t === '') return false; // destination-less
-  let destEnd: number;
-  if (t.startsWith('<')) {
-    const close = t.indexOf('>');
-    if (close === -1) return false;
-    destEnd = close + 1;
-  } else {
-    const ws = t.search(/[ \t]/);
-    destEnd = ws === -1 ? t.length : ws;
-  }
+  const destEnd = linkDestinationEnd(t);
+  if (destEnd === -1) return false; // micromark rejects the destination → paragraph
   const after = t.slice(destEnd).trim();
   if (after === '') return true;
   const opener = after[0];
@@ -438,6 +449,61 @@ function isPlausibleLinkDefRest(rest: string): boolean {
     if (after[i] === closer) return after.slice(i + 1).trim() === '';
   }
   return false; // title still open at EOL
+}
+
+/**
+ * micromark's link-destination grammar (micromark-factory-destination),
+ * applied to a trimmed def rest. Returns the index just past the
+ * destination, or -1 when micromark would REJECT it — the def line is then
+ * a paragraph whose `[label]` stays a live shortcut ref. Two forms:
+ *   - `<…>`: any characters except line endings and UNESCAPED `<` / `>`
+ *     (whitespace is legal); unclosed at EOL → reject. `<>` is valid.
+ *   - bare: a non-empty run without whitespace or ASCII control characters;
+ *     unescaped parentheses must balance, and a `)` at balance zero ENDS
+ *     the destination (whatever follows must then be a title or nothing).
+ * The old check accepted any `<…>` with a `>` somewhere and any bare run —
+ * `[a]: <u<v>` / `[a]: /u(x` registered GHOST defs that released reference
+ * taint early (2026-08 project-review P1; ghost defs are the unsafe
+ * direction — see the def-registration comment in processConfirmedLine).
+ */
+function linkDestinationEnd(t: string): number {
+  if (t.startsWith('<')) {
+    for (let i = 1; i < t.length; i++) {
+      const ch = t[i];
+      // `enclosedEscape`: a backslash only escapes `<`, `>`, `\`; before
+      // anything else it is a literal backslash and the next character is
+      // judged on its own.
+      if (ch === '\\' && (t[i + 1] === '<' || t[i + 1] === '>' || t[i + 1] === '\\')) {
+        i += 1;
+        continue;
+      }
+      if (ch === '>') return i + 1;
+      if (ch === '<') return -1;
+    }
+    return -1; // unclosed angle destination
+  }
+  let balance = 0;
+  let i = 0;
+  for (; i < t.length; i++) {
+    const code = t.charCodeAt(i);
+    if (code === 0x20 || code === 0x09) break; // whitespace ends the run
+    if (code < 0x20 || code === 0x7f) return -1; // ASCII control
+    const ch = t[i];
+    // `rawEscape`: only `(`, `)`, `\` are escapable; `\ ` is a literal
+    // backslash followed by whitespace, which ENDS the run (review probe:
+    // skipping any next char swallowed the space and registered a ghost).
+    if (ch === '\\' && (t[i + 1] === '(' || t[i + 1] === ')' || t[i + 1] === '\\')) {
+      i += 1;
+      continue;
+    }
+    if (ch === '(') balance += 1;
+    else if (ch === ')') {
+      if (balance === 0) break; // ends the destination
+      balance -= 1;
+    }
+  }
+  if (balance !== 0 || i === 0) return -1;
+  return i;
 }
 
 /** Blocker-3 classification of a block-START line (raw text; markers are
@@ -536,6 +602,57 @@ export function computeFreezeBoundary(
   }
 
   return { boundary, checkpoint: cp };
+}
+
+/**
+ * Blocker-6 residue: the bytes of a line that are neither tags nor comment
+ * tokens/content — floating raw text — computed with the SAME comment state
+ * machine as the balance scan (`commentOpenAtStart` carried in from the
+ * previous line; `<!-->`/`<!--->` close on the spot whether or not a comment
+ * is open; `--!>` never closes for CommonMark; a stray `-->` outside a
+ * comment is text). Raw-construct bytes must already be masked by the caller.
+ */
+function floatingResidue(text: string, commentOpenAtStart: boolean): string {
+  let out = '';
+  let open = commentOpenAtStart;
+  let last = 0; // start of the not-yet-emitted text run
+  TAG_OR_COMMENT_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = TAG_OR_COMMENT_RE.exec(text)) !== null) {
+    if (m[0] === '<!--') {
+      const next = text.slice(m.index + 4, m.index + 6);
+      const overlapLen = next.startsWith('>') ? 5 : next === '->' ? 6 : 0;
+      if (open) {
+        if (overlapLen) {
+          open = false;
+          last = m.index + overlapLen;
+          TAG_OR_COMMENT_RE.lastIndex = last;
+        }
+        continue;
+      }
+      out += text.slice(last, m.index);
+      if (overlapLen) {
+        last = m.index + overlapLen;
+        TAG_OR_COMMENT_RE.lastIndex = last;
+        continue;
+      }
+      open = true; // content until `-->` is dropped
+      continue;
+    }
+    if (m[0] === '-->') {
+      if (open) {
+        open = false;
+        last = m.index + 3;
+      }
+      continue; // stray `-->` stays in the text run
+    }
+    if (m[0] === '--!>') continue; // content (open) or text (closed) either way
+    if (open) continue;
+    out += text.slice(last, m.index); // a tag: emit the text before it, drop the tag
+    last = m.index + m[0].length;
+  }
+  if (!open) out += text.slice(last);
+  return out;
 }
 
 /** Bake one confirmed line into the checkpoint. */
@@ -766,6 +883,16 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     if (!TYPE6_NAMES.has(tagStart[1].toLowerCase())) cp.hazardVerdict = true;
   }
   const inRawText = cp.htmlFlowSinceBlank || rawOpenAtLineStart;
+  // A type 2-5 html block (`<!--` / `<?` / `<!X` / `<![CDATA[`) STARTING on
+  // this line at block indent. Not sticky (V9 — the block ends with its
+  // terminator's line), and not `inRawText` unless the construct stays
+  // open past EOL — but when it opens AND closes on this line, the bytes
+  // after the closer are still this html block's raw content: floating
+  // remnant with the blocker-6 tail-dependent seam (`<!-- c --> tail`
+  // followed by a def line that a later append turns into a paragraph —
+  // direction-battery counterexample surfaced by the overlapping-
+  // terminator generator family, 2026-08). Feeds the blocker-6 check only.
+  const rawFlowStart = ln.indent <= 3 && /^<(?:!--|\?|![A-Za-z]|!\[CDATA\[)/.test(ln.text.trimStart());
 
   // Same-line code-span masking for HTML/ref/footnote extraction. A null
   // mask means "unsafe to mask here" — scan the raw text (over-blocking).
@@ -853,9 +980,24 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
   const rawOpenAtStart = cp.piOpen || cp.declOpen || cp.cdataOpen;
   const rawSpans: Array<[number, number]> = [];
   let pos = 0;
+  // parse5 divergence (2026-08 project-review P1): CommonMark ends a `<?`
+  // block at `?>` and a `<![CDATA[` block at `]]>`, but rehype-raw's HTML
+  // tokenizer sees BOTH as bogus comments that end at the FIRST `>`. Every
+  // byte between that `>` and the CommonMark terminator is raw text to
+  // micromark yet REAL markup to parse5 (a `<details>` there is an open
+  // element that reparents later siblings). This line model cannot serve
+  // two grammars at once, so the moment a construct's first `>` is not its
+  // CommonMark terminator, the phase is poisoned from this line on (sticky
+  // over-block — the whole divergent region re-parses inside the tail);
+  // the micromark model is kept for the scan itself.
+  const poisonRawDivergence = (): void => {
+    cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
+  };
   while (pos < scanText.length) {
     if (cp.piOpen) {
       const c = scanText.indexOf('?>', pos);
+      const gt = scanText.indexOf('>', pos);
+      if (gt !== -1 && (c === -1 || gt !== c + 1)) poisonRawDivergence();
       if (c === -1) {
         rawSpans.push([pos, scanText.length]);
         break;
@@ -867,6 +1009,8 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     }
     if (cp.cdataOpen) {
       const c = scanText.indexOf(']]>', pos);
+      const gt = scanText.indexOf('>', pos);
+      if (gt !== -1 && (c === -1 || gt !== c + 2)) poisonRawDivergence();
       if (c === -1) {
         rawSpans.push([pos, scanText.length]);
         break;
@@ -901,6 +1045,19 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
       cp.cdataOpen = true;
       pos = cd + 9;
     } else if (first === pi) {
+      if (scanText[pi + 2] === '>') {
+        // `<?>` — the opener's `?` doubles as the closer's: micromark html
+        // FLOW closes it on the spot (after `<?` it is already "at `?`,
+        // searching for `>`") and parse5 closes its bogus comment at that
+        // same `>`. Both agree → a closed 3-byte span, no state. In html
+        // TEXT micromark wants a real `?>` after `<?` (paragraph-inline
+        // `<?>` stays open to micromark, closed to parse5) — that
+        // divergence is poisoned like the others.
+        rawSpans.push([pi, pi + 3]);
+        pos = pi + 3;
+        if (scanText.slice(0, pi).trim() !== '' || ln.indent > 3) poisonRawDivergence();
+        continue;
+      }
       rawSpans.push([pi, pi + 2]);
       cp.piOpen = true;
       pos = pi + 2;
@@ -920,12 +1077,39 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     let lastCommentOpenerIdx = -1;
     while ((m = TAG_OR_COMMENT_RE.exec(scanText)) !== null) {
       if (m[0] === '<!--') {
+        const next = scanText.slice(m.index + 4, m.index + 6);
+        if (cp.commentOpen) {
+          // Inside an OPEN comment `<!--` is content — but the regex
+          // consumed its `--`, which may be the start of the closer:
+          // `<!-->` / `<!--->` carry a `-->` (closes for both grammars;
+          // soak seed 20260759: `<!--\n\n<!-->\n<details>` left the
+          // comment open and skipped the real `<details>`), `<!--!>` /
+          // `<!---!>` carry a `--!>` (parse5-only closer → poison).
+          if (next.startsWith('>') || next === '->') cp.commentOpen = false;
+          else if (next === '!>' || next === '-!') poisonRawDivergence();
+          continue;
+        }
+        if (next.startsWith('>') || next === '->') {
+          // Empty comment with an overlapping closer (see the note above
+          // TAG_OR_COMMENT_RE) — closed on the spot; the regex resumes after `<!--`,
+          // where the leftover `>` / `->` matches nothing.
+          continue;
+        }
         cp.commentOpen = true;
         lastCommentOpenerIdx = m.index;
         continue;
       }
       if (m[0] === '-->') {
         cp.commentOpen = false;
+        continue;
+      }
+      if (m[0] === '--!>') {
+        // parse5 accepts `--!>` as a comment closer; CommonMark does not
+        // (`<!--x--!>\n<details>\n-->` is one html block to micromark
+        // whose `<details>` is a REAL open element to parse5). Same
+        // two-grammar split as the raw-construct divergence above → poison
+        // from this line, keep the micromark model (comment stays open).
+        if (cp.commentOpen) poisonRawDivergence();
         continue;
       }
       if (cp.commentOpen) continue;
@@ -980,24 +1164,20 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
   // (the under-block direction; review counterexample with an arbiter-level
   // hast mismatch). Unterminated construct bytes are masked (rawSpans /
   // comment-token strip); their interior text may over-flag, which is safe.
-  if (inRawText && cp.openTotal === 0) {
-    let residue = scanText;
+  if ((inRawText || rawFlowStart) && cp.openTotal === 0) {
+    let masked = scanText;
     for (const [from, to] of rawSpans) {
-      residue = residue.slice(0, from) + ' '.repeat(to - from) + residue.slice(to);
+      masked = masked.slice(0, from) + ' '.repeat(to - from) + masked.slice(to);
     }
-    residue = residue.replace(/<!--[\s\S]*?-->/g, ' '); // closed comments incl. content
     // Comment content spanning lines is not covered by rawSpans (comments
-    // are tracked by the token scan, not the raw state machine). When a
-    // comment was open at line START: a line with no `-->` is pure comment
-    // interior (no remnant); a line with `-->` is comment content only up
-    // to the terminator — text AFTER it is real remnant. A stray `-->`
-    // WITHOUT an open comment must not swallow the text before it (that
-    // would HIDE real remnant, the under-block direction).
-    if (commentOpenAtLineStart) {
-      residue = residue.includes('-->') ? residue.replace(/[\s\S]*?-->/, ' ') : '';
-    }
-    residue = residue.replace(TAG_OR_COMMENT_RE, '');
-    if (residue.trim() !== '') {
+    // are tracked by the token scan, not the raw state machine), so the
+    // residue is taken by the SAME token walk the balance scan uses — the
+    // comment-open state carried in from the line start, overlapping
+    // closers (`<!-->` closing an open comment) and all. Regex masking
+    // (`<!--…-->`, `<!--…$`) got the overlap case wrong: it erased the
+    // `<!-->` before the "cut at `-->`" step could see it, hiding the real
+    // remnant after it (adversarial review of 5074c4b, blocker-6 seam).
+    if (floatingResidue(masked, commentOpenAtLineStart).trim() !== '') {
       cp.htmlSeamPending = true;
     }
   }

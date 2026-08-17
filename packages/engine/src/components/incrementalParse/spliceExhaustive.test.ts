@@ -46,6 +46,13 @@ const TOKENS = [
   '<d',
   '/>',
   '<!--',
+  // Bare closers/openers so the census can COMPOSE the overlapping and
+  // divergent terminators (`<!-->`, `<!--->`, `<?>`, and a stray `-->`
+  // after them) instead of only ever seeing complete or bare-open forms
+  // (2026-08 project review: every P1 lived in this gap).
+  '>',
+  '-->',
+  '<?',
   '<![CDATA[<d>]]>',
   '<?p <b> ?>',
   '$$',

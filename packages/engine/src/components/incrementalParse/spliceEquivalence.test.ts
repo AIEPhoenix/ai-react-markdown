@@ -314,6 +314,45 @@ describe('splice equivalence — fuzz-found regressions', () => {
       [4, 4, 4, 4, 1, 4, 4, 4],
       1, // fuzz configIndex 563389549 % CATALOG.length — defaults-all-on
     ],
+    // 2026-08 project-review P1 family (eng-parse-01/02/03), surfaced by
+    // the generator families added in the same change (the pre-fix scanner
+    // fails each within ~30 fuzz samples). (a) `<!-->` is a CLOSED empty
+    // comment (closer overlaps the opener) — the scanner left a comment
+    // open, skipped the REAL `<details>` and froze past it; the tail was
+    // then reparented into the frozen element by rehype-raw.
+    [
+      'overlap-empty-comment-swallow',
+      'plain prose keeps flowing here\n\n<!-->\n<details>\n-->\n\n[a]: https://example.com/a\n\n> a quoted line\n',
+      [4, 1, 1, 4, 4, 4, 4, 4],
+      0,
+    ],
+    ['overlap-empty-pi-swallow', '<?>\n<details>\n?>\n\nx\n\ny\n\nz\n', [6, 4, 3, 5], 0],
+    // Same closer hidden INSIDE an open comment: `<!--` … `<!-->` — the
+    // regex consumed the `<!--` and never saw the `-->` it overlaps (release
+    // soak seed 20260759, first run after the fix above).
+    [
+      'overlap-closer-inside-open-comment',
+      '[^a]: body text\n\n[a]: https://example.com/a\n\n<!-- a closed comment -->\n\n```\nconst x = "[a]<div>";\n\n```\n\n<!--\n\n<!-->\n<details>\n-->\n\nplain prose keeps flowing here\n\n```\nconst x = "[a]<div>";\n\n```\n\n- tight one\n- tight two\n\nTerm line\n\n:   description body\n',
+      [4, 4, 4, 4, 4, 1, 4, 4],
+      0,
+    ],
+    // (b) parse5 closes a comment at `--!>` and a bogus comment (`<?…`) at
+    // its FIRST `>`; CommonMark needs `-->` / `?>`. The bytes in between
+    // are raw text to micromark but real markup to parse5 → poisoned.
+    ['bang-comment-closer-swallow', '<!--x--!>\n<details>\n-->\n\nx\n\ny\n\nz\n', [1], 0],
+    ['pi-first-gt-swallow', '<?x >\n<details>\n?>\n\nx\n\ny\n\nz\n', [10], 0],
+    // (c) ghost definitions: micromark rejects `/u(x` (unbalanced paren)
+    // and `<u<v>` (inner `<`) as destinations, so the line is a paragraph
+    // and `[b]` stays a live ref — the old scanner registered the def,
+    // released the taint, and the real def's arrival retargeted the frozen
+    // literal into a linkReference.
+    [
+      'ghost-def-unbalanced-paren',
+      '[b]: /u(x\n\n[^a]: body text\n\n> a quoted line\n\n[b]: https://example.com/b\n\n<embed\n  src="x"\n/>\n',
+      [4, 1, 4, 4, 4, 4, 4, 4],
+      0,
+    ],
+    ['ghost-def-angle-inner-lt', 'see [a] here\n\n[a]: <u<v>\n\ny\n\n[a]: /real\n\nz\n', [1], 0],
   ];
 
   for (const [name, payload, sizes, configIdx] of FUZZ_CASES) {

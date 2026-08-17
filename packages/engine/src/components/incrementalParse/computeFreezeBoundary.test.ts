@@ -418,6 +418,155 @@ describe('computeFreezeBoundary — suppressed fence/math opens poison the phase
   });
 });
 
+describe('computeFreezeBoundary — overlapping terminators & parse5 divergence (2026-08 review P1)', () => {
+  // The 2026-08 project review found three P1s in one seam: the line-level
+  // scanner modelled comment/PI terminators after micromark, but (a) it
+  // missed closers that OVERLAP their opener, and (b) the hast shape is
+  // decided by parse5's tokenizer, which disagrees with CommonMark on
+  // `--!>` and on where a bogus comment (`<?…`, `<![CDATA[…`) ends. In
+  // every case a REAL `<details>` went uncounted and the boundary froze
+  // past a parse5-open element (the v1.5.1 swallow class). All shapes were
+  // outside every generator's alphabet — the fuzz families were extended
+  // in the same change (fuzzGenerators overlapTerminatorArb / TOKENS
+  // `>`, `-->`, `<?`), and the old scanner fails the arbiter within ~30
+  // samples under them.
+
+  test('<!--> and <!---> are CLOSED empty comments: the <details> after them counts', () => {
+    expect(computeFreezeBoundary('<!-->\n<details>\n-->\n\nx\n\ny\n', OFF)).toBe(0);
+    expect(computeFreezeBoundary('<!--->\n<details>\n-->\n\nx\n\ny\n', OFF)).toBe(0);
+    // …and they do not leave a comment open (control: freezable prose after).
+    const c1 = '<!--> after an empty comment\n\ny\n\nzzz';
+    expect(computeFreezeBoundary(c1, OFF)).toBe(c1.indexOf('zzz'));
+    const c2 = '<!---> after an empty comment\n\ny\n\nzzz';
+    expect(computeFreezeBoundary(c2, OFF)).toBe(c2.indexOf('zzz'));
+  });
+
+  test('inside an OPEN comment, <!--> / <!---> still carry the -->  closer (soak seed 20260759)', () => {
+    // The regex consumes `<!--` first, hiding the overlapping `-->` at +2/+3.
+    expect(computeFreezeBoundary('<!--\n\n<!-->\n<details>\n-->\n\nx\n\ny\n', OFF)).toBe(0);
+    expect(computeFreezeBoundary('<!--\n\n<!--->\n<details>\n-->\n\nx\n\ny\n', OFF)).toBe(0);
+    const c = '<!--\n\n<!--> closes here\n\ny\n\nzzz';
+    expect(computeFreezeBoundary(c, OFF)).toBe(c.indexOf('zzz'));
+    // `<!--!>` inside an open comment is a parse5-only `--!>` closer → poison.
+    expect(computeFreezeBoundary('<!--\n<!--!>\n<details>\n-->\n\nx\n\ny\n', OFF)).toBe(0);
+  });
+
+  test('<?> at line start is a CLOSED processing instruction (flow); inline it poisons', () => {
+    expect(computeFreezeBoundary('<?>\n<details>\n?>\n\nx\n\ny\n', OFF)).toBe(0);
+    const c = '<?> after an empty pi\n\ny\n\nzzz';
+    expect(computeFreezeBoundary(c, OFF)).toBe(c.indexOf('zzz'));
+    // Paragraph-inline `<?>`: micromark html-text still wants a `?>` after
+    // `<?` (open), parse5 closes at that `>` — divergent → poisoned.
+    // (No <details> here — the tag alone would block; this isolates the poison.)
+    expect(computeFreezeBoundary('a <?> b\n\n?>\n\ny\n\nzzz', OFF)).toBe(0);
+  });
+
+  test('parse5 closes a comment at --!>; CommonMark does not — poison from that line', () => {
+    expect(computeFreezeBoundary('<!--x--!>\n<details>\n-->\n\nx\n\ny\n', OFF)).toBe(0);
+    // Candidates BEFORE the divergent line survive (sticky over-block from it).
+    const t = 'x\n\n<!--x--!>\n-->\n\ny\n\nzzz';
+    expect(computeFreezeBoundary(t, OFF)).toBe(t.indexOf('<!--x'));
+  });
+
+  test('a PI / CDATA whose first `>` precedes its CommonMark terminator poisons', () => {
+    expect(computeFreezeBoundary('<?x >\n<details>\n?>\n\nx\n\ny\n', OFF)).toBe(0);
+    expect(computeFreezeBoundary('a <?x > <details>\n\n?>\n\nx\n\ny\n', OFF)).toBe(0);
+    expect(computeFreezeBoundary('<![CDATA[x>\n<details>\n]]>\n\nx\n\ny\n', OFF)).toBe(0);
+    const t = 'x\n\n<?x >?>\n\ny\n\nzzz';
+    expect(computeFreezeBoundary(t, OFF)).toBe(t.indexOf('<?x'));
+    // Control: a PI whose only `>` is the terminator's stays exact (A6).
+    const ok = '<?instr x ?>\n\ny\n\nzzz';
+    expect(computeFreezeBoundary(ok, OFF)).toBe(ok.indexOf('zzz'));
+  });
+
+  test('remnant after an OVERLAPPING closer of a comment open at line start is still remnant (review of 5074c4b)', () => {
+    // `<!--` … `<!--> tail`: the `-->` inside `<!-->` closes the comment,
+    // ` tail` is floating raw text (parse5 seam, blocker 6). Regex masking
+    // erased the `<!-->` before the "cut at -->" step and hid the remnant.
+    expect(computeFreezeBoundary('<!--\n<!--> tail\n\n[a]:', OFF)).toBe(0);
+    const t = 'intro\n\n<!--\n<!---> tail\n\n[a]:';
+    expect(computeFreezeBoundary(t, OFF)).toBe(t.indexOf('<!--'));
+    // Same overlap mid-line after a balanced element.
+    expect(computeFreezeBoundary('<div></div> <!-- x <!--> tail\n\n[a]:', OFF)).toBe(0);
+    // A stray `-->` outside any comment is remnant TEXT, not a token to strip.
+    expect(computeFreezeBoundary('<?x?>-->\n\n[a]:', OFF)).toBe(0);
+    // Controls: nothing after the closer → no remnant, freezable.
+    const c = '<!--\n<!-->\n\nzzz';
+    expect(computeFreezeBoundary(c, OFF)).toBe(c.indexOf('zzz'));
+  });
+
+  test('a same-line-closed type-2 block with trailing text is floating remnant (blocker 6)', () => {
+    // Direction-battery counterexample surfaced by the new family: the
+    // text after `-->` on the opener line is raw html content whose hast
+    // seam depends on whether a sibling follows (def → paragraph flip).
+    expect(computeFreezeBoundary('<!-- c --> after a comment\n\n[a]:', OFF)).toBe(0);
+    expect(computeFreezeBoundary('<!--> after an empty comment\n\n[a]:', OFF)).toBe(0);
+    // No trailing text → nothing floats; a pinning paragraph releases.
+    const bare = '<!-- c -->\n\nzzz';
+    expect(computeFreezeBoundary(bare, OFF)).toBe(bare.indexOf('zzz'));
+    const pinned = '<!-- c --> tail\n\npinning paragraph\n\nzzz';
+    expect(computeFreezeBoundary(pinned, OFF)).toBe(pinned.indexOf('zzz'));
+  });
+
+  test('boundary stays monotone across appends through a divergent construct', () => {
+    const text = 'x\n\n<!--x--!>\n<details>\n-->\n\ny\n\nzzz\n';
+    let prev = 0;
+    for (let i = 1; i <= text.length; i++) {
+      const b = computeFreezeBoundary(text.slice(0, i), OFF);
+      expect(b, `regression at length ${i}`).toBeGreaterThanOrEqual(prev);
+      expect(b, `poison ceiling at length ${i}`).toBeLessThanOrEqual(text.indexOf('<!--x'));
+      prev = b;
+    }
+  });
+});
+
+describe('computeFreezeBoundary — link-definition destination validity (ghost defs, 2026-08 review P1)', () => {
+  // micromark rejects these destinations, so the def line is a PARAGRAPH and
+  // `[a]` stays a live shortcut ref that a later real def retargets. The
+  // old rest check registered them (ghost def → taint released early →
+  // frozen literal `[a]` flipped to a linkReference on the def's arrival).
+  const ghost = (dest: string): string => `see [a] here\n\n[a]: ${dest}\n\nfiller\n\nzzz`;
+
+  test('unbalanced or stray parentheses in a bare destination do not register', () => {
+    expect(computeFreezeBoundary(ghost('/u(x'), OFF)).toBe(0);
+    expect(computeFreezeBoundary(ghost('/u)'), OFF)).toBe(0);
+    expect(computeFreezeBoundary(ghost('/u(x "title"'), OFF)).toBe(0);
+  });
+
+  test('angle destinations with an inner `<` or left unclosed do not register', () => {
+    // (`<u<v>` also opens a `<v>` tag for the balance scan — 0 either way;
+    // the arbiter fixture covers the retarget.)
+    expect(computeFreezeBoundary(ghost('<u<v>'), OFF)).toBe(0);
+    expect(computeFreezeBoundary(ghost('<u'), OFF)).toBe(0);
+    expect(computeFreezeBoundary(ghost('<u "title"'), OFF)).toBe(0);
+  });
+
+  test('a backslash only escapes ( ) \\ in a bare destination — `\\ ` ends the run (review of 5074c4b)', () => {
+    // micromark rawEscape: `\\` before anything but `(`, `)`, `\\` is a
+    // literal backslash and the next char is judged normally — whitespace
+    // ENDS the destination, so `[a]: /u\\ x` is a paragraph (garbage after
+    // the destination) and `/u(\\ )` is unbalanced. The first cut skipped
+    // any next char and registered ghosts.
+    expect(computeFreezeBoundary(ghost('/u\\ x'), OFF)).toBe(0);
+    expect(computeFreezeBoundary(ghost('/u\\\tx'), OFF)).toBe(0);
+    expect(computeFreezeBoundary(ghost('/u(\\ )'), OFF)).toBe(0);
+    // Angle form: `\\` escapes only `<`, `>`, `\\`.
+    // (registers — taint released at the def line — but `<v>` opens a tag: pre-existing over-block after it)
+    expect(computeFreezeBoundary(ghost('<u\\<v>'), OFF)).toBe(ghost('<u\\<v>').indexOf('[a]:'));
+    expect(computeFreezeBoundary(ghost('<u\\ v>'), OFF)).toBe(ghost('<u\\ v>').indexOf('zzz')); // literal `\\`, valid, no tag shape
+  });
+
+  test('controls: balanced parens, escaped parens, empty angle destination all register', () => {
+    for (const dest of ['/u(x)y', '/u\\(x', '<>', '/u "title"', '<u v> "title"']) {
+      const t = ghost(dest);
+      // `<u v>` registers (taint released) but also opens a `u` tag for the
+      // balance scan — pre-existing over-block from the def line on.
+      const expected = dest.startsWith('<u') ? t.indexOf('[a]:') : t.indexOf('zzz');
+      expect(computeFreezeBoundary(t, OFF), dest).toBe(expected);
+    }
+  });
+});
+
 describe('computeFreezeBoundary — scanner profile (mathFlow/referenceTaint off)', () => {
   // The def-label scanner runs a PINNED remark-parse+gfm grammar (no math,
   // and it only extracts def IDENTITIES). These switches exist for it and

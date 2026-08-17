@@ -304,6 +304,44 @@ at the 2000-sample scale: zero frames (identical ratios). Round 4 (fresh
 seeds 20260860..871, same 300k budget) came back ALL CLEAN on all three
 legs — the fix loop converged, and the campaign shipped in 2.0.2.
 
+Round 5 (2026-08-17, project-review follow-up): a whole-repo review
+found three detector P1s that shared one property — every shape lived
+OUTSIDE the generators' alphabet (fuzz `rawHtmlArb` only knew complete or
+bare-open comments/PIs; `linkDefArb` only ever emitted valid URLs; the
+census TOKENS had no bare `>`, `-->` or `<?`), so five verification layers
+had never seen them. The fix landed generator-first: the new families
+(`overlapTerminatorArb`/`overlapSettledArb`, `rawTextBlockArb`,
+`INVALID_DESTS`, TOKENS `>`/`-->`/`<?`, three COVERAGE_MARKERS) make the
+PRE-fix scanner fail the fuzz arbiter within ~30 samples and the direction
+battery within ~500, and surfaced a fourth pre-existing under-block on
+top of the three reviewed ones. Detector changes: (a) `<!-->`/`<!--->`
+and line-start `<?>` are CLOSED constructs (closer overlaps opener —
+CommonMark and parse5 agree; the old scan left them open and skipped a
+REAL `<details>` as comment interior); (b) points where CommonMark's
+terminator and parse5's tokenizer disagree — `--!>`, a `<?…`/`<![CDATA[…`
+whose first `>` precedes `?>`/`]]>`, paragraph-inline `<?>` — poison the
+phase (blocker-7 mechanism; the micromark model is kept for the scan);
+(c) `isPlausibleLinkDefRest` now runs micromark's destination grammar
+(unbalanced/stray parens, inner `<` or unclosed angle destination →
+paragraph, not a ghost def); (d) a type 2-5 block that opens and closes
+on its first line owns the rest of the line as raw remnant
+(`<!-- c --> tail` + a def line a later append turns into a paragraph —
+the fourth find, blocker-6 seam). Pins: `computeFreezeBoundary.test.ts`
+(two new describes, 14 assertions red on the old scanner) and six
+`spliceEquivalence.test.ts` FUZZ_CASES. Guard cost (paired 1000-sample
+fuzz, seed 20260717, old corpus): benign 0.4366 → 0.4366, hazard
+0.3390 → 0.3396 — nothing measurable; on the new corpus benign 0.4347 →
+0.4327, hazard 0.2999 → 0.3017 (the pre-fix number counts 4 failing
+samples). The first release-gate soak under the new alphabet caught one
+more variant (seed 20260759): the same overlapping `-->` hidden INSIDE an
+already-open comment (`<!--\n\n<!-->\n<details>`) — the regex consumes
+`<!--` before it can see the `-->` at +2 — fixed by resolving `<!-->` /
+`<!--->` (close) and `<!--!>` / `<!---!>` (parse5-only closer → poison)
+against the open-comment state; pinned (`overlap-closer-inside-open-
+comment`). The re-run of all three legs (50k splice fuzz across 12
+seeds, 20k direction battery, K=4 census stride 2 across 12 shards on the
+27-token alphabet) came back ALL CLEAN.
+
 Mutation audit (`stryker.conf.json`, one-off 2026-07-17, not in CI):
 killer suite = the fast arbiter set (`stryker.vitest.config.ts`). Score:
 **64.55% total** (1061 killed, 19 timeout, 566 survived, 27 no-coverage,

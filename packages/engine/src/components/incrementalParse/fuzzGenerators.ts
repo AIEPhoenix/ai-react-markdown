@@ -80,28 +80,105 @@ const indentedCodeArb = fc.constantFrom('    <details>[a] scanned literal', '   
 
 const mathArb = fc.boolean().map((settled) => `$$\ne = mc^2\n${settled ? '$$' : ''}`);
 
+/**
+ * Overlapping / divergent terminators (2026-08 project-review P1 family):
+ * constructs whose CLOSER shares bytes with the opener (`<!-->`, `<!--->`,
+ * `<?>` — CommonMark and parse5 both close them on the spot), plus shapes
+ * where micromark's block terminator and parse5's tokenizer disagree
+ * (`--!>` closes an HTML comment for parse5 but is not `-->` for
+ * CommonMark; a bogus comment `<?x >` closes at the FIRST `>` for parse5
+ * but needs `?>` for CommonMark). Each is glued to a REAL `<details>` and a
+ * stray terminator line: a scanner that leaves the construct open skips
+ * the container and freezes past a parse5-open element (swallow class).
+ * The unsettled openers get their `</details>` closer from HTML_CLOSERS
+ * with the usual settle bias.
+ */
+const OVERLAP_OPENERS = ['<!-->', '<!--->', '<?>', '<!--x--!>', '<?x >'] as const;
+const overlapTerminatorArb = fc
+  .constantFrom(...OVERLAP_OPENERS)
+  .map((opener) => `${opener}\n<details>\n${opener.startsWith('<?') ? '?>' : '-->'}`);
+/** Same constructs self-contained on one line (resync check: the scanner
+ *  must treat them as CLOSED and keep scanning the rest of the line). */
+const overlapSettledArb = fc.constantFrom(
+  '<!--> after an empty comment',
+  '<!---> after an empty comment',
+  '<?> after an empty pi',
+  '<!--x--!> after a bang-closed comment <b>x</b>'
+);
+
+/**
+ * CommonMark type-1 raw-text blocks (`<script>`/`<style>`/`<textarea>`/
+ * `<pre>`): micromark ends them only at the matching end tag; parse5 keeps
+ * script/style/textarea content as TEXT (a `<details>` inside is not an
+ * element) while `<pre>` is a normal container. The scanner counts tags
+ * inside them literally — over-block only — but the family was absent from
+ * every generator (2026-08 project review), so the arbiter never saw it.
+ */
+const rawTextBlockArb = fc.constantFrom(
+  '<script>\nlet s = "<details>[a]";\n</script>',
+  '<style>\n.x::before { content: "</details>"; }\n</style>',
+  '<textarea>\n<!-- not a comment here\n</textarea>',
+  '<pre>\n<div>pre content</div>\n</pre>',
+  "<script>alert('<div>')</script> same-line close"
+);
+
 const rawHtmlArb = fc.oneof(
-  fc.constant('<details>\n<summary>t</summary>\nbody prose\n</details>'),
+  { weight: 2, arbitrary: fc.constant('<details>\n<summary>t</summary>\nbody prose\n</details>') },
   // APPROX #2 — cross-line self-closing tag stays an over-blocking opener.
-  fc.constant('<embed\n  src="x"\n/>'),
+  { weight: 2, arbitrary: fc.constant('<embed\n  src="x"\n/>') },
   // APPROX #3 — tags inside a self-contained CDATA / PI still counted.
-  fc.constant('<![CDATA[<div>data</div>]]> trailing prose'),
-  fc.constant('<?instr <b> ?> after the pi'),
-  fc.constant('<!-- a closed comment -->'),
+  { weight: 2, arbitrary: fc.constant('<![CDATA[<div>data</div>]]> trailing prose') },
+  { weight: 2, arbitrary: fc.constant('<?instr <b> ?> after the pi') },
+  { weight: 2, arbitrary: fc.constant('<!-- a closed comment -->') },
+  { weight: 2, arbitrary: overlapSettledArb },
+  { weight: 1, arbitrary: rawTextBlockArb },
   // Unsettled openers (the assembler may close them later or leave them).
-  fc.constantFrom('<details>', '<!--', '<div')
+  { weight: 4, arbitrary: fc.constantFrom('<details>', '<!--', '<div') },
+  { weight: 2, arbitrary: overlapTerminatorArb }
 );
 
 const HTML_CLOSERS: Record<string, string> = {
   '<details>': '</details>',
   '<!--': '-->',
   '<div': 'class="x">content</div>',
+  ...Object.fromEntries(
+    OVERLAP_OPENERS.map((opener) => [`${opener}\n<details>\n${opener.startsWith('<?') ? '?>' : '-->'}`, '</details>'])
+  ),
 };
 
-const linkDefArb = fc.tuple(labelArb, fc.constantFrom('', ' "title"', ' "title\nwraps"')).map(
-  // APPROX #4 (A2) — a multi-line title breaks the def-chain recognition.
-  ([label, title]) => `[${label}]: https://example.com/${label}${title}`
-);
+/**
+ * Link-definition destinations: the valid URL the corpus always had, plus
+ * shapes micromark REJECTS (the def line is then a paragraph whose
+ * `[label]` stays a live shortcut ref): a bare destination with unbalanced
+ * parentheses, a stray `)` at balance zero, an angle destination containing
+ * `<`, an unclosed angle destination, and no destination at all (a bare
+ * `[label]:` with a quoted "title" after it is VALID — the quotes are the
+ * destination). A scanner that registers any of these as a def releases reference
+ * taint early (ghost def — 2026-08 project-review P1). `/u(x)y` is the
+ * balanced control.
+ */
+// `/u\\ x`: a backslash escapes only `(`, `)`, `\\` — before a space it is a
+// literal and the space ENDS the destination (garbage after → paragraph).
+const INVALID_DESTS = ['/u(x', '/u)', '<u<v>', '<u', '/u\\ x', ''] as const;
+/** Valid controls next to the invalid shapes: balanced parens, and an
+ *  angle destination WITH whitespace (legal — only `<`, `>` and line
+ *  endings are forbidden inside the brackets). */
+const VALID_ODD_DESTS = ['/u(x)y', '<u v>'] as const;
+const linkDefArb = fc
+  .tuple(
+    labelArb,
+    fc.oneof(
+      { weight: 5, arbitrary: fc.constant(null) },
+      { weight: 1, arbitrary: fc.constantFrom(...VALID_ODD_DESTS) },
+      { weight: 3, arbitrary: fc.constantFrom(...INVALID_DESTS) }
+    ),
+    fc.constantFrom('', ' "title"', ' "title\nwraps"')
+  )
+  .map(
+    // APPROX #4 (A2) — a multi-line title breaks the def-chain recognition.
+    ([label, dest, title]) =>
+      `[${label}]:${dest === null ? ` https://example.com/${label}` : dest ? ` ${dest}` : ''}${title}`
+  );
 
 const footnoteDefArb = fc
   .tuple(labelArb, fc.boolean())
@@ -254,4 +331,7 @@ export const COVERAGE_MARKERS: Record<string, RegExp> = {
   indentedCodeScanned: /^ {4}(?:<details>|\[\^b\])/m,
   underCountEdge: /<\/(?:b|i)> <(?:!--|\?php)/,
   unclosedRawOpener: /<details>(?![\s\S]*<\/details>)|<!--(?![\s\S]*-->)|<div\n/,
+  overlappingTerminator: /<!-->|<!--->|<\?>|--!>|<\?x >/,
+  invalidLinkDef: /\]:(?: \/u\(x| \/u\)| <u<v>| <u| \/u\\ x)(?:\n| "title)|\]:\n/,
+  rawTextBlock: /<(?:script|style|textarea|pre)>/,
 };
