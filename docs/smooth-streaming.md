@@ -105,7 +105,7 @@ props-shaped — spread it into the base component or any wrapper:
 
 ```tsx
 import { useSmoothStream } from '@ai-react-markdown/core';
-import { MantineAIMarkdown } from '@ai-react-markdown/mantine';
+import MantineAIMarkdown from '@ai-react-markdown/mantine';
 
 function ChatMessage({ markdown, pending }: { markdown: string; pending: boolean }) {
   const smooth = useSmoothStream({ content: markdown, streaming: pending });
