@@ -68,7 +68,7 @@ export interface AIMarkdownProps<TMetadata extends AIMarkdownMetadata = AIMarkdo
    * Base font size for the rendered output.
    * Accepts a CSS length string (e.g. `'14px'`, `'0.875rem'`) or a number
    * which is treated as pixels. Defaults to `'0.9375rem'`. `null` (from
-   * untyped/serialized callers) counts as absent.
+   * untyped/serialized callers) and `''` count as absent.
    */
   fontSize?: number | string;
   /** Raw markdown content to render. */
@@ -377,10 +377,15 @@ const AIMarkdownComponent = <TMetadata extends AIMarkdownMetadata = AIMarkdownMe
   const usedStreaming = streaming ?? false;
   const usedVariant = variant ?? 'default';
   const usedColorScheme = colorScheme ?? 'light';
-  // Normalize fontSize: number -> px string, null/undefined -> default rem
+  // Normalize fontSize: number -> px string, null/undefined/'' -> default rem
   // value. Branch on `== null` (not truthiness) so `fontSize={0}` resolves
-  // to `'0px'`.
-  const usedFontSize = fontSize == null ? '0.9375rem' : typeof fontSize === 'number' ? `${fontSize}px` : fontSize;
+  // to `'0px'`; `''` is excluded by an explicit check because it is not a CSS
+  // length. It would reach the Typography root as an empty
+  // `--aim-font-size-root`, i.e. the guaranteed-invalid value, and every
+  // variable chained off it — core's `--aim-*` scale and the Mantine
+  // wrapper's `--mantine-*` overrides — would collapse to browser defaults.
+  const usedFontSize =
+    fontSize == null || fontSize === '' ? '0.9375rem' : typeof fontSize === 'number' ? `${fontSize}px` : fontSize;
 
   // documentId is forwarded RAW (possibly undefined) to the render-state
   // provider, which is the single point that resolves the useId() fallback

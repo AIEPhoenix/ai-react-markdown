@@ -19,6 +19,17 @@ describe('AIMarkdown fontSize normalization', () => {
     expect(html).toContain('0.9375rem');
   });
 
+  // Regression: `fontSize=""` (a blanked text input, or a Storybook `text`
+  // control left empty) used to be forwarded verbatim. An empty custom
+  // property is the guaranteed-invalid value, so `--aim-font-size-root`
+  // vanished from the Typography root and every variable derived from it fell
+  // back to browser defaults — visibly, code-block language labels rendered
+  // at the inherited 16px instead of the intended 0.75em.
+  test('empty-string fontSize resolves to the rem default', () => {
+    const html = renderToString(<AIMarkdown content="hello" fontSize="" />);
+    expect(html).toContain('0.9375rem');
+  });
+
   test('numeric fontSize resolves to "{n}px"', () => {
     const html = renderToString(<AIMarkdown content="hello" fontSize={14} />);
     expect(html).toContain('14px');
