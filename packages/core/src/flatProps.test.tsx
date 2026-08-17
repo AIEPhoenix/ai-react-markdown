@@ -5,7 +5,8 @@
  */
 import { describe, expect, test } from 'vitest';
 import { renderToString } from 'react-dom/server';
-import AIMarkdown from '.';
+import AIMarkdown, { AIMarkdownSmoothStream, AIMarkdownStreamingCursor } from '.';
+import { AIMarkdownDocuments } from './components/AIMarkdownDocuments';
 import { useAIMarkdownBehaviors, useAIMarkdownState, useAIMarkdownTheme } from './context';
 import { highlight, pangu } from '@ai-react-markdown/engine';
 
@@ -93,6 +94,34 @@ describe('library-wide null guard — theme/state/component slices (§3.7)', () 
   test('fontSize={0} still resolves to 0px (guard branches on null, not truthiness)', () => {
     const html = renderToString(<AIMarkdown content="hello" fontSize={0} />);
     expect(html).toContain('--aim-font-size-root:0px');
+  });
+});
+
+describe('library-wide null guard — AIMarkdownSmoothStream shell (§3.7)', () => {
+  test('smoothCoordination={null} counts as absent (default true), not as false', () => {
+    // Observable on the server: behind a streaming predecessor, an EMPTY
+    // streaming successor is gated by the coordinator — rendered empty and
+    // NOT streaming (no cursor slot). With coordination off it keeps its
+    // cursor. A destructuring default left null in place and turned
+    // coordination off silently.
+    const render = (smoothCoordination: boolean | null) =>
+      renderToString(
+        <AIMarkdownDocuments>
+          <AIMarkdownSmoothStream documentId="doc" content="first chunk" streaming />
+          <AIMarkdownSmoothStream
+            documentId="doc"
+            content=""
+            streaming
+            smoothCoordination={smoothCoordination as never}
+            streamingCursor={AIMarkdownStreamingCursor}
+          />
+        </AIMarkdownDocuments>
+      );
+    const on = render(true);
+    const off = render(false);
+    expect(on).not.toContain('data-aimd-streaming-cursor');
+    expect(off).toContain('data-aimd-streaming-cursor');
+    expect(render(null)).toBe(on);
   });
 });
 

@@ -614,17 +614,23 @@ export interface AIMarkdownSmoothStreamProps<
 const AIMarkdownSmoothStreamComponent = <TMetadata extends AIMarkdownMetadata = AIMarkdownMetadata>({
   smoothPacing,
   onSmoothDrained,
-  smoothCoordination = true,
+  smoothCoordination,
   content,
   streaming,
   ...rest
 }: AIMarkdownSmoothStreamProps<TMetadata>) => {
+  // §3.7: `??` is the only correct default site — a destructuring default
+  // leaves an explicit `null` (RSC / serialization boundaries materialize
+  // "not passed" as null) in place, and `null ? … : …` then silently turned
+  // coordination OFF, the opposite of the documented default (2026-08
+  // project review, core-api-01).
+  const coordinate = smoothCoordination ?? true;
   const smooth = useDocumentSmoothStream({
     // The same documentId the inner <AIMarkdown> receives below — the only
     // public supply path for the id, so shell auto-wiring cannot drift.
     // Withholding it (opt-out, or no id at all) degrades the hook to plain
     // useSmoothStream behavior.
-    documentId: smoothCoordination ? rest.documentId : undefined,
+    documentId: coordinate ? rest.documentId : undefined,
     content,
     streaming,
     pacing: smoothPacing,
