@@ -110,6 +110,11 @@ jobs:
       - name: Typecheck
         run: pnpm -r typecheck
 
+      # `pnpm -r` skips the workspace root — the root script is the only
+      # gate covering .storybook and packages/*/stories (same split as CI).
+      - name: Typecheck (storybook + stories)
+        run: pnpm typecheck
+
       # Per-package unit suites, matching the CI gate.
       - name: Test
         run: pnpm -r test
