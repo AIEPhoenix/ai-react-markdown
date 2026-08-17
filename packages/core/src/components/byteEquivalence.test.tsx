@@ -177,6 +177,7 @@ const baselineCases: Array<[string, string]> = [
   ['multi-root raw HTML with separator', '<div>A</div>\n\n<div>B</div>'],
   ['multi-root raw HTML inline (one mdast html, two hast divs)', '<div>A</div><div>B</div>'],
   ['footnote forward + back ref + section', 'See[^x].\n\n[^x]: hello'],
+  ['footnote definition ABOVE its reference (orphan-seed regression)', '[^x]: hello\n\nSee[^x].'],
   ['list + table + code', 'A\n\n# H\n\n- li1\n- li2\n\n| c1 | c2 |\n|----|----|\n| a  | b  |\n\n```js\nx\n```\n\nP'],
   [
     'realistic AI response',
@@ -268,6 +269,7 @@ describe('byte-equivalence: blockMemo toggle produces identical output', () => {
     ['multi-block with inline whitespace', baselineConfig, 'Hello\n\nWorld'],
     ['multi-root raw HTML (shared mdast)', baselineConfig, '<div>A</div><div>B</div>'],
     ['footnote section', baselineConfig, 'See[^x].\n\n[^x]: hello'],
+    ['footnote definition above its reference', baselineConfig, '[^x]: hello\n\nSee[^x].'],
     [
       'kitchen sink with all plugins',
       defaultConfig,
@@ -299,6 +301,7 @@ describe('byte-equivalence: incrementalParse toggle produces identical output', 
     ['multi-block prose', baselineConfig, 'Hello\n\nWorld\n\nAgain'],
     ['multi-root raw HTML (shared mdast)', baselineConfig, '<div>A</div><div>B</div>'],
     ['footnote section (splices via injection replay since v2)', baselineConfig, 'See[^x].\n\n[^x]: hello'],
+    ['footnote definition above its reference', baselineConfig, '[^x]: hello\n\nSee[^x].'],
     [
       'kitchen sink with all plugins',
       defaultConfig,
@@ -336,9 +339,8 @@ describe('cross-chunk semantic equivalence', () => {
     while ((m = re.exec(html))) {
       // Strip backref anchors (and their ↩ glyph children) before tag-strip
       // so single-doc rendering (which keeps backrefs) compares cleanly to
-      // chunked rendering (where Direction A omits backref counts and the
-      // footer never gets to emit them, or transformStripBackrefs removes
-      // them after-the-fact).
+      // chunked rendering, where the aggregate footer is synthesised outside
+      // mdast-util-to-hast's footer() and emits no backref anchors at all.
       const withoutBackrefs = m[2].replace(/<a[^>]*data-footnote-backref[^>]*>[\s\S]*?<\/a>/g, '');
       // strip remaining tags from text content
       const txt = withoutBackrefs.replace(/<[^>]*>/g, '').trim();

@@ -1,9 +1,11 @@
 /**
  * Custom mdast-util-to-hast handlers for cross-chunk label resolution.
  *
- * Direction A: `footnoteDefinitionHandler` mutates `state.footnoteOrder` so
- * `state.footer()` emits a `<section data-footnotes>` even when no
- * `footnoteReference` exists locally (orphan-def protection).
+ * Direction A: `footnoteDefinitionHandler` mutates `state.footnoteOrder` (and
+ * seeds `state.footnoteCounts` to 0) so `state.footer()` emits a
+ * `<section data-footnotes>` even when no `footnoteReference` exists locally
+ * (orphan-def protection), without the default reference handler
+ * double-registering ids whose definition precedes their first reference.
  *
  * Direction B: `linkReferenceHandler` / `imageReferenceHandler` /
  * `footnoteReferenceHandler` short-circuit the default to-hast output and
@@ -60,9 +62,21 @@ export function buildCrossChunkHandlers(): Handlers {
       // Direction A: orphan def protection. Register so state.footer() emits <li>.
       if (s.options.preserveOrphan && !s.footnoteOrder.includes(id)) {
         s.footnoteOrder.push(id);
-        // Deliberately do NOT bump footnoteCounts. transformStripBackrefs
-        // (Phase 7) reads registry.getRefsForLabel to decide backref strip
-        // — independent of state.footnoteCounts.
+        // Seed the ref-counter to 0 alongside the push. In standalone mode
+        // only THIS handler is installed, so `footnoteReference` falls back to
+        // mdast-util-to-hast's default — and that handler decides "is this id
+        // already registered?" by looking at footnoteCounts, not at
+        // footnoteOrder. Without the seed, a definition that appears ABOVE its
+        // first reference gets pushed here and then pushed AGAIN by the
+        // default handler: duplicate <li> with colliding DOM ids, and a sup
+        // marker numbered by array length instead of position.
+        //
+        // Seed 0, not 1: at >= 1 state.footer() emits a backref pointing at a
+        // fnref anchor that does not exist for a pure orphan; at 0 the
+        // backref loop never runs, so pure-orphan output stays byte-identical
+        // and the default handler's reuse branch produces the same numbering
+        // as the ref-above-def ordering.
+        if (!s.footnoteCounts.has(id)) s.footnoteCounts.set(id, 0);
       }
       return undefined; // never emit inline hast
     },
