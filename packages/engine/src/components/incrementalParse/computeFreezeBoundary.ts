@@ -218,6 +218,12 @@ export interface FreezeScanCheckpoint {
   inMath: boolean;
   /** Opening dollar-run length while inMath — the close run must match it. */
   mathFenceLen: number;
+  /** Indent (0-3 spaces) of the line that opened the current fence/math
+   *  block. Not a blocker input — read by `phantomSuffixCloser` to emit a
+   *  closer at the SAME indent, which closes the block whether it sits at
+   *  top level (≤3 spaces are allowed there) or inside a list item whose
+   *  content indent the opener line already satisfies. */
+  openIndent: number;
   blankRun: number;
   lastBlankStart: number;
   /** Rolling blocker-3 verdict ("nearest decisive block start so far"). */
@@ -404,6 +410,7 @@ function freshCheckpoint(defListEnabled: boolean, mathFlow: boolean, referenceTa
     fenceLen: 0,
     inMath: false,
     mathFenceLen: 0,
+    openIndent: 0,
     blankRun: 0,
     lastBlankStart: -1,
     hazardVerdict: false,
@@ -748,6 +755,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
       cp.inFence = true;
       cp.fenceChar = open[1][0];
       cp.fenceLen = open[1].length;
+      cp.openIndent = ln.indent;
       cp.blankRun = 0;
       cp.paragraphHasUnpairedRun = false;
       cp.prevLineBlank = false;
@@ -800,6 +808,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
         }
         cp.inMath = true;
         cp.mathFenceLen = mathRun[1].length;
+        cp.openIndent = ln.indent;
         cp.blankRun = 0;
         cp.paragraphHasUnpairedRun = false;
         cp.prevLineBlank = false;

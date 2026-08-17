@@ -21,7 +21,7 @@ import { expect } from 'vitest';
 import isEqual from 'lodash-es/isEqual';
 
 import { parseStage, transformStage } from '../markdown';
-import { buildPhantomSuffix } from '../remarkInjectPhantomDefs';
+import { buildPhantomSuffix, phantomSuffixCloser } from '../remarkInjectPhantomDefs';
 import { advanceIncrementalParse, type AdvanceOptions, type IncrementalParseState } from './advanceIncrementalParse';
 import { buildAdvanceOptions, type CatalogConfig } from './testPluginCatalog';
 
@@ -109,10 +109,14 @@ export function runCrossChunk(
   let incrementalFrames = 0;
   const results: boolean[] = [];
   frames.forEach((frame, i) => {
-    const suffix = buildPhantomSuffix({
+    // Mirror production (core's pipeline memo): the phantom defs are
+    // preceded by an output-neutral closer for a fence/math block left open
+    // at the end of the frame, so a mid-block frame still registers them.
+    const defs = buildPhantomSuffix({
       missingFootnotes: new Set(frame.footnotes),
       missingLinks: new Set(frame.links),
     });
+    const suffix = defs === '' ? '' : phantomSuffixCloser(frame.content) + defs;
     const options = { ...optionsFor(frame), phantomSuffix: suffix };
     const result = advanceIncrementalParse(state, frame.content, options);
     state = result.nextState;

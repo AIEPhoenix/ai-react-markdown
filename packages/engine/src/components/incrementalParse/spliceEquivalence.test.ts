@@ -27,6 +27,8 @@ import { advanceIncrementalParse, type IncrementalParseState } from './advanceIn
 import { buildAdvanceOptions, buildCrossChunkAdvanceOptions, CATALOG, type CatalogConfig } from './testPluginCatalog';
 import { codePointSnapshots as chunkSnapshots } from './codePointSnapshots';
 import { scheduleSnapshots } from './fuzzGenerators';
+import { buildPhantomSuffix, phantomSuffixCloser } from '../remarkInjectPhantomDefs';
+import { parseStage, transformStage } from '../markdown';
 import { assertStreamEquivalence, runCrossChunk, runFull, type FramePair } from './spliceArbiterHarness';
 
 // --- realistic corpora ------------------------------------------------------
@@ -876,6 +878,38 @@ describe('splice equivalence — cross-chunk phantom suffixes', () => {
     }));
     const stats = runCrossChunk('constant-suffix', frames, () => options);
     expect(stats.incrementalFrames).toBeGreaterThan(0);
+  });
+
+  test('a frame ending inside an open fence still registers the phantom defs (core-render-01)', () => {
+    // Content references chunk A's [SPEC] and [^A1], then streams a code
+    // block. Without the closer the appended suffix lands INSIDE the open
+    // fence: the sentinel lines render as code and the two refs fall back
+    // to literal text for the whole block. The closer keeps the code node's
+    // value identical to the bare content's and the refs resolved.
+    const doc = `See the [SPEC] link and note[^A1] first.\n\n\`\`\`ts\nconst a = 1;\nconst b = 2;\n\`\`\`\n\nAfter the block.\n`;
+    const options = buildCrossChunkAdvanceOptions(new Set(['A1']), new Set(['SPEC']));
+    const frames = chunkSnapshots(doc, 9).map((content) => ({ content, footnotes: ['A1'], links: ['SPEC'] }));
+    // Equivalence across every frame (the arbiter mirrors production's closer).
+    runCrossChunk('open-fence-suffix', frames, () => options);
+    // Direct check on a mid-fence frame: refs resolved, no sentinel in code.
+    const midFence = doc.slice(0, doc.indexOf('const b'));
+    const suffix =
+      phantomSuffixCloser(midFence) +
+      buildPhantomSuffix({ missingFootnotes: new Set(['A1']), missingLinks: new Set(['SPEC']) });
+    const parsed = parseStage({
+      children: midFence + suffix,
+      remarkPlugins: options.remarkPlugins,
+      rehypePlugins: options.rehypePlugins,
+      remarkRehypeOptions: options.remarkRehypeOptions,
+    });
+    const mdast = parsed.mdast as { children: Array<{ type: string; value?: string }> };
+    const hast = JSON.stringify(transformStage(parsed));
+    const code = mdast.children.find((c) => c.type === 'code');
+    expect(code?.value).toBe('const a = 1;');
+    expect(mdast.children.filter((c) => c.type === 'definition' || c.type === 'footnoteDefinition')).toHaveLength(2);
+    expect(hast).not.toContain('__aimd_sentinel'); // placeholders, not sentinel hrefs; no sentinel code text
+    expect(hast).toContain('cross-chunk-link');
+    expect(hast).toContain('footnote-sup');
   });
 
   test('suffix churn mid-stream (grow, shrink, reorder) re-parses only the tail', () => {

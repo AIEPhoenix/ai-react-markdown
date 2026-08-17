@@ -63,7 +63,7 @@ import { collectDefLabels, createDefLabelScanner, type DefLabelScanner } from '@
 import { useDocumentRegistry, usePreserveOrphanReferences } from './AIMarkdownDocuments';
 import type { RegistryInternal } from '@ai-react-markdown/engine';
 import type { SanitizeSchema } from '@ai-react-markdown/engine';
-import { buildPhantomSuffix } from '@ai-react-markdown/engine';
+import { buildPhantomSuffix, phantomSuffixCloser } from '@ai-react-markdown/engine';
 import { buildCrossChunkHandlers } from '@ai-react-markdown/engine';
 import { normalizeForMatch } from '@ai-react-markdown/engine';
 import { crossChunkComponents } from './crossChunkPlaceholders';
@@ -467,7 +467,16 @@ const BlockMemoizedRenderer = memo(
     // reuses the frozen prefix of the previous frame's post-transform trees
     // and runs parse+transform over the tail only.
     const pipeline = useMemo(() => {
-      const phantomSuffix = buildPhantomSuffix(targetPhantoms);
+      // The suffix is APPENDED (the engine treats it as an always-tail
+      // input; prepending would shift every source position). A frame that
+      // ends inside an open fence / `$$` block would swallow it — sentinel
+      // lines rendered as code, every cross-chunk ref falling back to
+      // literal text for the block's whole streaming lifetime — so the
+      // engine first emits an output-neutral closer for that block (see
+      // phantomSuffixCloser; '' when nothing is open or the phase is
+      // untrusted). Only chunks with a non-empty suffix pay the line scan.
+      const phantomDefs = buildPhantomSuffix(targetPhantoms);
+      const phantomSuffix = phantomDefs === '' ? '' : phantomSuffixCloser(content ?? '') + phantomDefs;
       const augmented = (content ?? '') + phantomSuffix;
       const baseHandlers = remarkRehypeOptions?.handlers ?? {};
       const mergedRemarkRehypeOptions = (
