@@ -66,6 +66,7 @@
   },
   "devDependencies": {
     "mdast-util-to-hast": "^13.2.1",
+    "remark-gfm": "^4.0.1",
     "remark-parse": "^11.0.0",
     "remark-stringify": "^11.0.0",
     "@types/node": "^25.9.5"

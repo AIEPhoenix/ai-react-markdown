@@ -13,6 +13,7 @@ import type { Root } from 'mdast';
 import { describe, expect, test } from 'vitest';
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
+import remarkGfm from 'remark-gfm';
 import remarkStringify from 'remark-stringify';
 import { toHast } from 'mdast-util-to-hast';
 import { remarkMarkHighlight, remarkMark } from './index.js';
@@ -58,5 +59,56 @@ describe('plugin surface', () => {
     const rt = unified().use(remarkParse).use(remarkStringify).use(remarkMarkHighlight);
     const out = String(rt.processSync('==a=b=='));
     expect(String(rt.processSync(out)).trim()).toBe(out.trim());
+  });
+});
+
+/**
+ * GFM interaction (2026-08 project review, pkg-small-05): the parity corpus
+ * runs WITHOUT remark-gfm (its baseline was generated that way), so `~~…~~`
+ * shapes in it were literal text and never exercised strikethrough nesting.
+ * The shipped engine chain runs remark-gfm and this plugin together — two
+ * attention-style tokenizers whose nesting/interleaving is exactly what a
+ * micromark upgrade could perturb. Pinned as compact HTML-ish strings.
+ */
+describe('interaction with remark-gfm (strikethrough, autolink literals, tables, task lists)', () => {
+  const gfmProc = unified().use(remarkParse).use(remarkGfm).use(remarkMarkHighlight);
+  const render = (input: string): string => {
+    const tree = gfmProc.runSync(gfmProc.parse(input)) as Root;
+    const ser = (node: unknown): string => {
+      const n = node as { type: string; tagName?: string; value?: string; children?: unknown[] };
+      if (n.type === 'text') return n.value ?? '';
+      if (n.type === 'root') return (n.children ?? []).map(ser).join('');
+      if (n.type === 'element') return `<${n.tagName}>${(n.children ?? []).map(ser).join('')}</${n.tagName}>`;
+      return '';
+    };
+    return ser(toHast(tree)).replace(/\n/g, '');
+  };
+
+  test('nesting either way round', () => {
+    expect(render('~~==x==~~')).toBe('<p><del><mark>x</mark></del></p>');
+    expect(render('==~~x~~==')).toBe('<p><mark><del>x</del></mark></p>');
+    expect(render('a ==b **c** ~~d~~== e')).toBe('<p>a <mark>b <strong>c</strong> <del>d</del></mark> e</p>');
+  });
+
+  test('interleaved runs: the outer construct wins, the inner opener stays literal', () => {
+    expect(render('~~a ==b~~ c==')).toBe('<p><del>a ==b</del> c==</p>');
+    expect(render('==a ~~b== c~~')).toBe('<p><mark>a ~~b</mark> c~~</p>');
+    expect(render('~~==x~~==')).toBe('<p><del>==x</del>==</p>');
+  });
+
+  test('== inside an autolink literal is part of the URL, not a mark', () => {
+    expect(render('see https://a.b/c==d== end')).toBe('<p>see <a>https://a.b/c==d==</a> end</p>');
+  });
+
+  test('marks inside table cells and task-list items', () => {
+    expect(render('| ==h== |\n|---|\n| ~~==c==~~ |')).toContain('<th><mark>h</mark></th>');
+    expect(render('| ==h== |\n|---|\n| ~~==c==~~ |')).toContain('<td><del><mark>c</mark></del></td>');
+    expect(render('- [ ] ==todo==')).toContain('<mark>todo</mark>');
+  });
+
+  test('flanking rules unchanged by gfm', () => {
+    expect(render('foo==bar==baz')).toBe('<p>foo<mark>bar</mark>baz</p>');
+    expect(render('== not mark ==')).toBe('<p>== not mark ==</p>');
+    expect(render('=====')).toBe('<p>=====</p>');
   });
 });
