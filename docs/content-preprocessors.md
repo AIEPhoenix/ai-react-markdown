@@ -141,10 +141,10 @@ Compose by ordering, not by combining functions inside one preprocessor — this
 
 ## Reference stability
 
-`contentPreprocessors` is internally stabilized via `useStableValue` (deep-equal). An inline array works correctness-wise, but pays a deep-compare cost on every render. The recommended pattern is module scope:
+`contentPreprocessors` is a **`WARN_ONLY`** prop in the stability firewall (see [streaming and performance → the function-valued exception](./streaming-and-performance.md#the-function-valued-exception-urltransform-contentpreprocessors)): a function array cannot be deep-compared, so there is no deep-equal safety net. An inline array is a fresh identity every render — it re-runs the whole preprocessing chain (a fresh `content` string) and invalidates everything downstream on every parent render; development builds warn after a few identity flips. Module scope is **required**, not merely recommended:
 
 ```ts
-// ✅ Stable identity, zero overhead.
+// ✅ Stable identity — the chain runs only when `content` changes.
 const PREPROCESSORS: AIMDContentPreprocessor[] = [stripFrontmatter, normalizeBlankLines];
 
 function App({ content }) {

@@ -196,10 +196,11 @@ behavior).
 
 ### `<AIMarkdownDocuments>` Props
 
-| Prop                       | Type        | Default | Description                                                                                                                                                                                                                              |
-| -------------------------- | ----------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `preserveOrphanReferences` | `boolean`   | `true`  | Controls orphan-reference protection for every chunk under this wrapper. Unconditionally overrides each chunk's `preserveOrphanReferences` prop. Does not gate cross-chunk coordination itself (that's gated by wrapper + `documentId`). |
-| `children`                 | `ReactNode` | -       | The `<AIMarkdown>` instances to coordinate. Nesting `<AIMarkdownDocuments>` inside another `<AIMarkdownDocuments>` throws.                                                                                                               |
+| Prop                       | Type        | Default | Description                                                                                                                                                                                                                                                                                                          |
+| -------------------------- | ----------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `preserveOrphanReferences` | `boolean`   | `true`  | Controls orphan-reference protection for every chunk under this wrapper. Unconditionally overrides each chunk's `preserveOrphanReferences` prop. Does not gate cross-chunk coordination itself (that's gated by wrapper + `documentId`).                                                                             |
+| `smoothTurnTaking`         | `boolean`   | `true`  | Wrapper-level switch for smooth-stream turn-taking: when `true`, `<AIMarkdownSmoothStream>` chunks sharing this `documentId` type one at a time in mount order. `false` lets every chunk pace independently. See [smooth streaming → turn-taking](../../docs/smooth-streaming.md#multi-chunk-documents-turn-taking). |
+| `children`                 | `ReactNode` | -       | The `<AIMarkdown>` instances to coordinate. Nesting `<AIMarkdownDocuments>` inside another `<AIMarkdownDocuments>` throws.                                                                                                                                                                                           |
 
 ### `useDocumentRegistry(documentId)`
 

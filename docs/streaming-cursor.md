@@ -47,17 +47,23 @@ A blinking dot sized to the current line (taller on headings, smaller on body te
 
 Detection is deliberately conservative: if the content tail can't anchor a cursor safely, the cursor hides for those frames and reappears when a text tail returns (the next mutation re-detects). Hiding triggers:
 
-| Tail situation                                 | Why                                                                                                                                                  |
-| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Fenced code / inline code (`pre`, `code`)      | Text-extracting custom renderers (e.g. mermaid) would be corrupted by injected markup — and an overlay inside a scrolling `pre` can't track reliably |
-| KaTeX output (`.katex`)                        | Position-less generated markup                                                                                                                       |
-| SVG (rendered mermaid)                         | Not text                                                                                                                                             |
-| Raw-HTML-produced unknown elements             | Whitelist walk — unknown structure is not entered                                                                                                    |
-| Void elements (`hr`, `br`, `img` as last node) | Nothing to anchor after                                                                                                                              |
-| Empty content (before the first token)         | No text at all — render your own placeholder next to `<AIMarkdown>` if you need one                                                                  |
-| Vertical writing modes                         | Not supported                                                                                                                                        |
+| Tail situation                                                            | Why                                                                                                                                                  |
+| ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fenced code / inline code (`pre`, `code`)                                 | Text-extracting custom renderers (e.g. mermaid) would be corrupted by injected markup — and an overlay inside a scrolling `pre` can't track reliably |
+| KaTeX output (`.katex`)                                                   | Position-less generated markup                                                                                                                       |
+| SVG (rendered mermaid)                                                    | Not text                                                                                                                                             |
+| Raw-HTML-produced unknown elements                                        | Whitelist walk — unknown structure is not entered                                                                                                    |
+| Void elements (`hr`, `br`, `img` as last node)                            | Nothing to anchor after                                                                                                                              |
+| Empty content (before the first token)                                    | No text at all — render your own placeholder next to `<AIMarkdown>` if you need one                                                                  |
+| Vertical writing modes                                                    | Not supported                                                                                                                                        |
+| A streaming link-reference definition (`[label]: …` at the tail)          | Renders nothing — there is no glyph to point at                                                                                                      |
+| A streaming footnote definition whose footer entry lives in another chunk | Under cross-chunk coordination the aggregate footer belongs to the last chunk; the cursor cannot truthfully point into another chunk's DOM           |
 
 Everything else — paragraphs, headings, list items, table cells, blockquotes, definition lists, inline formatting — anchors normally.
+
+### Definition-aware anchoring (2.2.1+)
+
+The tail is derived from the **mdast**, not by looking backwards through the DOM. When the text being streamed belongs to a footnote definition (`[^n]: the body streams here…`), the cursor follows it into the footer: it anchors inside that footnote's `<li>` in the (local or aggregate) footer, so the blinking glyph sits where the new characters actually appear. Nested definitions resolve to the deepest one on the last-child chain — a definition inside another definition's body renders in its own `<li>`. When the definition ends and prose resumes, the cursor returns to the body.
 
 ## Custom indicators
 
@@ -91,7 +97,7 @@ Contract semantics:
 - **RTL**: the anchor side follows the anchor paragraph's computed `direction` — in RTL text the cursor sits to the visual left of the last glyph, growing away from the text. Mixed-direction content anchors per-paragraph.
 - **Ancestor `transform: scale`** (entrance animations, zoom wrappers) is compensated; rotation/skew ancestors are not supported (position drifts, self-heals on the next mutation).
 - **SSR**: the shell renders only an inert, invisible wrapper on the server — detection needs a real DOM. No hydration mismatch, no visible jump.
-- **Chunked mode** (`<AIMarkdownDocuments>`): pass `streamingCursor` only to the actively-appending chunk (typically the last). The slot renders wherever `streaming === true`; setting it on a non-final chunk draws a cursor mid-document at that chunk's tail. The detector skips the aggregate footnote footer, so the cursor marks the end of the _body_, not the appendix.
+- **Chunked mode** (`<AIMarkdownDocuments>`): pass `streamingCursor` only to the actively-appending chunk (typically the last). The slot renders wherever `streaming === true`; setting it on a non-final chunk draws a cursor mid-document at that chunk's tail. Unless a footnote definition is streaming (see definition-aware anchoring above), the detector skips the aggregate footnote footer, so the cursor marks the end of the _body_, not the appendix; a streaming definition whose footer entry is rendered by another chunk hides the cursor for those frames.
 - **Stall clock semantics**: any DOM mutation under the content root (except the cursor's own) counts as activity — a mermaid repaint or a coordinated footer re-render resets the 5 s clock. The signal means "this message is alive", not strictly "new tokens arrived".
 
 ### Accessibility

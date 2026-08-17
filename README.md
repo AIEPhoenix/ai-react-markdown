@@ -593,11 +593,11 @@ For a scheme to render, **both must permit it**. This is intentional defense-in-
 
 ## Cross-Chunk Coordination Reference
 
-| Export                                                                    | Shape                                     | Purpose                                                         |
-| ------------------------------------------------------------------------- | ----------------------------------------- | --------------------------------------------------------------- |
-| `<AIMarkdownDocuments>`                                                   | `{ children, preserveOrphanReferences? }` | Wrap a group of `<AIMarkdown>` chunks that share a `documentId` |
-| `useDocumentRegistry(documentId)`                                         | `Registry \| null`                        | Read the shared registry inside a custom component              |
-| `Registry`, `ChunkData`, `FootnoteDef`, `LinkDef`, `RefRecord`, `RefKind` | exported types                            | For typed helpers that operate on the registry directly         |
+| Export                                                                    | Shape                                                        | Purpose                                                                                                                                                                                              |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<AIMarkdownDocuments>`                                                   | `{ children, preserveOrphanReferences?, smoothTurnTaking? }` | Wrap a group of `<AIMarkdown>` chunks that share a `documentId`; `smoothTurnTaking` (default `true`) gates [smooth-stream turn-taking](./docs/smooth-streaming.md#multi-chunk-documents-turn-taking) |
+| `useDocumentRegistry(documentId)`                                         | `Registry \| null`                                           | Read the shared registry inside a custom component                                                                                                                                                   |
+| `Registry`, `ChunkData`, `FootnoteDef`, `LinkDef`, `RefRecord`, `RefKind` | exported types                                               | For typed helpers that operate on the registry directly                                                                                                                                              |
 
 The `preserveOrphanReferences` prop on `<AIMarkdownDocuments>` unconditionally overrides each chunk's `preserveOrphanReferences` prop — useful when the wrapper-level policy should always win.
 
