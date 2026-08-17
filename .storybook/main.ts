@@ -1,12 +1,10 @@
 import type { StorybookConfig } from '@storybook/react-vite';
 
 const config: StorybookConfig = {
-  stories: [
-    '../packages/*/src/**/*.mdx',
-    '../packages/*/src/**/*.stories.@(js|jsx|mjs|ts|tsx)',
-    '../packages/*/stories/**/*.mdx',
-    '../packages/*/stories/**/*.stories.@(js|jsx|mjs|ts|tsx)',
-  ],
+  // Stories live in each package's `stories/` directory, never beside the
+  // sources. Globbing `src/**` as well matched nothing and made every vitest
+  // run print two "No story files found" warnings.
+  stories: ['../packages/*/stories/**/*.mdx', '../packages/*/stories/**/*.stories.@(js|jsx|mjs|ts|tsx)'],
   addons: ['@storybook/addon-vitest', '@storybook/addon-a11y', '@storybook/addon-docs'],
   framework: '@storybook/react-vite',
   // Locally authored placeholders for the story fixtures. Keeping them in-repo

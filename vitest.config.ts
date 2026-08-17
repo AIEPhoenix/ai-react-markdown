@@ -1,5 +1,4 @@
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import { defineConfig } from 'vitest/config';
 
@@ -7,7 +6,7 @@ import { storybookTest } from '@storybook/addon-vitest/vitest-plugin';
 
 import { playwright } from '@vitest/browser-playwright';
 
-const dirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url));
+const dirname = import.meta.dirname;
 
 // More info at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon
 export default defineConfig({
@@ -55,7 +54,10 @@ export default defineConfig({
             provider: playwright({}),
             instances: [{ browser: 'chromium' }],
           },
-          setupFiles: ['.storybook/vitest.setup.ts'],
+          // No `setupFiles`: since Storybook 10.3 `@storybook/addon-vitest`
+          // applies the preview and a11y-addon annotations itself, and a
+          // hand-written `setProjectAnnotations` call makes it skip that
+          // automatic provisioning instead of adding to it.
           // Don't run benchmarks in the browser project — they're CPU-bound
           // and run under node in the `unit` project.
           benchmark: {
