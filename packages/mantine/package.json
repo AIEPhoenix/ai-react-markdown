@@ -59,7 +59,7 @@
     "@ai-react-markdown/core": "^2.3.2",
     "@mantine/code-highlight": "^9.0.0",
     "@mantine/core": "^9.0.0",
-    "highlight.js": "^11.11.1",
+    "highlight.js": "^11.11.2",
     "react": ">=19",
     "react-dom": ">=19"
   },
@@ -76,7 +76,7 @@
     "@types/node": "^25.9.5",
     "autoprefixer": "^10.5.4",
     "esbuild-sass-plugin": "^3.7.0",
-    "highlight.js": "^11.11.1",
+    "highlight.js": "^11.11.2",
     "lodash-es": "^4.18.0",
     "postcss": "^8.5.26",
     "tsup": "^8.5.1"
