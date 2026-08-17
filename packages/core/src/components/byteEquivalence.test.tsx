@@ -270,6 +270,17 @@ describe('byte-equivalence: blockMemo toggle produces identical output', () => {
     ['multi-root raw HTML (shared mdast)', baselineConfig, '<div>A</div><div>B</div>'],
     ['footnote section', baselineConfig, 'See[^x].\n\n[^x]: hello'],
     ['footnote definition above its reference', baselineConfig, '[^x]: hello\n\nSee[^x].'],
+    // Orphan definitions (no reference anywhere): the default policy keeps
+    // them in the footer. The legacy path used to drop them — it never
+    // merged the standalone footnoteDefinition handler — so `blockMemo`
+    // was NOT output-invariant here (2026-08 project review, core-render-04).
+    ['pure orphan definition', baselineConfig, '[^o]: orphan body'],
+    ['orphan next to a cited note', baselineConfig, 'Cites[^a].\n\n[^a]: cited\n[^b]: orphan'],
+    [
+      'orphan definitions mid-stream (def before its later reference)',
+      defaultConfig,
+      '## Sources\n\n[^s]: soak\n[^t]: tag\n\nStill being written',
+    ],
     [
       'kitchen sink with all plugins',
       defaultConfig,
@@ -283,6 +294,14 @@ describe('byte-equivalence: blockMemo toggle produces identical output', () => {
       expect(enabled).toBe(disabled);
     });
   }
+
+  test('orphan protection is really ON in both paths (not vacuously equal by both dropping the def)', () => {
+    for (const blockMemo of [true, false]) {
+      const html = renderNew('[^o]: orphan body', baselineConfig, blockMemo);
+      expect(html, `blockMemo=${blockMemo}`).toContain('data-footnotes');
+      expect(html, `blockMemo=${blockMemo}`).toContain('orphan body');
+    }
+  });
 });
 
 // ── incrementalParse toggle ────────────────────────────────────────────────

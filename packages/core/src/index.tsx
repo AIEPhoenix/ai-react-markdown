@@ -269,11 +269,14 @@ export interface AIMarkdownProps<TMetadata extends AIMarkdownMetadata = AIMarkdo
    */
   enginePlugins?: readonly AIMarkdownEnginePlugin[];
   /**
-   * Behaviors system: block-level memoization. Output-invariant — flipping
-   * it changes no rendered byte. When `true` (default), the renderer splits
-   * the document into per-block units and memoizes each block's subtree by
+   * Behaviors system: block-level memoization. Output-invariant in
+   * standalone rendering — flipping it changes no rendered byte (orphan
+   * protection included). When `true` (default), the renderer splits the
+   * document into per-block units and memoizes each block's subtree by
    * source identity, so unchanged blocks skip render work during streaming.
    * When `false`, the legacy bare flow runs the full pipeline every render.
+   * Cross-chunk coordination (`<AIMarkdownDocuments>`) is wired through the
+   * block-memo path only — with `false`, refs across chunks do not resolve.
    *
    * `null` counts as absent (falls to the default). @default true
    */

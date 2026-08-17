@@ -436,6 +436,19 @@ const BlockMemoizedRenderer = memo(
     // aggregate footer below still uses effectivePreserveOrphan to decide
     // whether unreferenced defs are visible.
     const preserveForBodyHarvest = effectivePreserveOrphan || Boolean(registry && sym);
+    // G3 supplement: the orphan policy is a to-hast input (footnote handler +
+    // `preserveOrphan` option) that changes footer membership AND body sup
+    // numbering without touching the mdast the block-memo ctx is derived
+    // from — so a runtime flip left the synthetic footer slot (keyed by
+    // globalCtx alone) and reference-bearing blocks serving stale nodes
+    // (2026-08 project review, core-render-03). Flush the block cache when
+    // it flips; the incremental engine's own depsKey already covers it.
+    // Render-phase ref mutation, same pattern as the G3 block above.
+    const preserveOrphanDepRef = useRef(preserveForBodyHarvest);
+    if (preserveOrphanDepRef.current !== preserveForBodyHarvest) {
+      cacheRef.current = createCache();
+      preserveOrphanDepRef.current = preserveForBodyHarvest;
+    }
 
     // PASS 1: full parse on (possibly) augmented source, with custom handlers
     // wired through remarkRehypeOptions.
@@ -652,13 +665,30 @@ const BlockMemoizedRenderer = memo(
     // Ordering: `sym` is in the dep array, so this effect re-fires after the
     // allocate effect commits its setSym(...). The previous microtask/flushSync
     // dance is gone; React's dep system enforces "allocate before contribute".
+    // `chain` — the identity tuple of every parse input beyond the source
+    // text (same set as the engine's depsKey). The fingerprint below hashes
+    // only source-derived facts, so a runtime plugin/schema/policy swap
+    // re-parses (pipeline changes) but left the fp equal and short-circuited
+    // the contribute: the registry kept bodyHast rendered by the OLD chain
+    // and the aggregate footer disagreed with the body until some label
+    // changed (2026-08 project review, core-render-05). Comparing the chain
+    // by identity fixes that without re-contributing every streaming frame.
     const lastContributionRef = useRef<{
       registry: RegistryInternal;
       symbol: symbol;
       fp: string;
+      chain: readonly unknown[];
     } | null>(null);
     useEffect(() => {
       if (!registry || !sym) return;
+      const chain = [
+        remarkPlugins,
+        rehypePlugins,
+        remarkRehypeOptions,
+        handlers,
+        preserveForBodyHarvest,
+        clobberPrefix,
+      ];
       const refs: {
         label: string;
         kind: 'footnote' | 'link' | 'image';
@@ -721,10 +751,13 @@ const BlockMemoizedRenderer = memo(
         tpfn: Array.from(targetPhantoms.missingFootnotes).sort(),
         tpl: Array.from(targetPhantoms.missingLinks).sort(),
       });
+      const last = lastContributionRef.current;
       if (
-        lastContributionRef.current?.registry === registry &&
-        lastContributionRef.current.symbol === sym &&
-        lastContributionRef.current.fp === fp
+        last?.registry === registry &&
+        last.symbol === sym &&
+        last.fp === fp &&
+        last.chain.length === chain.length &&
+        last.chain.every((dep, i) => dep === chain[i])
       ) {
         return;
       }
@@ -745,7 +778,7 @@ const BlockMemoizedRenderer = memo(
           bodyHast: (bodiesByLabel.get(label) ?? []) as HastElementContent[],
         });
       }
-      lastContributionRef.current = { registry, symbol: sym, fp };
+      lastContributionRef.current = { registry, symbol: sym, fp, chain };
       registry.contributeChunkData(sym, {
         refs,
         defs,
@@ -753,7 +786,20 @@ const BlockMemoizedRenderer = memo(
         ownFootnoteLabels: ownLabels.footnoteLabels,
         ownLinkLabels: ownLabels.linkLabels,
       });
-    }, [pipeline, ownLabels, registry, targetPhantoms, sym, clobberPrefix, urlTransform]);
+    }, [
+      pipeline,
+      ownLabels,
+      registry,
+      targetPhantoms,
+      sym,
+      clobberPrefix,
+      urlTransform,
+      remarkPlugins,
+      rehypePlugins,
+      remarkRehypeOptions,
+      handlers,
+      preserveForBodyHarvest,
+    ]);
 
     // Intentional cache memoization via cacheRef; see G3 comment above.
     // Unlike the three memoized stages above, this runs on EVERY render —
@@ -836,13 +882,18 @@ BlockMemoizedRenderer.displayName = 'BlockMemoizedRenderer';
  * Calls the vendored `<Markdown>` directly — every render runs the full
  * pipeline end-to-end with no cross-frame reuse. Output is byte-identical
  * to the block-memo path in standalone mode (validated by
- * `byteEquivalence.test.tsx`).
+ * `byteEquivalence.test.tsx`), INCLUDING the orphan-reference policy: the
+ * standalone `footnoteDefinition` handler is merged here exactly as the
+ * block-memo path does it, so `blockMemo` stays output-invariant (it was
+ * not — a def arriving before its reference vanished from the footer only
+ * on this path; 2026-08 project review, core-render-04).
  *
  * **Cross-chunk coordination (Phase 11) is NOT wired through this path.**
  * Wrapping `<AIMarkdown>` with `<AIMarkdownDocuments>` while keeping
- * `blockMemo: false` silently runs without coordination — orphan
- * defs are not protected, refs across chunks don't resolve. If you need
- * cross-chunk behavior, keep `blockMemo: true` (the default).
+ * `blockMemo: false` silently runs without coordination — refs across
+ * chunks don't resolve (orphan defs ARE still protected, per the wrapper/
+ * prop/default override chain). If you need cross-chunk behavior, keep
+ * `blockMemo: true` (the default).
  */
 const LegacyRenderer = memo(
   // `sanitizeSchema` is accepted (and ignored) here purely for prop-shape
@@ -857,18 +908,39 @@ const LegacyRenderer = memo(
     rehypePlugins,
     remarkRehypeOptions,
     urlTransform,
+    preserveOrphanReferences,
     sanitizeSchema: _sanitizeSchema,
-  }: RendererProps) => (
-    <Markdown
-      remarkPlugins={remarkPlugins}
-      rehypePlugins={rehypePlugins}
-      remarkRehypeOptions={remarkRehypeOptions}
-      components={usedComponents}
-      urlTransform={urlTransform}
-    >
-      {content}
-    </Markdown>
-  )
+  }: RendererProps) => {
+    const effectivePreserveOrphan = usePreserveOrphanReferences(preserveOrphanReferences);
+    const { documentId } = useAIMarkdownDocument();
+    // Same merge as the block-memo path's standalone branch: only the
+    // footnoteDefinition handler (the other three depend on a registry and
+    // would emit placeholders that render nothing here); phantom sets are
+    // empty so the handler's phantom check is always false.
+    const mergedRemarkRehypeOptions = useMemo<RemarkRehypeOptions>(() => {
+      if (!effectivePreserveOrphan) return remarkRehypeOptions;
+      const { footnoteDefinition } = buildCrossChunkHandlers();
+      return {
+        ...remarkRehypeOptions,
+        handlers: { ...(remarkRehypeOptions?.handlers ?? {}), footnoteDefinition },
+        phantomFootnoteLabels: new Set<string>(),
+        phantomLinkLabels: new Set<string>(),
+        preserveOrphan: true,
+        documentId,
+      } as RemarkRehypeOptions;
+    }, [remarkRehypeOptions, effectivePreserveOrphan, documentId]);
+    return (
+      <Markdown
+        remarkPlugins={remarkPlugins}
+        rehypePlugins={rehypePlugins}
+        remarkRehypeOptions={mergedRemarkRehypeOptions}
+        components={usedComponents}
+        urlTransform={urlTransform}
+      >
+        {content}
+      </Markdown>
+    );
+  }
 );
 LegacyRenderer.displayName = 'LegacyRenderer';
 
