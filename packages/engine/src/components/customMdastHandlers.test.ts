@@ -84,6 +84,25 @@ describe('customMdastHandlers — Direction B linkReference', () => {
     expect(link?.properties?.documentId).toBe('msg-1');
   });
 
+  test('a padded label reaches the placeholder VERBATIM (registry lookups must trim — eng-stream-01)', () => {
+    // mdast keeps the source label (` X ` / `x\ny`) and only the identifier
+    // is normalized; the placeholder forwards the label so hrefs line up
+    // with mdast-util-to-hast's source-cased <li id>. The registry side
+    // therefore owns the trim (normalizeId → micromark normalizeIdentifier).
+    const augmented =
+      '[click][ X ] and [ x\ny ]' +
+      buildPhantomSuffix({
+        missingFootnotes: new Set(),
+        missingLinks: new Set(['X', 'X Y']),
+      });
+    const hast = pipe(augmented, { phantomLinkLabels: new Set(['X', 'X Y']), documentId: 'msg-1' });
+    const labels: unknown[] = [];
+    visit(hast, 'element', (el) => {
+      if (el.tagName === 'cross-chunk-link') labels.push(el.properties?.label);
+    });
+    expect(labels).toEqual([' X ', ' x\ny ']);
+  });
+
   test('linkReference with no source def emits no placeholder (mdast drops the node)', () => {
     // Verified by experiment: remark-parse with `[click][nope]` and NO
     // `[nope]:` definition emits plain text — no linkReference node — so

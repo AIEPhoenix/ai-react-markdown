@@ -252,6 +252,36 @@ describe('crossChunkPlaceholders — URL sanitization (render-time two-gate)', (
     );
   }
 
+  test('CrossChunkLink resolves a PADDED source label against the trimmed def key (eng-stream-01)', () => {
+    // The handler forwards mdast's original label (`[ X ]` → ' X '); the
+    // registry def is keyed 'X'. Before normalizeId trimmed, this rendered
+    // the literal fallback in coordinated mode while standalone resolved.
+    function Seed() {
+      const ctx = __internalGetContext();
+      const reg = ctx!.getRegistry('doc');
+      const sym = reg.allocateSymbol('seed');
+      reg.contributeChunkData(sym, {
+        refs: [],
+        defs: new Map(),
+        linkDefs: new Map([['X', { identifier: 'X', url: 'https://example.com/padded' }]]),
+        ownFootnoteLabels: new Set(),
+        ownLinkLabels: new Set(['X']),
+      });
+      return (
+        <CrossChunkLink label={' x\n'} referenceType="shortcut">
+          click
+        </CrossChunkLink>
+      );
+    }
+    const html = renderToString(
+      <WithProvider documentId="doc">
+        <Seed />
+      </WithProvider>
+    );
+    expect(html).toContain('href="https://example.com/padded"');
+    expect(html).not.toContain('[');
+  });
+
   test('CrossChunkLink strips javascript: even if the registry stored it raw (defense-in-depth)', () => {
     // Bypass the contribute-time gate by seeding the registry directly with
     // a malicious URL — verifies the render-time gate ALONE is sufficient.

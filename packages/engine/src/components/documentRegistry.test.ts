@@ -277,6 +277,25 @@ describe('Registry — contribute + selectors', () => {
     expect(def?.url).toBe('https://example.com');
   });
 
+  test('selectors resolve a PADDED / soft-broken label to the trimmed def key (eng-stream-01)', () => {
+    // Placeholders pass mdast's ORIGINAL `label` (`[ x ]`, `[x\ny]`); the
+    // def is keyed by the trimmed identifier. normalizeId used to skip the
+    // trim, so `' X '` missed `'X'` and every padded ref fell back to text.
+    const reg = createRegistry();
+    const a = reg.allocateSymbol('A');
+    reg.contributeChunkData(a, {
+      refs: [{ label: 'X', kind: 'footnote' }],
+      defs: new Map([['X', { identifier: 'X', contentSource: 'b', bodyHast: [] }]]),
+      linkDefs: new Map([['X Y', { identifier: 'X Y', url: 'https://example.com/xy' }]]),
+      ownFootnoteLabels: new Set(['X']),
+      ownLinkLabels: new Set(['X Y']),
+    });
+    expect(reg.resolveLinkDef(' x\ny ')?.url).toBe('https://example.com/xy');
+    expect(reg.canonicalLinkFor('\tx  y')).toBe(a);
+    expect(reg.canonicalFootnoteFor(' x ')).toBe(a);
+    expect(reg.globalNumber(' x ')).toBe(1);
+  });
+
   test('globalNumber counts ONLY footnote refs (link/image refs occupy a separate namespace)', () => {
     const reg = createRegistry();
     const a = reg.allocateSymbol('A');
