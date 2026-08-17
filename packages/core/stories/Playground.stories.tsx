@@ -47,10 +47,16 @@ export const Default: CoreStory = {
 };
 
 /**
- * The same component fed token by token. The payload is the kitchen sink:
- * thinking tags, raw HTML, math, admonitions, mermaid, tables, footnotes,
- * and a run of code fences in six languages — deliberately including
- * malformed LaTeX, because real model output contains it.
+ * The same component fed token by token. The payload is the showcase
+ * document — prose, four fenced blocks, a table, display and inline math, a
+ * task list, and footnotes — so the replay shows how each of those block
+ * types behaves while its own source is still arriving. One of those fences
+ * is mermaid source, which stays a code block here: core ships no diagram
+ * renderer, so it is the Mantine branch that draws it.
+ *
+ * Watch the fenced blocks and the `$$` math in particular: neither flashes
+ * its raw source before settling, because a block that has opened without
+ * closing renders as nothing rather than as literal text.
  *
  * Hit **Restart** to replay. `content` is a control, so you can stream any
  * markdown you paste in.

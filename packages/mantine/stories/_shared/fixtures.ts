@@ -165,10 +165,10 @@ export const MERMAID_STATIC_DOC: string = [
  * renderer this package substitutes, plus enough ordinary markdown to keep it
  * readable as prose rather than as a feature checklist.
  *
- * Deliberately not core's `KITCHEN_SINK`. That one is a stress document — it
- * carries malformed LaTeX and stray delimiters on purpose, because the core
- * Playground's job is to survive bad input. This one is the opposite: it is
- * the document you would screenshot.
+ * Deliberately not core's `KITCHEN_SINK`. Both are showcase documents, but
+ * they are aimed at different renderers: core's covers what the base package
+ * draws, while this one leans on what Mantine substitutes — highlighted
+ * fences in several languages, a minified JSON payload, and mermaid.
  */
 export const MANTINE_SHOWCASE: string = [
   '# Streaming a tool-using answer',
@@ -245,10 +245,13 @@ export const MANTINE_SHOWCASE: string = [
   'T(n) = t_{\\text{plan}} + n\\,\\ell + t_{\\text{ttft}}',
   '$$',
   '',
-  '## 中文段落',
+  '## What the wrapper is doing',
   '',
-  '这一段用来验证中日韩文字与英文混排的表现：**加粗**、`行内代码`、以及标点处的强调，' +
-    '例如**「引号里的强调」**紧跟中文标点时不会退化成字面星号。',
+  'Every fence above is drawn by the Mantine code block rather than by the base',
+  'renderer: the language comes off the info string, **a block past the height cap',
+  'collapses** behind an expand control, and the minified JSON is pretty-printed on',
+  'the way in. Inline spans such as `retrieve()` stay with the surrounding',
+  "typography, which is core's work rather than the wrapper's.",
   '',
   '> Streaming is not a rendering optimization. It is the product.',
   '',

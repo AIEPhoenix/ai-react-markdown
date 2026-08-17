@@ -51,9 +51,9 @@ export interface ComparisonAxisLabels {
    *  crowning a winner there contradicts the row's own hint. */
   renderDeltasMeaningful: boolean;
   /** Whether the block-memo cache-accounting prose in the verdict details
-   *  ("固定记账成本 > 可省工作量" etc.) applies. Only true when the OFF
-   *  side is the uncached legacy path AND the delta is attributable to the
-   *  block cache — i.e. the block-memo axis itself. */
+   *  ("fixed bookkeeping cost outweighs the work it saves" etc.) applies.
+   *  Only true when the OFF side is the uncached legacy path AND the delta is
+   *  attributable to the block cache — i.e. the block-memo axis itself. */
   blockMemoProse: boolean;
 }
 
@@ -72,7 +72,7 @@ export const BLOCK_MEMO_AXIS: ComparisonAxisLabels = {
 export const BOOST_AXIS: ComparisonAxisLabels = {
   renderDeltasMeaningful: true,
   blockMemoProse: false,
-  subject: 'boost（双开）',
+  subject: 'boost (both on)',
   onLabel: 'boost on (memo+incremental)',
   offLabel: 'legacy (all off)',
   spyHint:
@@ -661,32 +661,36 @@ export const VerdictBanner = memo(function VerdictBanner({
   const details: string[] = [];
 
   if (summary.withinNoise) {
-    headline = `两边基本打平：这轮 ${axis.subject} ${d >= 0 ? '快' : '慢'}了 ${fmt(Math.abs(d), 1)} ms（${pct}），在本机的运行波动（约 ±${noise} ms）之内 —— 这个差值说明不了谁快谁慢。`;
+    headline = `Too close to call: ${axis.subject} came out ${d >= 0 ? 'faster' : 'slower'} by ${fmt(Math.abs(d), 1)} ms (${pct}) this run, which is inside this machine's run-to-run swing (about ±${noise} ms). A gap that size says nothing about which side is faster.`;
     if (payloadScale === 1 && payloadChars < 4000) {
       details.push(
         axis.blockMemoProse
-          ? `当前内容只有 ${payloadChars.toLocaleString()} 字符 / ${payloadBlocks} 个块。内容越短，可复用的渲染就越少，而缓存本身的记账成本不变 —— 小文档打平是预期行为，不是坏事。想看真实收益，切到 4× 或 16× payload 再跑。`
-          : `当前内容只有 ${payloadChars.toLocaleString()} 字符 / ${payloadBlocks} 个块 —— 小文档下差值容易被噪音吞没。想看真实收益，切到 4× 或 16× payload 再跑。`
+          ? `The payload is only ${payloadChars.toLocaleString()} characters / ${payloadBlocks} blocks. Shorter content leaves less rendering to reuse while the cache's own bookkeeping costs the same either way — a tie on a small document is the expected result, not a bad one. Switch to the 4× or 16× payload to see the real benefit.`
+          : `The payload is only ${payloadChars.toLocaleString()} characters / ${payloadBlocks} blocks, and on a document that small the difference is easily swallowed by noise. Switch to the 4× or 16× payload to see the real benefit.`
       );
     }
   } else if (d > 0) {
     accent = theme.good;
-    headline = `${axis.subject} 赢了：整轮少花 ${fmt(d, 1)} ms（省 ${pct}），超出噪音带（±${noise} ms），是真实差距。`;
+    headline = `${axis.subject} wins: ${fmt(d, 1)} ms less across the whole run (${pct} saved), outside the noise band (±${noise} ms), so the gap is real.`;
     if (summary.deltaP95 > 0.5) {
-      details.push(`最卡的那 5% 次提交快了 ${fmt(summary.deltaP95, 1)} ms —— 这对应用户能感觉到的卡顿改善。`);
+      details.push(
+        `The worst 5% of commits got ${fmt(summary.deltaP95, 1)} ms faster — that is the part a user feels as reduced jank.`
+      );
     }
     if (axis.renderDeltasMeaningful && summary.deltaElem !== null && summary.deltaElem > 0) {
-      details.push(`组件函数少执行了 ${summary.deltaElem.toLocaleString()} 次（缓存命中的块直接复用上一帧的结果）。`);
+      details.push(
+        `Component functions ran ${summary.deltaElem.toLocaleString()} fewer times (cached blocks reuse the previous frame's result outright).`
+      );
     }
   } else {
     accent = theme.bad;
-    headline = `这轮 ${axis.subject} 确实更慢：多花 ${fmt(Math.abs(d), 1)} ms（${pct}），超出噪音带（±${noise} ms）。`;
+    headline = `${axis.subject} really was slower this run: ${fmt(Math.abs(d), 1)} ms more (${pct}), outside the noise band (±${noise} ms).`;
     if (axis.blockMemoProse && payloadScale === 1) {
       details.push(
-        `小 payload 下这通常仍是"固定记账成本 > 可省工作量"的体现。先切到 16× 复测：如果大 payload 也稳定为负，才值得当回归去查。`
+        `On a payload this small that is usually still the fixed bookkeeping cost outweighing the work the cache can save. Re-measure at 16× first: only a large payload that stays negative is worth chasing as a regression.`
       );
     } else {
-      details.push(`稳定复现的话建议用 Run ×3 确认，然后查最近的热路径改动。`);
+      details.push(`If it reproduces, confirm with Run ×3 and then look at recent hot-path changes.`);
     }
   }
 
@@ -694,18 +698,18 @@ export const VerdictBanner = memo(function VerdictBanner({
     const deltas = sameConfigRuns.map((r) => r.deltaTotal);
     const mean = deltas.reduce((s, x) => s + x, 0) / deltas.length;
     details.push(
-      `同配置最近 ${deltas.length} 轮的差值：${deltas.map((x) => fmtSigned(x)).join(' / ')} ms（平均 ${fmtSigned(mean)}，波动 ±${fmt(stddev(deltas), 1)}）。`
+      `Deltas from the last ${deltas.length} runs of this config: ${deltas.map((x) => fmtSigned(x)).join(' / ')} ms (mean ${fmtSigned(mean)}, spread ±${fmt(stddev(deltas), 1)}).`
     );
   }
 
   const footnotes = [
-    '毫秒数来自 React dev 构建，绝对值偏大；只有左右两侧的相对差有意义。',
+    'The milliseconds come from a React dev build, so the absolute values are inflated; only the difference between the two columns carries meaning.',
     spyEnabled
-      ? `组件计数 spy 是开着的：它对渲染次数多的一侧拖累更大，可能略微影响 ${axis.subject} 的相对优势。要最干净的计时，关掉 spy 再跑。`
-      : '组件计数 spy 已关闭 —— 当前是最干净的计时模式。',
+      ? `The component-count spies are on: they cost more on whichever side renders more, which can slightly overstate ${axis.subject}'s advantage. Turn the spies off for the cleanest timing.`
+      : 'The component-count spies are off — this is the cleanest timing mode.',
     isolated
-      ? '两栏跑在两个独立进程（跨站 iframe）：线程、GC、帧率互不影响，fps / slow frames / long tasks 是真·每侧指标；但 CPU 核心、内存带宽、GPU、温控仍是整机共享的。'
-      : 'fps / slow frames / long tasks 是整页共享的信号，两栏数字相同属正常；两栏跑在同一条主线程上，排版/绘制/GC 是共享的 —— 本页公正比较的是 React 的 JS 工作量。',
+      ? 'The two columns run in separate processes (cross-site iframes): threads, GC, and frame cadence are independent, so fps / slow frames / long tasks are genuinely per-side. CPU cores, memory bandwidth, GPU, and thermal throttling are still shared by the whole machine.'
+      : 'fps / slow frames / long tasks are page-wide signals, so identical numbers in both columns are normal. Both columns share one main thread, and layout, paint, and GC are shared along with it — what this page compares fairly is React’s JS work.',
   ];
 
   const banner: CSSProperties = {
@@ -729,7 +733,7 @@ export const VerdictBanner = memo(function VerdictBanner({
           textTransform: 'uppercase',
         }}
       >
-        <span style={{ color: accent }}>● </span>最终结论
+        <span style={{ color: accent }}>● </span>verdict
       </div>
       <div style={{ color: theme.text, fontSize: 13, lineHeight: 1.6 }}>{headline}</div>
       {details.map((line) => (

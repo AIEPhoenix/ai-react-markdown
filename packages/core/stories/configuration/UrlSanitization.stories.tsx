@@ -62,7 +62,7 @@ export default meta;
 const OBSERVED: readonly (readonly [string, string, string])[] = [
   ['https://…', 'renders as a link', 'on the default allowlist'],
   ['./relative.md', 'renders as a link', 'no protocol to check'],
-  ['#fragment', 'renders as a link', 'rewritten to the document-scoped id'],
+  ['#fragment', 'renders as a link', 'rewritten to the document-scoped id (inert: headings get no ids)'],
   ['mailto:…', 'renders as a link', 'on the default allowlist'],
   ['javascript:…', 'text kept, href absent', 'dropped at Gate 1'],
   ['data:…', 'text kept, href absent', 'dropped at Gate 1'],
@@ -128,7 +128,10 @@ const ObservedTable = () => {
  *
  * The fragment link is the one entry that is neither passed through nor
  * dropped: it is rewritten to a document-scoped id so that two answers on the
- * same page cannot cross-link into each other's headings.
+ * same page cannot cross-link into each other's headings. Today the rewritten
+ * anchor has nowhere to land — the renderer rewrites hash *links* but does not
+ * emit ids on headings — so the link is safe yet inert. Footnote anchors are
+ * the exception: those ids are emitted, and the same rewrite makes them work.
  */
 export const DefaultPolicy: CoreStory = {
   args: { content: URL_SCHEMES_DOC },
