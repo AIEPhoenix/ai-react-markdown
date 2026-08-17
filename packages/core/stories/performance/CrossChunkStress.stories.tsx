@@ -10,7 +10,7 @@
  */
 
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect } from 'storybook/test';
+import { expect, waitFor } from 'storybook/test';
 import AIMarkdown from '../../src';
 import { AIMarkdownDocuments } from '../../src/components/AIMarkdownDocuments';
 import { WithScheme } from '../_shared/colorScheme';
@@ -131,16 +131,18 @@ export const ThirtyChunksSingleDoc: StoryObj<typeof meta> = {
 // ─── Stress: 60 chunks, three documents ──────────────────────────────────────
 //
 // Three independent documents (msg-stress-A/B/C), 20 chunks each, 60 total.
-// Verifies:
-//   - per-documentId registry isolation (each doc has its own clobberPrefix +
-//     footnote namespace; identifiers `a`/`b`/`c` overlap across docs without
-//     clobbering)
-//   - aggregate footer appears at the end of each document's last chunk
-//   - cross-document refs never resolve to a different document's defs
-//
-// Each document uses the same labels (`a`, `b`, `c`) intentionally so any
-// leak across registries would show up as a wrong number / wrong link / wrong
-// def body.
+// The play asserts, on the rendered DOM:
+//   - per-documentId registry isolation: exactly one aggregate footer per
+//     document, each holding only its own three definitions (`a`/`b`/`c`
+//     are reused across documents on purpose — a leak would surface as a
+//     wrong body / a fourth <li> / a merged footer)
+//   - the aggregate footer sits at the end of each document's last chunk
+//     (footers appear in document order, after every chunk of their doc)
+//   - cross-document refs never resolve to another document's defs (each
+//     document's two `[glossary][site]` links point at ITS glossary URL)
+// The fixture-length checks keep the chunk counts in the story names honest.
+// Numbering per document (1..3 in first-reference order) is covered by the
+// coordination stories; not re-asserted here.
 
 function buildDocChunks(tag: string): string[] {
   // Exactly 20 chunks per document. Chunks 1-17 are body content, 18-20 are defs.
@@ -195,9 +197,39 @@ export const SixtyChunksThreeDocs: StoryObj<typeof meta> = {
   ),
   // 20 chunks × 3 documents = the 60 the story name claims. Same reasoning as
   // ThirtyChunksSingleDoc for asserting here instead of throwing in render.
-  play: async () => {
+  play: async ({ canvasElement }) => {
     for (const doc of [DOC_A, DOC_B, DOC_C]) {
       await expect(doc).toHaveLength(20);
+    }
+    // One aggregate footer per document, in document order, each with only
+    // its own three definitions.
+    const footers = () => Array.from(canvasElement.querySelectorAll('section[data-footnotes]'));
+    await waitFor(() => expect(footers()).toHaveLength(3));
+    const tags = ['A', 'B', 'C'];
+    footers().forEach((footer, i) => {
+      const items = Array.from(footer.querySelectorAll('li'));
+      expect(items, `footer ${tags[i]} li count`).toHaveLength(3);
+      const text = footer.textContent ?? '';
+      expect(text).toContain(`Footnote A in ${tags[i]}`);
+      expect(text).toContain(`Footnote C in ${tags[i]}`);
+      for (const other of tags.filter((t) => t !== tags[i])) {
+        expect(text, `footer ${tags[i]} must not carry ${other} bodies`).not.toContain(`in ${other}.`);
+      }
+      // The footer is rendered by the document's LAST chunk: every chunk root
+      // of that document precedes it, and the next document's first chunk
+      // (or nothing) follows it.
+      const roots = Array.from(canvasElement.querySelectorAll('.aim-typography-root'));
+      const footerRoot = footer.closest('.aim-typography-root');
+      expect(footerRoot).not.toBeNull();
+      const rootIndex = roots.indexOf(footerRoot as Element);
+      // 20 chunks per doc → the footer root is the 20th root of its document.
+      expect(rootIndex, `footer ${tags[i]} root position`).toBe(i * 20 + 19);
+    });
+    // Cross-document link resolution: two `[glossary][site]` refs per doc,
+    // each resolving to that document's own glossary URL.
+    for (const tag of tags) {
+      const links = canvasElement.querySelectorAll(`a[href="https://example.com/${tag.toLowerCase()}/glossary"]`);
+      expect(links, `glossary links for ${tag}`).toHaveLength(2);
     }
   },
 };

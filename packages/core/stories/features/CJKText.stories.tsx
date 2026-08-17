@@ -1,6 +1,7 @@
 import 'katex/dist/katex.min.css';
 import '../../src/components/typography/variants/all.scss';
 import AIMarkdown from '../../src/index';
+import { expect, waitFor } from 'storybook/test';
 import { baseCoreMeta, type CoreMeta, type CoreStory } from '../_shared/meta';
 import { docsLink } from '../_shared/docsLinks';
 import { CJK_EMPHASIS_REGRESSION, CJK_MIXED_DOC, RTL_DOC } from '../_shared/fixtures';
@@ -49,7 +50,14 @@ export default meta;
 export const EmphasisPunctuationFix: CoreStory = {
   args: {
     content: CJK_EMPHASIS_REGRESSION,
-    fontSize: '',
+  },
+  // Regression guard shared with the Mantine wrapper's QA story: nine
+  // emphasis pairs, three strikethroughs, and exactly one literal `**` (the
+  // escaped `\*\*` in the first line).
+  play: async ({ canvasElement }) => {
+    await waitFor(() => expect(canvasElement.querySelectorAll('strong')).toHaveLength(9));
+    expect(canvasElement.querySelectorAll('del')).toHaveLength(3);
+    expect((canvasElement.textContent?.match(/\*\*/g) ?? []).length).toBe(1);
   },
 };
 
