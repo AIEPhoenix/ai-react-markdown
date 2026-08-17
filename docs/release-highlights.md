@@ -8,6 +8,12 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 ## 2.3.x — The framework-agnostic engine
 
+### 2.3.3 — Footnote definitions written above their references, and a blanked `fontSize`
+
+Two edge-case fixes. First, in standalone rendering with the default `preserveOrphanReferences`, a footnote definition that appeared **above** its first reference was registered twice: the orphan-protection pass and mdast-util-to-hast's default reference handler judge "already registered?" by two different pieces of state (`footnoteOrder` vs `footnoteCounts`), so the footer emitted a duplicate `<li>` with a colliding DOM id and the superscript marker numbered by array length instead of position. The orphan pass now seeds the reference counter to `0` alongside its order push — zero, not one, so a never-referenced definition still emits no dangling backref and pure-orphan output stays byte-identical. Coordinated (`AIMarkdownDocuments`) rendering and the incremental splice replay are provably unaffected; the fix shipped with a standalone-mode regression battery and a clean run of the full three-leg release soak (50k splice fuzz, 20k direction battery, K=4 exhaustive census).
+
+Second, `fontSize=""` — a blanked text input, or an empty string from an untyped caller — was forwarded verbatim into `--aim-font-size-root`. An empty custom property is CSS's _guaranteed-invalid_ value, so the entire `--aim-*` size scale (and the Mantine wrapper's overrides chained off it) silently collapsed to browser defaults. The empty string now joins `null`/`undefined` in resolving to the rem default, while `fontSize={0}` still means `0px`.
+
 ### 2.3.2 — Mermaid diagram controls work without a pointer
 
 The Mantine Mermaid block's interactive surface was pointer-only: the rendered diagram opened in a new window on click but sat outside the tab order, and the two icon-only controls (show source, copy) exposed no accessible names. The diagram container is now a focusable `role="button"` that activates on Enter or Space, and both controls carry explicit `aria-label`s — keyboard and screen-reader users get the same interaction path pointer users always had. First external contribution, by @alectimison-maker. (#31)
