@@ -593,8 +593,11 @@ export function renderBlocksWithCache(
       // `renderToStaticMarkup` useEffect doesn't fire, so the chunk hasn't
       // registered with the registry yet (`thisChunkSymbol` undefined). Falling
       // back to the local footer keeps each chunk's defs visible in the static
-      // output — which is what `byteEquivalence.test.tsx` exercises and what
-      // users doing SSR-without-hydration expect.
+      // output — and the placeholders fall back to the same standalone facts
+      // (local footnote number, own link def) in exactly this state, so the
+      // static output of a wrapped chunk is byte-identical to its standalone
+      // render (pinned in `byteEquivalence.test.tsx`), which is what users
+      // doing SSR-without-hydration expect.
       if (postOptions.registry && postOptions.thisChunkSymbol) {
         continue;
       }

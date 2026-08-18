@@ -346,6 +346,10 @@ Useful for very long documents where mounting/unmounting chunks via virtualizati
 
 The microtask deferral is **the** subtle part. React 19's Strict Mode mounts each component twice in development. A naive unmount-then-mount would release and re-allocate the symbol, causing footnote numbers to flicker. The deferral lets the re-mount cancel the release before it commits.
 
+### Server rendering and the first client frame
+
+Steps 1–3 run in effects, so on the server (and in the client's first render before effects) the registry exists but is **empty**. In that state every chunk renders with **standalone semantics** — its own footnote numbering (mark and local footer agree, byte-identical to rendering the chunk outside the wrapper), its own reference-style links and images resolved from its own definitions. Cross-chunk references — a `[^label]` or `[text][label]` whose definition lives in another chunk — cannot be resolved without the registry and render as literal text until the chunks have registered. Once the contribute effects run, marks switch to document-wide numbering, links resolve to the canonical (first-defining) chunk, and the aggregate footer replaces the local ones. Hydration is mismatch-free: the client's first frame reproduces the server's standalone output before switching.
+
 ---
 
 ## Footguns

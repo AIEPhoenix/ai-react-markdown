@@ -350,6 +350,37 @@ describe('cross-chunk semantic equivalence', () => {
     );
   }
 
+  // Server render under the wrapper: the registry exists but is EMPTY
+  // (registerChunk/contribute run in effects), so every placeholder must
+  // fall back to the chunk's own standalone facts — local footnote number,
+  // local link/image def — and the output must be BYTE-identical to the
+  // standalone render (2026-08 project review, core-render-02: marks and
+  // reference links vanished from coordinated SSR while the local footer
+  // still rendered with backrefs to nothing).
+  describe('a wrapped chunk renders byte-identically to standalone on the server (empty registry)', () => {
+    const cases: Array<[string, string]> = [
+      [
+        'footnote referenced twice + link ref + image ref',
+        'Cites[^a] and [glossary][g] then [^a] again ![pic][g].\n\n[^a]: Note A.\n\n[g]: https://example.com/g "G"',
+      ],
+      ['two footnotes, def-before-ref order', '[^b]: B first.\n\nText[^a] then[^b].\n\n[^a]: A body.'],
+      ['orphan definition next to a cited one', 'Cites[^a].\n\n[^a]: cited\n[^o]: orphan'],
+      ['collapsed and shortcut link references', 'See [spec][] and [spec].\n\n[spec]: https://example.com/spec'],
+      ['no references at all', '# Title\n\nPlain **prose** only.'],
+    ];
+    for (const [label, doc] of cases) {
+      test(label, () => {
+        expect(renderChunked([doc], 'doc-ssr')).toBe(renderSingle(doc, 'doc-ssr'));
+      });
+    }
+    test('marks and links are really present (not vacuously equal by both being empty)', () => {
+      const html = renderChunked([cases[0][1]], 'doc-ssr');
+      expect(html).toContain('data-footnote-ref');
+      expect(html).toContain('href="https://example.com/g"');
+      expect(html).toContain('<img src="https://example.com/g"');
+    });
+  });
+
   function extractFootnoteItems(html: string): { label: string; text: string }[] {
     // crude but bounded: match all <li id="..." data-footnote-ref … >...</li>
     const re = /<li[^>]+id="[^"]*-user-content-fn-([^"]+)"[^>]*>([\s\S]*?)<\/li>/g;

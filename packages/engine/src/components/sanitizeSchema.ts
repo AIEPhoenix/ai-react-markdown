@@ -74,8 +74,8 @@ export const sanitizeSchema: Schema = cloneDeep({
   attributes: {
     ...defaultSchema.attributes,
     code: mergeClassNameAllowlist(defaultSchema.attributes?.code, ['math-inline', 'math-display']),
-    'cross-chunk-link': ['label', 'referenceType', 'documentId'],
-    'cross-chunk-image': ['label', 'referenceType', 'documentId', 'alt'],
-    'footnote-sup': ['label', 'localOccurrence', 'documentId'],
+    'cross-chunk-link': ['label', 'referenceType', 'documentId', 'localUrl', 'localTitle'],
+    'cross-chunk-image': ['label', 'referenceType', 'documentId', 'alt', 'localUrl', 'localTitle'],
+    'footnote-sup': ['label', 'localOccurrence', 'localNumber', 'documentId'],
   },
 });

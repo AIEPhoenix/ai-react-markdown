@@ -282,6 +282,81 @@ describe('crossChunkPlaceholders — URL sanitization (render-time two-gate)', (
     expect(html).not.toContain('[');
   });
 
+  test("localUrl fallback: renders the chunk's own def while the registry has nothing (SSR / first frame)", () => {
+    // No seeding at all — the registry exists (wrapper) but is empty.
+    const html = renderToString(
+      <WithProvider documentId="doc">
+        <CrossChunkLink label="own" referenceType="full" localUrl="https://example.com/own" localTitle="T">
+          click
+        </CrossChunkLink>
+        <CrossChunkImage label="own" referenceType="full" alt="pic" localUrl="https://example.com/pic.png" />
+      </WithProvider>
+    );
+    expect(html).toContain('href="https://example.com/own"');
+    expect(html).toContain('title="T"');
+    expect(html).toContain('src="https://example.com/pic.png"');
+    expect(html).not.toContain('[click]');
+  });
+
+  test('a registry (canonical) def wins over localUrl once it exists', () => {
+    function Seed() {
+      const ctx = __internalGetContext();
+      const reg = ctx!.getRegistry('doc');
+      const sym = reg.allocateSymbol('seed');
+      reg.contributeChunkData(sym, {
+        refs: [],
+        defs: new Map(),
+        linkDefs: new Map([['X', { identifier: 'X', url: 'https://example.com/canonical' }]]),
+        ownFootnoteLabels: new Set(),
+        ownLinkLabels: new Set(['X']),
+      });
+      return (
+        <CrossChunkLink label="X" referenceType="full" localUrl="https://example.com/local">
+          click
+        </CrossChunkLink>
+      );
+    }
+    const html = renderToString(
+      <WithProvider documentId="doc">
+        <Seed />
+      </WithProvider>
+    );
+    expect(html).toContain('href="https://example.com/canonical"');
+    expect(html).not.toContain('example.com/local');
+  });
+
+  test('localUrl runs through the render-time URL gates too (javascript: stripped)', () => {
+    const html = renderToString(
+      <WithProvider documentId="doc">
+        <CrossChunkLink label="own" referenceType="full" localUrl="javascript:alert(1)">
+          click
+        </CrossChunkLink>
+      </WithProvider>
+    );
+    expect(html).not.toContain('javascript:');
+    expect(html).toContain('<a');
+  });
+
+  test('FootnoteSupNumber falls back to the local number while the registry has no global number', () => {
+    const html = renderToString(
+      <WithProvider documentId="doc">
+        <FootnoteSupNumber label="a" localOccurrence={2} localNumber={3} />
+      </WithProvider>
+    );
+    // Standalone shape: local number, `-N` by local occurrence, same
+    // attribute set mdast-util-to-hast emits.
+    expect(html).toContain('>3</a>');
+    expect(html).toContain('id="doc-user-content-fnref-a-2"');
+    expect(html).toContain('aria-describedby="doc-user-content-footnote-label"');
+    // A phantom ref (no local number) still renders nothing.
+    const phantom = renderToString(
+      <WithProvider documentId="doc">
+        <FootnoteSupNumber label="a" localOccurrence={1} />
+      </WithProvider>
+    );
+    expect(phantom).not.toContain('<sup');
+  });
+
   test('CrossChunkLink strips javascript: even if the registry stored it raw (defense-in-depth)', () => {
     // Bypass the contribute-time gate by seeding the registry directly with
     // a malicious URL — verifies the render-time gate ALONE is sufficient.

@@ -24,6 +24,7 @@ import type { Handlers } from 'mdast-util-to-hast';
 import type { LinkReference, ImageReference, FootnoteReference, FootnoteDefinition } from 'mdast';
 import type { Element as HastElement } from 'hast';
 import { normalizeId } from './normalizeId';
+import { SENTINEL_LINK_URL } from './remarkInjectPhantomDefs';
 
 export interface CrossChunkHandlerOptions {
   /** Set of labels (already normalized) that this chunk phantom-injected
@@ -47,6 +48,22 @@ interface StateShape {
   footnoteCounts: Map<string, number>;
   definitionById: Map<string, unknown>;
   all: (node: unknown) => unknown[];
+}
+
+/**
+ * The chunk's OWN definition for a resolved link/image reference — carried on
+ * the placeholder as `localUrl`/`localTitle` so it can render a real link
+ * before the registry has anything to say (server render, the client's
+ * first frame before the contribute effect): coordinated SSR otherwise
+ * degraded every reference-style link to its literal `[text][label]`
+ * fallback (2026-08 project review, core-render-02). Phantom (sentinel)
+ * defs carry nothing — a cross-chunk def is only knowable via the registry.
+ * The placeholder still runs the render-time URL gates on this value.
+ */
+function localDefProps(s: StateShape, id: string): { localUrl?: string; localTitle?: string } {
+  const def = s.definitionById.get(id) as { url?: string; title?: string | null } | undefined;
+  if (!def || typeof def.url !== 'string' || def.url === SENTINEL_LINK_URL) return {};
+  return def.title ? { localUrl: def.url, localTitle: def.title } : { localUrl: def.url };
 }
 
 export function buildCrossChunkHandlers(): Handlers {
@@ -107,6 +124,7 @@ export function buildCrossChunkHandlers(): Handlers {
           label: node.label ?? node.identifier,
           referenceType: node.referenceType,
           documentId: s.options.documentId,
+          ...localDefProps(s, id),
         },
         children: s.all(node) as HastElement['children'],
       };
@@ -125,6 +143,7 @@ export function buildCrossChunkHandlers(): Handlers {
           referenceType: node.referenceType,
           alt: node.alt ?? '',
           documentId: s.options.documentId,
+          ...localDefProps(s, id),
         },
         children: [],
       };
@@ -162,6 +181,12 @@ export function buildCrossChunkHandlers(): Handlers {
         properties: {
           label: node.identifier,
           localOccurrence,
+          // The number mdast-util-to-hast would give this reference in a
+          // standalone render (footnoteOrder position) — the placeholder's
+          // fallback while the registry has no global number (server render /
+          // first client frame), where the local synthetic footer is what
+          // renders, so marks and footer agree (core-render-02).
+          localNumber: s.footnoteOrder.indexOf(id) + 1,
           documentId: s.options.documentId,
         },
         children: [],

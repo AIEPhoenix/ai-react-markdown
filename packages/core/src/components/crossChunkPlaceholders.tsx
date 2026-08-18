@@ -41,6 +41,12 @@ interface FootnoteSupProps {
    *  `customMdastHandlers.test.ts`). The component accepts either form
    *  and coerces internally so the contract is robust to the pipeline. */
   localOccurrence?: number | string;
+  /** The number a standalone render would give this reference (its
+   *  footnoteOrder position) — the fallback while the registry has no
+   *  global number yet: server render and the client's first frame, where
+   *  the chunk's LOCAL synthetic footer is what renders, so mark and footer
+   *  agree. Absent on phantom (cross-chunk) refs. */
+  localNumber?: number | string;
   /** Optional — but normally the hast tag carries it. */
   documentId?: string;
 }
@@ -55,8 +61,13 @@ function coerceLocalOccurrence(v: number | string | undefined): number | null {
   return Number.isFinite(n) && n >= 1 ? Math.trunc(n) : null;
 }
 
-export function FootnoteSupNumber({ label, localOccurrence: localOccurrenceRaw }: FootnoteSupProps): ReactNode {
+export function FootnoteSupNumber({
+  label,
+  localOccurrence: localOccurrenceRaw,
+  localNumber: localNumberRaw,
+}: FootnoteSupProps): ReactNode {
   const localOccurrence = coerceLocalOccurrence(localOccurrenceRaw);
+  const localNumber = coerceLocalOccurrence(localNumberRaw);
   const { documentId, documentIdExplicit, clobberPrefix } = useAIMarkdownDocument();
   // Thread `documentIdExplicit` exactly like `MarkdownContent` does: a chunk
   // with an auto-generated id must NOT open a registry even if a raw/crafted
@@ -74,7 +85,33 @@ export function FootnoteSupNumber({ label, localOccurrence: localOccurrenceRaw }
   const getSnapshot = useCallback(() => registry?.version ?? 0, [registry]);
   useSyncExternalStore(subscribe, getSnapshot, SSR_NUM_SNAPSHOT);
   const num = registry?.globalNumber(label) ?? null;
-  if (num === null) return null;
+  if (num === null) {
+    // No global number yet — server render, or the client's first frame
+    // before the contribute effect. Render the STANDALONE mark (local
+    // number, `-N` by local occurrence) so it lines up with the local
+    // synthetic footer that renders in exactly this state; the global
+    // numbering takes over once the registry knows the label. Rendering
+    // null here left coordinated SSR with footers but no marks
+    // (2026-08 project review, core-render-02). Phantom refs (no local
+    // number) still render nothing — their def is in another chunk.
+    if (localNumber === null) return null;
+    const localSuffix = localOccurrence !== null && localOccurrence > 1 ? `-${localOccurrence}` : '';
+    // Byte-for-byte the mark mdast-util-to-hast emits (attribute set and
+    // order included), so a wrapped chunk's server output equals its
+    // standalone output — pinned in byteEquivalence.test.tsx.
+    return (
+      <sup>
+        <a
+          href={`#${clobberPrefix}fn-${label}`}
+          id={`${clobberPrefix}fnref-${label}${localSuffix}`}
+          data-footnote-ref=""
+          aria-describedby={`${clobberPrefix}footnote-label`}
+        >
+          {localNumber}
+        </a>
+      </sup>
+    );
+  }
   if (localOccurrence !== null && !chunkSym) return null;
   const globalOcc =
     registry && chunkSym && localOccurrence !== null
@@ -98,6 +135,26 @@ interface CrossChunkLinkProps {
   label: string;
   referenceType: RefType;
   children?: ReactNode;
+  /** The chunk's OWN definition (never a phantom's) — carried by the
+   *  handler so the link renders before the registry has it (server render,
+   *  first client frame). Runs through the same URL gates as a registry
+   *  value; a cross-chunk (canonical) def replaces it once the registry
+   *  resolves. See core-render-02. */
+  localUrl?: string;
+  localTitle?: string;
+}
+
+/** The registry's canonical def, or the chunk's own as a fallback. */
+function resolveDef(
+  registry: { resolveLinkDef(label: string): LinkDef | null } | null,
+  label: string,
+  localUrl?: string,
+  localTitle?: string
+): LinkDef | null {
+  const canonical = registry?.resolveLinkDef(label) ?? null;
+  if (canonical) return canonical;
+  if (typeof localUrl === 'string') return { identifier: label, url: localUrl, title: localTitle };
+  return null;
 }
 
 /** Recursively flatten a ReactNode tree to plain text. The fallback for
@@ -134,7 +191,13 @@ function literalLink(rt: RefType, label: string, children: ReactNode): string {
   }
 }
 
-export function CrossChunkLink({ label, referenceType, children }: CrossChunkLinkProps): ReactNode {
+export function CrossChunkLink({
+  label,
+  referenceType,
+  children,
+  localUrl,
+  localTitle,
+}: CrossChunkLinkProps): ReactNode {
   const { documentId, documentIdExplicit } = useAIMarkdownDocument();
   // See FootnoteSupNumber: gate on explicitness so an auto-id chunk never
   // opens a registry shell via a stray placeholder tag.
@@ -151,7 +214,7 @@ export function CrossChunkLink({ label, referenceType, children }: CrossChunkLin
   const subscribe = useCallback((cb: () => void) => (registry ? registry.subscribe(cb) : () => {}), [registry]);
   const getSnapshot = useCallback(() => registry?.version ?? 0, [registry]);
   useSyncExternalStore(subscribe, getSnapshot, SSR_NUM_SNAPSHOT);
-  const def: LinkDef | null = registry?.resolveLinkDef(label) ?? null;
+  const def = resolveDef(registry, label, localUrl, localTitle);
   if (!def) {
     return literalLink(referenceType, label, children);
   }
@@ -182,6 +245,9 @@ interface CrossChunkImageProps {
   label: string;
   referenceType: RefType;
   alt?: string;
+  /** See CrossChunkLinkProps. */
+  localUrl?: string;
+  localTitle?: string;
 }
 
 function literalImage(rt: RefType, label: string, alt: string): string {
@@ -196,7 +262,13 @@ function literalImage(rt: RefType, label: string, alt: string): string {
   }
 }
 
-export function CrossChunkImage({ label, referenceType, alt = '' }: CrossChunkImageProps): ReactNode {
+export function CrossChunkImage({
+  label,
+  referenceType,
+  alt = '',
+  localUrl,
+  localTitle,
+}: CrossChunkImageProps): ReactNode {
   const { documentId, documentIdExplicit } = useAIMarkdownDocument();
   // See FootnoteSupNumber: gate on explicitness so an auto-id chunk never
   // opens a registry shell via a stray placeholder tag.
@@ -207,7 +279,7 @@ export function CrossChunkImage({ label, referenceType, alt = '' }: CrossChunkIm
   const subscribe = useCallback((cb: () => void) => (registry ? registry.subscribe(cb) : () => {}), [registry]);
   const getSnapshot = useCallback(() => registry?.version ?? 0, [registry]);
   useSyncExternalStore(subscribe, getSnapshot, SSR_NUM_SNAPSHOT);
-  const def: LinkDef | null = registry?.resolveLinkDef(label) ?? null;
+  const def = resolveDef(registry, label, localUrl, localTitle);
   if (!def) {
     return literalImage(referenceType, label, alt);
   }

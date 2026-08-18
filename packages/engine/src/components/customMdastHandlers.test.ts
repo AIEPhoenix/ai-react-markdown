@@ -84,6 +84,38 @@ describe('customMdastHandlers — Direction B linkReference', () => {
     expect(link?.properties?.documentId).toBe('msg-1');
   });
 
+  test("a reference to the chunk's OWN def carries localUrl/localTitle; a phantom carries none (core-render-02)", () => {
+    const own = pipe('[click][own] and ![pic][own]\n\n[own]: https://example.com/own "T"', {});
+    const props: unknown[] = [];
+    visit(own, 'element', (el) => {
+      if (el.tagName === 'cross-chunk-link' || el.tagName === 'cross-chunk-image') props.push(el.properties);
+    });
+    expect(props).toHaveLength(2);
+    for (const p of props as Array<{ localUrl?: string; localTitle?: string }>) {
+      expect(p.localUrl).toBe('https://example.com/own');
+      expect(p.localTitle).toBe('T');
+    }
+    const phantom = pipe(
+      '[click][X]' + buildPhantomSuffix({ missingFootnotes: new Set(), missingLinks: new Set(['X']) }),
+      { phantomLinkLabels: new Set(['X']) }
+    );
+    const link = findTag(phantom, 'cross-chunk-link');
+    expect(link?.properties?.localUrl).toBeUndefined();
+  });
+
+  test('footnote-sup carries localNumber = footnoteOrder position of a real local def', () => {
+    const hast = pipe('x[^b] y[^a] z[^b]\n\n[^a]: A\n\n[^b]: B', {});
+    const nums: unknown[] = [];
+    visit(hast, 'element', (el) => {
+      if (el.tagName === 'footnote-sup') nums.push([el.properties?.localNumber, el.properties?.localOccurrence]);
+    });
+    expect(nums).toEqual([
+      [1, 1],
+      [2, 1],
+      [1, 2],
+    ]);
+  });
+
   test('a padded label reaches the placeholder VERBATIM (registry lookups must trim — eng-stream-01)', () => {
     // mdast keeps the source label (` X ` / `x\ny`) and only the identifier
     // is normalized; the placeholder forwards the label so hrefs line up
