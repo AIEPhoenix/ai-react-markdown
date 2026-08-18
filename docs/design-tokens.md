@@ -37,7 +37,7 @@ All tokens are scoped to `.aim-typography-root.default`. Override at that select
 | Token              | Default formula                           | Used by                                                       |
 | ------------------ | ----------------------------------------- | ------------------------------------------------------------- |
 | `--aim-spacing-xs` | `calc(var(--aim-font-size-root) * 0.625)` | Tight inline gaps                                             |
-| `--aim-spacing-sm` | `calc(var(--aim-font-size-root) * 0.75)`  | List item margins                                             |
+| `--aim-spacing-sm` | `calc(var(--aim-font-size-root) * 0.75)`  | Table cell horizontal padding                                 |
 | `--aim-spacing-md` | `calc(var(--aim-font-size-root) * 1)`     | Block margins for `<hr>`, `<pre>`, lists, tables, blockquotes |
 | `--aim-spacing-lg` | `calc(var(--aim-font-size-root) * 1.25)`  | Paragraph bottom margin; blockquote horizontal padding        |
 | `--aim-spacing-xl` | `calc(var(--aim-font-size-root) * 1.5)`   | Major section spacing                                         |
