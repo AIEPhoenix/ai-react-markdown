@@ -44,7 +44,14 @@ type Mermaid = typeof mermaidModule;
  */
 let mermaidPromise: Promise<Mermaid> | null = null;
 const loadMermaid = (): Promise<Mermaid> => {
-  mermaidPromise ??= import('mermaid').then((m) => m.default);
+  // A rejected load is not cached — the next render attempt retries.
+  mermaidPromise ??= import('mermaid').then(
+    (m) => m.default,
+    (err: unknown) => {
+      mermaidPromise = null;
+      throw err;
+    }
+  );
   return mermaidPromise;
 };
 

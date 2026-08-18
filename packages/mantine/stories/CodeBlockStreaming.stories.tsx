@@ -99,6 +99,44 @@ export const AutodetectEarlyThenCorrected: Story = {
   },
 };
 
+const PY_BODY = ['import os', 'import sys', '', 'def main(argv):', '    for path in argv:', '        print(path)'].join(
+  '\n'
+);
+/** A regenerate on the same block: the SQL block is REPLACED by a shorter
+ *  Python block while still streaming (same source offset → same PreCode
+ *  instance). The old guess must not survive the swap. */
+const REGENERATE_FRAMES: Array<{ content: string; streaming: boolean }> = [
+  { content: '```\n' + SQL_BODY, streaming: true },
+  { content: '```\n' + PY_BODY.slice(0, 40), streaming: true }, // shrink → guess dropped, re-guessed for the new text
+  { content: '```\n' + PY_BODY + '\n```\n', streaming: false },
+];
+
+export const AutodetectRestartsOnRegenerate: Story = {
+  render: () => <Harness frames={REGENERATE_FRAMES} codeBlock={AUTODETECT} />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const next = canvas.getByRole('button', { name: 'next frame' });
+    const stepIs = (n: number) => waitFor(() => expect(canvas.getByTestId('step').textContent).toBe(String(n)));
+    const label = () =>
+      canvasElement.querySelector('.mantine-CodeHighlightTabs-file, [class*="CodeHighlightTabs-file"]')?.textContent ??
+      '';
+
+    await stepIs(0);
+    await waitFor(() => expect(label()).toBe('pgsql'), { timeout: 15_000 });
+
+    // Swap to a different, shorter block: the SQL guess must go away.
+    await userEvent.click(next);
+    await stepIs(1);
+    await waitFor(() => expect(label()).not.toBe('pgsql'), { timeout: 15_000 });
+
+    // Final verdict is for the Python text, whatever hljs calls it — never pgsql.
+    await userEvent.click(next);
+    await stepIs(2);
+    await new Promise((r) => setTimeout(r, 500));
+    expect(label()).not.toBe('pgsql');
+  },
+};
+
 export const JsonPrettyPrintsWhenTheBlockCompletes: Story = {
   render: () => <Harness frames={JSON_FRAMES} />,
   play: async ({ canvasElement }) => {

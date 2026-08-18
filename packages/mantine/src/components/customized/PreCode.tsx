@@ -21,7 +21,15 @@ import MantineAIMMermaidCode from './MermaidCode';
  */
 let hljsAutoPromise: Promise<{ highlightAuto: (code: string) => { language?: string } }> | null = null;
 export const loadHljsForAutoDetect = () => {
-  hljsAutoPromise ??= import('highlight.js').then((m) => m.default);
+  // A rejected load (transient network failure) is NOT cached: the next
+  // attempt retries instead of leaving autodetection dead for the page.
+  hljsAutoPromise ??= import('highlight.js').then(
+    (m) => m.default,
+    (err: unknown) => {
+      hljsAutoPromise = null;
+      throw err;
+    }
+  );
   return hljsAutoPromise;
 };
 
@@ -50,7 +58,17 @@ function useAutoDetectedLanguage(codeText: string, enabled: boolean, streaming: 
     null
   );
   useEffect(() => {
-    if (!enabled || codeText.length < AUTODETECT_MIN_CHARS) return;
+    if (!enabled) return;
+    // The block was REPLACED, not appended to (a regenerate reuses this
+    // instance — the key is the block's source offset — or a same-offset
+    // swap): a guess made for the old text is worthless for the new one.
+    // Drop it so the schedule restarts (v2.4.0 review: the old label stuck
+    // for the whole new stream until its end).
+    if (detected !== null && codeText.length < detected.atLength) {
+      setDetected(null);
+      return;
+    }
+    if (codeText.length < AUTODETECT_MIN_CHARS) return;
     const due =
       detected === null ||
       // Not streaming: the verdict must be for THIS text (end-of-stream, or a
@@ -60,14 +78,19 @@ function useAutoDetectedLanguage(codeText: string, enabled: boolean, streaming: 
       (streaming && codeText.length >= detected.atLength * 2);
     if (!due) return;
     let cancelled = false;
-    void loadHljsForAutoDetect().then((hljs) => {
-      if (cancelled) return;
-      setDetected({
-        language: hljs.highlightAuto(codeText).language ?? '',
-        atLength: codeText.length,
-        finalFor: streaming ? null : codeText,
-      });
-    });
+    loadHljsForAutoDetect().then(
+      (hljs) => {
+        if (cancelled) return;
+        setDetected({
+          language: hljs.highlightAuto(codeText).language ?? '',
+          atLength: codeText.length,
+          finalFor: streaming ? null : codeText,
+        });
+      },
+      () => {
+        /* load failed — stay "unknown"; the loader retries next time */
+      }
+    );
     return () => {
       cancelled = true;
     };
