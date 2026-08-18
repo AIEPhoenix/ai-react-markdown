@@ -62,7 +62,11 @@
     }
 
     .action-icon {
-      color: var(--mantine-color-text);
+      /* Static dark token, like the tag above: `.dark` is driven by the
+         resolved `colorScheme` prop, which may say "dark" under a light
+         Provider — there `--mantine-color-text` resolves to the LIGHT
+         scheme's text and the icon disappears on dark-8 (2026-08-19 review). */
+      color: var(--mantine-color-dark-0);
     }
   }
 }

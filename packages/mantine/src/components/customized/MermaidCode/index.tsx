@@ -122,7 +122,12 @@ const handleViewSVGInNewWindow = (svgElement: SVGElement | null | undefined, isD
   const text = new XMLSerializer().serializeToString(targetSvg);
   const blob = new Blob([text], { type: 'image/svg+xml' });
   const url = URL.createObjectURL(blob);
-  const win = window.open(url);
+  // `noopener`: the blob URL is same-origin and opens as a top-level SVG
+  // document; under mermaid's default strict securityLevel it is DOMPurify
+  // output, but a host that flips the shared singleton to 'loose' (see the
+  // module note above) would hand that document a live `opener` — cut it
+  // (2026-08-19 review). Costs nothing in the strict case.
+  const win = window.open(url, '_blank', 'noopener');
   // Revoke either way: when a popup blocker returns null nobody will ever
   // load the URL, and leaving it alive leaks the Blob until page unload
   // (2026-08 project review, pkg-small-09). The opened window needs the

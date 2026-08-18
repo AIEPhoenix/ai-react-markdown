@@ -96,8 +96,17 @@ const DefaultCustomComponents: AIMarkdownCustomComponents = {
       return <pre {...usefulProps} />;
     }
     const key = `pre-code-${node?.position?.start?.offset || 0}`;
-    const detectedLanguage = (code.properties?.className as string[])
-      ?.find((className: string) => className.startsWith('language-'))
+    // hast allows `className` as a string as well as an array (a consumer's
+    // rehype plugin may write either); `.find` on a string threw and took
+    // the whole tree down (2026-08-19 review).
+    const classNames = code.properties?.className;
+    const classList = Array.isArray(classNames)
+      ? (classNames as unknown[]).filter((c): c is string => typeof c === 'string')
+      : typeof classNames === 'string'
+        ? classNames.split(/\s+/)
+        : [];
+    const detectedLanguage = classList
+      .find((className) => className.startsWith('language-'))
       ?.substring('language-'.length);
     // A `<code>` inside `<pre>` normally carries ONE text child; if an
     // upstream plugin splits it, the pieces are contiguous source — join

@@ -31,5 +31,9 @@ export function normalizeId(s: string): string {
  * `foo]bar`, so we must unescape source before substring matching.
  */
 export function normalizeForMatch(s: string): string {
-  return normalizeIdentifier(s.replace(/\\(.)/g, '$1'));
+  // CommonMark only treats backslash + ASCII PUNCTUATION as an escape; a
+  // backslash before anything else (`\d`, `\λ`, `\ `) is a literal
+  // backslash that stays in the identifier. Stripping it unconditionally
+  // made the PASS 0.5 pre-check miss such labels (2026-08-19 review).
+  return normalizeIdentifier(s.replace(/\\([!-/:-@[-`{-~])/g, '$1'));
 }

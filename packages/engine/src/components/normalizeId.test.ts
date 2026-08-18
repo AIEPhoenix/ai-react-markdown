@@ -37,4 +37,13 @@ describe('normalizeForMatch', () => {
   test('still collapses whitespace + uppercase', () => {
     expect(normalizeForMatch('Foo  Bar')).toBe('FOO BAR');
   });
+  test('only backslash + ASCII punctuation is an escape (CommonMark) — other backslashes are literal', () => {
+    // `\d`, `\λ`, `\ ` keep their backslash in the identifier; stripping it
+    // made the PASS 0.5 pre-check miss such labels (2026-08-19 review).
+    expect(normalizeForMatch('a\\db')).toBe(normalizeId('a\\db'));
+    expect(normalizeForMatch('x\\λ')).toBe(normalizeId('x\\λ'));
+    expect(normalizeForMatch('x\\ y')).toBe(normalizeId('x\\ y'));
+    // Every ASCII punctuation escape still resolves.
+    expect(normalizeForMatch('a\\*b\\_c\\\\d')).toBe('A*B_C\\D');
+  });
 });

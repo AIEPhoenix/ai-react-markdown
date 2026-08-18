@@ -90,7 +90,20 @@ export function FootnoteSupNumber({
   // aggregate footer): a raw label in the id broke `[^注]` / `[^a%b]`
   // anchors — mark and <li> disagreed (v2.4.0 review).
   const safeId = footnoteSafeId(label);
-  if (num === null) {
+  // Global occurrence of THIS mark (`-N` for the 2nd+ ref of the label
+  // across the document). Null while this chunk has not contributed yet.
+  const globalOcc =
+    registry && chunkSym && localOccurrence !== null && num !== null
+      ? registry.globalOccurrenceForRef(chunkSym, label, localOccurrence)
+      : null;
+  // A label another chunk already numbered (`num` known) but whose OWN
+  // occurrence this chunk has not registered yet (allocation committed,
+  // contribute effect pending — a later-mounted chunk repeating the label):
+  // same transient as "no global number", same standalone fallback below,
+  // instead of a null that blanks the mark for a frame or two
+  // (2026-08-19 review P3).
+  const ownOccurrencePending = num !== null && localOccurrence !== null && chunkSym !== null && globalOcc === null;
+  if (num === null || ownOccurrencePending) {
     // No global number yet — server render, or the client's first frame
     // before the contribute effect. Render the STANDALONE mark (local
     // number, `-N` by local occurrence) so it lines up with the local
@@ -119,11 +132,6 @@ export function FootnoteSupNumber({
     );
   }
   if (localOccurrence !== null && !chunkSym) return null;
-  const globalOcc =
-    registry && chunkSym && localOccurrence !== null
-      ? registry.globalOccurrenceForRef(chunkSym, label, localOccurrence)
-      : null;
-  if (localOccurrence !== null && globalOcc === null) return null;
   // Append `-N` when this is the 2nd+ occurrence of the same label across
   // the document. The first occurrence keeps the bare `fnref-${id}` so a
   // ref-once-only doc renders byte-identical to the pre-multi-ref design.
