@@ -34,13 +34,13 @@ All tokens are scoped to `.aim-typography-root.default`. Override at that select
 
 ### Spacing scale
 
-| Token              | Default formula                           | Used by                |
-| ------------------ | ----------------------------------------- | ---------------------- |
-| `--aim-spacing-xs` | `calc(var(--aim-font-size-root) * 0.625)` | Tight inline gaps      |
-| `--aim-spacing-sm` | `calc(var(--aim-font-size-root) * 0.75)`  | List item margins      |
-| `--aim-spacing-md` | `calc(var(--aim-font-size-root) * 1)`     | Paragraph block margin |
-| `--aim-spacing-lg` | `calc(var(--aim-font-size-root) * 1.25)`  | Section spacing        |
-| `--aim-spacing-xl` | `calc(var(--aim-font-size-root) * 1.5)`   | Major section spacing  |
+| Token              | Default formula                           | Used by                                                       |
+| ------------------ | ----------------------------------------- | ------------------------------------------------------------- |
+| `--aim-spacing-xs` | `calc(var(--aim-font-size-root) * 0.625)` | Tight inline gaps                                             |
+| `--aim-spacing-sm` | `calc(var(--aim-font-size-root) * 0.75)`  | List item margins                                             |
+| `--aim-spacing-md` | `calc(var(--aim-font-size-root) * 1)`     | Block margins for `<hr>`, `<pre>`, lists, tables, blockquotes |
+| `--aim-spacing-lg` | `calc(var(--aim-font-size-root) * 1.25)`  | Paragraph bottom margin; blockquote horizontal padding        |
+| `--aim-spacing-xl` | `calc(var(--aim-font-size-root) * 1.5)`   | Major section spacing                                         |
 
 ### Font sizes (inline scale)
 
@@ -74,9 +74,9 @@ The multipliers (`2.125`, `1.625`, …) mirror Mantine's heading scale. Override
 
 ### Shared weight
 
-| Token                      | Default | Used by                          |
-| -------------------------- | ------- | -------------------------------- |
-| `--aim-font-weight-strong` | `700`   | All headings, `<th>`, `<strong>` |
+| Token                      | Default | Used by                                                                                 |
+| -------------------------- | ------- | --------------------------------------------------------------------------------------- |
+| `--aim-font-weight-strong` | `700`   | All headings (via `--aim-h*-font-weight`), `<th>` — `<strong>` keeps the browser's bold |
 
 Lower to `500` or `600` for lighter visual hierarchy. This single token is usually the highest-impact override.
 
@@ -88,12 +88,12 @@ Lower to `500` or `600` for lighter visual hierarchy. This single token is usual
 
 ### Misc
 
-| Token                         | Default           | Used by                                            |
-| ----------------------------- | ----------------- | -------------------------------------------------- |
-| `--aim-line-height`           | unitless          | Body line height                                   |
-| `--aim-radius-sm`             | rem               | Code block / image corner radius                   |
-| `--aim-font-family-monospace` | system mono stack | `<code>`, `<pre>`                                  |
-| `--aim-font-family-headings`  | system body stack | All headings (override to differentiate from body) |
+| Token                         | Default                    | Used by                                            |
+| ----------------------------- | -------------------------- | -------------------------------------------------- |
+| `--aim-line-height`           | unitless                   | Body line height                                   |
+| `--aim-radius-sm`             | rem                        | Code block / image corner radius                   |
+| `--aim-font-family-monospace` | system mono stack          | `<code>`, `<pre>`                                  |
+| `--aim-font-family-headings`  | `inherit` (the body stack) | All headings (override to differentiate from body) |
 
 ### Colors (light)
 

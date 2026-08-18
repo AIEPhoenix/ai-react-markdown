@@ -18,8 +18,9 @@ import { AIMarkdownSmoothStream, AIMarkdownStreamingCursor } from '@ai-react-mar
 ```
 
 `<AIMarkdownSmoothStream>` accepts the full `<AIMarkdown>` prop surface and
-adds two props: a `smoothPacing` preset and an `onSmoothDrained` callback
-(see [API](#api-reference)). Everything else — plugins, custom components,
+adds three props: a `smoothPacing` preset, an `onSmoothDrained` callback, and
+the `smoothCoordination` turn-taking switch (see [API](#api-reference)).
+Everything else — plugins, custom components,
 sanitization, cross-chunk coordination — behaves identically, because the
 shell renders a plain `<AIMarkdown>` with a paced `content` string.
 

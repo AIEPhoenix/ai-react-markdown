@@ -8,13 +8,13 @@ This document covers what the library does for CJK content, what you can tune, a
 
 ## What works out of the box
 
-| Feature                                                          | Plugin                                  | Default                      |
-| ---------------------------------------------------------------- | --------------------------------------- | ---------------------------- |
-| Proper line-breaking between CJK characters and Latin words      | `remark-cjk-friendly`                   | ✅ Always on                 |
-| GFM strikethrough that respects CJK width                        | `remark-cjk-friendly-gfm-strikethrough` | ✅ Always on                 |
-| Auto-insert spaces between CJK and half-width characters (pangu) | `remark-pangu`                          | ✅ On by default; toggleable |
-| Smart punctuation (SmartyPants) — curly quotes only              | `remark-smartypants`                    | ✅ On by default; toggleable |
-| HTML comment removal                                             | `remark-remove-comments`                | ✅ On by default; toggleable |
+| Feature                                                             | Plugin                                  | Default                      |
+| ------------------------------------------------------------------- | --------------------------------------- | ---------------------------- |
+| Proper line-breaking between CJK characters and Latin words         | `remark-cjk-friendly`                   | ✅ Always on                 |
+| GFM strikethrough that respects CJK width                           | `remark-cjk-friendly-gfm-strikethrough` | ✅ Always on                 |
+| Auto-insert spaces between CJK and half-width characters (pangu)    | `remark-pangu`                          | ✅ On by default; toggleable |
+| Smart punctuation (SmartyPants) — curly quotes, em-dashes, ellipses | `remark-smartypants`                    | ✅ On by default; toggleable |
+| HTML comment removal                                                | `remark-remove-comments`                | ✅ On by default; toggleable |
 
 These plugins run on every render. They're enabled by default precisely because LLM output for Chinese/Japanese/Korean users routinely needs them — turning them on by default means you don't think about typography until you specifically want different behavior.
 
