@@ -4,14 +4,29 @@
 
 [![@ai-react-markdown/core npm](https://img.shields.io/npm/v/@ai-react-markdown/core?label=%40ai-react-markdown%2Fcore&logo=npm&color=cb3837)](https://www.npmjs.com/package/@ai-react-markdown/core)
 [![@ai-react-markdown/mantine npm](https://img.shields.io/npm/v/@ai-react-markdown/mantine?label=%40ai-react-markdown%2Fmantine&logo=npm&color=cb3837)](https://www.npmjs.com/package/@ai-react-markdown/mantine)
+[![@ai-react-markdown/engine npm](https://img.shields.io/npm/v/@ai-react-markdown/engine?label=%40ai-react-markdown%2Fengine&logo=npm&color=cb3837)](https://www.npmjs.com/package/@ai-react-markdown/engine)
+[![@ai-react-markdown/remark-mark-highlight npm](https://img.shields.io/npm/v/@ai-react-markdown/remark-mark-highlight?label=%40ai-react-markdown%2Fremark-mark-highlight&logo=npm&color=cb3837)](https://www.npmjs.com/package/@ai-react-markdown/remark-mark-highlight)
 
 [![core downloads](https://img.shields.io/npm/dm/@ai-react-markdown/core?label=%40ai-react-markdown%2Fcore%20downloads&color=blue)](https://www.npmjs.com/package/@ai-react-markdown/core)
 [![mantine downloads](https://img.shields.io/npm/dm/@ai-react-markdown/mantine?label=%40ai-react-markdown%2Fmantine%20downloads&color=blue)](https://www.npmjs.com/package/@ai-react-markdown/mantine)
+[![core minzip](https://img.shields.io/bundlephobia/minzip/@ai-react-markdown/core?label=core%20minzip)](https://bundlephobia.com/package/@ai-react-markdown/core)
 
+[![CI](https://img.shields.io/github/actions/workflow/status/AIEPhoenix/ai-react-markdown/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/AIEPhoenix/ai-react-markdown/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/actions/workflow/status/AIEPhoenix/ai-react-markdown/release.yml?label=release&logo=githubactions&logoColor=white)](https://github.com/AIEPhoenix/ai-react-markdown/actions/workflows/release.yml)
+[![npm provenance](https://img.shields.io/badge/npm-trusted%20publishing%20%2B%20provenance-cb3837?logo=npm)](https://docs.npmjs.com/generating-provenance-statements)
 [![types: TypeScript](https://img.shields.io/npm/types/@ai-react-markdown/core?label=types&logo=typescript&logoColor=white&color=3178c6)](https://www.typescriptlang.org/)
-[![React 19+](https://img.shields.io/badge/React-%E2%89%A519-149eca?logo=react&logoColor=white)](https://react.dev/)
 [![code style: prettier](https://img.shields.io/badge/code_style-prettier-ff69b4?logo=prettier&logoColor=white)](https://prettier.io/)
+
+[![React 19+](https://img.shields.io/badge/React-%E2%89%A519-149eca?logo=react&logoColor=white)](https://react.dev/)
+[![Node ≥20](https://img.shields.io/badge/Node-%E2%89%A520-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
+[![ESM + CJS](https://img.shields.io/badge/module-ESM%20%2B%20CJS-f7df1e?logo=javascript&logoColor=black)](#installation)
+[![Mantine ≥9](https://img.shields.io/badge/Mantine-%E2%89%A59-339af0?logo=mantine&logoColor=white)](https://mantine.dev/)
+[![KaTeX](https://img.shields.io/badge/math-KaTeX-0b7285)](https://katex.org/)
+[![Mermaid](https://img.shields.io/badge/diagrams-Mermaid-ff3670?logo=mermaid&logoColor=white)](https://mermaid.js.org/)
 [![license](https://img.shields.io/npm/l/@ai-react-markdown/core?color=green)](./LICENSE)
+
+[![GitHub release](https://img.shields.io/github/v/release/AIEPhoenix/ai-react-markdown?logo=github&label=release)](https://github.com/AIEPhoenix/ai-react-markdown/releases)
+[![GitHub stars](https://img.shields.io/github/stars/AIEPhoenix/ai-react-markdown?style=flat&logo=github)](https://github.com/AIEPhoenix/ai-react-markdown/stargazers)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](#contributing)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/AIEPhoenix/ai-react-markdown)
 
