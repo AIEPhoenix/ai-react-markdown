@@ -6,6 +6,44 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 ---
 
+## 2.4.x — The project-review sweep
+
+### 2.4.0 — Sixty-three findings from a whole-repository review, fixed in one train
+
+A full review of the four packages (engine / core / mantine / remark-mark-highlight), the Storybook suite, the docs and the release pipeline produced 66 findings — no P0, six P1. This release closes 63 of them (two supply-chain hardening items were declined by design; one style finding was rejected as an intentional visual choice). Grouped by what a consumer can observe:
+
+**Incremental parsing (engine) — correctness**
+
+- **Three freeze-boundary under-blocks, all in shapes no fuzz generator could reach.** The line scanner modelled comment/PI terminators after micromark but missed closers that overlap their opener (`<!-->`, `<!--->`, line-start `<?>`), ignored the places where parse5 — which decides the final HTML — disagrees with CommonMark (`--!>` closes a comment for parse5 only; a `<?…` / `<![CDATA[…` bogus comment ends at its first `>`), and registered link definitions whose destination micromark rejects (`[a]: /u(x`, `[a]: <u<v>`) as ghost defs that released reference taint early. Each let a boundary freeze past a really-open `<details>` (the swallow class) or let a later real definition retarget frozen text. Overlapping closers are now closed on the spot; two-grammar divergences poison the phase (sticky over-block, never a guess); the destination check runs micromark's own grammar. The fix went generator-first: the fuzz families and the exhaustive census alphabet were extended so the OLD scanner fails within ~30 samples — which surfaced two more pre-existing under-blocks (`<!-- c --> tail` seam remnant; the same overlapping `-->` hidden inside an already-open comment) and, under adversarial review, two follow-ups (backslash escapes in destinations; residue after an overlapping closer). Every counterexample is a deterministic pin.
+- **`if x<y then` prose no longer disables the splice for the rest of the stream.** A line-truncated `<x` counted as an open tag forever; paragraph-line truncations are now reverted at the paragraph's blank line unless a `>` confirmed them (html-flow truncations stay counted — parse5 really keeps tokenizing those).
+- Splice guards: the terminator-mention guard is case-folded like micromark's label matching; the injection walk uses filter semantics and bails on a position-disordered plugin tree instead of silently skipping a definition.
+- **Verification:** the release soak (50k splice fuzz across 12 seeds, 20k direction battery, K=4 exhaustive census across 12 shards on the enlarged 27-token alphabet) ran clean on the final engine; the fuzz corpus gained overlapping-terminator, raw-text-block, invalid-destination and prose-truncation families with coverage meters.
+
+**Cross-chunk coordination**
+
+- **Padded / soft-broken reference labels resolve in coordinated mode.** `normalizeId` now delegates to micromark's `normalizeIdentifier` (trim + ASCII-only whitespace folding); before, `[ foo ]` or a label broken at a soft line ending looked up `' FOO '` against a def keyed `'FOO'` and fell back to literal text — in coordinated mode only.
+- **The phantom-definition suffix survives an open code fence.** A streaming frame that ends inside an unclosed ``` or `$$` block used to swallow the appended sentinel definitions — visible as sentinel text inside the code block, and every cross-chunk reference in the chunk falling back to `[text][label]` for the whole block. The engine now emits an output-neutral closer for the open block first (same fence char/length, at the opener's indent), only when the scanner's phase is trusted.
+- **Coordinated server rendering keeps its marks and links.** With an empty registry (server, first client frame) the placeholders now fall back to the chunk's own standalone facts — local footnote number, own link/image definition — so a wrapped chunk's server output is byte-identical to its standalone render (pinned) and hydration is mismatch-free; document-wide numbering and canonical links take over once the chunks register. Cross-chunk references still render literally until then (documented).
+- Runtime prop changes no longer leave stale output behind caches: flipping `preserveOrphanReferences` at runtime refreshes the synthetic footer (block cache flushed on the policy change); the legacy `blockMemo: false` path applies orphan protection too, so `blockMemo` is genuinely output-invariant in standalone rendering; swapping the sanitize schema / rehype chain at runtime re-publishes footnote bodies to the registry (the contribute fingerprint compares the parse-input chain by identity).
+- `<AIMarkdownSmoothStream smoothCoordination={null}>` now falls to the default (`true`) per the library-wide null rule instead of silently switching turn-taking off. `Registry.releaseSymbol` ignores an unbalanced extra release instead of parking the refcount below zero and leaking the chunk.
+
+**Streaming behaviors**
+
+- `useSmoothStream().flush()` keeps the grapheme discipline mid-stream: it reveals everything confirmed and holds the trailing grapheme exactly as the animation does (a surrogate half or a growing emoji ZWJ sequence never reaches the parser); `streaming={false}` or the next append confirms it.
+- The identity-flip dev warning restarts its count for flips more than 10 s apart, so three legitimate theme switches minutes apart no longer read as "changing on every render". `clobberPrefix` is memoized per document id.
+
+**Mantine package**
+
+- **`mermaid` and `highlight.js` are loaded on demand.** The ~1.5 MB mermaid module was a static import on the default `pre` component's chain — every consumer's main bundle carried it; it now loads on the first diagram that renders (the source view covers the load), and the root `highlight.js` entry (every language) is no longer imported at all — Mantine's own adapter already degrades unknown languages to plaintext, and auto-detection loads the full build when first needed. Apps that prefer eager loading call the new `preloadMantineCodeAssets()` at startup (or import the modules themselves).
+- Auto-detection runs on a doubling schedule (early guess at ~32 characters, corrective re-run each time the block doubles, final verdict at end of stream) instead of re-scoring every language on every streamed chunk; JSON pretty-print lands as soon as the block looks complete instead of on every chunk of an incomplete one.
+- The fence language is matched case-insensitively (` ```Mermaid ` renders a diagram); the SVG object URL is revoked when a popup blocker returns null; the chart-type tag uses Mantine light-theme tokens; a render that raced another instance's theme re-initialization is re-asserted; explicit `undefined` in the `codeBlock` group no longer punches through the defaults; code text is joined without invented line breaks. The MermaidCode streaming contract now has a browser-level QA story against the real renderer.
+
+**Docs, tests, infrastructure**
+
+- README/docs corrections: `smoothTurnTaking` in the wrapper API tables, definition-aware cursor behavior, `contentPreprocessors` is WARN_ONLY, design-token defaults and consumers, SmartyPants substitutions, the mantine default export, the Packages table lists `remark-mark-highlight`, and a virtualization caveat for chunk remounts (registration order drives numbering and footer placement).
+- Tests: the CJK regression stories share one fixture and assert; CrossChunkStress asserts on the DOM what its header claims; remark-mark-highlight pins its interaction with remark-gfm; two QA stories drive runtime prop flips through real React commits.
+- Release pipeline: the train tag verifies all three lockstep versions; the release job runs the root typecheck like CI; release-notes extraction warns instead of silently falling back; core and mantine tarballs ship a LICENSE; all four exports maps share one shape and export `./package.json`; mantine's build asserts a `process.env`-free dist.
+
 ## 2.3.x — The framework-agnostic engine
 
 ### 2.3.3 — Footnote definitions written above their references, and a blanked `fontSize`
