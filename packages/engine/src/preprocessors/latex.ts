@@ -91,14 +91,19 @@ function lineHasBacktick(content: string, pos: number): boolean {
   return false;
 }
 
+/**
+ * The run at `pos` is the first non-blank thing on its line. Any amount of
+ * leading indentation is accepted: CommonMark's 0–3 space limit is measured
+ * RELATIVE to the enclosing container, and this text-level pass has no
+ * container model — a fence nested two list levels deep sits at column 4+
+ * (v2.4.2 review P1-3: `- a\n  - b\n    ~~~\n    price = $100\n    ~~~`
+ * had its `$` rewritten). Accepting a deeper-indented fence can only
+ * OVER-protect (an indented code block that happens to hold a fence line
+ * is treated as one), which is the safe direction for a preprocessor.
+ */
 function isAtLineStart(content: string, pos: number): boolean {
   let i = pos - 1;
-  let spaces = 0;
-  while (i >= 0 && content[i] === ' ') {
-    spaces++;
-    if (spaces > 3) return false;
-    i--;
-  }
+  while (i >= 0 && (content[i] === ' ' || content[i] === '\t')) i--;
   return i < 0 || content[i] === '\n' || content[i] === '\r';
 }
 
@@ -128,7 +133,12 @@ function findClosingBacktickRun(content: string, start: number, n: number): numb
  * Split content into alternating text and protected segments.
  * Protected segments (isCode: true) are excluded from LaTeX processing:
  * - fenced multiline code blocks: 3+ backticks or tildes at the *start of a
- *   line* (≤3 space indent). Mid-line runs are never fence openers.
+ *   line* (any indentation — container-relative limits are not modelled).
+ *   Mid-line runs are never fence openers. INDENTED code blocks (4+ spaces
+ *   after a blank line, outside any container) are NOT modelled: without a
+ *   container model they cannot be told from a list item's continuation
+ *   paragraph, and protecting them would silence math in nested lists.
+ *   Known limitation — `$` inside an indented code block may be rewritten.
  * - inline code spans: a run of N backticks closed by another run of exactly
  *   N backticks. May span newlines. Multi-backtick forms (e.g. `` `` `x` ``)
  *   are supported so literal backtick characters can appear inside.

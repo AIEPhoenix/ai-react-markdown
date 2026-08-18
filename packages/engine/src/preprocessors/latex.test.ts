@@ -1158,12 +1158,26 @@ describe('splitByProtectedRegions', () => {
     ]);
   });
 
-  test('allows up to 3 spaces of indentation before a fence opener', () => {
-    // CommonMark: 0-3 space indent is allowed. 4-space indent disqualifies.
+  test('allows any indentation before a fence opener/closer (container-relative rule not modelled)', () => {
     expect(splitByProtectedRegions('text\n   ```\ncode\n   ```\nafter')).toEqual([
       { text: 'text\n   ', isCode: false },
       { text: '```\ncode\n   ```', isCode: true },
       { text: '\nafter', isCode: false },
     ]);
+    // v2.4.2 review P1-3: a fence two list levels deep sits at column 4.
+    const nested = '- a\n  - b\n    ~~~\n    price = $100 total\n    ~~~\n\n$x$';
+    expect(preprocessLaTeX(nested)).toBe('- a\n  - b\n    ~~~\n    price = $100 total\n    ~~~\n\n$$x$$');
+    const nestedTicks = '- a\n  - b\n    ```\n    price = $100 total\n    ```\n\n$x$';
+    expect(preprocessLaTeX(nestedTicks)).toBe('- a\n  - b\n    ```\n    price = $100 total\n    ```\n\n$$x$$');
+    // A tab-indented fence too.
+    expect(preprocessLaTeX('\t~~~\n\t$100\n\t~~~\n$x$')).toBe('\t~~~\n\t$100\n\t~~~\n$$x$$');
+  });
+
+  test('KNOWN LIMITATION: indented code blocks are not protected (no container model)', () => {
+    // Documented in the module header — a list continuation paragraph and
+    // an indented code block are indistinguishable without a container
+    // model, and protecting 4-space lines would silence math in nested
+    // lists. Pinned so a future change is a conscious one.
+    expect(preprocessLaTeX('para\n\n    $x$ and $100\n\nafter')).toBe('para\n\n    $$x$$ and \\$100\n\nafter');
   });
 });
