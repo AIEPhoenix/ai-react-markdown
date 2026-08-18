@@ -34,6 +34,9 @@ export { defaultMantineCodeBlockOptions } from './defs';
 /** Narrow hook for the `codeBlock` behavior group — the single assertion site. */
 export { useMantineCodeBlockOptions } from './hooks/useMantineCodeBlockOptions';
 
+/** Optional eager loading of the on-demand code-block assets (mermaid, highlight.js). */
+export { preloadMantineCodeAssets } from './components/customized/PreCode';
+
 /** Widened behaviors factory (core fields + mantine's `codeBlock` group). */
 export { defineMantineBehaviors } from './define';
 export type { MantineBehaviorProps } from './define';

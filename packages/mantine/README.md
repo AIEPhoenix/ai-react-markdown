@@ -206,13 +206,13 @@ Activated by importing `@ai-react-markdown/mantine/styles.css` in your app entry
 
 The Mantine package installs a default `<pre>` renderer (`MantineAIMPreCode`) that powers all code-block features. Behavior by code-block flavor:
 
-| Code-block flavor                          | Rendered as                 | Notes                                                                                                                                                                              |
-| ------------------------------------------ | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Annotated, known language (e.g. ` ```ts `) | `<CodeHighlightTabs>`       | Tab label = language name                                                                                                                                                          |
-| Annotated, unknown language identifier     | `<CodeHighlightTabs>`       | Tab label = the identifier as written; Mantine's highlight adapter degrades an unknown language to plaintext                                                                       |
-| No language annotation                     | `<CodeHighlight>` plaintext | Label = `"unknown"`. With `codeBlock.autoDetectUnknownLanguage: true`, `hljs.highlightAuto` runs once the block has finished streaming and the label/highlighting upgrade in place |
-| ` ```mermaid ` (any case)                  | Interactive Mermaid diagram | See [Mermaid Diagrams](#mermaid-diagrams); the language match is case-insensitive                                                                                                  |
-| ` ```json ` (any case)                     | Pretty-printed JSON         | Once the block has finished streaming, deep-parsed via `deep-parse-json` to expand any nested JSON-encoded strings, then re-serialized with 2-space indent before rendering        |
+| Code-block flavor                          | Rendered as                 | Notes                                                                                                                                                                                                       |
+| ------------------------------------------ | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Annotated, known language (e.g. ` ```ts `) | `<CodeHighlightTabs>`       | Tab label = language name                                                                                                                                                                                   |
+| Annotated, unknown language identifier     | `<CodeHighlightTabs>`       | Tab label = the identifier as written; Mantine's highlight adapter degrades an unknown language to plaintext                                                                                                |
+| No language annotation                     | `<CodeHighlight>` plaintext | Label = `"unknown"`. With `codeBlock.autoDetectUnknownLanguage: true`, `hljs.highlightAuto` guesses early, re-checks as the block grows, and settles at end of stream — label/highlighting upgrade in place |
+| ` ```mermaid ` (any case)                  | Interactive Mermaid diagram | See [Mermaid Diagrams](#mermaid-diagrams); the language match is case-insensitive                                                                                                                           |
+| ` ```json ` (any case)                     | Pretty-printed JSON         | As soon as the block looks complete (ends in `}`/`]`), deep-parsed via `deep-parse-json` to expand any nested JSON-encoded strings, then re-serialized with 2-space indent before rendering                 |
 
 All non-special blocks render with `withBorder` and `withExpandButton`, collapsing to `maxCollapsedHeight="320px"` until expanded.
 
@@ -243,7 +243,19 @@ By default, code blocks without an explicit language annotation render as plaint
 <MantineAIMarkdown content={markdown} codeBlock={{ autoDetectUnknownLanguage: true }} />
 ```
 
-This uses `highlight.js`'s `highlightAuto` to guess the language. Results may vary for short or ambiguous snippets. Detection runs once per block after it has finished streaming (a truncated prefix scores badly, and scoring every language against a growing block on every chunk is wasted work), and it loads the full `highlight.js` build on demand at that moment — the package itself no longer imports the root `highlight.js` entry, so consumers who register only the languages they need via `highlight.js/lib/core` keep that bundle saving unless they turn this option on.
+This uses `highlight.js`'s `highlightAuto` to guess the language. Results may vary for short or ambiguous snippets. While a block streams, detection runs on a doubling schedule — a first guess once the block has ~32 characters, a corrective re-run each time it has doubled in length, and a final verdict when the stream ends — so a long block gets an early label and periodic corrections at O(n) total cost instead of a full re-score on every chunk. The full `highlight.js` build is loaded on demand the first time it is needed; the package itself no longer imports the root `highlight.js` entry, so consumers who register only the languages they need via `highlight.js/lib/core` keep that bundle saving unless they turn this option on.
+
+### Preloading the on-demand assets
+
+`mermaid` and (for auto-detection) `highlight.js` are loaded lazily by the code-block renderers. An app that would rather pay that cost at startup — a documentation page whose first screen shows a diagram, or a chat UI that wants zero first-diagram latency — calls the exported helper once at boot:
+
+```tsx
+import { preloadMantineCodeAssets } from '@ai-react-markdown/mantine';
+
+void preloadMantineCodeAssets(); // idempotent; failures are swallowed and the renderers fall back to lazy loading
+```
+
+Importing the modules yourself at app entry (`import 'mermaid'`) has the same effect under a bundler: the dynamic import then resolves to the already-loaded module.
 
 ## Mermaid Diagrams
 

@@ -13,38 +13,85 @@ import MantineAIMMermaidCode from './MermaidCode';
  * `getLanguage()` existence check that Mantine's own adapter already
  * performs (unknown language → plaintext). Auto-detection is the one real
  * consumer, and it loads the module on demand — only when
- * `autoDetectUnknownLanguage` is on AND an unlabelled block has finished
- * streaming (2026-08 project review, pkg-small-02 / pkg-small-06: the
- * static import defeated consumers' `highlight.js/lib/core` slimming, and
- * `highlightAuto` re-scored the growing block on every streamed chunk).
+ * `autoDetectUnknownLanguage` is on and an unlabelled block shows up
+ * (2026-08 project review, pkg-small-02: the static import defeated
+ * consumers' `highlight.js/lib/core` slimming). Consumers who want it (and
+ * mermaid) in the main bundle up front call `preloadMantineCodeAssets()`
+ * at app start, or simply import the modules themselves.
  */
 let hljsAutoPromise: Promise<{ highlightAuto: (code: string) => { language?: string } }> | null = null;
-const loadHljsForAutoDetect = () => {
+export const loadHljsForAutoDetect = () => {
   hljsAutoPromise ??= import('highlight.js').then((m) => m.default);
   return hljsAutoPromise;
 };
 
+/** Below this many characters a guess is noise; the block stays "unknown". */
+const AUTODETECT_MIN_CHARS = 32;
+
 /**
- * The language highlight.js guesses for an unlabelled block — resolved once
- * the block has finished streaming (a truncated prefix scores badly and the
- * scoring itself is O(languages × text) per call). Returns '' while
- * disabled, streaming, or still loading, so the block renders as
- * plaintext/"unknown" in the meantime and upgrades in place.
+ * The language highlight.js guesses for an unlabelled block.
+ *
+ * `highlightAuto` scores every registered language against the whole text,
+ * so re-running it on every streamed chunk was O(languages × n) per chunk —
+ * O(n²) over a long block (pkg-small-06). Schedule instead:
+ *   - first guess as soon as the block has AUTODETECT_MIN_CHARS (an early
+ *     label rather than "unknown" for the whole stream);
+ *   - a corrective re-run each time the block has DOUBLED in length since
+ *     the last guess (32 → 64 → 128 → …): a wrong early guess on a long
+ *     block is fixed within its next doubling, and the total work stays
+ *     O(n) — at most log₂(n) runs;
+ *   - a final verdict when streaming ends (the last run always sees the
+ *     complete block).
+ * Returns '' while disabled, still loading, or below the minimum, so the
+ * block renders as plaintext/"unknown" and upgrades in place.
  */
 function useAutoDetectedLanguage(codeText: string, enabled: boolean, streaming: boolean): string {
-  const [detected, setDetected] = useState<{ code: string; language: string } | null>(null);
+  const [detected, setDetected] = useState<{ language: string; atLength: number; finalFor: string | null } | null>(
+    null
+  );
   useEffect(() => {
-    if (!enabled || streaming || !codeText) return;
+    if (!enabled || codeText.length < AUTODETECT_MIN_CHARS) return;
+    const due =
+      detected === null ||
+      // Not streaming: the verdict must be for THIS text (end-of-stream, or a
+      // static content update).
+      (!streaming && detected.finalFor !== codeText) ||
+      // Streaming: doubled since the last guess.
+      (streaming && codeText.length >= detected.atLength * 2);
+    if (!due) return;
     let cancelled = false;
     void loadHljsForAutoDetect().then((hljs) => {
       if (cancelled) return;
-      setDetected({ code: codeText, language: hljs.highlightAuto(codeText).language ?? '' });
+      setDetected({
+        language: hljs.highlightAuto(codeText).language ?? '',
+        atLength: codeText.length,
+        finalFor: streaming ? null : codeText,
+      });
     });
     return () => {
       cancelled = true;
     };
+    // `detected` is deliberately not a dep: a completed guess must not
+    // re-trigger the effect (it re-runs on the next content/streaming
+    // change, which is when the schedule is re-evaluated).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [codeText, enabled, streaming]);
-  return enabled && detected?.code === codeText ? detected.language : '';
+  return enabled ? (detected?.language ?? '') : '';
+}
+
+/**
+ * Loads mermaid and highlight.js ahead of time. Both are imported on demand
+ * by the code-block renderers (the first diagram / the first auto-detected
+ * block pays the download); an app that would rather take that cost at
+ * startup — a documentation page whose first screen shows a diagram, say —
+ * calls this once at boot. Safe to call repeatedly; failures are swallowed
+ * (the renderers will simply load lazily later).
+ */
+export function preloadMantineCodeAssets(): Promise<void> {
+  return Promise.all([import('mermaid'), loadHljsForAutoDetect()]).then(
+    () => undefined,
+    () => undefined
+  );
 }
 
 /**
@@ -120,10 +167,15 @@ const MantineAIMPreCode = memo(
     const normalCodeBlockContent = useMemo(() => {
       if (isSpecialCodeBlock) return null;
       let usedCodeStr = props.codeText;
-      // JSON pretty-print only once the block is complete: a streaming
-      // prefix is not valid JSON anyway, and deepParseJson over the growing
-      // text on every chunk is O(n²) work for nothing (pkg-small-06).
-      if (usedCodeStr && !streaming && usedCodeLanguage === 'json') {
+      // JSON pretty-print as soon as the block LOOKS complete: a streamed
+      // prefix never parses, so trying deepParseJson on every chunk of a
+      // growing block was O(n²) work for nothing (pkg-small-06) — but a
+      // block that finished mid-document must not wait for the whole
+      // message to end. A complete JSON value ends in `}`, `]`, `"`, a
+      // digit or a literal; the cheap tell that rules out the common
+      // in-progress shapes is "ends with a closing bracket".
+      const looksComplete = /[}\]]\s*$/.test(usedCodeStr);
+      if (usedCodeStr && (looksComplete || !streaming) && usedCodeLanguage === 'json') {
         const deepParsedResult = deepParseJson(usedCodeStr);
         usedCodeStr =
           typeof deepParsedResult === 'string' ? deepParsedResult : JSON.stringify(deepParsedResult, null, 2);
