@@ -873,6 +873,45 @@ describe('buildBlocks per-block taintLabels (v6)', () => {
     // (synthetic is a separate plan item; this test only verifies non-synthetic blocks).
   });
 
+  test('2026-08-19 review P2-4: chunk-local footnote occurrence state is part of the taint footprint', () => {
+    // block1 `a[^w] b[^x]`, block2 `c[^x]`: block2's raw and registry answers
+    // do not change when block1's `[^x]` becomes `[^w]` in place, but the
+    // engine bakes localOccurrence(x)=2 vs 1 into block2's placeholder — the
+    // fingerprint must see the prefix change.
+    const build = (source: string) => {
+      const processor = unified().use(remarkParse).use(remarkGfm).use(remarkRehype);
+      const mdast = processor.parse(source);
+      const hast = processor.runSync(mdast) as HastRoot;
+      return buildBlocks(mdast as MdastRoot, hast, source);
+    };
+    const before = build('a[^w] b[^x]\n\nc[^x]\n\n[^w]: w\n\n[^x]: x');
+    const after = build('a[^w] b[^w]\n\nc[^x]\n\n[^w]: w\n\n[^x]: x');
+    const b2Before = before.blocks[1];
+    const b2After = after.blocks[1];
+    expect(b2Before.raw).toBe(b2After.raw);
+    expect(b2Before.taintLabels!.footnoteRefLabels).toEqual(['X']);
+    expect(b2Before.taintLabels!.footnoteRefLocalCtx).toBe(JSON.stringify([['X', 1, 1]]));
+    expect(b2After.taintLabels!.footnoteRefLocalCtx).toBe(JSON.stringify([['X', 0, 1]]));
+    // …and the fingerprint differs even against an identical registry.
+    const reg = createRegistry();
+    const sym = reg.allocateSymbol('chunk-A');
+    reg.contributeChunkData(sym, {
+      refs: [
+        { label: 'W', kind: 'footnote' },
+        { label: 'X', kind: 'footnote' },
+      ],
+      defs: new Map(),
+      linkDefs: new Map(),
+      ownFootnoteLabels: new Set(),
+      ownLinkLabels: new Set(),
+    });
+    expect(computeBlockFingerprint(b2Before.taintLabels!, reg, sym, 'doc-')).not.toBe(
+      computeBlockFingerprint(b2After.taintLabels!, reg, sym, 'doc-')
+    );
+    // Blocks without refs carry no local ctx.
+    expect(build('plain\n\n[a]: /u\n\n[x][a]').blocks[0].taintLabels).toBeUndefined();
+  });
+
   test('non-TAINT block has taintLabels undefined', () => {
     const source = 'Just plain text.';
     const processor = unified().use(remarkParse).use(remarkGfm).use(remarkRehype);

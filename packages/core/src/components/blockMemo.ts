@@ -126,6 +126,15 @@ export interface BlockInfo {
     linkRefLabels: string[];
     imageRefLabels: string[];
     footnoteDefLabels: string[];
+    /** Chunk-local footnote state the engine baked into this block's
+     *  `footnote-sup` placeholders (`localOccurrence` / `localNumber` come
+     *  from a per-chunk counter over all PRECEDING refs, customMdastHandlers):
+     *  per ref label, refs-before-this-block count and first-appearance
+     *  rank. Same raw + same registry answers but a different prefix (an
+     *  in-place `[^x]`→`[^w]` edit upstream) must miss the cache, or the
+     *  stale occurrence resolves to a null global occurrence and the mark
+     *  vanishes (2026-08-19 review P2-4). Absent when the block has no refs. */
+    footnoteRefLocalCtx?: string;
   };
 }
 
@@ -392,6 +401,11 @@ export function buildBlocks(mdast: MdastRoot, hast: HastRoot, source: string): B
   const blocks: BlockInfo[] = [];
   const blockHasts: HastElement[] = [];
   let synthetic: HastElement | undefined;
+  // Mirror of the engine's per-chunk footnote counter (document order over
+  // body blocks; refs inside footnote definitions render in the footer,
+  // after every body ref, so they never shift a body block's numbers).
+  const chunkRefCounts = new Map<string, number>();
+  const chunkRefRank = new Map<string, number>();
 
   for (let i = 0; i < hast.children.length; i++) {
     const hastChild = hast.children[i];
@@ -469,6 +483,22 @@ export function buildBlocks(mdast: MdastRoot, hast: HastRoot, source: string): B
       // 'definition' nodes don't carry per-block fingerprint significance
       // (they're metadata, not visible); intentionally not bucketed.
     });
+    let footnoteRefLocalCtx: string | undefined;
+    if (footnoteRefLabels.length > 0) {
+      const local: [string, number, number][] = [];
+      for (const id of footnoteRefLabels) {
+        const prior = chunkRefCounts.get(id) ?? 0;
+        let rank = chunkRefRank.get(id);
+        if (rank === undefined) {
+          rank = chunkRefRank.size;
+          chunkRefRank.set(id, rank);
+        }
+        local.push([id, prior, rank]);
+        chunkRefCounts.set(id, prior + 1);
+      }
+      // JSON-encoded: labels may hold any separator character.
+      footnoteRefLocalCtx = JSON.stringify(local);
+    }
 
     const mdastPos = mdastNode.position;
     if (!mdastPos || mdastPos.start?.offset === undefined || mdastPos.end?.offset === undefined) {
@@ -503,7 +533,13 @@ export function buildBlocks(mdast: MdastRoot, hast: HastRoot, source: string): B
       ...(hastDigest !== undefined ? { hastDigest } : {}),
       ...(hasReference
         ? {
-            taintLabels: { footnoteRefLabels, linkRefLabels, imageRefLabels, footnoteDefLabels },
+            taintLabels: {
+              footnoteRefLabels,
+              linkRefLabels,
+              imageRefLabels,
+              footnoteDefLabels,
+              ...(footnoteRefLocalCtx !== undefined ? { footnoteRefLocalCtx } : {}),
+            },
           }
         : {}),
     };
@@ -527,7 +563,7 @@ export function buildBlocks(mdast: MdastRoot, hast: HastRoot, source: string): B
  * differs, the block must re-render.
  *
  * Encoding format (deterministic, stable across versions):
- *   `<clobberPrefix>|fn:<L>=<globalNumber>|lr:<L>=<url>|<title>|ir:<L>=<url>|fd:<L>=<canonical>/<refCount>`
+ *   `<clobberPrefix>|fn:<L>=<globalNumber>|fl:<[[L,prior,rank]…]>|lr:<L>=<url>|<title>|ir:<L>=<url>|fd:<L>=<canonical>/<refCount>`
  *
  * @param taintLabels - Per-block label dependency footprint (from BlockInfo.taintLabels).
  * @param registry    - Shared cross-chunk registry.
@@ -544,6 +580,9 @@ export function computeBlockFingerprint(
   for (const label of taintLabels.footnoteRefLabels) {
     parts.push(`fn:${label}=${registry.globalNumber(label) ?? 'null'}`);
   }
+  // Chunk-local occurrence/rank baked into the placeholders (P2-4) — see
+  // buildBlocks; JSON-encoded there, so label bytes cannot collide with `|`.
+  if (taintLabels.footnoteRefLocalCtx !== undefined) parts.push(`fl:${taintLabels.footnoteRefLocalCtx}`);
   // url/title are JSON-encoded so a `|` inside them cannot collide with the
   // part separator (url `a|b` + no title ≡ url `a` + title `b` would be a
   // stale cache hit — v2.4.1 review).
