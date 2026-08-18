@@ -375,7 +375,16 @@ separator, invisible to the plain-slot rebuild); `rebaseDualWalk`
 tolerates half-built points. CRLF lines are scanned without their `\r`.
 Pins: two `computeFreezeBoundary.test.ts` describes + CRLF, seven
 `spliceEquivalence.test.ts` FUZZ_CASES, a rebase unit pin — 13 red on
-2.4.1. Three-leg soak on the final engine: see the release notes.
+2.4.1. The adversarial review of that fix then found the SAME class three
+more times (`isPlausibleLinkDefRest` trims, the paragraph-inline `<!--`/
+`<?>` divergence prefix checks, `normalizeLabel`) plus a pre-existing
+blocker-5 hole: the `(`-follow skip treated every `[text](` as an inline
+link, but `[foo](bad url)` fails micromark's resource grammar and leaves
+a live shortcut reference — `inlineResourceEnd` now verifies the resource
+on the line before releasing the bracket. Generators gained
+`failedInlineLinkInline` and the NBSP-def-rest / U+3000-comment shapes;
+6 more pins red on the intermediate commit. Three-leg soak on the final
+engine: see the release notes.
 
 Mutation audit (`stryker.conf.json`, one-off 2026-07-17, not in CI):
 killer suite = the fast arbiter set (`stryker.vitest.config.ts`). Score:
