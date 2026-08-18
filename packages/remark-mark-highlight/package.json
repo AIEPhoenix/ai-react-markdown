@@ -27,10 +27,13 @@
     "micromark",
     "micromark-extension",
     "mdast",
+    "mdast-util",
     "unified",
     "markdown",
     "mark",
-    "highlight"
+    "highlight",
+    "==mark==",
+    "typescript"
   ],
   "sideEffects": false,
   "main": "./dist/index.cjs",

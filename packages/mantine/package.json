@@ -22,14 +22,22 @@
   },
   "keywords": [
     "react",
+    "react-component",
     "markdown",
+    "markdown-renderer",
     "ai",
     "llm",
+    "chat",
+    "streaming",
     "mantine",
+    "mantine-ui",
     "katex",
+    "latex",
     "mermaid",
     "syntax-highlighting",
-    "streaming"
+    "highlight.js",
+    "code-highlight",
+    "typescript"
   ],
   "sideEffects": [
     "**/*.css"

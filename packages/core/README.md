@@ -1,12 +1,22 @@
 # @ai-react-markdown/core
 
-[![npm](https://img.shields.io/npm/v/@ai-react-markdown/core)](https://www.npmjs.com/package/@ai-react-markdown/core)
-[![npm downloads](https://img.shields.io/npm/dm/@ai-react-markdown/core)](https://www.npmjs.com/package/@ai-react-markdown/core)
-[![license](https://img.shields.io/npm/l/@ai-react-markdown/core)](../../LICENSE)
+[![npm version](https://img.shields.io/npm/v/@ai-react-markdown/core?logo=npm&color=cb3837)](https://www.npmjs.com/package/@ai-react-markdown/core)
+[![npm downloads](https://img.shields.io/npm/dm/@ai-react-markdown/core?color=blue)](https://www.npmjs.com/package/@ai-react-markdown/core)
+[![minzipped size](https://img.shields.io/bundlephobia/minzip/@ai-react-markdown/core?label=minzip)](https://bundlephobia.com/package/@ai-react-markdown/core)
+[![types](https://img.shields.io/npm/types/@ai-react-markdown/core?logo=typescript&logoColor=white&color=3178c6)](https://www.typescriptlang.org/)
+
+[![React ≥19](https://img.shields.io/badge/React-%E2%89%A519-149eca?logo=react&logoColor=white)](https://react.dev/)
+[![Node ≥20](https://img.shields.io/badge/Node-%E2%89%A520-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
+[![ESM + CJS](https://img.shields.io/badge/module-ESM%20%2B%20CJS-f7df1e?logo=javascript&logoColor=black)](#installation)
+[![license](https://img.shields.io/npm/l/@ai-react-markdown/core?color=green)](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/LICENSE)
+
+[![CI](https://img.shields.io/github/actions/workflow/status/AIEPhoenix/ai-react-markdown/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/AIEPhoenix/ai-react-markdown/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/actions/workflow/status/AIEPhoenix/ai-react-markdown/release.yml?label=release&logo=githubactions&logoColor=white)](https://github.com/AIEPhoenix/ai-react-markdown/actions/workflows/release.yml)
+[![part of ai-react-markdown](https://img.shields.io/badge/monorepo-ai--react--markdown-8a2be2?logo=github)](https://github.com/AIEPhoenix/ai-react-markdown)
 
 A batteries-included React component for rendering AI-generated markdown with first-class support for LaTeX math, GFM, CJK text, and streaming content.
 
-> **Upgrading from 1.x?** v2.0.0 removes the 1.x object-based `config` channel (and its integrator default channel) in favor of flat props, a sealed engine-plugin catalog, and five narrow hooks. See the [migration guide](../../docs/migrating-to-v2.md) for the complete old → new mapping with before/after code.
+> **Upgrading from 1.x?** v2.0.0 removes the 1.x object-based `config` channel (and its integrator default channel) in favor of flat props, a sealed engine-plugin catalog, and five narrow hooks. See the [migration guide](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/migrating-to-v2.md) for the complete old → new mapping with before/after code.
 
 ## Features
 
@@ -17,10 +27,30 @@ A batteries-included React component for rendering AI-generated markdown with fi
 - **Extra syntax** -- highlight (`==text==`), definition lists
 - **Display optimizations** -- SmartyPants typography, pangu CJK spacing, HTML comment removal
 - **Streaming-aware** -- built-in `streaming` flag propagated via context for custom components
-- **Smooth streaming** -- `AIMarkdownSmoothStream` shell (and the `useSmoothStream` hook beneath it) reveals bursty token chunks as a steady grapheme-by-grapheme typewriter; see [docs/smooth-streaming.md](../../docs/smooth-streaming.md)
+- **Smooth streaming** -- `AIMarkdownSmoothStream` shell (and the `useSmoothStream` hook beneath it) reveals bursty token chunks as a steady grapheme-by-grapheme typewriter; see [docs/smooth-streaming.md](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/smooth-streaming.md)
 - **Customizable** -- swap typography, color scheme, individual markdown element renderers, and inject extra style wrappers
 - **Metadata context** -- pass arbitrary data to deeply nested custom components without prop drilling, isolated from render state to avoid unnecessary re-renders
 - **TypeScript** -- fully typed flat props plus a metadata generic (`AIMarkdownProps<TMetadata>`)
+
+## Package family
+
+| Package                                                                                                              | Role                                                                                                        | Version policy                                                      |
+| -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| [`@ai-react-markdown/core`](https://www.npmjs.com/package/@ai-react-markdown/core)                                   | The React renderer — `<AIMarkdown>`, `<AIMarkdownSmoothStream>`, `<AIMarkdownDocuments>`, hooks, providers  | Release train                                                       |
+| [`@ai-react-markdown/mantine`](https://www.npmjs.com/package/@ai-react-markdown/mantine)                             | Mantine UI bindings — themed typography, code-highlight tabs, Mermaid, color-scheme wiring                  | Release train (lockstep with core)                                  |
+| [`@ai-react-markdown/engine`](https://www.npmjs.com/package/@ai-react-markdown/engine)                               | Framework-agnostic engine — incremental parsing, LaTeX preprocessing, plugin pipeline, cross-chunk registry | Release train (lockstep, pinned exactly by core; internal supplier) |
+| [`@ai-react-markdown/remark-mark-highlight`](https://www.npmjs.com/package/@ai-react-markdown/remark-mark-highlight) | remark plugin for `==mark==` highlight syntax                                                               | Independent semver                                                  |
+
+## Compatibility
+
+|                |                                                                                                                                                                                                                                                                                     |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| React          | ≥ 19 (`react`, `react-dom` peer dependencies)                                                                                                                                                                                                                                       |
+| KaTeX          | `^0.16` or `^0.17` (optional peer — only if you render math)                                                                                                                                                                                                                        |
+| Node           | ≥ 20 (`engines.node`)                                                                                                                                                                                                                                                               |
+| Module formats | ESM and CJS, TypeScript types for both, `sideEffects` declared                                                                                                                                                                                                                      |
+| Runtimes       | Browser, Node, edge/workers; server rendering via `renderToString`, and the bundle keeps its `"use client"` directive for React Server Components apps — see [Streaming & performance](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/streaming-and-performance.md) |
+| Bundling       | Tree-shakeable; the plugin catalog is a sealed allowlist, so unused engine plugins are not pulled in                                                                                                                                                                                |
 
 ## Installation
 
@@ -196,11 +226,11 @@ behavior).
 
 ### `<AIMarkdownDocuments>` Props
 
-| Prop                       | Type        | Default | Description                                                                                                                                                                                                                                                                                                          |
-| -------------------------- | ----------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `preserveOrphanReferences` | `boolean`   | `true`  | Controls orphan-reference protection for every chunk under this wrapper. Unconditionally overrides each chunk's `preserveOrphanReferences` prop. Does not gate cross-chunk coordination itself (that's gated by wrapper + `documentId`).                                                                             |
-| `smoothTurnTaking`         | `boolean`   | `true`  | Wrapper-level switch for smooth-stream turn-taking: when `true`, `<AIMarkdownSmoothStream>` chunks sharing this `documentId` type one at a time in mount order. `false` lets every chunk pace independently. See [smooth streaming → turn-taking](../../docs/smooth-streaming.md#multi-chunk-documents-turn-taking). |
-| `children`                 | `ReactNode` | -       | The `<AIMarkdown>` instances to coordinate. Nesting `<AIMarkdownDocuments>` inside another `<AIMarkdownDocuments>` throws.                                                                                                                                                                                           |
+| Prop                       | Type        | Default | Description                                                                                                                                                                                                                                                                                                                                                              |
+| -------------------------- | ----------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `preserveOrphanReferences` | `boolean`   | `true`  | Controls orphan-reference protection for every chunk under this wrapper. Unconditionally overrides each chunk's `preserveOrphanReferences` prop. Does not gate cross-chunk coordination itself (that's gated by wrapper + `documentId`).                                                                                                                                 |
+| `smoothTurnTaking`         | `boolean`   | `true`  | Wrapper-level switch for smooth-stream turn-taking: when `true`, `<AIMarkdownSmoothStream>` chunks sharing this `documentId` type one at a time in mount order. `false` lets every chunk pace independently. See [smooth streaming → turn-taking](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/smooth-streaming.md#multi-chunk-documents-turn-taking). |
+| `children`                 | `ReactNode` | -       | The `<AIMarkdown>` instances to coordinate. Nesting `<AIMarkdownDocuments>` inside another `<AIMarkdownDocuments>` throws.                                                                                                                                                                                                                                               |
 
 ### `useDocumentRegistry(documentId)`
 
@@ -637,7 +667,7 @@ The metadata hook accepts the matching generic:
 const metadata = useAIMarkdownMetadata<MyMetadata>();
 ```
 
-Sub-packages extend the **flat prop surface** instead of a config generic: `@ai-react-markdown/mantine`'s `MantineAIMarkdownProps<TMetadata> extends AIMarkdownProps<TMetadata>` adds a `codeBlock` prop, transports it through `AIMarkdownBehaviorsProvider`, and asserts the group type exactly once inside its own narrow hook (`useMantineCodeBlockOptions()`). See [Additive Providers](#additive-providers) above and [Extending via a sub-package](../../docs/extending-via-subpackage.md).
+Sub-packages extend the **flat prop surface** instead of a config generic: `@ai-react-markdown/mantine`'s `MantineAIMarkdownProps<TMetadata> extends AIMarkdownProps<TMetadata>` adds a `codeBlock` prop, transports it through `AIMarkdownBehaviorsProvider`, and asserts the group type exactly once inside its own narrow hook (`useMantineCodeBlockOptions()`). See [Additive Providers](#additive-providers) above and [Extending via a sub-package](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/extending-via-subpackage.md).
 
 ## Architecture Overview
 
@@ -667,7 +697,7 @@ State is deliberately split across five per-system contexts (document, metadata,
 
 - `AIMarkdownDocuments` -- optional outer wrapper enabling cross-chunk coordination
 - `AIMarkdownStreamingCursor` -- built-in inline cursor for the `streamingCursor` slot
-- `AIMarkdownSmoothStream` -- `<AIMarkdown>` plus typewriter pacing (`smooth*` props); chunks sharing a `documentId` under `<AIMarkdownDocuments>` reveal turn-by-turn (one typewriter, one cursor); see [docs/smooth-streaming.md](../../docs/smooth-streaming.md)
+- `AIMarkdownSmoothStream` -- `<AIMarkdown>` plus typewriter pacing (`smooth*` props); chunks sharing a `documentId` under `<AIMarkdownDocuments>` reveal turn-by-turn (one typewriter, one cursor); see [docs/smooth-streaming.md](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/smooth-streaming.md)
 
 ### Providers
 
@@ -723,6 +753,23 @@ State is deliberately split across five per-system contexts (document, metadata,
 - Smooth streaming types: `AIMarkdownSmoothStreamProps`, `SmoothStreamController`, `SmoothStreamOptions`, `SmoothStreamPacing`, `SmoothStreamPacingParams`, `UseSmoothStreamOptions`, `UseSmoothStreamResult`, `UseDocumentSmoothStreamOptions`
 - `UrlTransform`, `SanitizeSchema` -- prop-type aliases for the URL handling props (track upstream `react-markdown` / `rehype-sanitize` shapes)
 - Cross-chunk registry types: `Registry`, `ChunkData`, `FootnoteDef`, `LinkDef`, `RefRecord`, `RefKind`
+
+## Documentation
+
+| Guide                                                                                                                                                                                                                                                                                                                  | What it covers                                                                           |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| [Streaming & performance](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/streaming-and-performance.md)                                                                                                                                                                                                 | Block memoization, incremental (prefix-freeze) parsing, what to pass while tokens arrive |
+| [Smooth streaming](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/smooth-streaming.md)                                                                                                                                                                                                                 | `<AIMarkdownSmoothStream>` typewriter reveal, pacing presets, document turn-taking       |
+| [Streaming cursor](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/streaming-cursor.md)                                                                                                                                                                                                                 | The overlay cursor that tracks the streaming tail                                        |
+| [Cross-chunk coordination](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/cross-chunk-coordination.md)                                                                                                                                                                                                 | `<AIMarkdownDocuments>`, footnotes and link references across chunks, the registry       |
+| [URL sanitization & custom schemes](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/url-sanitization.md)                                                                                                                                                                                                | The two-gate model, `urlTransform`, `extendSanitizeSchema`                               |
+| [Custom components](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/custom-components.md) · [Custom typography](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/custom-typography.md) · [Design tokens](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/design-tokens.md) | Swapping renderers, theming, the `--aim-*` variables                                     |
+| [CJK typography](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/cjk-typography.md)                                                                                                                                                                                                                     | Line breaking, spacing, pangu                                                            |
+| [Metadata context](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/metadata-context.md) · [TypeScript generics](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/typescript-generics.md)                                                                                                  | Passing typed metadata to custom components                                              |
+| [Content preprocessors](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/content-preprocessors.md)                                                                                                                                                                                                       | Rewriting the source before it parses                                                    |
+| [Extending via subpackage](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/extending-via-subpackage.md)                                                                                                                                                                                                 | Building your own UI-kit binding (the mantine package is the reference)                  |
+| [Architecture](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/architecture.md) · [Benchmark](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/benchmark.md)                                                                                                                              | How the packages fit together, measured numbers                                          |
+| [Migrating to v2](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/migrating-to-v2.md) · [Release highlights](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/release-highlights.md)                                                                                                      | Old → new API mapping, what changed per version                                          |
 
 ## License
 

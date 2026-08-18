@@ -1,11 +1,22 @@
 # @ai-react-markdown/remark-mark-highlight
 
-[![npm](https://img.shields.io/npm/v/@ai-react-markdown/remark-mark-highlight)](https://www.npmjs.com/package/@ai-react-markdown/remark-mark-highlight)
-[![license](https://img.shields.io/npm/l/@ai-react-markdown/remark-mark-highlight)](./LICENSE)
+[![npm version](https://img.shields.io/npm/v/@ai-react-markdown/remark-mark-highlight?logo=npm&color=cb3837)](https://www.npmjs.com/package/@ai-react-markdown/remark-mark-highlight)
+[![npm downloads](https://img.shields.io/npm/dm/@ai-react-markdown/remark-mark-highlight?color=blue)](https://www.npmjs.com/package/@ai-react-markdown/remark-mark-highlight)
+[![minzipped size](https://img.shields.io/bundlephobia/minzip/@ai-react-markdown/remark-mark-highlight?label=minzip)](https://bundlephobia.com/package/@ai-react-markdown/remark-mark-highlight)
+[![types](https://img.shields.io/npm/types/@ai-react-markdown/remark-mark-highlight?logo=typescript&logoColor=white&color=3178c6)](https://www.typescriptlang.org/)
+
+[![Node ≥20](https://img.shields.io/badge/Node-%E2%89%A520-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
+[![ESM + CJS](https://img.shields.io/badge/module-ESM%20%2B%20CJS-f7df1e?logo=javascript&logoColor=black)](#installation)
+[![remark plugin](https://img.shields.io/badge/remark-plugin-2c1e60?logo=markdown&logoColor=white)](https://github.com/remarkjs/remark)
+[![license](https://img.shields.io/npm/l/@ai-react-markdown/remark-mark-highlight?color=green)](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/packages/remark-mark-highlight/LICENSE)
+
+[![CI](https://img.shields.io/github/actions/workflow/status/AIEPhoenix/ai-react-markdown/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/AIEPhoenix/ai-react-markdown/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/actions/workflow/status/AIEPhoenix/ai-react-markdown/release.yml?label=release&logo=githubactions&logoColor=white)](https://github.com/AIEPhoenix/ai-react-markdown/actions/workflows/release.yml)
+[![part of ai-react-markdown](https://img.shields.io/badge/monorepo-ai--react--markdown-8a2be2?logo=github)](https://github.com/AIEPhoenix/ai-react-markdown)
 
 [remark](https://github.com/remarkjs/remark) plugin for `==mark==` highlight syntax: `==text==` parses to an mdast `mark` node and renders as `<mark>text</mark>`.
 
-First-party continuation of the unmaintained [`remark-mark-highlight`](https://www.npmjs.com/package/remark-mark-highlight), used internally by [`@ai-react-markdown/core`](../core)'s sealed `highlight` engine plugin — published standalone because it is useful outside this repo, and because the upstream's ESM-only exports map broke bare-Node CJS `require()` consumers.
+First-party continuation of the unmaintained [`remark-mark-highlight`](https://www.npmjs.com/package/remark-mark-highlight), used internally by [`@ai-react-markdown/core`](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/packages/core)'s sealed `highlight` engine plugin — published standalone because it is useful outside this repo, and because the upstream's ESM-only exports map broke bare-Node CJS `require()` consumers.
 
 ## Install
 
@@ -28,6 +39,27 @@ const processor = unified().use(remarkParse).use(remarkMarkHighlight);
 ```
 
 Serialization back to markdown (`remark-stringify`) is supported; `==` sequences round-trip.
+
+## Syntax at a glance
+
+| Markdown                    | mdast                                                        | HTML                                        |
+| --------------------------- | ------------------------------------------------------------ | ------------------------------------------- |
+| `==text==`                  | `{ type: 'mark', children: [text] }`                         | `<mark>text</mark>`                         |
+| `==**bold** inside==`       | `mark` → `strong` → `text` (nesting follows attention rules) | `<mark><strong>bold</strong> inside</mark>` |
+| `\==not a mark==`           | plain text                                                   | `==not a mark==`                            |
+| `` `==code==` ``            | `inlineCode` (code spans win)                                | `<code>==code==</code>`                     |
+| `=single=` / `===triple===` | plain text (exactly two `=` open/close)                      | unchanged                                   |
+
+Works with `remark-rehype` out of the box (`data.hName = 'mark'`); no custom handler needed. If you sanitize with `rehype-sanitize`, allow the `mark` tag (the `@ai-react-markdown/core` default schema already does).
+
+## Compatibility
+
+|                  |                                                                                                                                         |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| unified / remark | remark 15+ (micromark 4, mdast-util-from-markdown 2, mdast-util-to-markdown 2)                                                          |
+| Node             | ≥ 20                                                                                                                                    |
+| Module formats   | ESM and CJS with types for both — the upstream's ESM-only exports map broke bare-Node `require()`, which is one reason this fork exists |
+| Types            | `Mark` is registered in mdast's `PhrasingContentMap` and `RootContentMap`, so `mark` nodes type-check inside paragraphs                 |
 
 ## Behavior contract
 
@@ -53,4 +85,4 @@ This package versions independently of the `@ai-react-markdown/core` release tra
 
 ## License
 
-MIT. Derived from the MIT-licensed `remark-mark-highlight` and `micromark-extension-highlight-mark` / `mdast-util-highlight-mark`; see [LICENSE](./LICENSE) for attribution.
+MIT. Derived from the MIT-licensed `remark-mark-highlight` and `micromark-extension-highlight-mark` / `mdast-util-highlight-mark`; see [LICENSE](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/packages/remark-mark-highlight/LICENSE) for attribution.

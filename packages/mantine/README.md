@@ -1,12 +1,23 @@
 # @ai-react-markdown/mantine
 
-[![npm](https://img.shields.io/npm/v/@ai-react-markdown/mantine)](https://www.npmjs.com/package/@ai-react-markdown/mantine)
-[![npm downloads](https://img.shields.io/npm/dm/@ai-react-markdown/mantine)](https://www.npmjs.com/package/@ai-react-markdown/mantine)
-[![license](https://img.shields.io/npm/l/@ai-react-markdown/mantine)](../../LICENSE)
+[![npm version](https://img.shields.io/npm/v/@ai-react-markdown/mantine?logo=npm&color=cb3837)](https://www.npmjs.com/package/@ai-react-markdown/mantine)
+[![npm downloads](https://img.shields.io/npm/dm/@ai-react-markdown/mantine?color=blue)](https://www.npmjs.com/package/@ai-react-markdown/mantine)
+[![minzipped size](https://img.shields.io/bundlephobia/minzip/@ai-react-markdown/mantine?label=minzip)](https://bundlephobia.com/package/@ai-react-markdown/mantine)
+[![types](https://img.shields.io/npm/types/@ai-react-markdown/mantine?logo=typescript&logoColor=white&color=3178c6)](https://www.typescriptlang.org/)
+
+[![React ≥19](https://img.shields.io/badge/React-%E2%89%A519-149eca?logo=react&logoColor=white)](https://react.dev/)
+[![Node ≥20](https://img.shields.io/badge/Node-%E2%89%A520-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
+[![ESM + CJS](https://img.shields.io/badge/module-ESM%20%2B%20CJS-f7df1e?logo=javascript&logoColor=black)](#installation)
+[![Mantine ≥9](https://img.shields.io/badge/Mantine-%E2%89%A59-339af0?logo=mantine&logoColor=white)](https://mantine.dev/)
+[![license](https://img.shields.io/npm/l/@ai-react-markdown/mantine?color=green)](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/LICENSE)
+
+[![CI](https://img.shields.io/github/actions/workflow/status/AIEPhoenix/ai-react-markdown/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/AIEPhoenix/ai-react-markdown/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/actions/workflow/status/AIEPhoenix/ai-react-markdown/release.yml?label=release&logo=githubactions&logoColor=white)](https://github.com/AIEPhoenix/ai-react-markdown/actions/workflows/release.yml)
+[![part of ai-react-markdown](https://img.shields.io/badge/monorepo-ai--react--markdown-8a2be2?logo=github)](https://github.com/AIEPhoenix/ai-react-markdown)
 
 Mantine UI integration for `@ai-react-markdown/core`. Provides a drop-in `<MantineAIMarkdown>` component that renders AI-generated markdown with Mantine-themed typography, syntax-highlighted code blocks, Mermaid diagrams, and automatic color scheme detection.
 
-> **Upgrading from 1.x?** v2.0.0 removes the 1.x object-based `config` channel — the Mantine code-block options move to a flat `codeBlock` prop, and the render-state hook is replaced by narrow hooks plus `useMantineCodeBlockOptions()`. See the [migration guide](../../docs/migrating-to-v2.md).
+> **Upgrading from 1.x?** v2.0.0 removes the 1.x object-based `config` channel — the Mantine code-block options move to a flat `codeBlock` prop, and the render-state hook is replaced by narrow hooks plus `useMantineCodeBlockOptions()`. See the [migration guide](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/migrating-to-v2.md).
 
 ## What It Adds on Top of Core
 
@@ -17,7 +28,27 @@ Mantine UI integration for `@ai-react-markdown/core`. Provides a drop-in `<Manti
 - **Automatic color scheme** -- detects Mantine's computed color scheme (`useComputedColorScheme`) and forwards it to the core renderer when no explicit `colorScheme` prop is supplied
 - **Mantine-scoped CSS** -- extra-styles wrapper overrides Mantine spacing/font-size custom properties to use relative `em` units, giving consistent scaling at any base font size
 
-All core features (GFM, LaTeX math, CJK support, streaming, metadata context, content preprocessors, custom components, cross-chunk coordination via `<AIMarkdownDocuments>`) are inherited unchanged from `@ai-react-markdown/core`. See the [core README](../core/README.md) for the base API.
+All core features (GFM, LaTeX math, CJK support, streaming, metadata context, content preprocessors, custom components, cross-chunk coordination via `<AIMarkdownDocuments>`) are inherited unchanged from `@ai-react-markdown/core`. See the [core README](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/packages/core/README.md) for the base API.
+
+## Package family
+
+| Package                                                                                                              | Role                                                                                                        | Version policy                                                      |
+| -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| [`@ai-react-markdown/core`](https://www.npmjs.com/package/@ai-react-markdown/core)                                   | The React renderer — `<AIMarkdown>`, `<AIMarkdownSmoothStream>`, `<AIMarkdownDocuments>`, hooks, providers  | Release train                                                       |
+| [`@ai-react-markdown/mantine`](https://www.npmjs.com/package/@ai-react-markdown/mantine)                             | Mantine UI bindings — themed typography, code-highlight tabs, Mermaid, color-scheme wiring                  | Release train (lockstep with core)                                  |
+| [`@ai-react-markdown/engine`](https://www.npmjs.com/package/@ai-react-markdown/engine)                               | Framework-agnostic engine — incremental parsing, LaTeX preprocessing, plugin pipeline, cross-chunk registry | Release train (lockstep, pinned exactly by core; internal supplier) |
+| [`@ai-react-markdown/remark-mark-highlight`](https://www.npmjs.com/package/@ai-react-markdown/remark-mark-highlight) | remark plugin for `==mark==` highlight syntax                                                               | Independent semver                                                  |
+
+## Compatibility
+
+|                |                                                                                                        |
+| -------------- | ------------------------------------------------------------------------------------------------------ |
+| Mantine        | `@mantine/core` ^9 and `@mantine/code-highlight` ^9 (peer dependencies)                                |
+| highlight.js   | ^11.11 (peer; loaded on demand for auto-detection, otherwise via your adapter)                         |
+| React          | ≥ 19                                                                                                   |
+| Node           | ≥ 20 (`engines.node`)                                                                                  |
+| Module formats | ESM and CJS with types; the compiled stylesheet is exported as `@ai-react-markdown/mantine/styles.css` |
+| Core           | Pinned by peer range to the same release train (`@ai-react-markdown/core ^2.x`)                        |
 
 ## Installation
 
@@ -96,22 +127,22 @@ function StreamingChat({ content, isStreaming }: { content: string; isStreaming:
 
 ### `MantineAIMarkdownProps<TMetadata>`
 
-`MantineAIMarkdownProps<TMetadata>` extends `AIMarkdownProps<TMetadata>` -- every core prop (`enginePlugins`, `blockMemo`, `incrementalParse`, `preserveOrphanReferences`, `streamingCursor`, …) is supported, plus the Mantine-specific `codeBlock` prop. The table below lists the props with a Mantine-specific default override or addition (props not listed here inherit core defaults unchanged — see the [core props table](../core/README.md#aimarkdownpropstmetadata)).
+`MantineAIMarkdownProps<TMetadata>` extends `AIMarkdownProps<TMetadata>` -- every core prop (`enginePlugins`, `blockMemo`, `incrementalParse`, `preserveOrphanReferences`, `streamingCursor`, …) is supported, plus the Mantine-specific `codeBlock` prop. The table below lists the props with a Mantine-specific default override or addition (props not listed here inherit core defaults unchanged — see the [core props table](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/packages/core/README.md#aimarkdownpropstmetadata)).
 
-| Prop                   | Type                               | Default                          | Description                                                                                                                                                                                       |
-| ---------------------- | ---------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `content`              | `string`                           | **(required)**                   | Raw markdown content to render.                                                                                                                                                                   |
-| `streaming`            | `boolean`                          | `false`                          | Whether content is actively being streamed.                                                                                                                                                       |
-| `fontSize`             | `number \| string`                 | `'0.9375rem'`                    | Base font size. Numbers are treated as pixels. Inherited from core.                                                                                                                               |
-| `variant`              | `AIMarkdownVariant`                | `'default'`                      | Typography variant name.                                                                                                                                                                          |
-| `colorScheme`          | `AIMarkdownColorScheme`            | Auto-detected                    | Color scheme. When omitted, defaults to Mantine's computed color scheme via `useComputedColorScheme('light')`.                                                                                    |
-| `metadata`             | `TMetadata`                        | `undefined`                      | Arbitrary data for custom components via dedicated context.                                                                                                                                       |
-| `contentPreprocessors` | `AIMDContentPreprocessor[]`        | `undefined`                      | Additional preprocessors run after the built-in LaTeX preprocessor.                                                                                                                               |
-| `customComponents`     | `AIMarkdownCustomComponents`       | Mantine defaults                 | Component overrides, merged with Mantine's built-in `<pre>` handler. Caller overrides take precedence -- including `pre` here disables Mantine's code-block features.                             |
-| `Typography`           | `AIMarkdownTypographyComponent`    | `MantineAIMarkdownTypography`    | Typography wrapper component.                                                                                                                                                                     |
-| `ExtraStyles`          | `AIMarkdownExtraStylesComponent`   | `MantineAIMDefaultExtraStyles`   | Extra style wrapper rendered between typography and content.                                                                                                                                      |
-| `documentId`           | `string`                           | auto via `useId()`               | Stable id namespace for clobberable attributes. See the [core docs](../core/README.md#aimarkdownpropstmetadata) for full semantics. Required for cross-chunk mode.                                |
-| `codeBlock`            | `Partial<MantineCodeBlockOptions>` | `defaultMantineCodeBlockOptions` | Code-block behavior group (Mantine-specific). The group value replaces atomically; omitted fields resolve to the shipped defaults inside `useMantineCodeBlockOptions()`. `null` counts as absent. |
+| Prop                   | Type                               | Default                          | Description                                                                                                                                                                                                                        |
+| ---------------------- | ---------------------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `content`              | `string`                           | **(required)**                   | Raw markdown content to render.                                                                                                                                                                                                    |
+| `streaming`            | `boolean`                          | `false`                          | Whether content is actively being streamed.                                                                                                                                                                                        |
+| `fontSize`             | `number \| string`                 | `'0.9375rem'`                    | Base font size. Numbers are treated as pixels. Inherited from core.                                                                                                                                                                |
+| `variant`              | `AIMarkdownVariant`                | `'default'`                      | Typography variant name.                                                                                                                                                                                                           |
+| `colorScheme`          | `AIMarkdownColorScheme`            | Auto-detected                    | Color scheme. When omitted, defaults to Mantine's computed color scheme via `useComputedColorScheme('light')`.                                                                                                                     |
+| `metadata`             | `TMetadata`                        | `undefined`                      | Arbitrary data for custom components via dedicated context.                                                                                                                                                                        |
+| `contentPreprocessors` | `AIMDContentPreprocessor[]`        | `undefined`                      | Additional preprocessors run after the built-in LaTeX preprocessor.                                                                                                                                                                |
+| `customComponents`     | `AIMarkdownCustomComponents`       | Mantine defaults                 | Component overrides, merged with Mantine's built-in `<pre>` handler. Caller overrides take precedence -- including `pre` here disables Mantine's code-block features.                                                              |
+| `Typography`           | `AIMarkdownTypographyComponent`    | `MantineAIMarkdownTypography`    | Typography wrapper component.                                                                                                                                                                                                      |
+| `ExtraStyles`          | `AIMarkdownExtraStylesComponent`   | `MantineAIMDefaultExtraStyles`   | Extra style wrapper rendered between typography and content.                                                                                                                                                                       |
+| `documentId`           | `string`                           | auto via `useId()`               | Stable id namespace for clobberable attributes. See the [core docs](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/packages/core/README.md#aimarkdownpropstmetadata) for full semantics. Required for cross-chunk mode. |
+| `codeBlock`            | `Partial<MantineCodeBlockOptions>` | `defaultMantineCodeBlockOptions` | Code-block behavior group (Mantine-specific). The group value replaces atomically; omitted fields resolve to the shipped defaults inside `useMantineCodeBlockOptions()`. `null` counts as absent.                                  |
 
 ## Configuration
 
@@ -157,7 +188,7 @@ function MyCodeBlock() {
 }
 ```
 
-For everything else (streaming state, theme, document ids, core behavior switches), use core's narrow hooks directly -- `useAIMarkdownState()`, `useAIMarkdownTheme()`, `useAIMarkdownDocument()`, `useAIMarkdownBehaviors()` -- or the aggregate `useAIMarkdown()` for low-frequency components. See the [core hooks reference](../core/README.md#hooks).
+For everything else (streaming state, theme, document ids, core behavior switches), use core's narrow hooks directly -- `useAIMarkdownState()`, `useAIMarkdownTheme()`, `useAIMarkdownDocument()`, `useAIMarkdownBehaviors()` -- or the aggregate `useAIMarkdown()` for low-frequency components. See the [core hooks reference](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/packages/core/README.md#hooks).
 
 ```tsx
 import { useAIMarkdownState, useAIMarkdownTheme } from '@ai-react-markdown/core';
@@ -339,7 +370,7 @@ import MantineAIMarkdown from '@ai-react-markdown/mantine';
 </AIMarkdownDocuments>;
 ```
 
-See the [core README's cross-chunk section](../core/README.md#cross-chunk-coordination) for the full `<AIMarkdownDocuments>` API and `useDocumentRegistry` hook.
+See the [core README's cross-chunk section](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/packages/core/README.md#cross-chunk-coordination) for the full `<AIMarkdownDocuments>` API and `useDocumentRegistry` hook.
 
 ## Smooth Streaming
 
@@ -366,7 +397,7 @@ function ChatChunk({ id, markdown, pending }: { id: string; markdown: string; pe
 }
 ```
 
-See [docs/smooth-streaming.md](../../docs/smooth-streaming.md) for the pacing model, presets, and footguns.
+See [docs/smooth-streaming.md](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/smooth-streaming.md) for the pacing model, presets, and footguns.
 
 ## Architecture Overview
 
@@ -379,7 +410,7 @@ See [docs/smooth-streaming.md](../../docs/smooth-streaming.md) for the pacing mo
        colorScheme         = useComputedColorScheme('light')  (when not overridden)
 ```
 
-Caller-provided `Typography`, `ExtraStyles`, and `customComponents` props override the Mantine defaults at their respective slots. Inside the wrapped `<AIMarkdown>`, the rest of the render pipeline (the five per-system contexts, content preprocessors, remark/rehype plugin chain) is identical to standalone core -- see the [core architecture overview](../core/README.md#architecture-overview).
+Caller-provided `Typography`, `ExtraStyles`, and `customComponents` props override the Mantine defaults at their respective slots. Inside the wrapped `<AIMarkdown>`, the rest of the render pipeline (the five per-system contexts, content preprocessors, remark/rehype plugin chain) is identical to standalone core -- see the [core architecture overview](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/packages/core/README.md#architecture-overview).
 
 ## Exported API
 
@@ -412,9 +443,28 @@ Caller-provided `Typography`, `ExtraStyles`, and `customComponents` props overri
 - `useMantineCodeBlockOptions()` -- typed access to the `codeBlock` group with defaults applied
 - `useMantineAIMarkdownMetadata<TMetadata>()` -- typed metadata access
 
+## Documentation
+
+Everything below applies unchanged through `<MantineAIMarkdown>`; the mantine-specific parts are the sections above.
+
+| Guide                                                                                                                                                                                                                                                                                                                  | What it covers                                                                           |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| [Streaming & performance](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/streaming-and-performance.md)                                                                                                                                                                                                 | Block memoization, incremental (prefix-freeze) parsing, what to pass while tokens arrive |
+| [Smooth streaming](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/smooth-streaming.md)                                                                                                                                                                                                                 | `<AIMarkdownSmoothStream>` typewriter reveal, pacing presets, document turn-taking       |
+| [Streaming cursor](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/streaming-cursor.md)                                                                                                                                                                                                                 | The overlay cursor that tracks the streaming tail                                        |
+| [Cross-chunk coordination](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/cross-chunk-coordination.md)                                                                                                                                                                                                 | `<AIMarkdownDocuments>`, footnotes and link references across chunks, the registry       |
+| [URL sanitization & custom schemes](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/url-sanitization.md)                                                                                                                                                                                                | The two-gate model, `urlTransform`, `extendSanitizeSchema`                               |
+| [Custom components](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/custom-components.md) · [Custom typography](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/custom-typography.md) · [Design tokens](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/design-tokens.md) | Swapping renderers, theming, the `--aim-*` variables                                     |
+| [CJK typography](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/cjk-typography.md)                                                                                                                                                                                                                     | Line breaking, spacing, pangu                                                            |
+| [Metadata context](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/metadata-context.md) · [TypeScript generics](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/typescript-generics.md)                                                                                                  | Passing typed metadata to custom components                                              |
+| [Content preprocessors](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/content-preprocessors.md)                                                                                                                                                                                                       | Rewriting the source before it parses                                                    |
+| [Extending via subpackage](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/extending-via-subpackage.md)                                                                                                                                                                                                 | Building your own UI-kit binding (the mantine package is the reference)                  |
+| [Architecture](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/architecture.md) · [Benchmark](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/benchmark.md)                                                                                                                              | How the packages fit together, measured numbers                                          |
+| [Migrating to v2](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/migrating-to-v2.md) · [Release highlights](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/release-highlights.md)                                                                                                      | Old → new API mapping, what changed per version                                          |
+
 ## Core Package
 
-For base features, configuration options, content preprocessors, TypeScript generics, and architecture details, see the [`@ai-react-markdown/core` README](../core/README.md).
+For base features, configuration options, content preprocessors, TypeScript generics, and architecture details, see the [`@ai-react-markdown/core` README](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/packages/core/README.md).
 
 ## License
 
