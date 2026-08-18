@@ -22,6 +22,7 @@
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
 import rehypeUnwrapImages from 'rehype-unwrap-images';
+import { rehypeUnwrapCrossChunkImages } from './rehypeUnwrapCrossChunkImages';
 import rehypeSanitize from 'rehype-sanitize';
 import remarkBreaks from 'remark-breaks';
 import remarkCjkFriendly from 'remark-cjk-friendly';
@@ -114,6 +115,9 @@ export function buildCoreRehypePlugins(sanitizeSchema: SanitizeSchema, clobberPr
     [rehypeRebaseHashLinks, { prefix: clobberPrefix }],
     rehypeKatex,
     rehypeUnwrapImages,
+    // Same unwrap for `<cross-chunk-image>` placeholders (coordinated mode);
+    // no-op on standalone documents.
+    rehypeUnwrapCrossChunkImages,
   ] as RehypePlugins;
 }
 

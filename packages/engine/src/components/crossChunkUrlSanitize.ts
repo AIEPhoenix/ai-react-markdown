@@ -35,6 +35,7 @@
  * @module components/crossChunkUrlSanitize
  */
 
+import { normalizeUri } from 'micromark-util-sanitize-uri';
 import type { Element as HastElement } from 'hast';
 import type { UrlTransform } from './markdown';
 import type { SanitizeSchema } from './extendSanitizeSchema';
@@ -93,6 +94,12 @@ export function sanitizeCrossChunkUrl(
   urlTransform: UrlTransform,
   schema: SanitizeSchema
 ): string {
+  // Gate 0: the same `normalizeUri` mdast-util-to-hast applies to every
+  // in-tree `href`/`src` before the gates see it (percent-encodes spaces,
+  // non-ASCII, `"`, `<` …). Without it a cross-chunk `<https://x/a b>`
+  // rendered `href="https://x/a b"` where standalone renders `a%20b`
+  // (v2.4.0 review).
+  rawUrl = normalizeUri(rawUrl);
   // Gate 1: urlTransform — caller's allowlist, called with the correct key
   // and a synthetic node mirroring what the in-tree pass would have seen.
   const transformed = urlTransform(rawUrl, key, fakeElement(tagName, key, rawUrl));

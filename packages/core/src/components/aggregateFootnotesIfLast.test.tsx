@@ -54,10 +54,12 @@ describe('AggregateFootnotesIfLast', () => {
     );
     expect(html).toContain('data-footnotes');
     expect(html).toContain('<ol>');
-    // <li value=1 id="doc-fn-X"> with body "hello" and backref pointing at doc-fnref-X.
-    expect(html).toMatch(/<li[^>]+value="1"[^>]+id="doc-fn-X"|<li[^>]+id="doc-fn-X"[^>]+value="1"/);
+    // <li value=1 id="doc-fn-x"> with body "hello" and backref pointing at doc-fnref-x.
+    // (ids go through footnoteSafeId — mdast-util-to-hast's normalizeUri(lowercase) —
+    // so the seeded 'X' becomes 'x', exactly as the standalone footer would emit.)
+    expect(html).toMatch(/<li[^>]+value="1"[^>]+id="doc-fn-x"|<li[^>]+id="doc-fn-x"[^>]+value="1"/);
     expect(html).toContain('hello');
-    expect(html).toContain('href="#doc-fnref-X"');
+    expect(html).toContain('href="#doc-fnref-x"');
     expect(html).toContain('↩');
   });
 
@@ -181,10 +183,10 @@ describe('AggregateFootnotesIfLast', () => {
     // Exactly one backref anchor in the output. Match `<a … href=…fnref-`
     // to avoid double-counting the className "data-footnote-backref" + the
     // attribute `data-footnote-backref=""`.
-    const matches = html.match(/<a [^>]*href="#doc-fnref-X[^"]*"/g) ?? [];
+    const matches = html.match(/<a [^>]*href="#doc-fnref-x[^"]*"/g) ?? [];
     expect(matches.length).toBe(1);
-    expect(html).toContain('href="#doc-fnref-X"');
-    expect(html).not.toContain('href="#doc-fnref-X-2"');
+    expect(html).toContain('href="#doc-fnref-x"');
+    expect(html).not.toContain('href="#doc-fnref-x-2"');
   });
 
   test('numbers reflect first-occurrence order across chunks', () => {
@@ -216,13 +218,13 @@ describe('AggregateFootnotesIfLast', () => {
       <AggregateFootnotesIfLast registry={reg} thisChunkSym={b} clobberPrefix="doc-" postOptions={baseOptions} />
     );
     // Y appears first (value=1), X second (value=2). They should appear in that order.
-    const yIdx = html.indexOf('doc-fn-Y');
-    const xIdx = html.indexOf('doc-fn-X');
+    const yIdx = html.indexOf('doc-fn-y');
+    const xIdx = html.indexOf('doc-fn-x');
     expect(yIdx).toBeGreaterThan(-1);
     expect(xIdx).toBeGreaterThan(-1);
     expect(yIdx).toBeLessThan(xIdx);
-    expect(html).toMatch(/value="1"[^>]*doc-fn-Y|doc-fn-Y[^>]*value="1"/);
-    expect(html).toMatch(/value="2"[^>]*doc-fn-X|doc-fn-X[^>]*value="2"/);
+    expect(html).toMatch(/value="1"[^>]*doc-fn-y|doc-fn-y[^>]*value="1"/);
+    expect(html).toMatch(/value="2"[^>]*doc-fn-x|doc-fn-x[^>]*value="2"/);
   });
 
   test('uses def.sourceIdentifier (mdast case-folded) for <li id> and backref href', () => {
@@ -403,7 +405,7 @@ describe('AggregateFootnotesIfLast', () => {
       <AggregateFootnotesIfLast registry={reg} thisChunkSym={a} clobberPrefix="doc-" postOptions={baseOptions} />
     );
     // <li> exists but with no body content other than the backref.
-    expect(html).toContain('doc-fn-X');
-    expect(html).toContain('href="#doc-fnref-X"');
+    expect(html).toContain('doc-fn-x');
+    expect(html).toContain('href="#doc-fnref-x"');
   });
 });

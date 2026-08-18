@@ -86,9 +86,9 @@ describe('crossChunkPlaceholders', () => {
         <SeedAndRender occurrence={'2'} />
       </WithProvider>
     );
-    // Both render the second-occurrence backref id `fnref-X-2`.
-    expect(htmlNum).toContain('fnref-X-2');
-    expect(htmlStr).toContain('fnref-X-2');
+    // Both render the second-occurrence backref id `fnref-x-2`.
+    expect(htmlNum).toContain('fnref-x-2');
+    expect(htmlStr).toContain('fnref-x-2');
   });
 
   test('FootnoteSupNumber renders empty when registry has no number for the label', () => {
@@ -112,7 +112,7 @@ describe('crossChunkPlaceholders', () => {
     );
     expect(html).not.toContain('<sup');
     expect(html).not.toContain('data-footnote-ref');
-    expect(html).not.toContain('fnref-X');
+    expect(html).not.toContain('fnref-x');
   });
 
   test('CrossChunkLink fallback flattens rich children to plain text (no [object Object])', () => {

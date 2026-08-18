@@ -20,6 +20,7 @@ import { sanitizeCrossChunkUrl } from '@ai-react-markdown/engine';
 import { defaultUrlTransform } from './markdown';
 import { sanitizeSchema as defaultSanitizeSchema } from '@ai-react-markdown/engine';
 import type { LinkDef } from '@ai-react-markdown/engine';
+import { footnoteSafeId } from '@ai-react-markdown/engine';
 
 type RefType = 'full' | 'collapsed' | 'shortcut' | undefined;
 
@@ -85,6 +86,10 @@ export function FootnoteSupNumber({
   const getSnapshot = useCallback(() => registry?.version ?? 0, [registry]);
   useSyncExternalStore(subscribe, getSnapshot, SSR_NUM_SNAPSHOT);
   const num = registry?.globalNumber(label) ?? null;
+  // Same id encoding as mdast-util-to-hast's marks and footer (and the
+  // aggregate footer): a raw label in the id broke `[^注]` / `[^a%b]`
+  // anchors — mark and <li> disagreed (v2.4.0 review).
+  const safeId = footnoteSafeId(label);
   if (num === null) {
     // No global number yet — server render, or the client's first frame
     // before the contribute effect. Render the STANDALONE mark (local
@@ -97,13 +102,14 @@ export function FootnoteSupNumber({
     if (localNumber === null) return null;
     const localSuffix = localOccurrence !== null && localOccurrence > 1 ? `-${localOccurrence}` : '';
     // Byte-for-byte the mark mdast-util-to-hast emits (attribute set and
-    // order included), so a wrapped chunk's server output equals its
-    // standalone output — pinned in byteEquivalence.test.tsx.
+    // order included, id encoding via footnoteSafeId), so a wrapped chunk's
+    // server output equals its standalone output — pinned in
+    // byteEquivalence.test.tsx.
     return (
       <sup>
         <a
-          href={`#${clobberPrefix}fn-${label}`}
-          id={`${clobberPrefix}fnref-${label}${localSuffix}`}
+          href={`#${clobberPrefix}fn-${safeId}`}
+          id={`${clobberPrefix}fnref-${safeId}${localSuffix}`}
           data-footnote-ref=""
           aria-describedby={`${clobberPrefix}footnote-label`}
         >
@@ -124,7 +130,7 @@ export function FootnoteSupNumber({
   const occSuffix = globalOcc !== null && globalOcc > 1 ? `-${globalOcc}` : '';
   return (
     <sup>
-      <a href={`#${clobberPrefix}fn-${label}`} id={`${clobberPrefix}fnref-${label}${occSuffix}`} data-footnote-ref>
+      <a href={`#${clobberPrefix}fn-${safeId}`} id={`${clobberPrefix}fnref-${safeId}${occSuffix}`} data-footnote-ref>
         {num}
       </a>
     </sup>
@@ -234,8 +240,11 @@ export function CrossChunkLink({
     policy?.urlTransform ?? defaultUrlTransform,
     policy?.sanitizeSchema ?? defaultSanitizeSchema
   );
+  // A blocked URL leaves the element WITHOUT the attribute — exactly what
+  // rehype-sanitize does to an in-tree `<a>` — rather than `href=""`, which
+  // is a live link to the current page (v2.4.0 review).
   return (
-    <a href={url} title={def.title}>
+    <a href={url || undefined} title={def.title}>
       {children}
     </a>
   );
@@ -295,7 +304,7 @@ export function CrossChunkImage({
     policy?.urlTransform ?? defaultUrlTransform,
     policy?.sanitizeSchema ?? defaultSanitizeSchema
   );
-  return <img src={url} alt={alt} title={def.title} />;
+  return <img src={url || undefined} alt={alt} title={def.title} />;
 }
 
 /**

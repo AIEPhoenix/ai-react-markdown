@@ -29,6 +29,7 @@ import type { Element as HastElement, ElementContent as HastElementContent } fro
 import { renderHastSubtree } from './markdown';
 import { cloneHastForRender } from './cloneHastForRender';
 import type { Registry } from '@ai-react-markdown/engine';
+import { footnoteSafeId } from '@ai-react-markdown/engine';
 import type { PostOptions } from './blockMemo';
 
 interface AggregateFootnotesIfLastProps {
@@ -168,6 +169,10 @@ function buildAggregateTree(
   if (ordered.length === 0) return null;
 
   const liElements: HastElement[] = ordered.map(({ normalizedLabel, sourceIdentifier, bodyHast, n, withBackref }) => {
+    // Same id encoding as mdast-util-to-hast's footer / the marks (percent-
+    // encoded non-ASCII etc.); `sourceIdFromFootnoteLiId` decodes it on the
+    // way back, so the harvest and the cursor anchor keep working.
+    const safeId = footnoteSafeId(sourceIdentifier);
     // Assembly-time clone: the backref logic below pushes anchors into these
     // children, which must never mutate the registry-held `bodyHast`.
     const liChildren = bodyHast.map((c) => cloneHastForRender(c));
@@ -198,8 +203,7 @@ function buildAggregateTree(
       const appended: HastElementContent[] = [];
       for (let i = 1; i <= Math.max(totalRefs, 1); i++) {
         appended.push({ type: 'text', value: ' ' });
-        const href =
-          i === 1 ? `#${clobberPrefix}fnref-${sourceIdentifier}` : `#${clobberPrefix}fnref-${sourceIdentifier}-${i}`;
+        const href = i === 1 ? `#${clobberPrefix}fnref-${safeId}` : `#${clobberPrefix}fnref-${safeId}-${i}`;
         appended.push(buildBackref(href, i, n ?? 0));
       }
       if (dest) {
@@ -218,7 +222,7 @@ function buildAggregateTree(
       type: 'element',
       tagName: 'li',
       properties: {
-        id: `${clobberPrefix}fn-${sourceIdentifier}`,
+        id: `${clobberPrefix}fn-${safeId}`,
         // Stringified: @types/hast (≥3.0.5) types li's `value` as string;
         // React serializes value={3} and value="3" to identical markup.
         ...(n !== null ? { value: String(n) } : {}),

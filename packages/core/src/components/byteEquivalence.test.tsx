@@ -367,6 +367,20 @@ describe('cross-chunk semantic equivalence', () => {
       ['orphan definition next to a cited one', 'Cites[^a].\n\n[^a]: cited\n[^o]: orphan'],
       ['collapsed and shortcut link references', 'See [spec][] and [spec].\n\n[spec]: https://example.com/spec'],
       ['no references at all', '# Title\n\nPlain **prose** only.'],
+      // v2.4.0 review: the four classes that broke the byte-identity claim.
+      [
+        'non-ASCII / percent / quote footnote labels (id encoding via normalizeUri)',
+        'See[^注] and[^a%b] and[^q"x].\n\n[^注]: 中文\n\n[^a%b]: percent\n\n[^q"x]: quote',
+      ],
+      ['image reference alone in a paragraph (unwrap)', '![pic][x]\n\n![][x]\n\n[x]: https://example.com/p.png'],
+      [
+        'destination that normalizeUri rewrites (space, non-ASCII, quote)',
+        '[a][x] [b][y] [c][z]\n\n[x]: <https://example.com/a b>\n[y]: https://example.com/日本\n[z]: https://example.com/q"x',
+      ],
+      [
+        'blocked destinations render without href/src, not href=""',
+        '[j][js] ![i][js] [m][my]\n\n[js]: javascript:alert(1)\n[my]: myapp://x',
+      ],
     ];
     for (const [label, doc] of cases) {
       test(label, () => {

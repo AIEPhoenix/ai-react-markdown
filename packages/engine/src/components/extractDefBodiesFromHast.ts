@@ -24,12 +24,27 @@
  */
 import { SKIP, visit } from 'unist-util-visit';
 import type { Element as HastElement, Root as HastRoot, ElementContent } from 'hast';
+import { normalizeUri } from 'micromark-util-sanitize-uri';
 import { normalizeId } from './normalizeId';
 
 // Fallback for callers that do not know the exact clobberPrefix. The main
 // renderer passes the prefix explicitly so labels containing regex metacharacters
 // or prefixes containing `user-content-fn-` are handled by string slicing.
 const FN_LI_ID_RE = /(?:^|-)user-content-fn-(.+)$/;
+
+/**
+ * The id fragment mdast-util-to-hast derives from a footnote identifier for
+ * `fn-…` / `fnref-…` (`normalizeUri(identifier.toLowerCase())` — percent-
+ * encodes non-ASCII, whitespace and URL-unsafe punctuation). Every place
+ * that MINTS a footnote id — the standalone footer (upstream), the
+ * cross-chunk marks and the aggregate footer — must use this same
+ * encoding, or a mark's `href` and its `<li id>` disagree (v2.4.0 review:
+ * the fallback mark wrote the raw label while the local footer was
+ * encoded; `[^注]` / `[^a%b]` anchors broke).
+ */
+export function footnoteSafeId(identifier: string): string {
+  return normalizeUri(identifier.toLowerCase());
+}
 
 /**
  * Extract the SOURCE identifier from a footnote `<li>` id, covering both id
