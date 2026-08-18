@@ -352,6 +352,31 @@ closer for a fence/math block left open at the frame end
 standalone fallback props (core-render-02) — and a further three-leg soak
 on that final engine state came back ALL CLEAN as well.
 
+Round 6 (2026-08-18, review of v2.4.1): a whole-repo review at 2.4.1
+found two more silent equivalence forks in the detector, both again in
+shapes no generator carried: (a) `lineText.trim() === ''` judged blank
+lines with JS Unicode whitespace — micromark only knows U+0020/U+0009,
+so a U+3000/NBSP-only line (a lazy paragraph continuation) emitted a
+candidate inside an unfinished paragraph, and the same `trim()` on the
+fence/math closer check took ` ```␠NBSP ` for a closer; (b) the per-line
+REF_RE never saw a shortcut reference whose label spans a soft line
+break (`see [foo\nbar] end` + late `[foo bar]: /url`). Generator-first
+again: `unicodeBlankArb`, `crossLineRefInline` + `crossLineDefLabelArb`,
+two COVERAGE_MARKERS and census tokens `\u3000\n` / `[x\n` make the
+2.4.1 scanner self-report both within a 600-run fuzz. Fixes: an
+ASCII-only `isMdBlank` for blank lines and closer tails; the checkpoint
+carries the paragraph's unclosed `[` (`openBracket`) across lines —
+closed on a later line the joined label is tainted, a bracket-free line
+extends it, a new `[` or the paragraph's end drops it. Splice: a
+positioned whitespace-only cut tail (an html block whose end tags parse5
+all dropped) and a paired html block whose OUTPUT ends before its
+SOURCE both bail (the full parse merges that remnant into the seam
+separator, invisible to the plain-slot rebuild); `rebaseDualWalk`
+tolerates half-built points. CRLF lines are scanned without their `\r`.
+Pins: two `computeFreezeBoundary.test.ts` describes + CRLF, seven
+`spliceEquivalence.test.ts` FUZZ_CASES, a rebase unit pin — 13 red on
+2.4.1. Three-leg soak on the final engine: see the release notes.
+
 Mutation audit (`stryker.conf.json`, one-off 2026-07-17, not in CI):
 killer suite = the fast arbiter set (`stryker.vitest.config.ts`). Score:
 **64.55% total** (1061 killed, 19 timeout, 566 survived, 27 no-coverage,
