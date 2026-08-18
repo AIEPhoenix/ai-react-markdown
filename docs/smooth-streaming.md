@@ -126,7 +126,11 @@ return (
 ```
 
 (Spreading without destructuring `flush` off is also fine — unknown props are
-ignored by the base components.)
+ignored by the base components.) `flush()` keeps the grapheme discipline: while
+the stream is still open it reveals everything _confirmed_ and holds the
+trailing grapheme exactly as the animation would (a surrogate half or a
+growing emoji ZWJ sequence must never reach the parser); the next append or
+`streaming={false}` confirms it.
 
 ## Multi-chunk documents: turn-taking
 

@@ -153,13 +153,37 @@ describe('smoothStream controller — mechanics', () => {
     }
   });
 
-  test('flush reveals everything pending, including the tentative tail', () => {
+  test('flush reveals everything CONFIRMED; the tentative tail grapheme waits for finish()', () => {
+    // Mid-stream the trailing grapheme is unconfirmed (more text could
+    // extend the cluster) — the animation never shows it, and neither may
+    // a skip (eng-stream-04). finish() confirms it.
     const { controller } = makeHarness(fixedRate(1));
     controller.update('');
     controller.update('abcdef');
     controller.flush();
+    expect(controller.getVisible()).toBe('abcde');
+    expect(controller.isDrained()).toBe(false);
+    controller.finish();
+    controller.flush();
     expect(controller.getVisible()).toBe('abcdef');
     expect(controller.isDrained()).toBe(true);
+  });
+
+  test('flush never exposes a surrogate half or a growing ZWJ sequence', () => {
+    const { controller } = makeHarness(fixedRate(1));
+    controller.update('');
+    controller.update('ab\uD83D'); // lone high surrogate at the tail
+    controller.flush();
+    expect(controller.getVisible()).toBe('ab');
+    controller.update('ab\uD83D\uDE00\u200D'); // 😀 + ZWJ (sequence still growing)
+    controller.flush();
+    expect(controller.getVisible()).toBe('ab'); // 😀‍ is one growing cluster → held
+    controller.update('ab\uD83D\uDE00\u200D\uD83D\uDD25 x'); // 😀‍🔥 then " x"
+    controller.flush();
+    expect(controller.getVisible()).toBe('ab\uD83D\uDE00\u200D\uD83D\uDD25 '); // "x" is the new tentative tail
+    controller.finish();
+    controller.flush();
+    expect(controller.getVisible()).toBe('ab\uD83D\uDE00\u200D\uD83D\uDD25 x');
   });
 
   test('banked credit does not dump the next chunk instantly', () => {

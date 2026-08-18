@@ -124,7 +124,13 @@ export interface SmoothStreamController {
   finish(): void;
   /** Jumps to `source` instantly, no animation, and clears any backlog. */
   snap(source: string): void;
-  /** Reveals everything pending right now (skip-animation affordance). */
+  /**
+   * Reveals everything pending right now (skip-animation affordance). Keeps
+   * the grapheme discipline: while the stream is not finished, the trailing
+   * grapheme of the source stays held back exactly as the animation would
+   * hold it (a surrogate half or a growing ZWJ sequence must never reach
+   * the parser); {@link finish} or the next {@link update} confirms it.
+   */
   flush(): void;
   /** Subscribes to visible-prefix changes. Returns the unsubscribe. */
   subscribe(listener: () => void): () => void;
@@ -467,9 +473,14 @@ export const createSmoothStreamController = (options: SmoothStreamOptions = {}):
     snap,
     flush() {
       disposed = false;
-      if (visibleEnd === source.length) return;
-      visibleEnd = source.length;
-      tentativeEnd = source.length;
+      // Unfinished stream: the unconfirmed trailing grapheme (`tentativeEnd`,
+      // never in `pending`) stays held — revealing it here would expose a
+      // possibly-broken cluster to the parser, the one thing the module's
+      // grapheme discipline promises never happens (2026-08 project review,
+      // eng-stream-04). Finished streams have confirmed it into `pending`.
+      const target = finished ? source.length : pending.length > 0 ? pending[pending.length - 1] : visibleEnd;
+      if (target <= visibleEnd) return;
+      visibleEnd = target;
       pending = [];
       credit = 0;
       cancelScheduled();
