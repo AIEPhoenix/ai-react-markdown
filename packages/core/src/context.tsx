@@ -474,7 +474,13 @@ const AIMarkdownProvider = ({
   // shortening is a pure HTML-output concern and the `useDocumentRegistry`
   // API surface is unaffected. Pure function ⇒ all chunks sharing one
   // logical documentId still produce identical prefixes.
-  const clobberPrefix = `${encodeURIComponent(shortenDocumentId(resolvedDocumentId))}-user-content-`;
+  // Memoized: the Provider re-renders on every streamed frame, and this
+  // is a pure function of the id (shortenDocumentId + encodeURIComponent
+  // per frame was the one un-memoized derivation in this file).
+  const clobberPrefix = useMemo(
+    () => `${encodeURIComponent(shortenDocumentId(resolvedDocumentId))}-user-content-`,
+    [resolvedDocumentId]
+  );
 
   const documentInfo = useMemo<AIMarkdownDocumentInfo>(
     () => Object.freeze({ documentId: resolvedDocumentId, documentIdExplicit, clobberPrefix }),

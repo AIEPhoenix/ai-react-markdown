@@ -5,9 +5,12 @@
  *
  * This is a load-bearing assumption for Phase 5 block-memo: synthetic nodes
  * (e.g. footnote section) are detected by the absence of `position` after the
- * pipeline runs. If any plugin strips position, the detection breaks.
+ * pipeline runs, and block cache keys are position-based. If any plugin
+ * strips position, the detection breaks silently.
  *
- * Temporary verification test — delete once Phase 5 is shipped.
+ * PERMANENT contract pin (not a temporary verification): every plugin in the
+ * default chain must preserve top-level `position` — a plugin added to the
+ * chain must be added to `runProductionPipeline` below too. Do not delete.
  */
 
 import { describe, expect, test } from 'vitest';

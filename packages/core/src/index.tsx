@@ -121,9 +121,13 @@ export interface AIMarkdownProps<TMetadata extends AIMarkdownMetadata = AIMarkdo
    * id-prefixes line up. The id is per-document, not per-React-instance.
    *
    * When omitted, an id is auto-generated via React's `useId()` (SSR-safe
-   * and stable across re-renders). Pass an explicit value when you need
-   * deterministic ids (snapshot tests, cross-component deep links) or when
-   * multiple instances render the same logical document.
+   * and stable across re-renders). `null` and the empty string `''` both
+   * count as omitted — they fall to the auto-generated id AND opt the
+   * instance out of cross-chunk coordination (an auto id never opens a
+   * registry), so `documentId={maybeEmpty}` silently renders standalone.
+   * Pass an explicit value when you need deterministic ids (snapshot
+   * tests, cross-component deep links) or when multiple instances render
+   * the same logical document.
    *
    * Consumer-supplied values pass through `encodeURIComponent` at the prefix
    * construction site, so any string is safe — including ids with reserved
@@ -220,9 +224,10 @@ export interface AIMarkdownProps<TMetadata extends AIMarkdownMetadata = AIMarkdo
    *
    * **Reference stability matters.** An inline call
    * (`sanitizeSchema={extendSanitizeSchema((s) => { … })}`) is mitigated by
-   * an internal `useStableValue` deep-equal pass, but the safer pattern is
-   * still module-scope. Development builds will `console.warn` on identity
-   * flips.
+   * the stability firewall's `DEEP_EQUAL` policy (`useStableRecord` +
+   * `CORE_STABILITY_TABLE`: an equal-but-new object is replaced by the
+   * previous reference), but the safer pattern is still module-scope.
+   * Development builds will `console.warn` on repeated identity flips.
    *
    * **API stability**: the `SanitizeSchema` type tracks the upstream
    * `rehype-sanitize` shape and may change with its major versions.

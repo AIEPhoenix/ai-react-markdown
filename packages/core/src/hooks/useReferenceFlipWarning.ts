@@ -34,11 +34,19 @@ const FLIP_THRESHOLD = 3;
 /** Minimum delay between successive warnings, milliseconds. */
 const WARN_COOLDOWN_MS = 5000;
 
+/** Flips further apart than this restart the count: three theme switches
+ *  minutes apart are legitimate changes, not "changing on every render",
+ *  and a lifetime counter warned on the third (2026-08 project review,
+ *  core-api-06). */
+export const FLIP_WINDOW_MS = 10_000;
+
 /** Internal state mutated by {@link trackFlip} across renders. */
 export interface FlipState {
   prev: unknown;
   flips: number;
   lastWarnAt: number;
+  /** Clock time of the previous flip; absent until the first one. */
+  lastFlipAt?: number;
 }
 
 /**
@@ -50,6 +58,8 @@ export interface FlipState {
  */
 export function trackFlip(state: FlipState, value: unknown, propName: string, now: number): void {
   if (state.prev === value) return;
+  if (state.lastFlipAt !== undefined && now - state.lastFlipAt > FLIP_WINDOW_MS) state.flips = 0;
+  state.lastFlipAt = now;
   state.flips++;
   state.prev = value;
   if (state.flips < FLIP_THRESHOLD) return;

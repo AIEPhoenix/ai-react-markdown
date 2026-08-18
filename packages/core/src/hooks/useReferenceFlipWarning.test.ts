@@ -69,6 +69,20 @@ describe('trackFlip — pure flip-and-rate-limit logic', () => {
     expect(warnSpy).toHaveBeenCalledTimes(2);
   });
 
+  test('flips further apart than the window are legitimate changes — the count restarts (core-api-06)', () => {
+    const s = fresh({ k: 0 });
+    // Three flips minutes apart: never "changing on every render".
+    trackFlip(s, { k: 1 }, 'urlTransform', 1000);
+    trackFlip(s, { k: 2 }, 'urlTransform', 61_000);
+    trackFlip(s, { k: 3 }, 'urlTransform', 121_000);
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(s.flips).toBe(1);
+    // …but three within the window still warn.
+    trackFlip(s, { k: 4 }, 'urlTransform', 122_000);
+    trackFlip(s, { k: 5 }, 'urlTransform', 123_000);
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+  });
+
   test('uses the prop name in the warning text', () => {
     const s = fresh({ k: 0 });
     trackFlip(s, { k: 1 }, 'sanitizeSchema', 1000);

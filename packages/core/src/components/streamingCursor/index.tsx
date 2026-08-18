@@ -96,6 +96,16 @@ const HOLDER_STYLE: CSSProperties = {
 };
 
 const STYLE_MARKER = 'data-aimd-streaming-cursor-style';
+/**
+ * Marker VALUE = a fingerprint of the injected rules. Two library versions
+ * on one page (micro-frontends, duplicated installs) each dedupe on their
+ * own fingerprint, so a version that changes the rules injects its own tag
+ * instead of silently inheriting the first-mounted version's. Bump the
+ * suffix in the animation names too whenever the keyframes change — CSS
+ * resolves `@keyframes` by name globally, so a same-name/different-body
+ * pair would still race (2026-08 project review, core-render-07).
+ */
+const STYLE_FINGERPRINT = 'v1';
 
 const CURSOR_KEYFRAMES =
   '@keyframes aimd-streaming-cursor-blink{0%,100%{opacity:1}50%{opacity:.15}}' +
@@ -121,9 +131,9 @@ const CURSOR_KEYFRAMES =
 function useCursorKeyframes() {
   useInsertionEffect(() => {
     if (typeof document === 'undefined') return;
-    if (document.head.querySelector(`style[${STYLE_MARKER}]`)) return;
+    if (document.head.querySelector(`style[${STYLE_MARKER}="${STYLE_FINGERPRINT}"]`)) return;
     const tag = document.createElement('style');
-    tag.setAttribute(STYLE_MARKER, '');
+    tag.setAttribute(STYLE_MARKER, STYLE_FINGERPRINT);
     tag.textContent = CURSOR_KEYFRAMES;
     document.head.appendChild(tag);
   }, []);

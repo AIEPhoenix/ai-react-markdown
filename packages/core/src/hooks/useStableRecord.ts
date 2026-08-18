@@ -19,6 +19,7 @@
 
 import { useRef, useLayoutEffect, useEffect } from 'react';
 import isEqual from 'lodash-es/isEqual';
+import { FLIP_WINDOW_MS } from './useReferenceFlipWarning';
 
 /** Module-scope dev flag — resolved at build time (see `useReferenceFlipWarning`'s docblock). */
 const __DEV__ = process.env.NODE_ENV !== 'production';
@@ -97,6 +98,9 @@ interface ProbeState {
   prev: unknown;
   hits: number;
   lastWarnAt: number;
+  /** Clock time of the previous hit; hits further apart than
+   *  FLIP_WINDOW_MS restart the count (see useReferenceFlipWarning). */
+  lastHitAt?: number;
 }
 
 /**
@@ -104,6 +108,8 @@ interface ProbeState {
  * threshold/cooldown semantics of `useReferenceFlipWarning`'s `trackFlip`.
  */
 function probeHit(state: ProbeState, message: string, now: number): void {
+  if (state.lastHitAt !== undefined && now - state.lastHitAt > FLIP_WINDOW_MS) state.hits = 0;
+  state.lastHitAt = now;
   state.hits++;
   if (state.hits < HIT_THRESHOLD) return;
   if (now - state.lastWarnAt < WARN_COOLDOWN_MS) return;

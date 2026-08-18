@@ -5,8 +5,9 @@ import AIMarkdown from '.';
 describe('AIMarkdown fontSize normalization', () => {
   // Regression: the old truthiness check `fontSize ? ...` treated the literal
   // `0` as "missing" and resolved to the rem default instead of `'0px'`. The
-  // fix branches on `fontSize === undefined`, so all real values (0 included)
-  // are forwarded through `${n}px` or the string as-is.
+  // fix branches on `fontSize == null || fontSize === ''` (null/undefined and
+  // the empty string are "absent"), so all real values (0 included) are
+  // forwarded through `${n}px` or the string as-is.
 
   test('fontSize={0} resolves to "0px" (not the rem default)', () => {
     const html = renderToString(<AIMarkdown content="hello" fontSize={0} />);
