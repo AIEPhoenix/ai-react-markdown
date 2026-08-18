@@ -96,9 +96,6 @@ export const FootnotesStreaming: CoreStory = {
   args: {
     content: FOOTNOTES_DOC,
   },
-  argTypes: {
-    streaming: { table: { disable: true } },
-  },
   parameters: {
     // Streaming stories stay report-only regardless of what a given run
     // reports. axe samples the DOM at one arbitrary instant of the stream, and

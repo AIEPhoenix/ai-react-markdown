@@ -73,8 +73,12 @@ function IsolationHarness() {
   );
 }
 
+// A play-function assertion suite — a QA story by the Introduction's own
+// definition (Performance Lab = instruments, QA = assertion suites), so it
+// carries the qa tag and hides with the rest of QA in the docs export.
 const meta: Meta<typeof IsolationHarness> = {
-  title: 'Core/Performance Lab/State Isolation',
+  title: 'Core/QA/State Isolation',
+  tags: ['qa'],
   component: IsolationHarness,
   parameters: {
     // Render-count probes, not prose.

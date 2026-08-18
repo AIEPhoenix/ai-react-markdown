@@ -7,7 +7,7 @@ export {
   STREAMING_DEMO_CONTENT,
   type StreamedContent,
   type UseStreamedContentOptions,
-} from '../streamingHelpers';
+} from './streamingHelpers';
 
 /**
  * The restart button for `StreamingReplay`'s `renderButton` slot. Four stories

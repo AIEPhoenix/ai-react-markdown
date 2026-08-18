@@ -57,7 +57,6 @@ const comparisonStoryBase = {
     streaming: { table: { disable: true } },
   },
   parameters: {
-    controls: { exclude: ['streaming'] },
     layout: 'fullscreen',
   },
 } satisfies Partial<Story>;
@@ -73,9 +72,6 @@ export const StreamingStress: Story = {
       description: 'Markdown payload streamed by every scenario. Edit to test your own content.',
     },
     streaming: { table: { disable: true } },
-  },
-  parameters: {
-    controls: { exclude: ['streaming'] },
   },
   render: (args, context) => (
     <WithScheme>

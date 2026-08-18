@@ -66,11 +66,11 @@ export const Streaming: CoreStory = {
     content: KITCHEN_SINK,
     fontSize: '',
   },
+  // One mechanism for hiding the live `streaming` control in replay stories:
+  // `table.disable` removes it from the controls panel AND the docs table
+  // (a `controls.exclude` next to it was redundant).
   argTypes: {
     streaming: { table: { disable: true } },
-  },
-  parameters: {
-    controls: { exclude: ['streaming'] },
   },
   render: (args) => (
     <WithScheme>

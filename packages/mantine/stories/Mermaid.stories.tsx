@@ -148,7 +148,6 @@ export const Streaming: MantineStory = {
     // sampling moment, not of the output — 'error' here fails intermittently
     // on nothing.
     a11y: { test: 'todo' },
-    controls: { exclude: ['streaming'] },
   },
   render: (args) => (
     <StreamingReplay

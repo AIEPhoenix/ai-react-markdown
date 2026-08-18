@@ -5,10 +5,15 @@ type CoreArgTypes = NonNullable<Meta<typeof AIMarkdown>['argTypes']>;
 
 /**
  * Controls-panel definitions for the props both packages expose. The Mantine
- * meta spreads this and adds its own `codeBlock` group; the core meta spreads
- * it and adds `variant` (core ships the typography variants; the Mantine
- * wrapper substitutes its own Typography, so the control would be misleading
- * there).
+ * meta spreads this and adds its own `codeBlock` group; core's *Playground*
+ * meta spreads it and adds `variant` (core ships the typography variants;
+ * the Mantine wrapper substitutes its own Typography, so the control would
+ * be misleading there — and `baseCoreMeta` deliberately leaves it out).
+ *
+ * Hiding the live `streaming` control in replay stories: use ONE mechanism —
+ * a `controls.include` whitelist where the story/meta already has one,
+ * otherwise `argTypes.streaming.table.disable` (hides it from the controls
+ * panel and the docs table alike). Do not stack `controls.exclude` on top.
  *
  * Explicit annotation rather than `satisfies` — this package builds with
  * `declaration: true`, where `satisfies` on an exported const trips TS2742.

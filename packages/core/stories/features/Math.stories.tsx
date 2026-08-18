@@ -69,9 +69,6 @@ export const StreamingMath: CoreStory = {
   args: {
     content: MATH_DOC,
   },
-  argTypes: {
-    streaming: { table: { disable: true } },
-  },
   parameters: {
     // Streaming stories stay report-only. axe samples whatever is on screen at
     // one arbitrary instant of the stream, and a heading caught halfway

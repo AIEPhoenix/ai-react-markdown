@@ -78,12 +78,6 @@ export const RichStreaming: MantineStory = {
     content: MANTINE_SHOWCASE,
     fontSize: '',
   },
-  argTypes: {
-    streaming: { table: { disable: true } },
-  },
-  parameters: {
-    controls: { exclude: ['streaming'] },
-  },
   render: (args) => (
     <StreamingReplay
       text={args.content ?? ''}

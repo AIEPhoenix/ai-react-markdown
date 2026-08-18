@@ -1,5 +1,12 @@
 'use client';
 
+/**
+ * Seeded streaming replay primitives (`useStreamedContent`, `StreamingReplay`,
+ * the demo content). Stories consume them through `./streaming.tsx`, which
+ * re-exports this module and adds the themed controls — keep importing from
+ * there; this file stays presentation-free so it can be reused verbatim by
+ * both packages' stories.
+ */
 import { useEffect, useReducer, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 
 export interface UseStreamedContentOptions {
