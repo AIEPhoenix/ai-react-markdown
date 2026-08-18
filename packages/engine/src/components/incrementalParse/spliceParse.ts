@@ -787,6 +787,13 @@ function alignPrefixCut(
       nextIdx = pairIdx + 1 + stripped;
       const candidate = visibles[nextIdx];
       if (!candidate) return null;
+      if (start === undefined && sepBuffer.some((sep) => sep.type !== 'text' || sep.value !== '\n')) {
+        // Position-less content (KaTeX) can only be paired by run length, and
+        // a merged separator (`"\n\n"` around an html block parse5 dropped
+        // outright) UNDERCOUNTS the gap — the span would pair with the
+        // dropped block and be frozen twice (release soak of 2.4.2). Bail.
+        return null;
+      }
       if (start !== undefined) {
         const cStart = candidate.position?.start?.offset;
         const cEnd = candidate.position?.end?.offset;
@@ -934,6 +941,19 @@ function alignPrefixCut(
     if (outEnd !== undefined && blockEnd !== undefined && outEnd < blockEnd) return null;
   }
   if (sepBuffer.length !== trailingGaps && sepBuffer.length !== trailingGaps + 1) return null;
+  // The rebuild below emits ONE bare '\n' per stripped trailing child — the
+  // shape a sanitize-stripped node leaves (comment/PI/CDATA/declaration:
+  // rehype-raw made a node, sanitize removed it, the separators around it
+  // stay separate texts). An html block that parse5 DROPPED outright (a
+  // stray `</details>`, or an element sanitize removed as a whole) leaves
+  // no node, and hast-util-raw merges the separators around it into one
+  // `"\n\n"` — the two are indistinguishable from the cut hast (release
+  // soak of 2.4.2, `</details>\n<!-- c\n\n-->\n</details>` — pre-existing).
+  // Bail unless every stripped trailing child is a raw-construct block.
+  for (let j = pairIdx + 1; j < visibles.length; j++) {
+    const v = visibles[j];
+    if (v.type === 'html' && !/^\s*<[!?]/.test((v as { value: string }).value)) return null;
+  }
   for (let i = 0; i < trailingGaps + seam; i++) {
     out.push({ type: 'text', value: '\n' });
   }

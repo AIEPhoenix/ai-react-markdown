@@ -412,6 +412,17 @@ describe('splice equivalence — fuzz-found regressions', () => {
     ['review-241-fu-u3000-before-inline-comment', '\u3000<!-- c\n<details>\n\n-->\n\npara\n\nmore\n', [4], 0],
     ['review-241-fu-failed-inline-link-retarget', '[foo](bad url) x\n\npara\n\n[foo]: /v\n', [4], 0],
     ['review-241-fu-failed-inline-link-retarget-defaults', '[foo](bad url) x\n\npara\n\n[foo]: /v\n', [1], 1],
+    // Release soak of 2.4.2 (pre-existing on 2.4.1): a stray `</details>`
+    // html block as the LAST frozen child — parse5 drops it outright, so the
+    // full parse merges the separators around it into one "\n\n" while the
+    // trailing rebuild emitted two bare '\n' (the sanitize-stripped shape).
+    ['soak-242-dropped-trailing-end-tag-block', '</details>\n<!-- c\n\n-->\n</details>\n\nx\n\ny\n', [1], 0],
+    [
+      'soak-242-dropped-trailing-end-tag-block-fuzz',
+      '<details>\n<summary>t</summary>\nbody prose\n</details>\n\u3000<!-- c\n<details>\n\n-->\ninner prose\n</details>\n\n[^a]: body text\n\n$$\ne = mc^2\n\n$$\n\nfoo line\n\u3000\n\u3000\nbar joins the paragraph\n\nprose with [a] used\n',
+      [4, 1, 4, 4, 4, 1, 4, 4],
+      0,
+    ],
     ['review-241-p1b-cross-line-full-ref', 'see [text\nmore][foo] end\n\nx\n\ny\n\n[foo]: /url\n', [4], 0],
   ];
 
