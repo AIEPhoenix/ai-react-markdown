@@ -372,6 +372,16 @@ describe('splice equivalence — fuzz-found regressions', () => {
     // Join side of the same class: the tail STARTS with the dropped-tag
     // block, so its remnant must merge with the seam separator (fuzz, after
     // the `</t>\ntext` generator shape landed).
+    // …and a tail whose leading html block is an unterminated `<div` opener
+    // (parse5 drops it at EOF-in-tag; whether a node sat between the
+    // separator and the following remnant needs the tokenizer) — bails to
+    // a full parse instead of guessing (release soak of 2.4.1).
+    [
+      'review-p3-dropped-opener-tail-bail',
+      '```\nconst x = "[a]<div>";\n\n```\n\n- tight one\n- tight two\n\nplain prose keeps flowing here\n\n> a quoted line\n\n<div\n\n</t>\ntext after a stray end tag\n\n```\nconst x = "[a]<div>";\n```\n\nsee [a] maybe, or [a][a] even ![a]\n\n[a]: https://example.com/a\n\n<![CDATA[<div>data</div>]]> trailing prose\n',
+      [1, 4, 4, 8, 4, 4, 4, 4],
+      0,
+    ],
     [
       'review-p3-stray-end-tag-tail-merge',
       '> a quoted line\n\n[^a]: body text\n\n</t>\ntext after a stray end tag\n\ninline `<div>` stays code\n\n> a quoted line\n',

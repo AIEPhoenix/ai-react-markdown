@@ -440,7 +440,8 @@ export function spliceTrees(input: SpliceInput): { mdast: MdastRoot; hast: HastR
         // following dropped-tag block's remnant (`[a]: def\n\n</t>\ntext`)
         // an offset before the boundary — the def between them has no
         // output — and freezing it duplicated it (release soak).
-        if (!ownsTrailingLiteral(prev as HastContent, node as HastContent & { value: string }, prefixMdast)) return null;
+        if (!ownsTrailingLiteral(prev as HastContent, node as HastContent & { value: string }, prefixMdast))
+          return null;
       }
       cutRegion.push(node);
       continue;
@@ -1020,13 +1021,16 @@ function tailLeadingTextIsHoist(tailMdastChildren: MdastContent[], tailHastChild
     // full parse therefore has ONE merged text at the seam; treat it as
     // hoist-merge (v2.4.0 review P3 join side, surfaced by the new fuzz
     // shape). Any other position-less literal keeps its own node.
-    if (
-      firstText.type === 'text' &&
-      firstText.position === undefined &&
-      firstVisible?.type === 'html' &&
-      /^\s*<\/[A-Za-z][A-Za-z0-9-]*\s*>/.test(firstVisible.value)
-    ) {
-      return true;
+    if (firstText.type === 'text' && firstText.position === undefined && firstVisible?.type === 'html') {
+      if (/^\s*<\/[A-Za-z][A-Za-z0-9-]*\s*>/.test(firstVisible.value)) return true;
+      // A complete comment/PI/decl/CDATA existed at raw time (sanitize
+      // stripped it later) — its slots stay separate: no merge.
+      if (isCompleteRawConstruct(firstVisible.value)) return false;
+      // Anything else — an unterminated `<div` opener the tokenizer drops
+      // at EOF-in-tag (release soak: `<div\n\n</t>\ntext`), mixed raw
+      // values — needs the tokenizer to say whether a node existed
+      // between the separator and this text. Bail to a full parse.
+      return null;
     }
     return false;
   }
