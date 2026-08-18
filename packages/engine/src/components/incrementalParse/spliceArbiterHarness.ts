@@ -116,7 +116,33 @@ export function runCrossChunk(
       missingFootnotes: new Set(frame.footnotes),
       missingLinks: new Set(frame.links),
     });
-    const suffix = defs === '' ? '' : phantomSuffixCloser(frame.content) + defs;
+    const closer = defs === '' ? '' : phantomSuffixCloser(frame.content);
+    const suffix = defs === '' ? '' : closer + defs;
+    // The closer must be OUTPUT-NEUTRAL: `content + closer` parses to the
+    // same mdast (positions aside) as `content` alone — the oracle below is
+    // `content + suffix` on both sides, so it cannot see a closer that
+    // opens a block by itself (v2.4.0 review R1). Assert it here.
+    if (closer !== '') {
+      const remarkPlugins = optionsFor(frame).remarkPlugins;
+      const bare = parseStage({
+        children: frame.content,
+        remarkPlugins,
+        rehypePlugins: [],
+        remarkRehypeOptions: {},
+      }).mdast;
+      const closed = parseStage({
+        children: frame.content + closer,
+        remarkPlugins,
+        rehypePlugins: [],
+        remarkRehypeOptions: {},
+      }).mdast;
+      const strip = (t: unknown) => JSON.stringify(t, (k, v) => (k === 'position' ? undefined : v));
+      if (strip(bare) !== strip(closed)) {
+        expect.fail(
+          `${name} frame=${i} closer ${JSON.stringify(closer)} is not output-neutral for ${JSON.stringify(frame.content)}`
+        );
+      }
+    }
     const options = { ...optionsFor(frame), phantomSuffix: suffix };
     const result = advanceIncrementalParse(state, frame.content, options);
     state = result.nextState;

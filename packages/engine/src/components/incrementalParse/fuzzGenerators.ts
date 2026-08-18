@@ -57,10 +57,17 @@ const codeSpanInline = fc.constantFrom(
   'an `unpaired run starts here'
 );
 
-/** Under-count accepted edge: a REAL tag sitting on the same line BEFORE an
- *  unclosed raw opener (`<!--` / `<?`) — the one place the scanner may
- *  undercount; the arbiter is its safety net. */
-const underCountInline = fc.constantFrom('<b>x</b> <!-- trailing opener', '<i>y</i> <?php');
+/** A REAL tag on the same line as a raw opener/terminator: before an
+ *  unclosed `<!--` / `<?` (once an accepted under-count edge — the scanner
+ *  now masks raw spans and counts tags around them, v2.4.0 review P1/P4),
+ *  and a real tag whose closing `>` hides inside a code-span mask
+ *  (`<div x="\`">b\``: micromark parses the tag first — review R2(a)). */
+const underCountInline = fc.constantFrom(
+  '<b>x</b> <!-- trailing opener',
+  '<i>y</i> <?php',
+  '<details> <?php',
+  'a <div x="`">b`'
+);
 
 const inlineArb = fc.oneof(
   { weight: 4, arbitrary: plainInline },
@@ -108,7 +115,14 @@ const overlapSettledArb = fc.constantFrom(
   '<!--> after an empty comment',
   '<!---> after an empty comment',
   '<?> after an empty pi',
-  '<!--x--!> after a bang-closed comment <b>x</b>'
+  '<!--x--!> after a bang-closed comment <b>x</b>',
+  // v2.4.0 review shapes: a stray end tag leaving whitespace-only remnant
+  // after a closed comment (P2); a tag right after a PI terminator (P1); a
+  // stray end tag html block whose dropped-tag remnant merges with the
+  // wrap separator (P3).
+  '<!-- c --> </s>',
+  '<?x?><details>x</details>',
+  '</t>\ntext after a stray end tag'
 );
 
 /**
@@ -340,4 +354,5 @@ export const COVERAGE_MARKERS: Record<string, RegExp> = {
   invalidLinkDef: /\]:(?: \/u\(x| \/u\)| <u<v>| <u| \/u\\ x)(?:\n| "title)|\]:\n/,
   rawTextBlock: /<(?:script|style|textarea|pre)>/,
   proseTruncatedTag: /a<b\n/,
+  reviewShapes: /<!-- c --> <\/s>|<\?x\?><details>|<\/t>\ntext|<details> <\?php|x="`">b`/,
 };

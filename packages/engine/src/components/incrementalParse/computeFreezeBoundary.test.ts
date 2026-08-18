@@ -111,6 +111,38 @@ describe('computeFreezeBoundary — raw HTML blockers', () => {
     expect(computeFreezeBoundary(two, OFF)).toBe(two.indexOf('zzz'));
   });
 
+  test('v2.4.0 review R2: a truncated tag is not reverted when the raw line closes it inside a masked span, and its seam is still checked', () => {
+    // (a) `<div x="\`">b\``: micromark parses the tag first (the backtick
+    // is inside a quoted attribute), so the code-span mask hid the tag's
+    // own `>` and the revert made a REAL open tag disappear.
+    expect(computeFreezeBoundary('a <div x="`">b`\n\npara\n\nzzz', OFF)).toBe(0);
+    // Same real tag with a LATER truncated prose `<b` on the line: the
+    // truncation anchors on `<b` (reverted at the blank as prose), and the
+    // real `<div …>` — `>` inside the mask — must still be counted.
+    expect(computeFreezeBoundary('a <div x="`">b`, compare a<b, prose\n\npara\n\nzzz', OFF)).toBe(0);
+    // (b) a rawFlowStart line ending in a truncated `<div a` leaves floating
+    // whitespace remnant; the phantom open must not skip the seam check.
+    expect(computeFreezeBoundary('<!A> <div a\n\n$', OFF)).toBe(0);
+    expect(computeFreezeBoundary('<!-- c --> <div a\n\n \npara\n', OFF)).toBe(0);
+  });
+
+  test('v2.4.0 review P1/P4: tags outside raw spans are counted on the same line as a raw construct', () => {
+    // A tag AFTER the terminator on the terminator line…
+    expect(computeFreezeBoundary('<?php\n?><details>\n\npara\n\nmore\n', OFF)).toBe(0);
+    // …and a tag BEFORE a same-line opener (the former "accepted edge").
+    expect(computeFreezeBoundary('<details> <?php\n?>\n\npara\n\nzzz', OFF)).toBe(0);
+    // Balanced tags around a self-contained PI still freeze.
+    const ok = '<b>x</b> <?x?> <i>y</i>\n\npara\n\nzzz';
+    expect(computeFreezeBoundary(ok, OFF)).toBe(ok.indexOf('zzz'));
+  });
+
+  test('v2.4.0 review P2: whitespace-only floating remnant is seam remnant too', () => {
+    expect(computeFreezeBoundary('<!-- c --> </s>\n\n-', OFF)).toBe(0);
+    // Pure tags / a comment alone leave nothing floating.
+    const bare = '<!-- c -->\n\nzzz';
+    expect(computeFreezeBoundary(bare, OFF)).toBe(bare.indexOf('zzz'));
+  });
+
   test('void and self-closing tags do not block', () => {
     const text = 'an image <img src="x"> and <br/> here\n\ntail';
     expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('tail'));

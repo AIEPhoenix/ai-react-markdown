@@ -145,23 +145,35 @@ describe('phantomSuffixCloser (core-render-01: suffix swallowed by an open fence
     expect(phantomSuffixCloser('intro\n\n$$$$\ne = mc^2\n')).toBe('$$$$');
   });
 
-  test('a fence opened INSIDE a list item is closed at the opener indent (a column-0 closer would open a new block)', () => {
-    const content = '- item\n\n  ```js\n  code';
-    expect(phantomSuffixCloser(content)).toBe('\n  ```');
-    expectClosedAndNeutral(content, false);
-    // Same rule for math in a list item.
-    const math = '- item\n\n  $$\n  e = mc^2\n';
-    expect(phantomSuffixCloser(math)).toBe('  $$');
-    expectClosedAndNeutral(math, false);
-    // Regression guard for the failure mode: a column-0 closer ends the
-    // item and OPENS a fresh fence around the suffix.
-    const bad = parse(content + '\n```' + SUFFIX);
-    expect(defIds(bad)).toEqual([]);
+  test('an INDENTED opener never gets a closer — the line model cannot see container ends (review R1)', () => {
+    // A fence inside a list item: the plain suffix already ends the item
+    // (column-0 line after a blank) and registers the defs; a closer at the
+    // opener indent would be neutral HERE …
+    const inItem = '- item\n\n  ```js\n  code';
+    expect(phantomSuffixCloser(inItem)).toBe('');
+    expect(defIds(parse(inItem + SUFFIX))).toEqual(['^f', 'x']);
+    // … but NOT once later de-indented content has already ended the item:
+    // micromark closed the fence with the item, and an emitted `  ```` would
+    // OPEN a new fence around the sentinel lines (the v2.4.0 regression).
+    const ended = '- a\n  ```js\n  code\n\npara\n';
+    expect(phantomSuffixCloser(ended)).toBe('');
+    expect(defIds(parse(ended + SUFFIX))).toEqual(['^f', 'x']);
+    expect(defIds(parse(ended + '  ```' + SUFFIX))).toEqual([]); // what the old closer did
+    // A ≥4-space closer inside an item is a valid close for micromark
+    // (relative indent 2) but invisible to the scanner: no closer either.
+    const deepClose = '- item\n\n   ```js\n   code\n    ```\n';
+    expect(phantomSuffixCloser(deepClose)).toBe('');
+    // Indented top-level openers (1-3 spaces) are also left alone: an
+    // indent-only signal cannot distinguish them from item content — the
+    // suffix is swallowed there (pre-2.4.0 behaviour), never mis-closed.
+    expect(phantomSuffixCloser('para\n\n   ```js\n   code')).toBe('');
+    // Same rule for math.
+    expect(phantomSuffixCloser('- item\n\n  $$\n  e = mc^2\n')).toBe('');
   });
 
-  test('a top-level fence with 1-3 spaces of indent is closed at that indent', () => {
-    const content = 'para\n\n   ```js\n   code';
-    expect(phantomSuffixCloser(content)).toBe('\n   ```');
+  test('a column-0 opener after a list is top-level and IS closed', () => {
+    const content = '- item\n\n```js\ncode';
+    expect(phantomSuffixCloser(content)).toBe('\n```');
     expectClosedAndNeutral(content);
   });
 

@@ -53,9 +53,11 @@
  *    whether a sibling node FOLLOWS it. A tail block that flips between
  *    def (no hast output) and paragraph therefore reshapes the frozen
  *    region retroactively (2026-07-31 direction-battery counterexample,
- *    reproduced on v1.8.0). The candidate adjacent to such a run is
- *    rejected until a later confirmed content line pins the seam from the
- *    frozen side; dropping candidates only over-blocks (safe direction).
+ *    reproduced on v1.8.0). Every candidate emitted while the remnant is
+ *    the last frozen child is rejected (they stay rejected for good); once
+ *    a later confirmed content line pins the seam from the frozen side,
+ *    the candidates AFTER that line are safe again. Dropping candidates
+ *    only over-blocks (safe direction). Whitespace-only remnant counts.
  *    A type 2-5 block that opens AND closes on its first line owns the
  *    rest of that line as raw content too (`<!-- c --> tail`) — same seam.
  * 7. **Phase poison** (`phasePoisonedAt`) — points where this line-level
@@ -1003,7 +1005,6 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
   // constructs (interiors, openers, terminators) — blocker 6's remnant
   // check below must not mistake construct-consumed bytes for floating
   // text (fixture: the `?>` terminator line of a PI block).
-  const rawOpenAtStart = cp.piOpen || cp.declOpen || cp.cdataOpen;
   const rawSpans: Array<[number, number]> = [];
   let pos = 0;
   // parse5 divergence (2026-08 project-review P1): CommonMark ends a `<?`
@@ -1093,17 +1094,23 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
       pos = decl + 2;
     }
   }
-  const rawOpenAtEnd = cp.piOpen || cp.declOpen || cp.cdataOpen;
-  // Tag scan is skipped while a raw construct spans this line — the content
-  // is data, not markup. (A tag BEFORE a still-open opener on the same line
-  // is missed — accepted edge.)
-  if (!rawOpenAtStart && !rawOpenAtEnd) {
+  // Raw-construct bytes are data, not markup — mask them (offset-preserving)
+  // and scan the REST of the line for tags. The old scan skipped the whole
+  // line whenever a raw construct touched it, so a tag before a same-line
+  // opener (`<details> <?php`) or after a terminator (`?><details>`) went
+  // uncounted — an under-block past a parse5-open element (v2.4.0 review
+  // P1/P4; the former was documented as an accepted edge, the latter not).
+  let tagText = scanText;
+  for (const [from, to] of rawSpans) {
+    tagText = tagText.slice(0, from) + ' '.repeat(to - from) + tagText.slice(to);
+  }
+  {
     TAG_OR_COMMENT_RE.lastIndex = 0;
     let m: RegExpExecArray | null;
     let lastCommentOpenerIdx = -1;
-    while ((m = TAG_OR_COMMENT_RE.exec(scanText)) !== null) {
+    while ((m = TAG_OR_COMMENT_RE.exec(tagText)) !== null) {
       if (m[0] === '<!--') {
-        const next = scanText.slice(m.index + 4, m.index + 6);
+        const next = tagText.slice(m.index + 4, m.index + 6);
         if (cp.commentOpen) {
           // Inside an OPEN comment `<!--` is content — but the regex
           // consumed its `--`, which may be the start of the closer:
@@ -1158,20 +1165,45 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     // html block type 2 (terminator semantics, tracked exactly) and raw/
     // flow-context openers follow parse5's comment state — neither poisons.
     if (cp.commentOpen && lastCommentOpenerIdx !== -1 && !inRawText) {
-      if (scanText.slice(0, lastCommentOpenerIdx).trim() !== '') {
+      if (tagText.slice(0, lastCommentOpenerIdx).trim() !== '') {
         cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start + lastCommentOpenerIdx);
+      }
+    }
+    // Tags whose `<` sits OUTSIDE every code-span mask but whose `>` sits
+    // INSIDE one (`<div x="\`">b\``): micromark tries html-text at the `<`
+    // before the later backtick can open a span, so the tag is REAL — but
+    // the masked scan above never saw its `>` and counted nothing (v2.4.0
+    // review, direction battery). Re-scan the raw line for exactly those
+    // matches (raw-construct spans excluded — a `<b>` inside a PI is data).
+    if (masked !== null && masked !== ln.text) {
+      const inRaw = (i: number) => rawSpans.some(([from, to]) => i >= from && i < to);
+      TAG_OR_COMMENT_RE.lastIndex = 0;
+      let mr: RegExpExecArray | null;
+      while ((mr = TAG_OR_COMMENT_RE.exec(ln.text)) !== null) {
+        if (mr[0] === '<!--' || mr[0] === '-->' || mr[0] === '--!>') continue;
+        const startMasked = masked[mr.index] !== ln.text[mr.index];
+        const wholeVisible = masked.slice(mr.index, mr.index + mr[0].length) === mr[0];
+        if (startMasked || wholeVisible || inRaw(mr.index) || cp.commentOpen) continue;
+        const closing = mr[1] === '/';
+        const tag = mr[2].toLowerCase();
+        const selfClosing = mr[3] !== undefined && /\/\s*$/.test(mr[3]);
+        if (VOID_TAGS.has(tag) || selfClosing) continue;
+        applyTag(tag, closing);
       }
     }
     // A `>` anywhere on this line confirms every pending truncated open
     // (attributes may wrap; the tag really is a tag — keep it counted).
-    if (cp.pendingTruncatedTags.length > 0 && scanText.includes('>')) {
+    // Checked on the RAW line: a `>` inside a masked code span may still be
+    // the tag's own closer (`<div x="\`">b\``: micromark parses the tag
+    // first, the span never forms) — v2.4.0 review R2(a).
+    if (cp.pendingTruncatedTags.length > 0 && ln.text.includes('>')) {
       cp.pendingTruncatedTags = [];
     }
     // Line-truncated tag start — anchor on the LAST `<` of the line.
     if (!cp.commentOpen) {
-      const lastLt = scanText.lastIndexOf('<');
-      if (lastLt !== -1 && !scanText.includes('>', lastLt)) {
-        const m2 = TRUNCATED_TAG_RE.exec(scanText.slice(lastLt));
+      const lastLt = tagText.lastIndexOf('<');
+      if (lastLt !== -1 && !tagText.includes('>', lastLt)) {
+        const m2 = TRUNCATED_TAG_RE.exec(tagText.slice(lastLt));
         if (m2) {
           const closing = m2[1] === '/';
           const tag = m2[2].toLowerCase();
@@ -1182,7 +1214,12 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
             // dangling `<div` into whatever follows the block (fuzz
             // counterexample: `</details>\n<div\n\n` shortened the seam
             // separator), so there the open stays counted, unrevertable.
-            if (!closing && !inRawText) cp.pendingTruncatedTags.push(tag);
+            // Likewise when the RAW line has a `>` after its last `<`: the
+            // masked-away `>` may be the tag's real closer — keep it counted
+            // rather than reverting a real tag (R2(a)).
+            const rawLastLt = ln.text.lastIndexOf('<');
+            const rawTruncated = rawLastLt !== -1 && !ln.text.includes('>', rawLastLt);
+            if (!closing && !inRawText && rawTruncated) cp.pendingTruncatedTags.push(tag);
           }
         }
       }
@@ -1203,11 +1240,25 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
   // (the under-block direction; review counterexample with an arbiter-level
   // hast mismatch). Unterminated construct bytes are masked (rawSpans /
   // comment-token strip); their interior text may over-flag, which is safe.
-  if ((inRawText || rawFlowStart) && cp.openTotal === 0) {
-    let masked = scanText;
+  // Pending truncated opens are PHANTOMS until confirmed: for the seam
+  // question they must not count as "an element is open" (an open element
+  // contains the remnant; a phantom does not) — otherwise a rawFlowStart
+  // line ending in a truncated `<div` skips this check and, when the
+  // phantom is reverted at the blank line, nobody re-runs it (v2.4.0
+  // review R2(b)). Treating them as closed here only over-flags.
+  const effectiveOpen = cp.openTotal - cp.pendingTruncatedTags.length;
+  if ((inRawText || rawFlowStart) && effectiveOpen <= 0) {
+    // Raw-construct bytes are DELETED (not blanked) here: the residue is
+    // judged on `length`, not `trim()` — whitespace-only floating text
+    // (`<!-- c --> </s>` leaves ` `) is seam-dependent too (v2.4.0 review
+    // P2), and blanking spans would fake such whitespace.
+    let masked = '';
+    let cursor = 0;
     for (const [from, to] of rawSpans) {
-      masked = masked.slice(0, from) + ' '.repeat(to - from) + masked.slice(to);
+      masked += scanText.slice(cursor, from);
+      cursor = to;
     }
+    masked += scanText.slice(cursor);
     // Comment content spanning lines is not covered by rawSpans (comments
     // are tracked by the token scan, not the raw state machine), so the
     // residue is taken by the SAME token walk the balance scan uses — the
@@ -1216,7 +1267,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     // (`<!--…-->`, `<!--…$`) got the overlap case wrong: it erased the
     // `<!-->` before the "cut at `-->`" step could see it, hiding the real
     // remnant after it (adversarial review of 5074c4b, blocker-6 seam).
-    if (floatingResidue(masked, commentOpenAtLineStart).trim() !== '') {
+    if (floatingResidue(masked, commentOpenAtLineStart).length > 0) {
       cp.htmlSeamPending = true;
     }
   }

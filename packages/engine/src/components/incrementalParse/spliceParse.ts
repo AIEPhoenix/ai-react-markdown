@@ -257,7 +257,12 @@ export function tailMentionsTerminator(tailSource: string): boolean {
   // a dotless-ı variant — resolves against the lowercase terminator def just
   // the same. Compare in the same normal form (2026-08 project review,
   // eng-parse-04: a byte-exact `includes` let case variants through).
-  return normalizeIdentifier(tailSource).includes(`[${normalizeIdentifier(TERMINATOR_LABEL)}`);
+  // Whitespace right after `[` is trimmed by micromark's label matching
+  // too (`[ __aimd_…]` resolves) — collapse it before the check (v2.4.0
+  // review P5).
+  return normalizeIdentifier(tailSource)
+    .replace(/\[ /g, '[')
+    .includes(`[${normalizeIdentifier(TERMINATOR_LABEL)}`);
 }
 
 /** Build the injection text prepended to the tail source (with per-footnote-
@@ -454,7 +459,15 @@ export function spliceTrees(input: SpliceInput): { mdast: MdastRoot; hast: HastR
       i > 0 &&
       attrs[i - 1] < boundary &&
       prevHast.children[i - 1].type === 'element' &&
-      isTrailingLiteralText(node)
+      isTrailingLiteralText(node) &&
+      // …and only when that element really IS an html block's output: a
+      // raw literal can only trail an `html` mdast node. A position-less
+      // text after a `<p>` is the NEXT block's remnant — a stray end tag
+      // (`</t>\na`) parse5 dropped, whose text merged with the wrap
+      // separator — owned by the tail, which re-parses it; freezing it
+      // here duplicated it (v2.4.0 review P3). Falls through to the
+      // remnant look-ahead below, which bails to a full parse.
+      isHtmlBlockOutput(prevHast.children[i - 1] as HastContent, prefixMdast)
     ) {
       cutRegion.push(node);
       // NOTE: this break skips the remnant look-ahead below. Safe today
@@ -987,8 +1000,26 @@ function stripInjectedHast(
  */
 function tailLeadingTextIsHoist(tailMdastChildren: MdastContent[], tailHastChildren: HastContent[]): boolean | null {
   const firstText = tailHastChildren[0];
-  if (!firstText || !isSeparatorText(firstText)) return false;
+  if (!firstText) return false;
   const firstVisible = tailMdastChildren.find((c) => !isWrapInvisible(c));
+  if (!isSeparatorText(firstText)) {
+    // Position-less NON-whitespace leading text: the tail starts with an
+    // html block whose leading end tag the tokenizer DROPPED (`</t>\ntext`
+    // — no open element to close, so no node ever existed) and whose
+    // remaining text merged with the wrap separator at reparse time. The
+    // full parse therefore has ONE merged text at the seam; treat it as
+    // hoist-merge (v2.4.0 review P3 join side, surfaced by the new fuzz
+    // shape). Any other position-less literal keeps its own node.
+    if (
+      firstText.type === 'text' &&
+      firstText.position === undefined &&
+      firstVisible?.type === 'html' &&
+      /^\s*<\/[A-Za-z][A-Za-z0-9-]*\s*>/.test(firstVisible.value)
+    ) {
+      return true;
+    }
+    return false;
+  }
   if (!firstVisible) return false;
   const firstContent = tailHastChildren.find((c) => !isSeparatorText(c));
   if (firstContent) {
@@ -1021,6 +1052,15 @@ function isCompleteRawConstruct(value: string): boolean {
 /** Position-less whitespace-only root text — wrap()/rehype-raw separator runs. */
 function isSeparatorText(node: HastContent): boolean {
   return node.type === 'text' && node.position === undefined && node.value.trim() === '';
+}
+
+/** Whether a positioned top-level hast element is the output of an `html`
+ *  mdast block (its start offset is that block's start). Trailing raw
+ *  literals can only follow such elements. */
+function isHtmlBlockOutput(el: HastContent, prefixMdast: MdastContent[]): boolean {
+  const start = el.position?.start?.offset;
+  if (start === undefined) return false;
+  return prefixMdast.some((c) => c.type === 'html' && c.position?.start?.offset === start);
 }
 
 /** Position-less NON-whitespace text at the top level — the raw reparse's

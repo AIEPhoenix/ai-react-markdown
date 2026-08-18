@@ -355,6 +355,29 @@ describe('splice equivalence — fuzz-found regressions', () => {
       0,
     ],
     ['ghost-def-angle-inner-lt', 'see [a] here\n\n[a]: <u<v>\n\ny\n\n[a]: /real\n\nz\n', [1], 0],
+    // v2.4.0 review (engine): R2(a) masked-`>` revert of a real tag; R2(b)
+    // phantom open skipping the seam check; P1 tag after a raw terminator;
+    // P2 whitespace-only remnant. (P5 `[ __aimd_…]` is in the replay
+    // describe below.)
+    ['review-r2a-masked-gt-real-tag', 'a <div x="`">b`\n\npara\n', [17, 5], 0],
+    ['review-r2b-truncated-seam-remnant', '<!A> <div a\n\n$', [1], 0],
+    ['review-p1-tag-after-terminator', '<?php\n?><details>\n\npara\n\nmore\n', [19, 6], 0],
+    ['review-p2-whitespace-remnant', '<!-- c --> </s>\n\n-', [1], 0],
+    // P3: a stray end tag's dropped-block remnant (`</t>\na` → position-less
+    // "\n\na") sat right after a frozen <p>; the cut took it as the
+    // paragraph's "trailing literal" and the tail re-parse produced it
+    // again. Only html-block output can own a trailing literal.
+    ['review-p3-stray-end-tag-remnant-dup', 'a\n\n</t>\na\n\n>', [1], 0],
+    ['review-p3-stray-end-tag-remnant-dup-defaults', 'a\n\n</t>\na\n\n>', [1], 1],
+    // Join side of the same class: the tail STARTS with the dropped-tag
+    // block, so its remnant must merge with the seam separator (fuzz, after
+    // the `</t>\ntext` generator shape landed).
+    [
+      'review-p3-stray-end-tag-tail-merge',
+      '> a quoted line\n\n[^a]: body text\n\n</t>\ntext after a stray end tag\n\ninline `<div>` stays code\n\n> a quoted line\n',
+      [4, 4, 4, 4, 4, 4, 4, 4],
+      0,
+    ],
   ];
 
   for (const [name, payload, sizes, configIdx] of FUZZ_CASES) {
@@ -835,6 +858,8 @@ describe('splice equivalence — footnote injection replay', () => {
       'see [__AIMD_INJECTION_TERMINATOR__] maybe.\n',
       'see [text][__Aimd_Injection_Terminator__] maybe.\n',
       'see [__aımd_injection_terminator__] maybe.\n', // dotless ı folds to I
+      'see [ __aimd_injection_terminator__] maybe.\n', // micromark trims the label (v2.4.0 review P5)
+      'see [\t__aimd_injection_terminator__ ] maybe.\n',
     ];
     for (const mention of mentions) {
       const frame0 = 'note[^q] first.\n\n[^q]: def body\n\nplain settles.\n\n';
