@@ -238,6 +238,13 @@ export interface FreezeScanCheckpoint {
   prevLineWasValidDef: boolean;
   /** An earlier line of the current paragraph left an unpaired backtick
    *  run — masking is disabled until the paragraph ends (safety gate). */
+  /** A `[` left unclosed at the end of a paragraph line (code spans
+   *  masked). micromark lets a reference label span soft line breaks, so
+   *  the label may close on a LATER line where the per-line REF_RE never
+   *  sees a `[…]` pair (v2.4.1 review P1: `see [foo\nbar] end` + a late
+   *  `[foo bar]: /u` retargeted frozen output). Cleared wherever the
+   *  paragraph ends. */
+  openBracket: { offset: number; text: string } | null;
   paragraphHasUnpairedRun: boolean;
   /** Blocker-6 pending flag: a confirmed html-flow line left balanced
    *  floating raw remnant, and no later content line has pinned the seam
@@ -328,6 +335,17 @@ const TRUNCATED_TAG_RE = /<(\/?)([A-Za-z][A-Za-z0-9-]*)([^<>]*)$/;
 const REF_RE = /!?\[((?:[^[\]\\]|\\.)*)\]/g;
 const BACKTICK_RUN_RE = /`+/g;
 
+/**
+ * Markdown whitespace is U+0020 / U+0009 (plus line endings) — NOT the
+ * Unicode set JS `trim()` strips. A line holding only U+3000 / U+00A0 is
+ * paragraph text (a lazy continuation line) for micromark, and a fence
+ * closer followed by NBSP is not a closer. Using `trim()` here made the
+ * scanner emit a candidate inside an unfinished paragraph (v2.4.1 review
+ * P1 — CJK output does carry full-width-space-only lines).
+ */
+const MD_BLANK_RE = /^[ \t\r]*$/;
+const isMdBlank = (text: string): boolean => MD_BLANK_RE.test(text);
+
 function computeIndent(text: string): number {
   let indent = 0;
   for (const ch of text) {
@@ -336,6 +354,27 @@ function computeIndent(text: string): number {
     else break;
   }
   return indent;
+}
+
+/** Index of the first unescaped `ch` in `text`, or -1. */
+function firstUnescaped(text: string, ch: string): number {
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '\\') i += 1;
+    else if (text[i] === ch) return i;
+  }
+  return -1;
+}
+
+/** Index of the last unescaped `[` that has no unescaped `]` after it, or -1. */
+function lastUnclosedBracket(text: string): number {
+  let open = -1;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '\\') i += 1;
+    else if (c === '[') open = i;
+    else if (c === ']') open = -1;
+  }
+  return open;
 }
 
 function normalizeLabel(label: string): string {
@@ -430,6 +469,7 @@ function freshCheckpoint(defListEnabled: boolean, mathFlow: boolean, referenceTa
     prevLineWasText: false,
     prevLineWasValidDef: false,
     paragraphHasUnpairedRun: false,
+    openBracket: null,
     htmlFlowSinceBlank: false,
     htmlSeamPending: false,
     phasePoisonedAt: Infinity,
@@ -568,7 +608,7 @@ export function computeFreezeBoundary(
       start,
       end,
       text: lineText,
-      blank: confirmed && lineText.trim() === '',
+      blank: confirmed && isMdBlank(lineText),
       indent: computeIndent(lineText),
     };
     if (!confirmed) {
@@ -735,13 +775,19 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
   // --- fence state (interiors are candidate-free; paragraph resets) ---
   if (cp.inFence) {
     const close = FENCE_RE.exec(ln.text);
-    if (close && close[1][0] === cp.fenceChar && close[1].length >= cp.fenceLen && ln.text.trim() === close[1]) {
+    if (
+      close &&
+      close[1][0] === cp.fenceChar &&
+      close[1].length >= cp.fenceLen &&
+      isMdBlank(ln.text.slice(close[0].length))
+    ) {
       cp.inFence = false;
       cp.fenceChar = '';
       cp.fenceLen = 0;
     }
     cp.blankRun = 0;
     cp.paragraphHasUnpairedRun = false;
+    cp.openBracket = null;
     cp.prevLineBlank = false;
     cp.prevLineWasText = false;
     cp.prevLineWasValidDef = false;
@@ -771,6 +817,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
       cp.openIndent = ln.indent;
       cp.blankRun = 0;
       cp.paragraphHasUnpairedRun = false;
+      cp.openBracket = null;
       cp.prevLineBlank = false;
       cp.prevLineWasText = false;
       cp.prevLineWasValidDef = false;
@@ -783,12 +830,13 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
   // nothing but whitespace after) ---
   if (cp.inMath) {
     const close = MATH_RUN_RE.exec(ln.text);
-    if (close && close[1].length >= cp.mathFenceLen && ln.text.trim() === close[1]) {
+    if (close && close[1].length >= cp.mathFenceLen && isMdBlank(ln.text.slice(close[0].length))) {
       cp.inMath = false;
       cp.mathFenceLen = 0;
     }
     cp.blankRun = 0;
     cp.paragraphHasUnpairedRun = false;
+    cp.openBracket = null;
     cp.prevLineBlank = false;
     cp.prevLineWasText = false;
     cp.prevLineWasValidDef = false;
@@ -824,6 +872,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
         cp.openIndent = ln.indent;
         cp.blankRun = 0;
         cp.paragraphHasUnpairedRun = false;
+        cp.openBracket = null;
         cp.prevLineBlank = false;
         cp.prevLineWasText = false;
         cp.prevLineWasValidDef = false;
@@ -851,6 +900,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
       defListSettled: null,
     });
     cp.paragraphHasUnpairedRun = false;
+    cp.openBracket = null;
     cp.htmlFlowSinceBlank = false;
     cp.prevLineBlank = true;
     cp.prevLineWasText = false;
@@ -967,36 +1017,63 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
   // fact independent of how inline references resolve, and taint would
   // collapse the boundary to the body's first citation while a def footer
   // streams (defs settle only after a trailing blank line).
-  if (cp.referenceTaint && scanText.includes('[')) {
-    // `[label]:` is only definition-shaped when THIS line registers it as a
-    // def (the label bracket of validDef). On a paragraph CONTINUATION line
-    // the same bytes are literal text where micromark still parses `[label]`
-    // as a shortcut reference — skipping it there under-taints and lets a
-    // later definition retarget frozen output (fuzz counterexample: a def
-    // line glued under a paragraph). Extra candidates only over-taint.
-    const defBracket = validDef ? def!.index + def![0].indexOf('[') : -1;
-    REF_RE.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    while ((m = REF_RE.exec(scanText)) !== null) {
-      const follow = scanText[m.index + m[0].length];
-      if (follow === '(') continue; // inline link/image
-      if (follow === ':' && m.index === defBracket) continue; // the def's own label
-      const inner = m[1];
+  if (cp.referenceTaint) {
+    const pushRef = (offset: number, inner: string, followAt: number): void => {
+      const follow = scanText[followAt];
+      if (follow === '(') return; // inline link/image
       let label: string;
       let footnote = false;
       if (inner.startsWith('^')) {
         footnote = true;
         label = normalizeLabel(inner.slice(1));
       } else if (follow === '[') {
-        const explicit = /^\[((?:[^[\]\\]|\\.)*)\]/.exec(scanText.slice(m.index + m[0].length));
+        const explicit = /^\[((?:[^[\]\\]|\\.)*)\]/.exec(scanText.slice(followAt));
         label = normalizeLabel(explicit && explicit[1] ? explicit[1] : inner);
       } else {
         // Shortcut reference candidate. Plain prose brackets ("[sic]") land
         // here too — a future definition COULD retarget them, so they count.
         label = normalizeLabel(inner);
       }
-      if (!label) continue;
-      cp.unresolvedRefs.push({ offset: ln.start + m.index, label, footnote });
+      if (label) cp.unresolvedRefs.push({ offset, label, footnote });
+    };
+    // A bracket left open on an earlier line of this paragraph: it closes
+    // here (label = the joined text — micromark's label grammar allows soft
+    // line breaks, and normalizeLabel folds them), stays open when this line
+    // has no bracket at all, or dies when a NEW `[` comes first (a label
+    // cannot contain an unescaped `[`; that `[` may itself pend below).
+    const pending = cp.openBracket;
+    cp.openBracket = null;
+    if (pending) {
+      const close = firstUnescaped(scanText, ']');
+      const open = firstUnescaped(scanText, '[');
+      if (close !== -1 && (open === -1 || close < open)) {
+        pushRef(pending.offset, `${pending.text}\n${scanText.slice(0, close)}`, close + 1);
+      } else if (close === -1 && open === -1) {
+        cp.openBracket = { offset: pending.offset, text: `${pending.text}\n${scanText}` };
+      }
+    }
+    if (scanText.includes('[')) {
+      // `[label]:` is only definition-shaped when THIS line registers it as
+      // a def (the label bracket of validDef). On a paragraph CONTINUATION
+      // line the same bytes are literal text where micromark still parses
+      // `[label]` as a shortcut reference — skipping it there under-taints
+      // and lets a later definition retarget frozen output (fuzz
+      // counterexample: a def line glued under a paragraph). Extra
+      // candidates only over-taint.
+      const defBracket = validDef ? def!.index + def![0].indexOf('[') : -1;
+      REF_RE.lastIndex = 0;
+      let m: RegExpExecArray | null;
+      while ((m = REF_RE.exec(scanText)) !== null) {
+        const followAt = m.index + m[0].length;
+        if (scanText[followAt] === ':' && m.index === defBracket) continue; // the def's own label
+        pushRef(ln.start + m.index, m[1], followAt);
+      }
+      // The LAST unescaped `[` with no `]` after it stays open into the next
+      // paragraph line (a def line's own label never reaches here unclosed).
+      const trailingOpen = lastUnclosedBracket(scanText);
+      if (trailingOpen !== -1) {
+        cp.openBracket = { offset: ln.start + trailingOpen, text: scanText.slice(trailingOpen + 1) };
+      }
     }
   }
 

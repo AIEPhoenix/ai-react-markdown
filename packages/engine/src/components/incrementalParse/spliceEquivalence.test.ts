@@ -388,6 +388,26 @@ describe('splice equivalence — fuzz-found regressions', () => {
       [4, 4, 4, 4, 4, 4, 4, 4],
       0,
     ],
+    // v2.4.1 review P1: (a) a line holding only U+3000 / U+00A0 is NOT a
+    // blank line for micromark (`trim()` said it was) — the paragraph
+    // continues across it, so the frozen boundary landed inside an unfinished
+    // paragraph; (b) a shortcut reference whose label spans a soft line
+    // break escaped the per-line REF_RE and a late def retargeted it.
+    ['review-241-p1a-ideographic-space-lines', 'foo\n\u3000\n\u3000\nbar\n', [8, 4], 0],
+    ['review-241-p1a-nbsp-fence-closer', '```\ncode\n```\u00a0\nstill code\n```\n\nx\n\ny\n', [4], 0],
+    ['review-241-p1a-nbsp-math-closer', '$$\nx\n$$\u3000\nstill math\n$$\n\nx\n\ny\n', [4], 0],
+    ['review-241-p1b-cross-line-shortcut-ref', 'see [foo\nbar] end\n\nx\n\ny\n\n[foo bar]: /url\n', [4], 0],
+    ['review-241-p1b-cross-line-shortcut-ref-defaults', 'see [foo\nbar] end\n\nx\n\ny\n\n[foo bar]: /url\n', [4], 1],
+    ['review-241-p1b-three-line-label', 'see [foo\nbar\nbaz] end\n\nx\n\ny\n\n[foo bar baz]: /url\n', [4], 0],
+    // v2.4.1 review P2: an html block whose trailing end tag(s) parse5 drops
+    // leaves a POSITIONED whitespace-only remnant (`</details>\n</details>`
+    // → "\n" 20-21) that the full parse later merges, position-less, with
+    // the seam separator. Cut side: whitespace-only positioned tail → bail;
+    // output-ends-before-source → bail.
+    ['review-241-p2-dropped-end-tags-remnant', '</details>\n</details>\n\nx\n\ny\n', [1], 0],
+    ['review-241-p2-dropped-extra-end-tag-remnant', '<details>\n</details>\n</details>\n\nx\n\ny\n', [1], 0],
+    ['review-241-p2-dropped-extra-end-tag-remnant-defaults', '<details>\n</details>\n</details>\n\nx\n\ny\n', [4], 1],
+    ['review-241-p1b-cross-line-full-ref', 'see [text\nmore][foo] end\n\nx\n\ny\n\n[foo]: /url\n', [4], 0],
   ];
 
   for (const [name, payload, sizes, configIdx] of FUZZ_CASES) {

@@ -53,6 +53,10 @@ const TOKENS = [
   '>',
   '-->',
   '<?',
+  // Unicode whitespace line + a bracket left open across a line break: the
+  // v2.4.1 review P1 pair (JS `trim()` vs micromark space; per-line ref scan).
+  '\u3000\n',
+  '[x\n',
   '<![CDATA[<d>]]>',
   '<?p <b> ?>',
   '$$',

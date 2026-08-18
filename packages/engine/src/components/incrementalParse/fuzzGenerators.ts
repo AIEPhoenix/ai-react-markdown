@@ -69,8 +69,29 @@ const underCountInline = fc.constantFrom(
   'a <div x="`">b`'
 );
 
+/**
+ * Unicode whitespace that JS `trim()`/`\s` strips but micromark does NOT
+ * treat as markdown space (only U+0020 / U+0009 are). A line holding only
+ * U+3000 or U+00A0 is a paragraph lazy-continuation line for micromark, not
+ * a blank line; a fence closer followed by NBSP is not a closer. Both were
+ * invisible to every generator (v2.4.1 review P1).
+ */
+const unicodeBlankArb = fc.constantFrom(
+  'foo line\n\u3000\n\u3000\nbar joins the paragraph',
+  'nbsp line\n\u00a0\nstill one paragraph',
+  '```\ncode\n```\u00a0\nstill inside the fence\n```',
+  '$$\nx\n$$\u3000\nstill inside math\n$$'
+);
+
+/** A shortcut reference whose label spans a soft line break — micromark
+ *  allows it (the label normalizes to `l l`), while a per-line bracket
+ *  scan never sees `[…]` closed on one line (v2.4.1 review P1). Paired
+ *  with `crossLineDefLabelArb` so a later definition can retarget it. */
+const crossLineRefInline = labelArb.map((l) => `see [${l}\n${l}] end`);
+
 const inlineArb = fc.oneof(
   { weight: 4, arbitrary: plainInline },
+  { weight: 1, arbitrary: crossLineRefInline },
   { weight: 2, arbitrary: proseBracketInline },
   { weight: 2, arbitrary: codeSpanInline },
   { weight: 1, arbitrary: underCountInline }
@@ -183,9 +204,10 @@ const INVALID_DESTS = ['/u(x', '/u)', '<u<v>', '<u', '/u\\ x', ''] as const;
  *  angle destination WITH whitespace (legal — only `<`, `>` and line
  *  endings are forbidden inside the brackets). */
 const VALID_ODD_DESTS = ['/u(x)y', '<u v>'] as const;
+const crossLineDefLabelArb = labelArb.map((l) => `${l} ${l}`);
 const linkDefArb = fc
   .tuple(
-    labelArb,
+    fc.oneof({ weight: 5, arbitrary: labelArb }, { weight: 1, arbitrary: crossLineDefLabelArb }),
     fc.oneof(
       { weight: 5, arbitrary: fc.constant(null) },
       { weight: 1, arbitrary: fc.constantFrom(...VALID_ODD_DESTS) },
@@ -243,7 +265,8 @@ const hazardBlockArb = fc.oneof(
   { weight: 1, arbitrary: fencedCodeArb },
   { weight: 1, arbitrary: indentedCodeArb },
   { weight: 1, arbitrary: mathArb },
-  { weight: 1, arbitrary: defListArb }
+  { weight: 1, arbitrary: defListArb },
+  { weight: 1, arbitrary: unicodeBlankArb }
 );
 
 // --- document assembly ----------------------------------------------------------
@@ -355,4 +378,6 @@ export const COVERAGE_MARKERS: Record<string, RegExp> = {
   rawTextBlock: /<(?:script|style|textarea|pre)>/,
   proseTruncatedTag: /a<b\n/,
   reviewShapes: /<!-- c --> <\/s>|<\?x\?><details>|<\/t>\ntext|<details> <\?php|x="`">b`/,
+  unicodeBlank: /\n[\u3000\u00a0]\n|```\u00a0\n|\$\$\u3000\n/,
+  crossLineRef: /see \[(?:a|b|spec|注一)\n(?:a|b|spec|注一)\] end/,
 };

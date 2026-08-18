@@ -324,9 +324,12 @@ y$ which spans lines`;
   });
 
   test('handles code block at the very start', () => {
-    const content = '```\ncode\n```$x^2$';
-    const expected = '```\ncode\n```$$x^2$$';
+    const content = '```\ncode\n```\n$x^2$';
+    const expected = '```\ncode\n```\n$$x^2$$';
     expect(preprocessLaTeX(content)).toBe(expected);
+    // Text glued to the closing run makes it NOT a closer (CommonMark): the
+    // block stays open and the `$x^2$` is code, left untouched.
+    expect(preprocessLaTeX('```\ncode\n```$x^2$')).toBe('```\ncode\n```$x^2$');
   });
 
   test('handles code block at the very end', () => {
@@ -375,6 +378,20 @@ y$ which spans lines`;
     const content = '````\n$100\n```\nOutside $x^2$';
     const expected = '````\n$100\n```\nOutside $x^2$';
     expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('v2.4.1 review P2: a fence line with trailing text is not a closer (CommonMark)', () => {
+    // ` ``` not-a-closer ` stays inside the block; only the bare ``` closes it.
+    const content = '```\n$b$\n``` not-a-closer\n$c$\n```\nOutside $x^2$';
+    const expected = '```\n$b$\n``` not-a-closer\n$c$\n```\nOutside $$x^2$$';
+    expect(preprocessLaTeX(content)).toBe(expected);
+    // Trailing spaces/tabs after the closer are fine.
+    const spaced = '```\n$100\n```  \t\nOutside $x^2$';
+    expect(preprocessLaTeX(spaced)).toBe('```\n$100\n```  \t\nOutside $$x^2$$');
+    // A backtick fence whose info string holds a backtick is a paragraph,
+    // not an opener — the next line is live text.
+    const info = '``` js `x`\n$x^2$';
+    expect(preprocessLaTeX(info)).toBe('``` js `x`\n$$x^2$$');
   });
 
   test('handles unclosed inline code backtick gracefully', () => {

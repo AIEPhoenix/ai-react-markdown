@@ -349,6 +349,12 @@ function rebaseDualWalk(
   const position = node.position as Position | undefined;
   if (position) {
     for (const point of [position.start, position.end]) {
+      // Plugin-shaped trees (a consumer's own remark/rehype plugin emitting
+      // `{ position: {} }` or a half-built point) reached this walk and threw
+      // `Cannot read properties of undefined (reading 'offset')` out of the
+      // render path — every other splice defence against such trees bails;
+      // this one tolerates, like its "position-less subtrees" contract says.
+      if (!point) continue;
       const seg =
         point.offset !== undefined && point.offset <= maxEnd
           ? segments.find((s) => point.offset! >= s.injStart && point.offset! <= s.injEnd)
@@ -817,6 +823,16 @@ function alignPrefixCut(
   // join merges the tail's own leading text back in. Stripped children
   // after a trailing literal are out of model — bail to the full parse.
   const last = out[out.length - 1];
+  // A POSITIONED whitespace-only text at the cut's end is an html block's
+  // raw remnant with every tag dropped by parse5 (`</details>\n</details>`
+  // leaves only the line ending, positioned) — the trailing-literal branch
+  // below models non-blank literals only, and the plain-slot rebuild would
+  // push it next to a synthesized bare '\n' where the full parse merges
+  // both into one position-less `"\n\n"`. Out of model — bail (v2.4.1
+  // review P2, the neighbour of the two 2.4.1 trailing-literal fixes).
+  if (last !== undefined && last.type === 'text' && last.position !== undefined && last.value.trim() === '') {
+    return null;
+  }
   // Interior-literal gate (seed-20260838): this branch models BLOCK-FINAL
   // literals — the ones the full parse merges with the seam separator
   // (position dropped). A POSITIONED literal whose source ends BEFORE its
@@ -907,6 +923,15 @@ function alignPrefixCut(
     const v = (lastPaired as { value: string }).value;
     const lastLt = v.lastIndexOf('<');
     if (lastLt !== -1 && /^<[!?]/.test(v.slice(lastLt))) return null;
+    // Same blindness, other cause: the block's OUTPUT ends before its
+    // SOURCE does — parse5 dropped whatever followed the last element (a
+    // stray `</details>` after the real one, v2.4.1 review P2) and the line
+    // ending before it survives as a remnant the full parse merges into
+    // the seam separator (`"\n\n"`), which the rebuild below cannot see.
+    const lastOut = out[out.length - 1];
+    const outEnd = lastOut?.type === 'element' ? lastOut.position?.end?.offset : undefined;
+    const blockEnd = lastPaired.position?.end?.offset;
+    if (outEnd !== undefined && blockEnd !== undefined && outEnd < blockEnd) return null;
   }
   if (sepBuffer.length !== trailingGaps && sepBuffer.length !== trailingGaps + 1) return null;
   for (let i = 0; i < trailingGaps + seam; i++) {

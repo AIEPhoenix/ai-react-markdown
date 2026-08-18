@@ -69,6 +69,28 @@ const LITERAL_CONTENT_CLOSE_REGEX: Record<string, RegExp> = {
  * line into an indented-code-block candidate instead, which we do not treat
  * as a fence at all.
  */
+/** True when only spaces/tabs (and an optional `\r`) follow `pos` up to the
+ *  next `\n` or EOF — CommonMark's closing-fence rule. Without it
+ *  ` ``` not-a-closer ` closed the fence and inverted the open/close phase
+ *  for the rest of the document (v2.4.1 review P2). */
+function restOfLineIsBlank(content: string, pos: number): boolean {
+  for (let i = pos; i < content.length; i++) {
+    const c = content[i];
+    if (c === '\n') return true;
+    if (c !== ' ' && c !== '\t' && c !== '\r') return false;
+  }
+  return true;
+}
+
+/** A backtick fence's info string may not contain a backtick — such a line
+ *  is a paragraph (possibly holding code spans), not an opener. */
+function lineHasBacktick(content: string, pos: number): boolean {
+  for (let i = pos; i < content.length && content[i] !== '\n'; i++) {
+    if (content[i] === '`') return true;
+  }
+  return false;
+}
+
 function isAtLineStart(content: string, pos: number): boolean {
   let i = pos - 1;
   let spaces = 0;
@@ -135,7 +157,7 @@ export function splitByProtectedRegions(content: string): Segment[] {
     if (multilineStart !== -1) {
       if (char === multilineFenceMarker) {
         const runLen = getRepeatedMarkerLength(content, i, multilineFenceMarker);
-        if (runLen >= multilineFenceLength && isAtLineStart(content, i)) {
+        if (runLen >= multilineFenceLength && isAtLineStart(content, i) && restOfLineIsBlank(content, i + runLen)) {
           pushProtected(multilineStart, i + runLen);
           multilineStart = -1;
           multilineFenceMarker = null;
@@ -155,7 +177,7 @@ export function splitByProtectedRegions(content: string): Segment[] {
       const runLen = getRepeatedMarkerLength(content, i, char);
 
       // Fenced code block opener: ≥3 markers and at a valid line start.
-      if (runLen >= 3 && isAtLineStart(content, i)) {
+      if (runLen >= 3 && isAtLineStart(content, i) && !(char === '`' && lineHasBacktick(content, i + runLen))) {
         multilineStart = i;
         multilineFenceMarker = char;
         multilineFenceLength = runLen;

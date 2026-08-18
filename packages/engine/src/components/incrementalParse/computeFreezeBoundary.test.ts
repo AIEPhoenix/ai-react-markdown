@@ -143,6 +143,42 @@ describe('computeFreezeBoundary — raw HTML blockers', () => {
     expect(computeFreezeBoundary(bare, OFF)).toBe(bare.indexOf('zzz'));
   });
 
+  test('v2.4.1 review P1a: only U+0020/U+0009 make a blank line or end a fence closer', () => {
+    // A U+3000-only line is a lazy paragraph continuation: no candidate at
+    // `bar` (the old scanner froze at 8, inside the unfinished paragraph).
+    expect(computeFreezeBoundary('foo\n\u3000\n\u3000\nbar\n', OFF)).toBe(0);
+    expect(computeFreezeBoundary('foo\n\u00a0\nbar\n', OFF)).toBe(0);
+    // A real blank line still settles the paragraph.
+    const ok = 'foo\n\nbar\n';
+    expect(computeFreezeBoundary(ok, OFF)).toBe(ok.indexOf('bar'));
+    const after = 'foo\n\u3000\nbar\n\nzzz';
+    expect(computeFreezeBoundary(after, OFF)).toBe(after.indexOf('zzz'));
+    // A fence/math closer followed by NBSP is not a closer — still inside.
+    expect(computeFreezeBoundary('```\ncode\n```\u00a0\nmore\n\nzzz', OFF)).toBe(0);
+    expect(computeFreezeBoundary('$$\nx\n$$\u3000\nmore\n\nzzz', OFF)).toBe(0);
+    // Trailing ASCII whitespace after the closer is fine.
+    const closed = '```\ncode\n```  \n\nzzz';
+    expect(computeFreezeBoundary(closed, OFF)).toBe(closed.indexOf('zzz'));
+  });
+
+  test('v2.4.1 review P1b: a reference label spanning a soft line break taints', () => {
+    // The label closes on the next line: shortcut ref `[foo bar]` unresolved.
+    expect(computeFreezeBoundary('see [foo\nbar] end\n\nx\n\nzzz', OFF)).toBe(0);
+    // Three lines.
+    expect(computeFreezeBoundary('see [foo\nbar\nbaz] end\n\nx\n\nzzz', OFF)).toBe(0);
+    // A settled def releases it.
+    const settled = 'see [foo\nbar] end\n\n[foo bar]: /u\n\nzzz';
+    expect(computeFreezeBoundary(settled, OFF)).toBe(settled.indexOf('zzz'));
+    // A NEW `[` before the closer kills the pending label (`[foo\n[bar]`
+    // → only `[bar]` is a ref); the paragraph's blank line clears an
+    // unclosed one, so `see [foo\nbar end` taints nothing.
+    const stray = 'see [foo\nbar end\n\nx\n\nzzz';
+    expect(computeFreezeBoundary(stray, OFF)).toBe(stray.indexOf('zzz'));
+    // Inline link across the break is not a reference.
+    const link = 'see [foo\nbar](/u) end\n\nx\n\nzzz';
+    expect(computeFreezeBoundary(link, OFF)).toBe(link.indexOf('zzz'));
+  });
+
   test('void and self-closing tags do not block', () => {
     const text = 'an image <img src="x"> and <br/> here\n\ntail';
     expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('tail'));

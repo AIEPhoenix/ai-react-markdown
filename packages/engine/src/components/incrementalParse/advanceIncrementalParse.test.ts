@@ -136,3 +136,31 @@ describe('advanceIncrementalParse — gates', () => {
     expect(r.boundary).toBeGreaterThan(0);
   });
 });
+
+describe('rebaseTreeDual — plugin-shaped trees (v2.4.1 review P2)', () => {
+  test('tolerates a position with a missing start/end point instead of throwing', async () => {
+    const { rebaseTreeDual, rebaseTree } = await import('./spliceParse');
+    // A consumer plugin that emits `position: {}` or a half-built point: the
+    // walk used to throw `Cannot read properties of undefined (reading
+    // 'offset')` out of the render path (fuzz on a gfm+math+raw chain).
+    const tree = {
+      type: 'root',
+      children: [
+        { type: 'text', value: 'a', position: {} },
+        { type: 'text', value: 'b', position: { end: { line: 1, column: 2, offset: 1 } } },
+        {
+          type: 'text',
+          value: 'c',
+          position: { start: { line: 1, column: 1, offset: 0 }, end: { line: 1, column: 2, offset: 1 } },
+        },
+      ],
+    } as never;
+    expect(() => rebaseTreeDual(tree, [], 10, 2)).not.toThrow();
+    expect(() => rebaseTree(tree, 10, 2)).not.toThrow();
+    const kids = (tree as { children: { position?: { start?: { offset: number }; end?: { offset: number } } }[] })
+      .children;
+    expect(kids[1].position?.end?.offset).toBe(21);
+    expect(kids[2].position?.start?.offset).toBe(20);
+    expect(kids[2].position?.end?.offset).toBe(21);
+  });
+});
