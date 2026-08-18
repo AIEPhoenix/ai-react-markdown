@@ -20,7 +20,7 @@
 import type { Element as HastElement, Root as HastRoot, RootContent as HastChild } from 'hast';
 import type { Root as MdastRoot, RootContent as MdastContent, Nodes as MdastNodes } from 'mdast';
 import type { ReactNode } from 'react';
-import { visit } from 'unist-util-visit';
+import { SKIP, visit } from 'unist-util-visit';
 import { renderHastSubtree, type Options } from './markdown';
 import { isFootnoteSection, normalizeId } from '@ai-react-markdown/engine';
 import type { Registry } from '@ai-react-markdown/engine';
@@ -401,11 +401,40 @@ export function buildBlocks(mdast: MdastRoot, hast: HastRoot, source: string): B
   const blocks: BlockInfo[] = [];
   const blockHasts: HastElement[] = [];
   let synthetic: HastElement | undefined;
-  // Mirror of the engine's per-chunk footnote counter (document order over
-  // body blocks; refs inside footnote definitions render in the footer,
-  // after every body ref, so they never shift a body block's numbers).
-  const chunkRefCounts = new Map<string, number>();
-  const chunkRefRank = new Map<string, number>();
+  // Mirror of the engine's per-chunk footnote counter (customMdastHandlers:
+  // one bump per footnoteReference in mdast-util-to-hast's preorder walk):
+  // computed ONCE over the mdast in document order, per ref NODE, so the
+  // hast-driven block loop below cannot skew it — a range-fallback block
+  // resolves several hast siblings to one mdast node (its refs would be
+  // counted twice), and refs inside a footnote definition are rendered by
+  // the footer AFTER every body ref (never in a body block) — skipped.
+  const refLocalCtx = new Map<MdastNodes, readonly [prior: number, rank: number]>();
+  {
+    const counts = new Map<string, number>();
+    const ranks = new Map<string, number>();
+    const rankOf = (id: string): number => {
+      let rank = ranks.get(id);
+      if (rank === undefined) {
+        rank = ranks.size;
+        ranks.set(id, rank);
+      }
+      return rank;
+    };
+    visit(mdast, (n) => {
+      if (n.type === 'footnoteDefinition') {
+        // A definition met before the label's first ref can enter the
+        // engine's footnoteOrder first (preserveOrphan) — it takes part in
+        // the first-appearance rank; its body refs are footer-rendered.
+        rankOf(normalizeId(String(n.identifier)));
+        return SKIP;
+      }
+      if (n.type !== 'footnoteReference') return;
+      const id = normalizeId(String(n.identifier));
+      const prior = counts.get(id) ?? 0;
+      refLocalCtx.set(n, [prior, rankOf(id)]);
+      counts.set(id, prior + 1);
+    });
+  }
 
   for (let i = 0; i < hast.children.length; i++) {
     const hastChild = hast.children[i];
@@ -471,34 +500,26 @@ export function buildBlocks(mdast: MdastRoot, hast: HastRoot, source: string): B
     const linkRefLabels: string[] = [];
     const imageRefLabels: string[] = [];
     const footnoteDefLabels: string[] = [];
+    const local: [string, number, number][] = [];
     visit(mdastNode, (n) => {
       if (!TAINT_TYPES.has(n.type)) return;
       hasReference = true;
       const id = 'identifier' in n ? normalizeId(String(n.identifier)) : null;
       if (id === null) return;
-      if (n.type === 'footnoteReference') footnoteRefLabels.push(id);
-      else if (n.type === 'linkReference') linkRefLabels.push(id);
+      if (n.type === 'footnoteReference') {
+        footnoteRefLabels.push(id);
+        // Refs inside a nested footnote definition have no entry (footer-
+        // rendered, not part of this block's output).
+        const ctx = refLocalCtx.get(n);
+        if (ctx) local.push([id, ctx[0], ctx[1]]);
+      } else if (n.type === 'linkReference') linkRefLabels.push(id);
       else if (n.type === 'imageReference') imageRefLabels.push(id);
       else if (n.type === 'footnoteDefinition') footnoteDefLabels.push(id);
       // 'definition' nodes don't carry per-block fingerprint significance
       // (they're metadata, not visible); intentionally not bucketed.
     });
-    let footnoteRefLocalCtx: string | undefined;
-    if (footnoteRefLabels.length > 0) {
-      const local: [string, number, number][] = [];
-      for (const id of footnoteRefLabels) {
-        const prior = chunkRefCounts.get(id) ?? 0;
-        let rank = chunkRefRank.get(id);
-        if (rank === undefined) {
-          rank = chunkRefRank.size;
-          chunkRefRank.set(id, rank);
-        }
-        local.push([id, prior, rank]);
-        chunkRefCounts.set(id, prior + 1);
-      }
-      // JSON-encoded: labels may hold any separator character.
-      footnoteRefLocalCtx = JSON.stringify(local);
-    }
+    // JSON-encoded: labels may hold any separator character.
+    const footnoteRefLocalCtx = local.length > 0 ? JSON.stringify(local) : undefined;
 
     const mdastPos = mdastNode.position;
     if (!mdastPos || mdastPos.start?.offset === undefined || mdastPos.end?.offset === undefined) {

@@ -131,6 +131,69 @@ describe('computeFreezeBoundary — raw HTML blockers', () => {
     expect(computeFreezeBoundary('<div>\ncontent\n</div\n\ntail\n\nzzz', OFF)).toBe(0);
   });
 
+  test('a stray table-part tag poisons the candidates from it on (soak 2026-08-19 — direction battery)', () => {
+    // `<td>` outside a table re-routes how parse5 builds every LATER GFM
+    // table (v2.4.2 review P1-2); the splice already bails on it in the
+    // frozen prefix — the scanner now refuses candidates past the tag, so
+    // a `<td>` prefix cannot freeze a table whose shape depends on the tail
+    // and no per-frame work is wasted on a splice that will bail.
+    expect(computeFreezeBoundary('<td>s</td>\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\n<!-- a closed com', OFF)).toBe(0);
+    const before = 'para one\n\npara two\n\n<td>s</td>\n\n| a |\n| - |\n\nzzz';
+    expect(computeFreezeBoundary(before, OFF)).toBe(before.indexOf('<td>'));
+    // Inline, void (`<col>`) and truncated forms too.
+    for (const doc of [
+      'x <tr> y\n\n| a |\n| - |\n\nzzz',
+      '<col>\n\n| a |\n| - |\n\nzzz',
+      '<td\n\n| a |\n| - |\n\nzzz',
+    ]) {
+      expect(computeFreezeBoundary(doc, OFF), doc).toBe(0);
+    }
+  });
+
+  test('oracle review of 2.4.4: after a line ending inside a tag, the next line up to the first `>` is attribute garbage', () => {
+    // parse5's tokenizer is still in `</div` (or `<div`, or `<br`) at the
+    // line ending: the `</div>` on the next line completes THAT tag, it
+    // does not close the outer element (pre-existing under-block).
+    for (const doc of [
+      '<div>\n<div>\n</div\n</div>\n\ntail\n\nzzz',
+      '<details>\n<summary>\n</summary\n</details>\n\ntail\n\nzzz',
+      '<div>\n<br\n</div>\n\ntail\n\nzzz',
+      '<div>\n</br\n</div>\n\ntail\n\nzzz',
+      '<div>\n<b class="x"\n</div>\n\ntail\n\nzzz',
+      // A quoted `>` before the real one: unknowable — poisoned.
+      '<div>\n<b\ntitle=">"\n</div>\n\ntail\n\nzzz',
+    ]) {
+      expect(computeFreezeBoundary(doc, OFF), doc).toBe(0);
+    }
+    // Only the FIRST pending close completes at the `>` (`</div` on the
+    // garbage line is garbage): span closes, div stays open.
+    expect(computeFreezeBoundary('<span>\n<div>\n</span\n</div\n>\n\ntail\n\nzzz', OFF)).toBe(0);
+    // Text AFTER the completing `>` is scanned normally: `<b>` there is a
+    // real open.
+    expect(computeFreezeBoundary('<div>\n</div\n><b>\n\ntail\n\nzzz', OFF)).toBe(0);
+    // The garbage model is gated on a REAL html-flow start (type 6/1/7):
+    // `</i` / `<br` / `</textarea` at line start are PARAGRAPHS to
+    // micromark, so the next line's `<div>` (type 6, interrupts) and `<!--`
+    // (type 2) are real blocks and stay counted (oracle re-check: gating on
+    // the looser htmlFlowSinceBlank swallowed them — a new under-block).
+    for (const doc of [
+      '</i\n<div>\n\ntail\n\nzzz',
+      '<br\n<div>\n\ntail\n\nzzz',
+      '</span\n<div>\n\ntail\n\nzzz',
+      '</textarea\n<details>\n\ntail\n\nzzz',
+      '</i\n<!-- c\n<div\n\ntail\n\nzzz',
+      '</textarea\n<!-- c\n- li\n\ntail\n\nzzz',
+      // A real run inside a list item, then a DE-INDENTED line: the item
+      // (and its html block) may have ended there — hast-util-raw resets
+      // the tokenizer at the container boundary and the `<div>` is a real
+      // start tag; poisoned (over-block either way — oracle 3rd pass).
+      '- a\n  </div\n<div>\n\ntail para\n\nmore.\n\nzzz',
+      '1. a\n   </div\n<div>\n\ntail para\n\nmore.\n\nzzz',
+    ]) {
+      expect(computeFreezeBoundary(doc, OFF), doc).toBe(0);
+    }
+  });
+
   test('v2.4.0 review R2: a truncated tag is not reverted when the raw line closes it inside a masked span, and its seam is still checked', () => {
     // (a) `<div x="\`">b\``: micromark parses the tag first (the backtick
     // is inside a quoted attribute), so the code-span mask hid the tag's

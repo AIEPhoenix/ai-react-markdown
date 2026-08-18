@@ -627,6 +627,42 @@ describe('splice equivalence — adversarial fixtures', () => {
     }
   });
 
+  test('oracle review of 2.4.4: a line ending inside a tag makes the next line garbage up to the first `>` (pre-existing under-block)', () => {
+    // parse5 is still in `</div` / `<div` / `<br` at the line ending — the
+    // real-looking `</div>` on the next line completes THAT tag and the
+    // outer element stays open; the scanner froze past it. 1-char slices:
+    // the hast straddle bail that hid it at coarser chunkings needs the
+    // previous frame's tree to have swallowed already.
+    for (const [name, payload] of [
+      ['garbage-close-close', '<div>\n<div>\n</div\n</div>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['garbage-details', '<details>\n<summary>\n</summary\n</details>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['garbage-def', '<div>\n<span>\n</span\n</div>\n\n[a]: /u\n\nuse [a]\n\nzzz end.\n'],
+      ['garbage-void-open', '<div>\n<br\n</div>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['garbage-void-close', '<div>\n</br\n</div>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['garbage-two-pending', '<span>\n<div>\n</span\n</div\n>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['garbage-open-attr', '<div>\n<b class="x"\n</div>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['garbage-quoted-gt', '<div>\n<b\ntitle=">"\n</div>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['garbage-then-real', '<div>\n</div\n><b>x</b>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['garbage-stray-after', '<div>\n</div\n></div>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      // NOT real html-flow starts (paragraph lines to micromark): the next
+      // line's `<div>` / `<!--` are real blocks — the garbage model must
+      // not swallow them (oracle re-check).
+      ['nonreal-comment-list', '</textarea\n<!-- c\n- li\n\ntail one.\n\ntail two.\n\nzzz end.\n'],
+      ['nonreal-comment-div', '</i\n<!-- c\n<div\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['nonreal-div', '</i\n<div>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['nonreal-void-div', '<br\n<div>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['nonreal-details', '</textarea\n<details>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      // Type-7 start after a paragraph line cannot interrupt it: not real.
+      ['nonreal-type7-after-para', 'para\n<span>\n<div>\n</span\n</div>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      // De-indent out of a list item's html block: the `<div>` is real.
+      ['deindent-list', '- a\n  </div\n<div>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['deindent-ol', '1. a\n   </div\n<div>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['same-indent-list', '- a\n  </div\n  <div>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+    ] as const) {
+      for (const size of [1, 4, 7]) assertStreamEquivalence(name, chunkSnapshots(payload, size), BASELINE);
+    }
+  });
+
   test('duplicate label: prefix def wins over a later tail def (first-def-wins)', () => {
     const payload =
       '[a]: https://first.example\n\nuse [text][a] here.\n\nfiller paragraph.\n\n[a]: https://second.example\n\ntail.\n';

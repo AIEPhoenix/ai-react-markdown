@@ -102,7 +102,14 @@ describe('crossChunkPlaceholders', () => {
     expect(html).not.toContain('data-footnote-ref');
   });
 
-  test('FootnoteSupNumber waits until the chunk occurrence is registered', () => {
+  test('FootnoteSupNumber shows the global number while its own occurrence is still unregistered', () => {
+    // The label is numbered (another chunk contributed it) but THIS chunk's
+    // occurrence is not in the registry yet — contribute effect pending, or
+    // permanently for a ref inside a footnote definition body (contributions
+    // skip definition bodies). It used to render nothing (2026-08-19 review;
+    // oracle F2): the number is right either way, so show it — without an
+    // id (no footer backref will ever target this ref, and a chunk-local id
+    // would collide with another chunk's real `fnref-x` mark).
     const html = renderToString(
       <WithProvider documentId="doc">
         <SeedRegistryMidFlight>
@@ -110,9 +117,20 @@ describe('crossChunkPlaceholders', () => {
         </SeedRegistryMidFlight>
       </WithProvider>
     );
-    expect(html).not.toContain('<sup');
-    expect(html).not.toContain('data-footnote-ref');
+    expect(html).toContain('data-footnote-ref');
     expect(html).not.toContain('fnref-x');
+    expect(html).toContain('>1</a>');
+    const second = renderToString(
+      <WithProvider documentId="doc">
+        <SeedRegistryMidFlight>
+          <FootnoteSupNumber label="X" localOccurrence={2} localNumber={4} />
+        </SeedRegistryMidFlight>
+      </WithProvider>
+    );
+    // Global number, not the chunk-local one.
+    expect(second).not.toContain('fnref-x');
+    expect(second).toContain('>1</a>');
+    expect(second).not.toContain('>4</a>');
   });
 
   test('CrossChunkLink fallback flattens rich children to plain text (no [object Object])', () => {

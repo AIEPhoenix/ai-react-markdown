@@ -201,8 +201,32 @@ const treeQuirkArb = fc.constantFrom(
   '<col>'
 );
 
+/** Cross-line tag garbage (oracle review of 2.4.4, pre-existing under-
+ *  block): a line ending inside a tag leaves parse5's tokenizer in it, so a
+ *  REAL-looking end tag on the next line is attribute garbage up to the
+ *  first `>` — the outer element stays open. Open / close / void openers,
+ *  a quoted `>`, and the completing `>` on its own line. */
+const crossLineTagGarbageArb = fc.constantFrom(
+  '<div>\n<div>\n</div\n</div>\n\ntail para',
+  '<details>\n<summary>\n</summary\n</details>\n\ntail para',
+  '<div>\n<br\n</div>\n\ntail para',
+  '<div>\n</br\n</div>\n\ntail para',
+  '<span>\n<div>\n</span\n</div\n>\n\ntail para',
+  '<div>\ncontent\n</div\n>\n\ntail para',
+  '<div>\n<b\ntitle=">"\n</div>\n\ntail para',
+  '<div>\n<b class="x"\n</div>\n\ntail para',
+  // NOT real html-flow starts (paragraphs): the next line's block is real.
+  '</i\n<div>\n\ntail para',
+  '<br\n<div>\n\ntail para',
+  '</textarea\n<!-- c\n- li\n\ntail para',
+  '</i\n<!-- c\n<div\n\ntail para',
+  // De-indent out of a list item's html block: the `<div>` is real.
+  '- a\n  </div\n<div>\n\ntail para'
+);
+
 const rawHtmlArb = fc.oneof(
   { weight: 1, arbitrary: treeQuirkArb },
+  { weight: 2, arbitrary: crossLineTagGarbageArb },
   { weight: 2, arbitrary: fc.constant('<details>\n<summary>t</summary>\nbody prose\n</details>') },
   // APPROX #2 — cross-line self-closing tag stays an over-blocking opener.
   { weight: 2, arbitrary: fc.constant('<embed\n  src="x"\n/>') },
@@ -419,6 +443,8 @@ export const COVERAGE_MARKERS: Record<string, RegExp> = {
   rawTextBlock: /<(?:script|style|textarea|pre)>/,
   proseTruncatedTag: /a<b\n/,
   proseTruncatedClose: /<\/b\n/,
+  crossLineTagGarbage:
+    /<\/(?:div|summary|br|span)\n<\/(?:div|details)>|<br\n<\/div>|title=">"\n|class="x"\n<\/div>|<\/i\n<|<br\n<div>|<\/textarea\n<!--|- a\n {2}<\/div\n<div>/,
   reviewShapes: /<!-- c --> <\/s>|<\?x\?><details>|<\/t>\ntext|<details> <\?php|x="`">b`/,
   treeQuirks: /<\/br>|<\/p>|<td>s<\/td>\n\n|<col>/,
   unicodeBlank: /\n[\u3000\u00a0]\n|```\u00a0\n|\$\$\u3000\n|"t"\u00a0|\u3000<!--/,

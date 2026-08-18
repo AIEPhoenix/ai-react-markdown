@@ -96,14 +96,7 @@ export function FootnoteSupNumber({
     registry && chunkSym && localOccurrence !== null && num !== null
       ? registry.globalOccurrenceForRef(chunkSym, label, localOccurrence)
       : null;
-  // A label another chunk already numbered (`num` known) but whose OWN
-  // occurrence this chunk has not registered yet (allocation committed,
-  // contribute effect pending — a later-mounted chunk repeating the label):
-  // same transient as "no global number", same standalone fallback below,
-  // instead of a null that blanks the mark for a frame or two
-  // (2026-08-19 review P3).
-  const ownOccurrencePending = num !== null && localOccurrence !== null && chunkSym !== null && globalOcc === null;
-  if (num === null || ownOccurrencePending) {
+  if (num === null) {
     // No global number yet — server render, or the client's first frame
     // before the contribute effect. Render the STANDALONE mark (local
     // number, `-N` by local occurrence) so it lines up with the local
@@ -135,10 +128,22 @@ export function FootnoteSupNumber({
   // Append `-N` when this is the 2nd+ occurrence of the same label across
   // the document. The first occurrence keeps the bare `fnref-${id}` so a
   // ref-once-only doc renders byte-identical to the pre-multi-ref design.
+  //
+  // `globalOcc === null` with `num` known: the label is numbered but THIS
+  // occurrence is not in the registry — transiently (a later-mounted chunk
+  // repeating the label, contribute effect pending) or permanently (a ref
+  // inside a footnote DEFINITION body: the engine's per-chunk counter bumps
+  // it, but contributions skip definition bodies). Both used to render
+  // nothing (2026-08-19 review P3, oracle F2). The number is right either
+  // way — show it, WITHOUT an id: the registry does not know this ref, so
+  // no footer backref will ever point at it, and a chunk-local id would
+  // collide with another chunk's real `fnref-<label>` mark (oracle re-check).
   const occSuffix = globalOcc !== null && globalOcc > 1 ? `-${globalOcc}` : '';
+  const markId =
+    globalOcc !== null || localOccurrence === null ? `${clobberPrefix}fnref-${safeId}${occSuffix}` : undefined;
   return (
     <sup>
-      <a href={`#${clobberPrefix}fn-${safeId}`} id={`${clobberPrefix}fnref-${safeId}${occSuffix}`} data-footnote-ref="">
+      <a href={`#${clobberPrefix}fn-${safeId}`} id={markId} data-footnote-ref="">
         {num}
       </a>
     </sup>

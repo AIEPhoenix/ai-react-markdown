@@ -127,12 +127,13 @@ const handleViewSVGInNewWindow = (svgElement: SVGElement | null | undefined, isD
   // output, but a host that flips the shared singleton to 'loose' (see the
   // module note above) would hand that document a live `opener` — cut it
   // (2026-08-19 review). Costs nothing in the strict case.
-  const win = window.open(url, '_blank', 'noopener');
-  // Revoke either way: when a popup blocker returns null nobody will ever
-  // load the URL, and leaving it alive leaks the Blob until page unload
-  // (2026-08 project review, pkg-small-09). The opened window needs the
-  // grace period to finish loading it.
-  setTimeout(() => URL.revokeObjectURL(url), win ? 5000 : 0);
+  window.open(url, '_blank', 'noopener');
+  // Revoke either way (a blocked popup would otherwise leak the Blob until
+  // page unload — 2026-08 project review, pkg-small-09). With `noopener`
+  // `window.open` returns null even on success, so the blocked case cannot
+  // be told apart any more: always give the opened document the grace
+  // period to finish loading before the URL goes away.
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
 };
 
 /**

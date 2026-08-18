@@ -122,6 +122,24 @@ import { normalizeIdentifier } from 'micromark-util-normalize-identifier';
 
 /** CommonMark type-6 block tag names (micromark's own list), lowercase. */
 const TYPE6_NAMES = new Set(htmlBlockNames);
+/** Table-part tag names: a stray one outside a table re-routes how parse5
+ *  builds every LATER GFM table (cell text foster-parented to the root —
+ *  v2.4.2 review P1-2; the splice bails on any such tag in the frozen
+ *  prefix). Poisoning candidates from the tag on at the scanner saves the
+ *  per-frame scan + tail parse + splice attempt that the bail would throw
+ *  away, and keeps the direction battery honest (soak 2026-08-19: a
+ *  `<td>` prefix froze a table whose shape depended on the tail). Same
+ *  list as spliceParse's TABLE_PART_TAG_RE. */
+const TABLE_PART_NAMES = new Set(['td', 'th', 'tr', 'tbody', 'thead', 'tfoot', 'caption', 'col', 'colgroup']);
+/** Type-1 (raw text) block start names — start tags only. */
+const TYPE1_NAMES = new Set(['script', 'pre', 'style', 'textarea']);
+/** Type-6 start: `<`/`</` + name + (whitespace | `>` | `/>` | EOL). */
+const TYPE6_START_RE = /^<\/?([A-Za-z][A-Za-z0-9-]*)(?:[ \t\r]|\/?>|$)/;
+/** Type-1 start: an OPEN tag of a raw-text name + (whitespace | `>` | EOL). */
+const TYPE1_START_RE = /^<(script|pre|style|textarea)(?:[ \t\r]|>|$)/i;
+/** Type-7 start (approximate, no quoted-`>` support): the whole line is
+ *  one complete open or closing tag followed only by whitespace. */
+const TYPE7_LINE_RE = /^<(\/?)([A-Za-z][A-Za-z0-9-]*)(?:[ \t\r][^>]*|\/)?>[ \t\r]*$/;
 
 export interface FreezeBoundaryOptions {
   /** Whether remark-definition-list is in the active plugin chain (the
@@ -285,9 +303,40 @@ export interface FreezeScanCheckpoint {
    *  applied only when a later line of the run brings the `>` (parse5
    *  completes the end tag; micromark's block ends at the blank anyway);
    *  dropped unapplied at the blank (element stays counted — over-block).
-   *  Paragraph-context truncated closes are never pended: a line-start `>`
-   *  is a blockquote to micromark, so `</b\n>` cannot complete inline. */
+   *  Paragraph-context truncated closes are never pended: a `>` at block
+   *  indent on the next line is a blockquote to micromark, and the one
+   *  shape that would complete the inline close (`</b\n    >`, a 4+-space
+   *  lazy continuation) is not modelled — the element stays counted,
+   *  over-block. */
   pendingTruncatedCloses: string[];
+  /** An html-flow line ended inside a tag (`<div`, `</div`, `<br` — open,
+   *  close or void, with or without attributes): parse5's tokenizer is
+   *  still in that tag, so on the following lines everything up to the
+   *  FIRST `>` is attribute garbage — `</div>` there does NOT close
+   *  anything (oracle review of 2.4.4: `<div>\n<div>\n</div\n</div>` froze
+   *  past the still-open outer div; pre-existing, 1-char slices). While
+   *  set: a line without `>` gets no tag scan at all; the line with the
+   *  `>` completes the pending close (if any), then only its text after
+   *  that `>` is scanned. Cleared there and at the blank line. */
+  tagAcrossLines: boolean;
+  /** Indent of the line that set `tagAcrossLines`. A following line that
+   *  DE-INDENTS below it may have left the container (a list item's html
+   *  block ends there; hast-util-raw resets the tokenizer at the li/ul
+   *  boundary, so a `<div>` on that line is a real start tag, not garbage)
+   *  — or may still be the same html block (root-level `  </div\n</div>`,
+   *  still garbage). Unknowable here → poison (oracle 3rd pass). */
+  tagAcrossLinesIndent: number;
+  /** The html-flow run since the last blank REALLY started as a micromark
+   *  html block (type 6 / type 1 / a paragraph-not-interrupting type 7) —
+   *  as opposed to `htmlFlowSinceBlank`, which any `<tag` / `</tag` line
+   *  start sets (over-approximation, fine for its over-blocking uses). Only
+   *  in a real run are the bytes raw to parse5 across line endings; the
+   *  cross-line-tag garbage model (`tagAcrossLines`, pended closes) is
+   *  gated on it — in a paragraph starting `</i` the next line's `<div>` /
+   *  `<!--` are REAL blocks (oracle re-check of 2.4.4: gating on
+   *  htmlFlowSinceBlank swallowed them — a new under-block). Sticky to the
+   *  blank; a type 6/1 start on a later line of a non-real run promotes it. */
+  htmlFlowReal: boolean;
 }
 
 const VOID_TAGS = new Set([
@@ -493,6 +542,9 @@ function freshCheckpoint(defListEnabled: boolean, mathFlow: boolean, referenceTa
     phasePoisonedAt: Infinity,
     pendingTruncatedTags: [],
     pendingTruncatedCloses: [],
+    tagAcrossLines: false,
+    tagAcrossLinesIndent: 0,
+    htmlFlowReal: false,
   };
 }
 
@@ -953,6 +1005,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     // Truncated closes that never got their `>` stay UNAPPLIED (see the
     // field doc): the element remains counted — over-block, never under.
     cp.pendingTruncatedCloses = [];
+    cp.tagAcrossLines = false;
     cp.blankRun += 1;
     cp.lastBlankStart = ln.start;
     cp.candidates.push({
@@ -966,6 +1019,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     cp.paragraphHasUnpairedRun = false;
     cp.openBracket = null;
     cp.htmlFlowSinceBlank = false;
+    cp.htmlFlowReal = false;
     cp.prevLineBlank = true;
     cp.prevLineWasText = false;
     cp.prevLineWasValidDef = false;
@@ -1023,6 +1077,20 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
   if (tagStart) {
     cp.htmlFlowSinceBlank = true;
     if (!TYPE6_NAMES.has(tagStart[1].toLowerCase())) cp.hazardVerdict = true;
+    if (!cp.htmlFlowReal) {
+      const t = mdTrimStart(ln.text);
+      const t6 = TYPE6_START_RE.exec(t);
+      const t7 = TYPE7_LINE_RE.exec(t);
+      if (
+        (t6 !== null && TYPE6_NAMES.has(t6[1].toLowerCase())) ||
+        TYPE1_START_RE.test(t) ||
+        // Type 7 cannot interrupt a paragraph, and excludes the raw-text
+        // names (those are type 1 as start tags, paragraph as end tags).
+        (t7 !== null && !cp.prevLineWasText && !TYPE1_NAMES.has(t7[2].toLowerCase()))
+      ) {
+        cp.htmlFlowReal = true;
+      }
+    }
   }
   const inRawText = cp.htmlFlowSinceBlank || rawOpenAtLineStart;
   // A type 2-5 html block (`<!--` / `<?` / `<!X` / `<![CDATA[`) STARTING on
@@ -1255,7 +1323,31 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
   for (const [from, to] of rawSpans) {
     tagText = tagText.slice(0, from) + ' '.repeat(to - from) + tagText.slice(to);
   }
-  {
+  // Inside a tag that started on an earlier line of this html-flow run (see
+  // `tagAcrossLines`): up to the first RAW `>` the bytes are attribute
+  // garbage to parse5 — no tags, no comments, no truncation there.
+  let skipTagScan = false;
+  if (cp.tagAcrossLines) {
+    // De-indent below the truncated line: possibly out of the container
+    // (see `tagAcrossLinesIndent`) — over-block either way.
+    if (ln.indent < cp.tagAcrossLinesIndent) poisonRawDivergence();
+    const gt = ln.text.indexOf('>');
+    if (gt === -1) {
+      skipTagScan = true;
+    } else {
+      // A quote before the `>`: parse5 is inside an attribute value where
+      // `>` does not end the tag — which `>` really ends it is unknowable
+      // here. Poison the candidates from this line on (over-block).
+      if (/["']/.test(ln.text.slice(0, gt))) poisonRawDivergence();
+      // The `>` completes the pending truncated CLOSE (parse5 emits the end
+      // tag there); a truncated OPEN was already counted at its line.
+      for (const tag of cp.pendingTruncatedCloses) applyTag(tag, true);
+      cp.pendingTruncatedCloses = [];
+      cp.tagAcrossLines = false;
+      tagText = ' '.repeat(gt + 1) + tagText.slice(gt + 1);
+    }
+  }
+  if (!skipTagScan) {
     TAG_OR_COMMENT_RE.lastIndex = 0;
     let m: RegExpExecArray | null;
     let lastCommentOpenerIdx = -1;
@@ -1299,6 +1391,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
       if (cp.commentOpen) continue;
       const closing = m[1] === '/';
       const tag = m[2].toLowerCase();
+      if (TABLE_PART_NAMES.has(tag)) cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start + m.index);
       const selfClosing = m[3] !== undefined && /\/\s*$/.test(m[3]);
       if (VOID_TAGS.has(tag) || selfClosing) continue;
       applyTag(tag, closing);
@@ -1337,6 +1430,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
         if (startMasked || wholeVisible || inRaw(mr.index) || cp.commentOpen) continue;
         const closing = mr[1] === '/';
         const tag = mr[2].toLowerCase();
+        if (TABLE_PART_NAMES.has(tag)) cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start + mr.index);
         const selfClosing = mr[3] !== undefined && /\/\s*$/.test(mr[3]);
         if (VOID_TAGS.has(tag) || selfClosing) continue;
         applyTag(tag, closing);
@@ -1350,13 +1444,6 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     if (cp.pendingTruncatedTags.length > 0 && ln.text.includes('>')) {
       cp.pendingTruncatedTags = [];
     }
-    // …and completes every pending truncated CLOSE of this html-flow run:
-    // parse5 emits the end tag at that `>`. Applied here, not at the
-    // truncated line (2026-08-19 review P1).
-    if (cp.pendingTruncatedCloses.length > 0 && ln.text.includes('>')) {
-      for (const tag of cp.pendingTruncatedCloses) applyTag(tag, true);
-      cp.pendingTruncatedCloses = [];
-    }
     // Line-truncated tag start — anchor on the LAST `<` of the line.
     if (!cp.commentOpen) {
       const lastLt = tagText.lastIndexOf('<');
@@ -1365,14 +1452,23 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
         if (m2) {
           const closing = m2[1] === '/';
           const tag = m2[2].toLowerCase();
+          if (TABLE_PART_NAMES.has(tag)) cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start + lastLt);
+          // In a REAL html-flow run parse5 stays inside this tag across the
+          // line ending — open, close or void alike (`<br` + `</div>` on the
+          // next line: the `</div>` is garbage). See `tagAcrossLines`.
+          if (cp.htmlFlowReal) {
+            cp.tagAcrossLines = true;
+            cp.tagAcrossLinesIndent = ln.indent;
+          }
           if (closing) {
             // Never counted on the spot (2026-08-19 review P1: `para </style`
             // zeroed the balance while `<style>` was still open in BOTH
             // grammars — the fuzz corpus had truncated opens only). In an
             // html-flow run the `>` may still arrive on a later line of the
-            // run — pend it; in paragraph context it cannot complete
-            // (line-start `>` is a blockquote), so it is prose: nothing.
-            if (!VOID_TAGS.has(tag) && inRawText) cp.pendingTruncatedCloses.push(tag);
+            // run — pend it; in paragraph context a block-indent `>` is a
+            // blockquote (the 4+-space continuation shape is not modelled:
+            // over-block), so it is treated as prose: nothing.
+            if (!VOID_TAGS.has(tag) && cp.htmlFlowReal) cp.pendingTruncatedCloses.push(tag);
           } else if (!VOID_TAGS.has(tag)) {
             applyTag(tag, closing);
             // Only a PARAGRAPH-line truncation can turn out to be prose. In an

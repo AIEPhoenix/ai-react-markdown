@@ -124,6 +124,9 @@ function findClosingBacktickRun(content: string, start: number, n: number): numb
       // lone backticks in different paragraphs are literal, and pairing
       // them would shield every `$…$` in between from conversion
       // (2026-08-19 review P2-2 — inline sibling of the v2.4.1 fence fix).
+      // Only `\n`-terminated blank lines are recognized (a lone-`\r` blank
+      // is not — conservative: the span still pairs there, both pipelines
+      // agree, math between stays unconverted as before).
       let j = i + 1;
       while (j < content.length && (content[j] === ' ' || content[j] === '\t' || content[j] === '\r')) j += 1;
       if (j >= content.length || content[j] === '\n') return -1;

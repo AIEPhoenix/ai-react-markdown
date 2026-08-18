@@ -910,6 +910,11 @@ describe('buildBlocks per-block taintLabels (v6)', () => {
     );
     // Blocks without refs carry no local ctx.
     expect(build('plain\n\n[a]: /u\n\n[x][a]').blocks[0].taintLabels).toBeUndefined();
+    // A ref inside a (list-nested) footnote definition is footer-rendered
+    // AFTER every body ref — it must not shift a later body block's count.
+    const nested = build('- item\n\n  [^x]: def with [^y] ref\n\nlater [^y]\n\n[^y]: y');
+    const later = nested.blocks.find((b) => b.raw.startsWith('later'))!;
+    expect(later.taintLabels!.footnoteRefLocalCtx).toBe(JSON.stringify([['Y', 0, 1]])); // rank 1: the nested [^x] definition took rank 0
   });
 
   test('non-TAINT block has taintLabels undefined', () => {
