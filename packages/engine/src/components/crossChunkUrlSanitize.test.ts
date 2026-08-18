@@ -171,6 +171,16 @@ describe('sanitizeCrossChunkUrl — missing schema entries', () => {
       'https://example.com/x'
     );
   });
+
+  test('an EXPLICIT `protocols: undefined` key means no restriction, like upstream (v2.4.2 review P3-4)', () => {
+    // hast-util-sanitize's `{...defaultSchema, ...options}` keeps the own
+    // undefined key, and its lookup then treats "no protocols" as allow-all.
+    const allowAll = (url: string) => url;
+    const explicitUndefined = { tagNames: ['p'], protocols: undefined } as unknown as Parameters<
+      typeof sanitizeCrossChunkUrl
+    >[4];
+    expect(sanitizeCrossChunkUrl('myapp://thing', 'href', 'a', allowAll, explicitUndefined)).toBe('myapp://thing');
+  });
 });
 
 describe('sanitizeCrossChunkUrl — case-sensitive protocol comparison (upstream parity)', () => {

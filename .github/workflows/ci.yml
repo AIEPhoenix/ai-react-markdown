@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+# CI only reads the repository; the default GITHUB_TOKEN grant is wider.
+permissions:
+  contents: read
+
 # Cancel any in-progress run on the same ref when a new commit arrives.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -49,9 +53,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # pnpm reads overrides from package.json on 10.x and from
-      # pnpm-workspace.yaml on 11.x — one or the other, never merged. Both
-      # copies are kept identical; this asserts they (and the lockfile) agree.
+      # Overrides live ONLY in pnpm-workspace.yaml (pnpm 11); this asserts
+      # the lockfile recorded the same rules — a stale lockfile means the
+      # rules people believe are in force are not the ones that resolved
+      # the tree. (A package.json#pnpm copy is rejected by the script.)
       - name: Overrides in sync
         if: matrix.task == 'lint'
         run: pnpm check:overrides

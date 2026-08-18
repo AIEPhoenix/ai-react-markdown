@@ -66,6 +66,16 @@ const loadMermaid = (): Promise<Mermaid> => {
  *  checked per attempt rather than hoisted into a per-instance effect. */
 let initializedTheme: 'dark' | 'light' | null = null;
 
+/**
+ * PREMISE (documented, not enforced — v2.4.2 review P3-3): mermaid's config
+ * is a module-level singleton shared with the host application when the
+ * bundler dedupes the package. This renderer asserts `securityLevel:
+ * 'strict'` whenever it (re)initializes for a theme; a host that calls
+ * `mermaid.initialize({ securityLevel: 'loose' })` in between runs the
+ * next diagram under its own setting until the next theme flip here.
+ * Re-asserting on every streamed chunk would re-run mermaid's config merge
+ * per frame; hosts sharing the instance should keep it strict themselves.
+ */
 const ensureMermaidInitialized = (mermaid: Mermaid, isDark: boolean) => {
   const theme = isDark ? 'dark' : 'light';
   if (initializedTheme === theme) return;

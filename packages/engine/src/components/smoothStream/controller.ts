@@ -34,7 +34,11 @@
  * and the trailing grapheme of the source is held back until it is
  * confirmed — by more text arriving or by `finish()` — so a surrogate
  * half or a still-growing emoji ZWJ sequence is never revealed to the
- * parser mid-cluster.
+ * parser mid-cluster. `snap()` (a replacement, or the very first `update`)
+ * is outside this promise by design: it shows the whole replacement text
+ * at once, trailing half-cluster included — a hold-back there would leave
+ * a controller that never drains when nothing follows (v2.4.2 review
+ * P3-1). Hosts that seed a stream mid-cluster get one frame of U+FFFD.
  *
  * @module components/smoothStream/controller
  */
@@ -122,7 +126,8 @@ export interface SmoothStreamController {
    * a later {@link update} resumes animation.
    */
   finish(): void;
-  /** Jumps to `source` instantly, no animation, and clears any backlog. */
+  /** Jumps to `source` instantly, no animation, and clears any backlog.
+   *  No trailing-grapheme hold-back (see the module docs). */
   snap(source: string): void;
   /**
    * Reveals everything pending right now (skip-animation affordance). Keeps

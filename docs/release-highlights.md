@@ -289,7 +289,7 @@ The 1.4 line opened up the customization surface (URL sanitization, document nam
 
 - New props on `<AIMarkdown>` for the two-gate sanitization model.
 - `extendSanitizeSchema((draft) => Schema | void)` helper introduced — a mutate-and-return factory that hands the caller a deep clone of the library default. Library invariants (cross-chunk tag allowlist, KaTeX className allowlist, `<mark>` permission) survive automatically.
-- The library default schema is **not** exported as a value to prevent the shallow-spread footgun (`{ ...sanitizeSchema, … }` aliases nested arrays).
+- The library default schema is **not** exported as a value from `@ai-react-markdown/core` to prevent the shallow-spread footgun (`{ ...sanitizeSchema, … }` aliases nested arrays); the engine package exports it read-only for the renderer.
 
 > See [URL Sanitization & Custom Schemes](./url-sanitization.md) for the full two-gate model and reference-stability rules.
 

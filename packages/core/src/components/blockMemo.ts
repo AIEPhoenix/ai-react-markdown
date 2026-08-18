@@ -100,7 +100,7 @@ export interface BlockInfo {
    * stale copies stay trapped in the cached container (the "duplicate
    * footnote section inside <details>" bug).
    *
-   * Digest composition — `maxEnd:descendantCount:hasFootnoteSection`:
+   * Digest composition — `maxEnd:descendantCount:hasFootnoteSection:swallowedHash`:
    * - max end offset over the subtree catches swallowed POSITIONED siblings
    *   (their offsets lie beyond the mdast node's own range);
    * - descendant count catches position-less synthetic content moving in or
@@ -108,7 +108,10 @@ export interface BlockInfo {
    *   li contents point BACK at the definitions' offsets, which can be
    *   smaller than the container's end — maxEnd alone misses that case);
    * - the explicit dataFootnotes bit closes the degenerate corner where a
-   *   swallowed section and later real children tie on both numbers.
+   *   swallowed section and later real children tie on both numbers;
+   * - a hash of the swallowed extent's SOURCE (`[ownEnd, maxEnd)`) catches
+   *   an equal-length, equal-shape single-frame replacement of the
+   *   swallowed siblings, which leaves every count unchanged.
    *
    * Markdown-native blocks (paragraph/list/math/code/…) never receive
    * reparented content — every hast descendant derives from their own mdast
@@ -205,7 +208,7 @@ export function hasMdastSource(node: HastElement): boolean {
  * contains-footnote-section). See the field's JSDoc for why each component
  * is load-bearing. Exported for tests.
  */
-export function computeHtmlBlockDigest(el: HastElement): string {
+export function computeHtmlBlockDigest(el: HastElement, source?: string, ownEnd?: number): string {
   let maxEnd = el.position?.end?.offset ?? 0;
   let count = 0;
   let hasFootnoteSection = false;
@@ -226,7 +229,23 @@ export function computeHtmlBlockDigest(el: HastElement): string {
       }
     }
   }
-  return `${maxEnd}:${count}:${hasFootnoteSection ? 1 : 0}`;
+  // Swallowed SOURCE hash: `maxEnd:count` are blind to an equal-length,
+  // equal-shape replacement of the swallowed siblings (`Answer: 42` →
+  // `Answer: 43` inside an unclosed <details>, single-frame — v2.4.2 review
+  // P2-1); the container's own `raw` is unchanged, so the cache hit kept
+  // rendering the old text. Hashing the swallowed extent's source closes it.
+  const swallowed = source !== undefined && ownEnd !== undefined && maxEnd > ownEnd ? source.slice(ownEnd, maxEnd) : '';
+  return `${maxEnd}:${count}:${hasFootnoteSection ? 1 : 0}:${fnv1a(swallowed)}`;
+}
+
+/** FNV-1a 32-bit over UTF-16 code units — cheap, no allocation. */
+function fnv1a(text: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(36);
 }
 
 /**
@@ -469,7 +488,10 @@ export function buildBlocks(mdast: MdastRoot, hast: HastRoot, source: string): B
     // invalidates when the swallowed extent changes; markdown-native blocks
     // skip the walk (their subtrees derive purely from their own source
     // range, already covered by `raw` + position).
-    const hastDigest = mdastNode.type === 'html' || viaRangeFallback ? computeHtmlBlockDigest(el) : undefined;
+    const hastDigest =
+      mdastNode.type === 'html' || viaRangeFallback
+        ? computeHtmlBlockDigest(el, source, mdastPos.end.offset)
+        : undefined;
 
     const info: BlockInfo = {
       raw: extractRaw(mdastNode, source),

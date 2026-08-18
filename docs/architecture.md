@@ -214,7 +214,7 @@ The library default schema starts from `rehype-sanitize`'s `defaultSchema` and e
 
 Hand-rolling a schema via `{ ...defaultSchema, … }` silently drops these. `extendSanitizeSchema` always works on a deep clone of the **library**'s default (not `rehype-sanitize`'s), so the additions survive.
 
-The library default is **not** exported as a value — only the helper. This prevents the shallow-spread footgun by construction: there's no `sanitizeSchema` constant in the public API to shallow-spread _from_.
+The library default is **not** exported as a value from `@ai-react-markdown/core` — only the helper. This prevents the shallow-spread footgun by construction on the consumer-facing surface: there's no `sanitizeSchema` constant in the core API to shallow-spread _from_. (`@ai-react-markdown/engine` does export the singleton, because core builds its pipeline from it; treat it as read-only — mutating it in place affects every instance in the process that did not pass its own `sanitizeSchema`.)
 
 See [URL Sanitization & Custom Schemes](./url-sanitization.md) for the two-gate model.
 

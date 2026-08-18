@@ -132,11 +132,11 @@ export function sanitizeCrossChunkUrl(
   // same observable result here, including a TypeScript-bypass sparse
   // schema (caller passes no `protocols` → library default protocols apply
   // for both gates).
-  const callerProtocols = schema.protocols;
-  const allowed =
-    callerProtocols === undefined || callerProtocols === null
-      ? libraryDefaultSchema.protocols?.[key]
-      : callerProtocols[key];
+  // `Object.hasOwn`, not `=== undefined`: upstream's shallow spread keeps an
+  // EXPLICIT `protocols: undefined` (own key, undefined value) and then
+  // treats it as "no restriction" — only an ABSENT key inherits the
+  // default's protocols (v2.4.2 review P3-4).
+  const allowed = Object.hasOwn(schema, 'protocols') ? schema.protocols?.[key] : libraryDefaultSchema.protocols?.[key];
   if (allowed && allowed.length > 0 && !isProtocolAllowed(rawUrl, allowed)) return null;
 
   // Gate 2: urlTransform — caller's allowlist, called with the correct key

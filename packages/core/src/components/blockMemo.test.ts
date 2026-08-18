@@ -1298,6 +1298,21 @@ describe('raw-HTML swallow invalidation (hastDigest)', () => {
     expect(fullHtml.split('data-footnotes').length - 1).toBe(1);
   });
 
+  test('v2.4.2 review P2-1: an equal-length replacement of swallowed content is a cache miss', () => {
+    const cacheRef = { current: createCache() };
+    const a = '<details>\n<summary>t</summary>\n\nAnswer: 42\n';
+    const b = '<details>\n<summary>t</summary>\n\nAnswer: 43\n';
+    const f1 = rawFrame(a, cacheRef);
+    const d1 = detailsNodeOf(f1.built, f1.all);
+    expect(renderToStaticMarkup(createElement(Fragment, null, d1!.node))).toContain('Answer: 42');
+    // Same byte length, same node count, same maxEnd — only the swallowed
+    // text differs. Before the source hash this was a stale cache hit.
+    const f2 = rawFrame(b, cacheRef);
+    const d2 = detailsNodeOf(f2.built, f2.all);
+    expect(d2!.node).not.toBe(d1!.node);
+    expect(renderToStaticMarkup(createElement(Fragment, null, d2!.node))).toContain('Answer: 43');
+  });
+
   test('degenerate corner: swallowed section leaves no maxEnd trace (positions point backwards)', () => {
     // <details> closes with NOTHING inside except the summary, and the
     // footnote defs live BEFORE it — the swallowed section's positioned
@@ -1344,7 +1359,9 @@ describe('raw-HTML swallow invalidation (hastDigest)', () => {
     const para = built.plan.find((p) => p.kind === 'block' && (p.el as HastElement).tagName === 'p');
     const details = built.plan.find((p) => p.kind === 'block' && (p.el as HastElement).tagName === 'details');
     expect(para && para.kind === 'block' ? para.info.hastDigest : 'missing').toBeUndefined();
-    expect(details && details.kind === 'block' ? details.info.hastDigest : undefined).toMatch(/^\d+:\d+:[01]$/);
+    expect(details && details.kind === 'block' ? details.info.hastDigest : undefined).toMatch(
+      /^\d+:\d+:[01]:[0-9a-z]+$/
+    );
   });
 
   test('range-fallback blocks (split raw HTML) also get a digest', () => {
@@ -1355,6 +1372,6 @@ describe('raw-HTML swallow invalidation (hastDigest)', () => {
     const { mdast, hast } = runPipeline(doc);
     const built = buildBlocks(mdast, hast, doc);
     const div = built.plan.find((p) => p.kind === 'block' && (p.el as HastElement).tagName === 'div');
-    expect(div && div.kind === 'block' ? div.info.hastDigest : undefined).toMatch(/^\d+:\d+:[01]$/);
+    expect(div && div.kind === 'block' ? div.info.hastDigest : undefined).toMatch(/^\d+:\d+:[01]:[0-9a-z]+$/);
   });
 });

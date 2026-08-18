@@ -1,6 +1,6 @@
 'use client';
 
-import { HTMLAttributes, memo, useEffect, useMemo, useState } from 'react';
+import { HTMLAttributes, memo, useEffect, useMemo, useRef, useState } from 'react';
 import { CodeHighlight, CodeHighlightTabs } from '@mantine/code-highlight';
 import { deepParseJson } from 'deep-parse-json';
 import { useAIMarkdownState, useAIMarkdownTheme } from '@ai-react-markdown/core';
@@ -35,6 +35,9 @@ export const loadHljsForAutoDetect = () => {
 
 /** Below this many characters a guess is noise; the block stays "unknown". */
 const AUTODETECT_MIN_CHARS = 32;
+/** Bounded automatic retries of a failed highlight.js module download. */
+const HLJS_LOAD_RETRIES = 3;
+const HLJS_LOAD_RETRY_MS = 1500;
 
 /**
  * The language highlight.js guesses for an unlabelled block.
@@ -57,6 +60,12 @@ function useAutoDetectedLanguage(codeText: string, enabled: boolean, streaming: 
   const [detected, setDetected] = useState<{ language: string; atLength: number; finalFor: string | null } | null>(
     null
   );
+  // Bumped after a failed `import('highlight.js')` so the effect re-runs on
+  // otherwise unchanged inputs and retries the download — the mermaid
+  // renderer's counterpart. Without it a static document whose only load
+  // attempt failed stayed "unknown" for good (v2.4.2 review P2-2). Bounded.
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const loadFailuresRef = useRef(0);
   useEffect(() => {
     if (!enabled) return;
     // The block was REPLACED, not appended to (a regenerate reuses this
@@ -80,9 +89,11 @@ function useAutoDetectedLanguage(codeText: string, enabled: boolean, streaming: 
       (streaming && codeText.length >= prior.atLength * 2);
     if (!due) return;
     let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
     loadHljsForAutoDetect().then(
       (hljs) => {
         if (cancelled) return;
+        loadFailuresRef.current = 0;
         setDetected({
           language: hljs.highlightAuto(codeText).language ?? '',
           atLength: codeText.length,
@@ -90,17 +101,23 @@ function useAutoDetectedLanguage(codeText: string, enabled: boolean, streaming: 
         });
       },
       () => {
-        /* load failed — stay "unknown"; the loader retries next time */
+        // Load failed — stay "unknown" and retry the download a bounded
+        // number of times (the loader does not cache rejections).
+        if (cancelled || loadFailuresRef.current >= HLJS_LOAD_RETRIES) return;
+        loadFailuresRef.current += 1;
+        retryTimer = setTimeout(() => setLoadAttempt((n) => n + 1), HLJS_LOAD_RETRY_MS);
       }
     );
     return () => {
       cancelled = true;
+      if (retryTimer !== undefined) clearTimeout(retryTimer);
     };
     // `detected` is deliberately not a dep: a completed guess must not
     // re-trigger the effect (it re-runs on the next content/streaming
-    // change, which is when the schedule is re-evaluated).
+    // change, which is when the schedule is re-evaluated). `loadAttempt`
+    // re-runs it after a failed module download.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [codeText, enabled, streaming]);
+  }, [codeText, enabled, streaming, loadAttempt]);
   return enabled ? (detected?.language ?? '') : '';
 }
 
