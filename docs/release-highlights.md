@@ -8,6 +8,18 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 ## 2.4.x — The project-review sweep
 
+### 2.4.3 — Full review of 2.4.2: registry URLs stored raw, two parse5 tree-construction quirks, nested-list fences in the LaTeX pass
+
+A seven-track review at 2.4.2 (engine parse and runtime layers, core, mantine + remark plugin, a sanitization track, infra + docs). No P0; four P1s, all reproduced and fixed:
+
+- **Cross-chunk definition URLs enter the registry raw.** A contribute-time `urlTransform` pre-pass collapsed a protocol-blocked URL to `''` before the render-time gate could tell blocked (attribute absent) from legally empty (`href=""`) — undoing 2.4.2's distinction the moment the registry landed (the DOM flipped from `<a>` to `<a href="">` in front of the user) — and ran a rewriting transform twice where standalone runs it once. The render-time `sanitizeCrossChunkUrl` gate is now the single point of enforcement; `extractContributions` no longer takes a `urlTransform` option (engine API).
+- **Splice — parse5's two end-tag synthesis exceptions.** A stray `</br>` becomes a `<br>` and a stray `</p>` an empty `<p>` in a full parse; the tail-only parse cannot reproduce them, so the incremental frame lost the element (`x\n\n</br>\n\ny`). A tail led by either bails to a full parse.
+- **Splice — a stray `<td>` before a GFM table.** parse5 foster-parents the table's cell text to the root and tears the skeleton apart; its line endings merge into the separator past the freeze boundary, which the trailing rebuild cannot see. Root-level literal text owned by a non-html block bails.
+- **LaTeX preprocessor — fences at any indentation.** A fence two list levels deep sits at column 4; the 0–3 space rule (measured from column 0, not from the list container) rejected it and `$` inside the block was rewritten (`~~~` blocks; backtick fences escaped only by luck). Any indentation is accepted now — over-protection is the safe direction. Indented code blocks remain unmodelled (indistinguishable from a list continuation paragraph without a container model) and are pinned as a known limitation.
+- **P2/P3:** the raw-html block-memo digest hashes the swallowed extent's source (an equal-length single-frame replacement inside an unclosed `<details>` was a stale cache hit); a failed `highlight.js` download retries like mermaid's; `ci.yml` declares `permissions: contents: read` and its overrides comment matches the script; `sanitizeCrossChunkUrl` treats an explicit `protocols: undefined` as no restriction like upstream; `snap()` is documented as outside the trailing-grapheme hold-back promise; the "default schema not exported as a value" claim is scoped to `@ai-react-markdown/core` (the engine exports it read-only); the mermaid shared-singleton `securityLevel` premise is documented.
+
+Verification: generator family `treeQuirkArb` + census token `</br>` (the 2.4.2 splice fails the new pins), release soak (splice fuzz 50k / direction battery 20k / K=4 census) clean on the final engine.
+
 ### 2.4.2 — Full review of 2.4.1: two silent equivalence forks and the byte-parity leftovers
 
 A five-track read-only review of the whole repository at 2.4.1 (engine parse layer with a real-plugin-chain fuzz, engine streaming layer, core, mantine + plugin, infra + docs). The release gate was green and the two 2.4.1 fixes held; the review found two P1 breaks of the splice-equals-full-parse promise plus a set of narrower defects. All fixed:
