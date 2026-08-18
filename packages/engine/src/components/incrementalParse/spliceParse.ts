@@ -435,6 +435,12 @@ export function spliceTrees(input: SpliceInput): { mdast: MdastRoot; hast: HastR
       if (isTrailingLiteralText(node)) {
         const prev = i > 0 ? prevHast.children[i - 1] : undefined;
         if (!prev || prev.type !== 'element' || prev.position === undefined) return null;
+        // …and it must be that element's OWN trailing literal (its html
+        // block's source ends with the text). Attribution can hand a
+        // following dropped-tag block's remnant (`[a]: def\n\n</t>\ntext`)
+        // an offset before the boundary — the def between them has no
+        // output — and freezing it duplicated it (release soak).
+        if (!ownsTrailingLiteral(prev as HastContent, node as HastContent & { value: string }, prefixMdast)) return null;
       }
       cutRegion.push(node);
       continue;
@@ -466,8 +472,12 @@ export function spliceTrees(input: SpliceInput): { mdast: MdastRoot; hast: HastR
       // (`</t>\na`) parse5 dropped, whose text merged with the wrap
       // separator — owned by the tail, which re-parses it; freezing it
       // here duplicated it (v2.4.0 review P3). Falls through to the
-      // remnant look-ahead below, which bails to a full parse.
-      isHtmlBlockOutput(prevHast.children[i - 1] as HastContent, prefixMdast)
+      // remnant look-ahead below, which bails to a full parse. And the
+      // literal must really be THAT block's trailing text: the block's raw
+      // source ends with it. A dropped-tag block right after a frozen html
+      // element (`</details>\n\n</t>\ntext`) puts its remnant in the same
+      // position, and freezing it duplicated it (release soak of the fix).
+      ownsTrailingLiteral(prevHast.children[i - 1] as HastContent, node as HastContent & { value: string }, prefixMdast)
     ) {
       cutRegion.push(node);
       // NOTE: this break skips the remnant look-ahead below. Safe today
@@ -1054,13 +1064,19 @@ function isSeparatorText(node: HastContent): boolean {
   return node.type === 'text' && node.position === undefined && node.value.trim() === '';
 }
 
-/** Whether a positioned top-level hast element is the output of an `html`
- *  mdast block (its start offset is that block's start). Trailing raw
- *  literals can only follow such elements. */
-function isHtmlBlockOutput(el: HastContent, prefixMdast: MdastContent[]): boolean {
+/** Whether a position-less literal is the trailing raw text of the `html`
+ *  mdast block that produced `el` (the element's start is that block's
+ *  start, and the block's source ENDS with the literal's text). Trailing raw
+ *  literals can only follow html-block output, and only that block's own
+ *  text counts — a following dropped-tag block's remnant sits in the same
+ *  spot but is not in this block's source. */
+function ownsTrailingLiteral(el: HastContent, literal: { value: string }, prefixMdast: MdastContent[]): boolean {
   const start = el.position?.start?.offset;
   if (start === undefined) return false;
-  return prefixMdast.some((c) => c.type === 'html' && c.position?.start?.offset === start);
+  const owner = prefixMdast.find((c) => c.type === 'html' && c.position?.start?.offset === start);
+  if (!owner || owner.type !== 'html') return false;
+  const text = literal.value.trim();
+  return text !== '' && owner.value.trimEnd().endsWith(text);
 }
 
 /** Position-less NON-whitespace text at the top level — the raw reparse's
