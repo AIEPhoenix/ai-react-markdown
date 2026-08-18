@@ -362,10 +362,18 @@ describe('crossChunkPlaceholders — URL sanitization (render-time two-gate)', (
     // a malicious URL — verifies the render-time gate ALONE is sufficient.
     const html = seedAndRenderLink('javascript:alert(1)');
     expect(html).not.toContain('javascript:');
-    // The <a> still renders (empty href), matching standalone behavior
-    // where `rehype-sanitize` drops `href` to the empty string rather than
-    // unwrapping the element.
-    expect(html).toContain('<a');
+    // The <a> still renders WITHOUT an href attribute — exactly what
+    // standalone `rehype-sanitize` does to a protocol-blocked in-tree `<a>`
+    // (it drops the attribute; it does not unwrap the element and it does
+    // not leave `href=""` — that shape is reserved for a legally EMPTY
+    // destination, see below). v2.4.2 review P1-4 locked the shape.
+    expect(html).toContain('<a>click</a>');
+    expect(html).not.toContain('href=');
+  });
+
+  test('CrossChunkLink keeps href="" for a legally empty definition URL (`[x]: <>`)', () => {
+    const html = seedAndRenderLink('');
+    expect(html).toContain('<a href="">click</a>');
   });
 
   test('CrossChunkImage strips javascript: src (defense-in-depth)', () => {
@@ -373,6 +381,18 @@ describe('crossChunkPlaceholders — URL sanitization (render-time two-gate)', (
     expect(html).not.toContain('javascript:');
     // The <img> still renders (with empty src), matching standalone.
     expect(html).toContain('<img');
+  });
+
+  test('a rewriting urlTransform is applied exactly once (registry stores the raw URL)', () => {
+    // v2.4.2 review P1-4: the contribute-time pre-pass used to run the
+    // transform once more before the render gate — `proxy(proxy(url))`.
+    const policy: CrossChunkUrlPolicy = {
+      urlTransform: (url) => `https://proxy.example/?u=${encodeURIComponent(url)}`,
+      sanitizeSchema: defaultLibrarySchema,
+    };
+    const html = seedAndRenderLink('https://example.com/x', policy);
+    expect(html).toContain('href="https://proxy.example/?u=https%3A%2F%2Fexample.com%2Fx"');
+    expect(html).not.toContain('proxy.example%2F');
   });
 
   test('CrossChunkLink renders an https:// def via default policy', () => {

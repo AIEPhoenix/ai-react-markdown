@@ -700,25 +700,14 @@ const BlockMemoizedRenderer = memo(
       // render with full plugin output (math, raw HTML, defLists, …).
       const defMeta = new Map<string, { identifier: string; sourceIdentifier: string; contentSource: string }>();
       const linkDefs = new Map<string, { identifier: string; url: string; title?: string }>();
-      // Defense in depth for cross-chunk URLs: pass the resolved urlTransform
-      // (caller-supplied or default protocol allowlist) into extractContributions
-      // so `linkDef.url` enters the registry already sanitized. The render-time
-      // gate in `CrossChunkLink` / `CrossChunkImage` (`sanitizeCrossChunkUrl`)
-      // is the primary defense and IS per-attribute correct (`'href'` for `<a>`,
-      // `'src'` for `<img>`). This contribute-time pass is a coarser belt-and-
-      // suspenders layer — it uses the fixed `'href'` key because at contribute
-      // time we don't yet know whether a given def will be consumed as a link
-      // or an image. Known corner: a key-aware urlTransform that allows a
-      // scheme on `src` but NOT on `href` (e.g. a media-only allowlist) will
-      // see its cross-chunk images render empty, even though standalone images
-      // would have rendered the URL. If you hit this, drop the prop on this
-      // call site — render-time is sufficient for security; the entry here is
-      // a hygiene-of-registry-contents convenience for any future consumer
-      // reading `Registry.resolveLinkDef` directly.
-      const resolvedUrlTransform = urlTransform ?? defaultUrlTransform;
+      // Link-definition URLs enter the registry RAW: the render-time
+      // `sanitizeCrossChunkUrl` gate in the placeholders is the single point
+      // of enforcement (protocol allowlist + urlTransform, per attribute
+      // key). A contribute-time pre-pass used to collapse a blocked URL to ''
+      // — indistinguishable from a legal empty destination — and applied a
+      // rewriting urlTransform twice (v2.4.2 review P1-4).
       for (const node of extractContributions(pipeline.mdast, {
         phantomFootnoteLabels: targetPhantoms.missingFootnotes,
-        urlTransform: resolvedUrlTransform,
       })) {
         if (node.kind === 'ref') {
           refs.push({ label: node.label, kind: node.refKind, referenceType: node.referenceType });
@@ -793,7 +782,6 @@ const BlockMemoizedRenderer = memo(
       targetPhantoms,
       sym,
       clobberPrefix,
-      urlTransform,
       remarkPlugins,
       rehypePlugins,
       remarkRehypeOptions,
