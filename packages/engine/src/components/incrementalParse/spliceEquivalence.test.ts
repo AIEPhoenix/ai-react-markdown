@@ -432,6 +432,16 @@ describe('splice equivalence — fuzz-found regressions', () => {
     ['review-242-p1-stray-br-with-text', 'x\n\n</br>\ntext\n\ny\n', [3, 5], 0],
     ['review-242-p1-stray-td-then-table', '<td>s</td>\n\n| a |\n| - |\n\nx\n\ny\n', [1], 0],
     ['review-242-p1-stray-td-then-table-defaults', '<td>s</td>\n\n| a |\n| - |\n\nx\n\ny\n', [3, 5], 1],
+    // Adversarial follow-up: the quirks poison the tail's whole LEADING html
+    // run (a comment / PI before the stray tag does not switch parse5 to
+    // body mode) and, for table parts, the rest of the document.
+    ['review-242-fu-comment-then-stray-br', 'x\n\n<!-- c -->\n\n</br>\n\ny\n', [3, 30], 0],
+    ['review-242-fu-pi-then-stray-br', 'x\n\n<?php x ?>\n\n</br>\n\ny\n', [3, 30], 0],
+    ['review-242-fu-comment-glued-stray-br', 'x\n\n<!-- c -->\n</br>\n\ny\n', [3, 30], 0],
+    ['review-242-fu-comment-then-stray-td', 'x\n\n<!-- c -->\n\n<td>s</td>\n\ny\n', [3, 30], 0],
+    ['review-242-fu-stray-col', 'x\n\n<col>\n\ny\n', [1, 1], 1],
+    ['review-242-fu-stray-td-table-in-tail', '<td>s</td>\n\npara\n\n| a |\n| - |\n\nx\n\ny\n', [1, 1], 0],
+    ['review-242-fu-stray-td-math-table-in-tail', '<td>s</td>\n\n$$\na\n$$\n\n| a |\n| - |\n\nx\n\ny\n', [1, 1], 1],
     ['review-241-p1b-cross-line-full-ref', 'see [text\nmore][foo] end\n\nx\n\ny\n\n[foo]: /url\n', [4], 0],
   ];
 

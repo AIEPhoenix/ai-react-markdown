@@ -133,7 +133,7 @@ Returns:
 > ℹ️ **The hook is allocating, not purely read-only.** Calling `useDocumentRegistry(documentId)` inside an `<AIMarkdownDocuments>` for a `documentId` that has no live chunks yet **creates an empty `Registry` shell** in the wrapper's `Map<documentId, Registry>` as a render-time side effect. The shell is later evicted when the next mount/unmount cycle settles. In practice this is invisible — but avoid calling with a frequently-changing id (e.g. `documentId={\`tmp-${Date.now()}\`}`), which would accumulate empty shells in the Map until the next mount cycle.
 
 ```tsx
-import { useDocumentRegistry } from '@ai-react-markdown/core';
+import { useDocumentRegistry, defaultUrlTransform } from '@ai-react-markdown/core';
 
 function BacklinkPanel({ documentId, label }: { documentId: string; label: string }) {
   const registry = useDocumentRegistry(documentId);
@@ -142,8 +142,13 @@ function BacklinkPanel({ documentId, label }: { documentId: string; label: strin
   const def = registry.resolveLinkDef(label);
   if (!def) return <span>(unresolved: {label})</span>;
 
+  // ⚠️ def.url is the RAW destination from the contributing chunk — the
+  // registry does not sanitize. Run your own policy (here the library's
+  // default allowlist) before rendering it as an attribute; a chunk can
+  // define `[evil]: javascript:alert(1)`.
+  const href = defaultUrlTransform(def.url, 'href', { type: 'element', tagName: 'a', properties: {}, children: [] });
   return (
-    <a href={def.url} title={def.title}>
+    <a href={href || undefined} title={def.title}>
       {label}
     </a>
   );
@@ -207,7 +212,10 @@ Renders a sidebar listing every cross-chunk link reference and its resolved URL 
 
 ```tsx
 import { useSyncExternalStore } from 'react';
-import { useDocumentRegistry } from '@ai-react-markdown/core';
+import { useDocumentRegistry, defaultUrlTransform } from '@ai-react-markdown/core';
+
+// urlTransform's third argument is the hast node; a minimal stand-in is fine.
+const A_NODE = { type: 'element', tagName: 'a', properties: {}, children: [] } as const;
 
 function BacklinkPanel({ documentId, labels }: { documentId: string; labels: string[] }) {
   const registry = useDocumentRegistry(documentId);
@@ -222,12 +230,14 @@ function BacklinkPanel({ documentId, labels }: { documentId: string; labels: str
         {labels.map((label) => {
           const def = registry.resolveLinkDef(label);
           if (!def) return <li key={label}>{label} — unresolved</li>;
-          // ⚠️ def.url has already passed the contributing chunk's urlTransform
-          // (with key='href'). If you render as an <img src>, re-run it under
-          // your own policy with the correct key — see url-sanitization docs.
+          // ⚠️ def.url is RAW — the registry stores destinations unsanitized
+          // and the library's placeholders sanitize at render time. Do the
+          // same here (correct key for the attribute you render) — see the
+          // url-sanitization docs.
+          const href = defaultUrlTransform(def.url, 'href', A_NODE);
           return (
             <li key={label}>
-              <a href={def.url} title={def.title}>
+              <a href={href || undefined} title={def.title}>
                 {label}
               </a>
             </li>

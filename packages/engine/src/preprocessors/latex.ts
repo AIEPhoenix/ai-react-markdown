@@ -61,14 +61,6 @@ const LITERAL_CONTENT_CLOSE_REGEX: Record<string, RegExp> = {
   svg: /<\/svg\s*>/gi,
 };
 
-/**
- * Is `pos` the start of a line with at most 3 spaces of leading indentation?
- *
- * CommonMark requires a fence opener/closer to sit at the beginning of a
- * line (optionally indented by up to 3 spaces). A 4-space indent turns the
- * line into an indented-code-block candidate instead, which we do not treat
- * as a fence at all.
- */
 /** True when only spaces/tabs (and an optional `\r`) follow `pos` up to the
  *  next `\n` or EOF — CommonMark's closing-fence rule. Without it
  *  ` ``` not-a-closer ` closed the fence and inverted the open/close phase
@@ -101,10 +93,14 @@ function lineHasBacktick(content: string, pos: number): boolean {
  * OVER-protect (an indented code block that happens to hold a fence line
  * is treated as one), which is the safe direction for a preprocessor.
  */
-function isAtLineStart(content: string, pos: number): boolean {
+function lineIndentBefore(content: string, pos: number): number {
   let i = pos - 1;
-  while (i >= 0 && (content[i] === ' ' || content[i] === '\t')) i--;
-  return i < 0 || content[i] === '\n' || content[i] === '\r';
+  let indent = 0;
+  while (i >= 0 && (content[i] === ' ' || content[i] === '\t')) {
+    indent += content[i] === '\t' ? 4 : 1;
+    i--;
+  }
+  return i < 0 || content[i] === '\n' || content[i] === '\r' ? indent : -1;
 }
 
 /**
@@ -150,6 +146,7 @@ export function splitByProtectedRegions(content: string): Segment[] {
   let multilineStart = -1;
   let multilineFenceMarker: FenceMarker | null = null;
   let multilineFenceLength = 0;
+  let multilineFenceIndent = 0;
 
   function pushProtected(start: number, end: number) {
     if (start > lastIndex) {
@@ -167,7 +164,18 @@ export function splitByProtectedRegions(content: string): Segment[] {
     if (multilineStart !== -1) {
       if (char === multilineFenceMarker) {
         const runLen = getRepeatedMarkerLength(content, i, multilineFenceMarker);
-        if (runLen >= multilineFenceLength && isAtLineStart(content, i) && restOfLineIsBlank(content, i + runLen)) {
+        // A closer may be indented at most 3 columns MORE than its opener
+        // (CommonMark, container-relative): a `    ```` line inside a
+        // column-0 fence is content, not a closer — accepting it closed the
+        // block early and exposed its body (adversarial review of the
+        // any-indent opener change).
+        const closerIndent = lineIndentBefore(content, i);
+        if (
+          runLen >= multilineFenceLength &&
+          closerIndent !== -1 &&
+          closerIndent <= multilineFenceIndent + 3 &&
+          restOfLineIsBlank(content, i + runLen)
+        ) {
           pushProtected(multilineStart, i + runLen);
           multilineStart = -1;
           multilineFenceMarker = null;
@@ -187,10 +195,12 @@ export function splitByProtectedRegions(content: string): Segment[] {
       const runLen = getRepeatedMarkerLength(content, i, char);
 
       // Fenced code block opener: ≥3 markers and at a valid line start.
-      if (runLen >= 3 && isAtLineStart(content, i) && !(char === '`' && lineHasBacktick(content, i + runLen))) {
+      const openerIndent = lineIndentBefore(content, i);
+      if (runLen >= 3 && openerIndent !== -1 && !(char === '`' && lineHasBacktick(content, i + runLen))) {
         multilineStart = i;
         multilineFenceMarker = char;
         multilineFenceLength = runLen;
+        multilineFenceIndent = openerIndent;
         i += runLen;
         continue;
       }

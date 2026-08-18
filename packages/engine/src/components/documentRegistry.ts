@@ -107,18 +107,15 @@ export interface Registry {
   canonicalLinkFor(label: string): symbol | null;
   globalNumber(label: string): number | null;
   /**
-   * Resolve a cross-chunk link definition by label. The returned `url` is the
-   * value the contributing chunk's `urlTransform` produced — cross-chunk
-   * link/image references run a second, per-attribute sanitization pass
-   * (`urlTransform` + `sanitizeSchema.protocols`) at render time, so the
-   * placeholder components themselves never trust this value blindly.
+   * Resolve a cross-chunk link definition by label. The returned `url` is
+   * the RAW destination from the contributing chunk's source — the registry
+   * does not sanitize. The library's cross-chunk link/image placeholders run
+   * the full per-attribute sanitization (`sanitizeSchema.protocols` +
+   * `urlTransform`, correct key) at render time.
    *
    * Consumers reading `def.url` directly (custom backlink panels, analytics,
-   * dev tooling) receive a defense-in-depth-filtered string but should still
-   * pipe it through their own `urlTransform` if they intend to render it as
-   * an `href`/`src` — the contribute-time pass uses the `'href'` key and a
-   * synthetic `<a>` node, so a key-aware policy may treat the value
-   * differently when used as an `<img src>`.
+   * dev tooling) MUST run their own policy before rendering it as an
+   * `href`/`src` — a chunk can define `[evil]: javascript:alert(1)`.
    */
   resolveLinkDef(label: string): LinkDef | null;
   getRefsForLabel(label: string): number;

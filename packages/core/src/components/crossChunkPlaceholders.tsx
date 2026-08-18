@@ -230,7 +230,7 @@ export function CrossChunkLink({
   // hast-pass gates have run — without this, a custom scheme allowed by
   // `urlTransform` but disallowed in `sanitizeSchema.protocols.href` would
   // render correctly in standalone but slip through cross-chunk (and same
-  // for `javascript:` if the contribute-time gate is ever bypassed).
+  // for `javascript:` — the registry stores the RAW definition URL).
   // Fallback to safe defaults when the policy context is missing (the
   // placeholder rendered outside an `<AIMarkdown>` ancestor — a test path).
   const url = sanitizeCrossChunkUrl(

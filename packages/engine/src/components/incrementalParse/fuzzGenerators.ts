@@ -188,8 +188,11 @@ const treeQuirkArb = fc.constantFrom(
   '</br>',
   '</p>',
   '</br>\ntext after a synthesized br',
+  '<!-- c -->\n\n</br>',
   '<td>s</td>\n\n| a |\n| - |',
-  '<td>s</td>\n\n| a | b |\n| - | - |\n| 1 | 2 |'
+  '<td>s</td>\n\n| a | b |\n| - | - |\n| 1 | 2 |',
+  '<td>s</td>\n\npara\n\n| a |\n| - |',
+  '<col>'
 );
 
 const rawHtmlArb = fc.oneof(
@@ -410,7 +413,7 @@ export const COVERAGE_MARKERS: Record<string, RegExp> = {
   rawTextBlock: /<(?:script|style|textarea|pre)>/,
   proseTruncatedTag: /a<b\n/,
   reviewShapes: /<!-- c --> <\/s>|<\?x\?><details>|<\/t>\ntext|<details> <\?php|x="`">b`/,
-  treeQuirks: /<\/br>|<\/p>|<td>s<\/td>\n\n\|/,
+  treeQuirks: /<\/br>|<\/p>|<td>s<\/td>\n\n|<col>/,
   unicodeBlank: /\n[\u3000\u00a0]\n|```\u00a0\n|\$\$\u3000\n|"t"\u00a0|\u3000<!--/,
   failedInlineLink: /\]\(bad url\)/,
   crossLineRef: /see \[(?:a|b|spec|注一)\n(?:a|b|spec|注一)\] end/,

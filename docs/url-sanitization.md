@@ -285,9 +285,9 @@ const SCHEMA = extendSanitizeSchema((s) => {
 const SCHEMA = extendSanitizeSchema((s) => ({ ...s, ...overrides }));
 ```
 
-### Trusting `def.url` from `useDocumentRegistry` without re-sanitizing
+### Trusting `def.url` from `useDocumentRegistry` without sanitizing
 
-The `Registry.resolveLinkDef(label).url` returns the URL produced by the **contributing chunk's** `urlTransform`. That's already filtered, but only with the `'href'` key against a synthetic `<a>` node. If you're rendering that URL as an `<img src>` or feeding it to analytics that treat it as `cite`, the per-attribute key may yield a different decision under a key-aware policy.
+`Registry.resolveLinkDef(label).url` is the **raw** destination from the contributing chunk — the registry stores definitions unsanitized (since 2.4.3; earlier versions pre-filtered with the `'href'` key, which collapsed blocked and empty URLs and double-applied rewriting transforms). The library's own placeholders run the full two-gate check at render time with the correct attribute key. Anything that reads `def.url` directly — a backlink panel, analytics, dev tooling — must do the same before rendering it as an `href`/`src`; a chunk can define `[evil]: javascript:alert(1)`.
 
 Defensive pattern:
 
@@ -298,8 +298,8 @@ const syntheticNode = { type: 'element', tagName: 'img', properties: {}, childre
 
 const def = registry?.resolveLinkDef(label);
 if (def) {
-  const safeUrl = myUrlTransform(def.url, 'src', syntheticNode); // re-run with the correct key
-  // …use safeUrl
+  const safeUrl = myUrlTransform(def.url, 'src', syntheticNode); // your policy, correct key
+  // …use safeUrl (an empty result means "blocked": omit the attribute)
 }
 ```
 

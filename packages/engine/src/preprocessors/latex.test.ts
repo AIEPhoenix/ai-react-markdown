@@ -1173,6 +1173,17 @@ describe('splitByProtectedRegions', () => {
     expect(preprocessLaTeX('\t~~~\n\t$100\n\t~~~\n$x$')).toBe('\t~~~\n\t$100\n\t~~~\n$$x$$');
   });
 
+  test('a closer indented more than 3 columns past its opener is content, not a closer', () => {
+    // A markdown tutorial: an outer column-0 fence showing a nested-list
+    // fence at column 4. The inner ``` lines are CONTENT of the outer block.
+    const doc = '```markdown\n- item\n    ```js\n    x\n    ```\nprice = $100 and $200 here\n```\n\nafter $x$ math\n';
+    expect(preprocessLaTeX(doc)).toBe(
+      '```markdown\n- item\n    ```js\n    x\n    ```\nprice = $100 and $200 here\n```\n\nafter $$x$$ math\n'
+    );
+    // …while a closer up to 3 columns deeper than its opener still closes.
+    expect(preprocessLaTeX('```\n$100\n   ```\n$x$')).toBe('```\n$100\n   ```\n$$x$$');
+  });
+
   test('KNOWN LIMITATION: indented code blocks are not protected (no container model)', () => {
     // Documented in the module header — a list continuation paragraph and
     // an indented code block are indistinguishable without a container

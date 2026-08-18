@@ -396,6 +396,12 @@ export interface SpliceInput {
  * every frame keep blockMemo's node-identity assumptions intact while
  * never mutating the previous frame's roots.
  */
+/** Table-part START tags whose appearance outside a table re-routes parse5's
+ *  tree construction for the rest of the document. */
+const TABLE_PART_TAG_RE = /<(?:td|th|tr|tbody|thead|tfoot|caption|col|colgroup)\b/i;
+/** The two END tags HTML synthesizes (`<br>` / empty `<p>`) instead of dropping. */
+const STRAY_SYNTHESIZED_END_TAG_RE = /<\/(?:br|p)\b/i;
+
 export function spliceTrees(input: SpliceInput): { mdast: MdastRoot; hast: HastRoot } | null {
   const { prevMdast, prevHast, tailMdast, tailHast, content, boundary, injectionPrefix, injectedSegments } = input;
 
@@ -529,6 +535,26 @@ export function spliceTrees(input: SpliceInput): { mdast: MdastRoot; hast: HastR
     return !(start !== undefined && start < injectedLen);
   });
   const tailWrapVisible = tailMdastChildren.some((child) => !isWrapInvisible(child));
+
+  // parse5 tree-construction quirks that poison the WHOLE document, not one
+  // seam (v2.4.2 review P1-1/P1-2 + its adversarial follow-up):
+  // - a stray table-part tag (`<td>`, `<tr>`, `<col>` …) outside any table
+  //   changes how every LATER GFM table is built (its cell text is
+  //   foster-parented to the root in the full parse; a tail-only parse
+  //   builds a real <table>) — once such a tag sits in the frozen prefix,
+  //   no later splice is trustworthy;
+  // - the tail-only parse opens in a mode where a stray `</br>` / `</p>` (the
+  //   two end tags HTML synthesizes instead of dropping) and table parts
+  //   are DROPPED until the first element start tag switches it to body,
+  //   while the full parse — already in body — synthesizes / foster-parents
+  //   them. Any such tag inside the tail's LEADING run of html blocks
+  //   (comments / PIs / declarations do not switch the mode) → bail.
+  if (prefixMdast.some((c) => c.type === 'html' && TABLE_PART_TAG_RE.test(c.value))) return null;
+  for (const child of tailMdastChildren) {
+    if (isWrapInvisible(child)) continue;
+    if (child.type !== 'html') break;
+    if (STRAY_SYNTHESIZED_END_TAG_RE.test(child.value) || TABLE_PART_TAG_RE.test(child.value)) return null;
+  }
 
   // Align the cut region against the prefix mdast (stripped-node aware) and
   // rebuild its trailing separators. Bails null on any layout the model
@@ -1072,7 +1098,7 @@ function tailLeadingTextIsHoist(tailMdastChildren: MdastContent[], tailHastChild
   // tail-only parse, which opens on the stray tag, does not — the element
   // is simply absent from the tail hast, so no join rule can put it back
   // (v2.4.2 review P1-1: `x\n\n</br>\n\ny` lost its `<br>`). Bail.
-  if (firstVisible?.type === 'html' && /^\s*<\/(?:br|p)\b/i.test(firstVisible.value)) return null;
+  if (firstVisible?.type === 'html' && STRAY_SYNTHESIZED_END_TAG_RE.test(firstVisible.value)) return null;
   if (!firstText) return false;
   if (!isSeparatorText(firstText)) {
     // Position-less NON-whitespace leading text: the tail starts with an
