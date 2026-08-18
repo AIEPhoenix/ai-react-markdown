@@ -340,7 +340,17 @@ already-open comment (`<!--\n\n<!-->\n<details>`) — the regex consumes
 against the open-comment state; pinned (`overlap-closer-inside-open-
 comment`). The re-run of all three legs (50k splice fuzz across 12
 seeds, 20k direction battery, K=4 census stride 2 across 12 shards on the
-27-token alphabet) came back ALL CLEAN.
+27-token alphabet) came back ALL CLEAN. The rest of the review's engine
+items followed in the same session — the terminator-mention guard
+case-folded (eng-parse-04), prose `<x` truncations reverted at the
+paragraph blank instead of blocking the stream forever (eng-parse-06;
+html-flow truncations stay counted — a fuzz counterexample showed parse5
+tokenizing the dangling `<div` into the seam), the injection walk made
+filter-semantics + disorder-bailing (eng-parse-07), the phantom suffix
+closer for a fence/math block left open at the frame end
+(core-render-01, mirrored in the arbiter harness), and the placeholders'
+standalone fallback props (core-render-02) — and a further three-leg soak
+on that final engine state came back ALL CLEAN as well.
 
 Mutation audit (`stryker.conf.json`, one-off 2026-07-17, not in CI):
 killer suite = the fast arbiter set (`stryker.vitest.config.ts`). Score:
