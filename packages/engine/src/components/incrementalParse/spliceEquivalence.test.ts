@@ -595,6 +595,27 @@ describe('splice equivalence — stripped-node prefixes', () => {
     expect(last!.boundary).toBeGreaterThan(payload.indexOf('-->') + 3);
   });
 
+  test('a disordered top-level mdast makes the injection plan uninjectable instead of skipping a def (eng-parse-07)', () => {
+    // Shipped chains position top-level nodes in order; a plugin-shaped tree
+    // that moves a definition AFTER a later-positioned sibling would hit the
+    // walk's boundary early-break and silently lose the injection event.
+    // The walk detects the disorder and bails (full-parse fallback), matching
+    // the cut layer's correct-or-bailing promise.
+    const payload = 'see [a] later.\n\n[a]: https://example.com/a\n\ntail paragraph\n';
+    const full = runFull(payload, BASELINE) as { mdast: Parameters<typeof collectPrefixInjection>[0] };
+    const boundary = payload.indexOf('tail paragraph');
+    const ordered = collectPrefixInjection(full.mdast, payload, boundary);
+    expect(ordered.uninjectable).toBe(false);
+    expect(ordered.events.some((e) => e.kind !== 'refs')).toBe(true); // the def is injected
+    // Move the definition AFTER the tail paragraph (positions travel with the
+    // nodes): the boundary early-break now fires before the def is seen.
+    const [para, def, tail] = full.mdast.children;
+    const swapped = { ...full.mdast, children: [para, tail, def] };
+    const disordered = collectPrefixInjection(swapped as never, payload, boundary);
+    expect(disordered.uninjectable).toBe(true);
+    expect(disordered.events).toEqual([]);
+  });
+
   test('injection plan resume ≡ fresh walk (final-review R3)', () => {
     // The cached plan appends only the children in [oldBoundary, boundary).
     // Property: for every boundary pair b1 < b2, resuming from b1's plan
@@ -807,6 +828,13 @@ describe('splice equivalence — footnote injection replay', () => {
       'see [__aimd_injection_terminator__] maybe.\n',
       'see [text][__aimd_injection_terminator__] maybe.\n',
       'see ![alt][__aimd_injection_terminator__] maybe.\n',
+      // Case / Unicode-fold variants: micromark matches labels after
+      // normalizeIdentifier, so these resolve against the terminator def too
+      // (2026-08 project review, eng-parse-04 — the byte-exact guard let
+      // them through).
+      'see [__AIMD_INJECTION_TERMINATOR__] maybe.\n',
+      'see [text][__Aimd_Injection_Terminator__] maybe.\n',
+      'see [__aımd_injection_terminator__] maybe.\n', // dotless ı folds to I
     ];
     for (const mention of mentions) {
       const frame0 = 'note[^q] first.\n\n[^q]: def body\n\nplain settles.\n\n';

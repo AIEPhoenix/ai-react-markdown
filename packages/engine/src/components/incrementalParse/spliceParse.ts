@@ -30,6 +30,7 @@
  * return null → full-parse fallback for the frame.
  */
 
+import { normalizeIdentifier } from 'micromark-util-normalize-identifier';
 import type { Root as HastRoot, RootContent as HastContent } from 'hast';
 import type { Root as MdastRoot, RootContent as MdastContent } from 'mdast';
 import type { Node as UnistNode, Position } from 'unist';
@@ -170,11 +171,23 @@ export function collectPrefixInjection(
       for (const child of children) visit(child, true);
     }
   };
+  // Top-level children are position-ordered with the shipped chain, and the
+  // event stream assumes it. A plugin-shaped tree that reorders top-level
+  // nodes must not produce a WRONG plan: an early break at the boundary
+  // would silently skip a def that sits after a later-positioned sibling,
+  // so the walk uses filter semantics (every child is inspected, only those
+  // in [resumeAt, boundary) are visited) and flags any disorder as
+  // uninjectable (full-parse fallback) — the cut layer's correct-or-bailing
+  // promise for the same threat model (2026-08 project review, eng-parse-07).
+  let lastStart = -1;
   for (const child of mdast.children) {
-    // Top-level children are position-ordered — nothing at or past the
-    // boundary can contribute a prefix event (E5), and nothing before the
-    // resume point needs re-visiting.
+    // Nothing at or past the boundary can contribute a prefix event (E5),
+    // and nothing before the resume point needs re-visiting.
     const start = child.position?.start?.offset;
+    if (start !== undefined) {
+      if (start < lastStart) return { events: [], uninjectable: true, cacheable: false };
+      lastStart = start;
+    }
     if (start === undefined) {
       // A position-less top-level child cannot be partitioned by offset: a
       // resumed walk would re-visit it and DUPLICATE its cached events.
@@ -186,8 +199,7 @@ export function collectPrefixInjection(
       visit(child, false);
       continue;
     }
-    if (start >= boundary) break;
-    if (start < resumeAt) continue;
+    if (start >= boundary || start < resumeAt) continue;
     visit(child, false);
   }
   return { events, uninjectable, cacheable };
@@ -240,7 +252,12 @@ const INJECTION_TERMINATOR = `[${TERMINATOR_LABEL}]: __aimd_sentinel_link__`;
  *  reference-tainted (pinned into the tail), and a resolved one has a real
  *  def that wins first-def-wins over the terminator. */
 export function tailMentionsTerminator(tailSource: string): boolean {
-  return tailSource.includes(`[${TERMINATOR_LABEL}`);
+  // micromark matches labels after `normalizeIdentifier` (whitespace
+  // collapse + Unicode case fold), so `[__AIMD_INJECTION_TERMINATOR__]` — or
+  // a dotless-ı variant — resolves against the lowercase terminator def just
+  // the same. Compare in the same normal form (2026-08 project review,
+  // eng-parse-04: a byte-exact `includes` let case variants through).
+  return normalizeIdentifier(tailSource).includes(`[${normalizeIdentifier(TERMINATOR_LABEL)}`);
 }
 
 /** Build the injection text prepended to the tail source (with per-footnote-
