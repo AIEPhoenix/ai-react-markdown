@@ -36,13 +36,18 @@ function readYamlOverrides(file) {
   for (const line of lines.slice(start + 1)) {
     if (line.trim() === '' || line.trimStart().startsWith('#')) continue;
     if (!line.startsWith('  ')) break; // dedent ends the block
+    // Deliberately minimal YAML: `  key: value` scalars only (this is all
+    // pnpm ever writes into `overrides:`). Quotes are stripped from BOTH
+    // sides — pnpm's serializer and a hand-written workspace file may quote
+    // a key differently (a scoped `"@scope/pkg"` key, say), and comparing
+    // the raw text would flag an in-sync pair as out of sync. Values are
+    // split at the FIRST `: `; a value containing `: ` is not something an
+    // override ever holds (versions, ranges, `npm:` aliases).
     const at = line.indexOf(': ');
     if (at === -1) throw new Error(`${file}: cannot parse override line: ${line}`);
-    const key = line.slice(2, at).trim();
-    const value = line
-      .slice(at + 2)
-      .trim()
-      .replace(/^['"]|['"]$/g, '');
+    const unquote = (s) => s.trim().replace(/^(['"])(.*)\1$/, '$2');
+    const key = unquote(line.slice(2, at));
+    const value = unquote(line.slice(at + 2));
     out[key] = value;
   }
   return out;

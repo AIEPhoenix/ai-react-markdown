@@ -86,6 +86,18 @@ jobs:
             echo "::error::Tag ${GITHUB_REF_NAME} does not match ${PKG_PATH} version ${PKG_VERSION}"
             exit 1
           fi
+          # A train tag publishes the three lockstep packages together; a
+          # package left behind (hand edit, partial revert) would make
+          # `pnpm publish -r` skip it silently and ship a partial train.
+          if [ "$PKG_PATH" = "./package.json" ]; then
+            for dir in core engine mantine; do
+              V="$(node -p "require('./packages/${dir}/package.json').version")"
+              if [ "$V" != "$TAG_VERSION" ]; then
+                echo "::error::Lockstep package packages/${dir} is at ${V}, tag is ${TAG_VERSION}"
+                exit 1
+              fi
+            done
+          fi
 
       # Full quality gate — mirrors CI so a tag can't ship anything main
       # wouldn't accept. Build runs first: mantine's typecheck/tests resolve
@@ -158,13 +170,23 @@ jobs:
             exit 0
           fi
           VERSION="${GITHUB_REF_NAME#v}"
+          # A `### <version>` heading followed by a space (title) or by end
+          # of line; the section runs to the next `### `. If the same version
+          # has more than one section, only the first is used — warn so the
+          # truncation is visible in the job log rather than discovered on
+          # the release page.
+          SECTIONS="$(grep -cE "^### ${VERSION//./\\.}( |$)" docs/release-highlights.md || true)"
           awk -v ver="$VERSION" '
-            index($0, "### " ver " ") == 1 { found = 1; next }
+            index($0, "### " ver " ") == 1 || $0 == "### " ver { found = 1; next }
             found && /^### / { exit }
             found { print }
           ' docs/release-highlights.md > /tmp/release-notes.md
+          if [ "$SECTIONS" -gt 1 ]; then
+            echo "::warning::docs/release-highlights.md has ${SECTIONS} sections for ${VERSION}; only the first is used as release notes"
+          fi
           if [ -s /tmp/release-notes.md ]; then
             gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file /tmp/release-notes.md --verify-tag
           else
+            echo "::warning::No '### ${VERSION}' section in docs/release-highlights.md — falling back to auto-generated release notes"
             gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes --verify-tag
           fi

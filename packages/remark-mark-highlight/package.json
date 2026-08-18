@@ -49,7 +49,6 @@
   },
   "scripts": {
     "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsup",
-    "prepublishOnly": "pnpm build",
     "test": "vitest --run",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },

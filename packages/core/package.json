@@ -68,7 +68,8 @@
       "import": "./dist/plugins/index.js",
       "require": "./dist/plugins/index.cjs"
     },
-    "./typography/*.css": "./dist/typography/*.css"
+    "./typography/*.css": "./dist/typography/*.css",
+    "./package.json": "./package.json"
   },
   "scripts": {
     "build:js": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsup && node scripts/assert-dist-clean.mjs",
