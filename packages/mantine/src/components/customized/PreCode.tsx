@@ -1,12 +1,51 @@
 'use client';
 
-import { HTMLAttributes, memo, useMemo } from 'react';
+import { HTMLAttributes, memo, useEffect, useMemo, useState } from 'react';
 import { CodeHighlight, CodeHighlightTabs } from '@mantine/code-highlight';
 import { deepParseJson } from 'deep-parse-json';
-import hljs from 'highlight.js';
-import { useAIMarkdownTheme } from '@ai-react-markdown/core';
+import { useAIMarkdownState, useAIMarkdownTheme } from '@ai-react-markdown/core';
 import { useMantineCodeBlockOptions } from '../../hooks/useMantineCodeBlockOptions';
 import MantineAIMMermaidCode from './MermaidCode';
+
+/**
+ * highlight.js is NOT imported statically any more: the root entry carries
+ * every language definition (~130 KB gzip) and the only always-on use was a
+ * `getLanguage()` existence check that Mantine's own adapter already
+ * performs (unknown language → plaintext). Auto-detection is the one real
+ * consumer, and it loads the module on demand — only when
+ * `autoDetectUnknownLanguage` is on AND an unlabelled block has finished
+ * streaming (2026-08 project review, pkg-small-02 / pkg-small-06: the
+ * static import defeated consumers' `highlight.js/lib/core` slimming, and
+ * `highlightAuto` re-scored the growing block on every streamed chunk).
+ */
+let hljsAutoPromise: Promise<{ highlightAuto: (code: string) => { language?: string } }> | null = null;
+const loadHljsForAutoDetect = () => {
+  hljsAutoPromise ??= import('highlight.js').then((m) => m.default);
+  return hljsAutoPromise;
+};
+
+/**
+ * The language highlight.js guesses for an unlabelled block — resolved once
+ * the block has finished streaming (a truncated prefix scores badly and the
+ * scoring itself is O(languages × text) per call). Returns '' while
+ * disabled, streaming, or still loading, so the block renders as
+ * plaintext/"unknown" in the meantime and upgrades in place.
+ */
+function useAutoDetectedLanguage(codeText: string, enabled: boolean, streaming: boolean): string {
+  const [detected, setDetected] = useState<{ code: string; language: string } | null>(null);
+  useEffect(() => {
+    if (!enabled || streaming || !codeText) return;
+    let cancelled = false;
+    void loadHljsForAutoDetect().then((hljs) => {
+      if (cancelled) return;
+      setDetected({ code: codeText, language: hljs.highlightAuto(codeText).language ?? '' });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [codeText, enabled, streaming]);
+  return enabled && detected?.code === codeText ? detected.language : '';
+}
 
 /**
  * Code languages that receive specialized rendering instead of standard
@@ -53,30 +92,38 @@ const MantineAIMPreCode = memo(
     }
   ) => {
     const { fontSize } = useAIMarkdownTheme();
+    const { streaming } = useAIMarkdownState();
     const { autoDetectUnknownLanguage, defaultExpanded } = useMantineCodeBlockOptions();
 
-    const codeLanguage = useMemo(() => {
-      if (props.existLanguage) return props.existLanguage;
-      if (autoDetectUnknownLanguage) {
-        return hljs.highlightAuto(props.codeText).language || '';
-      }
-      return '';
-    }, [props.existLanguage, props.codeText, autoDetectUnknownLanguage]);
+    const detectedLanguage = useAutoDetectedLanguage(
+      props.codeText,
+      autoDetectUnknownLanguage && !props.existLanguage,
+      streaming
+    );
+    // Lower-cased once for every decision below: fence languages arrive in
+    // whatever case the model wrote (` ```Mermaid `, ` ```JSON `), and both
+    // the special-language switch and the JSON branch must agree
+    // (2026-08 project review, pkg-small-08 — the mermaid check was
+    // case-sensitive while the JSON check was not).
+    const codeLanguage = (props.existLanguage || detectedLanguage).toLowerCase();
 
-    const [usedCodeLanguage, usedFileName] = useMemo(() => {
-      if (!codeLanguage) return ['plaintext', 'unknown'];
-      if (!hljs.getLanguage(codeLanguage)) {
-        return ['plaintext', codeLanguage];
-      }
-      return [codeLanguage, codeLanguage];
-    }, [codeLanguage]);
+    // The language is passed straight to Mantine's highlighter, whose
+    // adapter already degrades unknown languages to plaintext; the label
+    // is "unknown" only when there is no language at all.
+    const [usedCodeLanguage, usedFileName] = useMemo(
+      () => (codeLanguage ? [codeLanguage, codeLanguage] : ['plaintext', 'unknown']),
+      [codeLanguage]
+    );
 
     const isSpecialCodeBlock = SPECIAL_LANGUAGES.has(codeLanguage);
 
     const normalCodeBlockContent = useMemo(() => {
       if (isSpecialCodeBlock) return null;
       let usedCodeStr = props.codeText;
-      if (usedCodeStr && usedCodeLanguage.toLowerCase() === 'json') {
+      // JSON pretty-print only once the block is complete: a streaming
+      // prefix is not valid JSON anyway, and deepParseJson over the growing
+      // text on every chunk is O(n²) work for nothing (pkg-small-06).
+      if (usedCodeStr && !streaming && usedCodeLanguage === 'json') {
         const deepParsedResult = deepParseJson(usedCodeStr);
         usedCodeStr =
           typeof deepParsedResult === 'string' ? deepParsedResult : JSON.stringify(deepParsedResult, null, 2);
@@ -110,7 +157,7 @@ const MantineAIMPreCode = memo(
           maxCollapsedHeight="320px"
         />
       );
-    }, [isSpecialCodeBlock, props.codeText, usedCodeLanguage, usedFileName, fontSize, defaultExpanded]);
+    }, [isSpecialCodeBlock, props.codeText, usedCodeLanguage, usedFileName, fontSize, defaultExpanded, streaming]);
 
     const specialCodeBlockContent = useMemo(() => {
       switch (codeLanguage) {

@@ -3,7 +3,7 @@
 import React, { memo, useEffect, useRef, useState, useCallback } from 'react';
 import { CodeHighlightControl, CodeHighlightTabs } from '@mantine/code-highlight';
 import { ActionIcon, CopyButton, Flex, Tooltip } from '@mantine/core';
-import mermaid from 'mermaid';
+import type mermaidModule from 'mermaid';
 import { useAIMarkdownState, useAIMarkdownTheme } from '@ai-react-markdown/core';
 import { useMantineCodeBlockOptions } from '../../../hooks/useMantineCodeBlockOptions';
 import './styles.scss';
@@ -32,6 +32,22 @@ type MermaidView = { kind: 'source' } | { kind: 'diagram'; chartType: string } |
 const sameView = (a: MermaidView, b: MermaidView): boolean =>
   a.kind === 'diagram' && b.kind === 'diagram' ? a.chartType === b.chartType : a.kind === b.kind;
 
+type Mermaid = typeof mermaidModule;
+
+/**
+ * mermaid is loaded on demand — the FIRST diagram that actually renders
+ * pays the import; an app whose content never contains a mermaid fence
+ * never downloads the ~1.5 MB module (2026-08 project review,
+ * pkg-small-03: the static import sat on the default `pre` component's
+ * import chain, so every consumer's main bundle carried it). The promise is
+ * cached module-wide; the source-view warm-up covers the loading window.
+ */
+let mermaidPromise: Promise<Mermaid> | null = null;
+const loadMermaid = (): Promise<Mermaid> => {
+  mermaidPromise ??= import('mermaid').then((m) => m.default);
+  return mermaidPromise;
+};
+
 /** Theme mermaid.initialize was last called with. mermaid's config is a
  *  module-level singleton, so re-asserting an unchanged theme before every
  *  render attempt (each streamed chunk re-runs the effect) is pure waste —
@@ -40,7 +56,7 @@ const sameView = (a: MermaidView, b: MermaidView): boolean =>
  *  checked per attempt rather than hoisted into a per-instance effect. */
 let initializedTheme: 'dark' | 'light' | null = null;
 
-const ensureMermaidInitialized = (isDark: boolean) => {
+const ensureMermaidInitialized = (mermaid: Mermaid, isDark: boolean) => {
   const theme = isDark ? 'dark' : 'light';
   if (initializedTheme === theme) return;
   mermaid.initialize({
@@ -87,9 +103,11 @@ const handleViewSVGInNewWindow = (svgElement: SVGElement | null | undefined, isD
   const blob = new Blob([text], { type: 'image/svg+xml' });
   const url = URL.createObjectURL(blob);
   const win = window.open(url);
-  if (win) {
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
-  }
+  // Revoke either way: when a popup blocker returns null nobody will ever
+  // load the URL, and leaving it alive leaks the Blob until page unload
+  // (2026-08 project review, pkg-small-09). The opened window needs the
+  // grace period to finish loading it.
+  setTimeout(() => URL.revokeObjectURL(url), win ? 5000 : 0);
 };
 
 /**
@@ -216,7 +234,11 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
 
     const renderMermaid = async () => {
       try {
-        ensureMermaidInitialized(isDark);
+        const mermaid = await loadMermaid();
+        if (!ref.current || cancelled || renderVersion !== renderVersionRef.current) {
+          return;
+        }
+        ensureMermaidInitialized(mermaid, isDark);
         const parseResult = await mermaid.parse(props.code);
         if (!parseResult) {
           throw new Error('Failed to parse mermaid code');
@@ -236,7 +258,21 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
         // `document.body` (its default path, cleaned up internally), so
         // measurement works no matter what our container is doing. The SVG
         // string is written into our own <pre> below either way.
-        const { svg, bindFunctions, diagramType } = await mermaid.render(generateMermaidUUID(), props.code);
+        // mermaid's config is a module singleton and the awaits above yield:
+        // an instance under the OTHER color scheme may have re-initialized
+        // in between, in which case this render came out in the wrong theme.
+        // Re-assert and render once more; a second flip is vanishingly
+        // unlikely and would self-heal on the next attempt anyway
+        // (2026-08 project review, pkg-small-11).
+        let rendered = await mermaid.render(generateMermaidUUID(), props.code);
+        if (initializedTheme !== (isDark ? 'dark' : 'light')) {
+          if (!ref.current || cancelled || renderVersion !== renderVersionRef.current) {
+            return;
+          }
+          ensureMermaidInitialized(mermaid, isDark);
+          rendered = await mermaid.render(generateMermaidUUID(), props.code);
+        }
+        const { svg, bindFunctions, diagramType } = rendered;
         if (!ref.current || cancelled || renderVersion !== renderVersionRef.current) {
           return;
         }

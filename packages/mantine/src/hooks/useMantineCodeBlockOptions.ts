@@ -31,5 +31,16 @@ export function useMantineCodeBlockOptions(): Required<MantineCodeBlockOptions> 
   // The single assertion: the `codeBlock` group key is owned by this
   // package, contributed by `MantineAIMarkdown` via its behaviors Provider.
   const group = behaviors.codeBlock as Partial<MantineCodeBlockOptions> | undefined;
-  return useMemo(() => ({ ...defaultMantineCodeBlockOptions, ...group }), [group]);
+  return useMemo(() => {
+    // Field-wise `??` rather than a spread: `codeBlock={{ defaultExpanded:
+    // undefined }}` type-checks, and a spread would let that explicit
+    // undefined punch through the default while the signature promises
+    // `Required<…>` (2026-08 project review, pkg-small-12).
+    const resolved = { ...defaultMantineCodeBlockOptions } as Required<MantineCodeBlockOptions>;
+    for (const key of Object.keys(defaultMantineCodeBlockOptions) as Array<keyof MantineCodeBlockOptions>) {
+      const value = group?.[key];
+      if (value !== undefined) (resolved as Record<string, unknown>)[key] = value;
+    }
+    return resolved;
+  }, [group]);
 }

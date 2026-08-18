@@ -20,9 +20,11 @@
 
     .chart-type-tag {
       padding: calc(0.2125rem * var(--mantine-scale)) calc(0.5625rem * var(--mantine-scale));
-      color: black;
+      /* Theme tokens, not literal black/white — a consumer's custom light
+         palette must reach this tag like it reaches everything else. */
+      color: var(--mantine-color-text);
       border: 1px solid var(--mantine-color-gray-3);
-      background: white;
+      background: var(--mantine-color-body);
       border-radius: var(--mantine-radius-default);
       font-size: var(--mantine-font-size-xs);
       font-weight: 700;

@@ -10,7 +10,6 @@ export default defineConfig({
   sourcemap: true,
   clean: true,
   external: ['react', 'react-dom', '@mantine/core', '@ai-react-markdown/core'],
-  noExternal: ['lodash-es'],
   esbuildPlugins: [
     sassPlugin({
       async transform(source) {

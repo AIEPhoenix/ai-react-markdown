@@ -99,7 +99,10 @@ const DefaultCustomComponents: AIMarkdownCustomComponents = {
     const detectedLanguage = (code.properties?.className as string[])
       ?.find((className: string) => className.startsWith('language-'))
       ?.substring('language-'.length);
-    const codeText = code.children.map((child: { value?: string }) => child.value ?? '').join('\n');
+    // A `<code>` inside `<pre>` normally carries ONE text child; if an
+    // upstream plugin splits it, the pieces are contiguous source — join
+    // with '' (a '\n' joiner would invent line breaks the source lacks).
+    const codeText = code.children.map((child: { value?: string }) => child.value ?? '').join('');
     return <MantineAIMPreCode key={key} codeText={codeText} existLanguage={detectedLanguage} />;
   },
 };

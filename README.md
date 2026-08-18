@@ -96,7 +96,7 @@ pnpm add @ai-react-markdown/mantine @ai-react-markdown/core \
 | `katex`                   | `core` + `engine` (optional — only if you render math) | `^0.16.0 \|\| ^0.17.0` |
 | `@mantine/core`           | `mantine`                                              | `^9.0.0`               |
 | `@mantine/code-highlight` | `mantine`                                              | `^9.0.0`               |
-| `highlight.js`            | `mantine`                                              | `^11.11.1`             |
+| `highlight.js`            | `mantine`                                              | `^11.11.2`             |
 
 > `katex` is an **optional peer**, declared by both `core` and `engine` (the engine owns the `rehype-katex` step, core owns the CSS contract). It ships transitively via `rehype-katex`, so hoisted installers (npm, yarn classic, default pnpm) resolve `'katex/dist/katex.min.css'` automatically. Strict-isolation installers (yarn PnP, `pnpm --node-linker=isolated`) must install it explicitly, in your own app — not alongside the engine. Skip this only if you never render math.
 

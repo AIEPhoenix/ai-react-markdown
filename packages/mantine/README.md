@@ -41,7 +41,7 @@ yarn add @ai-react-markdown/mantine @ai-react-markdown/core
   "@ai-react-markdown/core": "^2.3.3",
   "@mantine/core": "^9.0.0",
   "@mantine/code-highlight": "^9.0.0",
-  "highlight.js": "^11.11.1"
+  "highlight.js": "^11.11.2"
 }
 ```
 
@@ -206,13 +206,13 @@ Activated by importing `@ai-react-markdown/mantine/styles.css` in your app entry
 
 The Mantine package installs a default `<pre>` renderer (`MantineAIMPreCode`) that powers all code-block features. Behavior by code-block flavor:
 
-| Code-block flavor                          | Rendered as                 | Notes                                                                                                                                |
-| ------------------------------------------ | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Annotated, known language (e.g. ` ```ts `) | `<CodeHighlightTabs>`       | Tab label = language name                                                                                                            |
-| Annotated, unknown language identifier     | `<CodeHighlight>` plaintext | Filename label shows the unknown identifier                                                                                          |
-| No language annotation                     | `<CodeHighlight>` plaintext | Label = `"unknown"`. With `codeBlock.autoDetectUnknownLanguage: true`, `hljs.highlightAuto` is consulted before falling back         |
-| ` ```mermaid `                             | Interactive Mermaid diagram | See [Mermaid Diagrams](#mermaid-diagrams)                                                                                            |
-| ` ```json `                                | Pretty-printed JSON         | Deep-parsed via `deep-parse-json` to expand any nested JSON-encoded strings, then re-serialized with 2-space indent before rendering |
+| Code-block flavor                          | Rendered as                 | Notes                                                                                                                                                                              |
+| ------------------------------------------ | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Annotated, known language (e.g. ` ```ts `) | `<CodeHighlightTabs>`       | Tab label = language name                                                                                                                                                          |
+| Annotated, unknown language identifier     | `<CodeHighlightTabs>`       | Tab label = the identifier as written; Mantine's highlight adapter degrades an unknown language to plaintext                                                                       |
+| No language annotation                     | `<CodeHighlight>` plaintext | Label = `"unknown"`. With `codeBlock.autoDetectUnknownLanguage: true`, `hljs.highlightAuto` runs once the block has finished streaming and the label/highlighting upgrade in place |
+| ` ```mermaid ` (any case)                  | Interactive Mermaid diagram | See [Mermaid Diagrams](#mermaid-diagrams); the language match is case-insensitive                                                                                                  |
+| ` ```json ` (any case)                     | Pretty-printed JSON         | Once the block has finished streaming, deep-parsed via `deep-parse-json` to expand any nested JSON-encoded strings, then re-serialized with 2-space indent before rendering        |
 
 All non-special blocks render with `withBorder` and `withExpandButton`, collapsing to `maxCollapsedHeight="320px"` until expanded.
 
@@ -243,11 +243,11 @@ By default, code blocks without an explicit language annotation render as plaint
 <MantineAIMarkdown content={markdown} codeBlock={{ autoDetectUnknownLanguage: true }} />
 ```
 
-This uses `highlight.js`'s `highlightAuto` to guess the language. Results may vary for short or ambiguous snippets.
+This uses `highlight.js`'s `highlightAuto` to guess the language. Results may vary for short or ambiguous snippets. Detection runs once per block after it has finished streaming (a truncated prefix scores badly, and scoring every language against a growing block on every chunk is wasted work), and it loads the full `highlight.js` build on demand at that moment — the package itself no longer imports the root `highlight.js` entry, so consumers who register only the languages they need via `highlight.js/lib/core` keep that bundle saving unless they turn this option on.
 
 ## Mermaid Diagrams
 
-Fenced code blocks with the `mermaid` language identifier render as interactive SVG diagrams:
+Fenced code blocks with the `mermaid` language identifier render as interactive SVG diagrams. The `mermaid` module is loaded on demand — the first diagram that renders pays the import (the raw source shows as a code block while it loads), and an app whose content never contains a mermaid fence never downloads it:
 
 ````markdown
 ```mermaid
