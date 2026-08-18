@@ -1,6 +1,6 @@
 {
   "name": "@ai-react-markdown/engine",
-  "version": "2.4.1",
+  "version": "2.4.2",
   "description": "Framework-agnostic Markdown engine for ai-react-markdown — incremental parsing, LaTeX preprocessing, and the unified plugin pipeline. Internal supplier for @ai-react-markdown/core; no public API stability promised before 3.0.0.",
   "publishConfig": {
     "access": "public"
