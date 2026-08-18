@@ -10,7 +10,7 @@ overrides:
   qs@<6.15.2: '>=6.15.2 <7'
   fast-uri@>=3.0.0 <3.1.5: '>=3.1.5 <4'
   brace-expansion@>=3.0.0 <5.0.7: '>=5.0.7 <6'
-  esbuild@<0.28.1: '>=0.28.1'
+  esbuild@<0.28.1: '>=0.28.1 <0.29'
   typescript@>=7: ^6.0.3
   react-doctor: 0.8.1
   react-grab: 0.1.48
@@ -2251,7 +2251,7 @@ packages:
   '@storybook/csf-plugin@10.5.8':
     resolution: {integrity: sha512-/FHiMyOWWEXfwK/lM0WxmkP9GLzbSJJuzGtfeuNWSOVDnvAMbjavitxfHb5wSbWKIQo0XYC1EJ2Y7x91XNYP4w==}
     peerDependencies:
-      esbuild: '>=0.28.1'
+      esbuild: '>=0.28.1 <0.29'
       rollup: '*'
       storybook: ^10.5.8
       vite: '*'
@@ -2845,7 +2845,7 @@ packages:
     resolution: {integrity: sha512-3WrrOuZiyaaZPWiEt4G3+IffISVC9HYlWueJEBWED4ZH4aIAC2PnkdnuRrR94M+w6yGWn4AglWtJtBI8YqvgoA==}
     engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
     peerDependencies:
-      esbuild: '>=0.28.1'
+      esbuild: '>=0.28.1 <0.29'
 
   cac@6.7.14:
     resolution: {integrity: sha512-b6Ilus+c3RrdDk+JhLKUAQfzzgLEPy6wcXqS7f/xe1EETvsDP6GORG7SFuOs6cID5YkqchW/LXZbX5bc8j7ZcQ==}
@@ -3320,7 +3320,7 @@ packages:
   esbuild-sass-plugin@3.7.0:
     resolution: {integrity: sha512-vxNSXFx3/0ZFApKo9036ek2iRfsT+yVO99qIYqa+JaDSuJuId2/N4s1TY+xfK+5LRpAMQkfdBVUTxb/1r2bq1A==}
     peerDependencies:
-      esbuild: '>=0.28.1'
+      esbuild: '>=0.28.1 <0.29'
       sass-embedded: ^1.97.3
 
   esbuild@0.28.1:
@@ -4663,7 +4663,7 @@ packages:
     resolution: {integrity: sha512-KRlq734yN6q/f2CZmZi9CWHuiqSzoLhPFLtcJOL6XM4lR54myyFcY81pG9QOwj+eBC1hIHm5n+Ntbtqiilu8Rg==}
     hasBin: true
     peerDependencies:
-      esbuild: '>=0.28.1'
+      esbuild: '>=0.28.1 <0.29'
       react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
       react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
     peerDependenciesMeta:
@@ -5482,7 +5482,7 @@ packages:
     peerDependencies:
       '@types/node': ^20.19.0 || >=22.12.0
       '@vitejs/devtools': ^0.4.0
-      esbuild: '>=0.28.1'
+      esbuild: '>=0.28.1 <0.29'
       jiti: '>=1.21.0'
       less: ^4.0.0
       sass: ^1.70.0

@@ -18,7 +18,7 @@ export default defineConfig(
       // positive errors against minified code.
       '**/storybook-static/**',
       // Stryker mutation-audit working copy + report output (one-off audit,
-      // see packages/core/stryker.conf.json).
+      // see packages/engine/stryker.conf.json).
       '**/.stryker-tmp/**',
       '**/reports/mutation/**',
     ],

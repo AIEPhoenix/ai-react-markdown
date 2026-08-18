@@ -108,6 +108,14 @@ jobs:
                 exit 1
               fi
             done
+            # mantine's core peer range must move with the train: a hand-
+            # bumped major that leaves `^<old>` behind ships a mantine whose
+            # peer is unmet on install (2026-08-19 review).
+            PEER="$(node -p "require('./packages/mantine/package.json').peerDependencies['@ai-react-markdown/core']")"
+            if [ "$PEER" != "^${TAG_VERSION}" ]; then
+              echo "::error::packages/mantine peer @ai-react-markdown/core is '${PEER}', expected '^${TAG_VERSION}'"
+              exit 1
+            fi
           fi
 
       # Full quality gate — mirrors CI so a tag can't ship anything main
