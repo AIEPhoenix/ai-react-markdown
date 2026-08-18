@@ -111,6 +111,26 @@ describe('computeFreezeBoundary — raw HTML blockers', () => {
     expect(computeFreezeBoundary(two, OFF)).toBe(two.indexOf('zzz'));
   });
 
+  test('2026-08-19 review P1: a line-truncated CLOSING tag is not counted on the spot', () => {
+    // Paragraph context: `para </style` is prose (no `>` ever comes) and
+    // the `<style>` opened above stays open — the boundary must not cross it.
+    expect(computeFreezeBoundary('<style>\n\npara </style\n\ntail\n\nzzz', OFF)).toBe(0);
+    expect(computeFreezeBoundary('<div>\n\npara </div\n\ntail\n\nzzz', OFF)).toBe(0);
+    // …a real close later restores the balance.
+    const closed = '<div>\n\npara </div\n\ntail\n\n</div>\n\nzzz';
+    expect(computeFreezeBoundary(closed, OFF)).toBe(closed.indexOf('zzz'));
+    // Paragraph context with a `>` on the next line: a line-start `>` is a
+    // blockquote to micromark, the end tag cannot complete — stays open.
+    expect(computeFreezeBoundary('<div>\n\npara </div\n>\n\ntail\n\nzzz', OFF)).toBe(0);
+    // Html-flow run: `</div` at line start + `>` on the next line completes
+    // the end tag (parse5) — applied at the `>` line.
+    const flow = '<div>\ncontent\n</div\n>\n\ntail\n\nzzz';
+    expect(computeFreezeBoundary(flow, OFF)).toBe(flow.indexOf('zzz'));
+    // Html-flow run whose truncated close never gets its `>` before the
+    // blank: dropped unapplied, element stays counted (over-block).
+    expect(computeFreezeBoundary('<div>\ncontent\n</div\n\ntail\n\nzzz', OFF)).toBe(0);
+  });
+
   test('v2.4.0 review R2: a truncated tag is not reverted when the raw line closes it inside a masked span, and its seam is still checked', () => {
     // (a) `<div x="\`">b\``: micromark parses the tag first (the backtick
     // is inside a quoted attribute), so the code-span mask hid the tag's

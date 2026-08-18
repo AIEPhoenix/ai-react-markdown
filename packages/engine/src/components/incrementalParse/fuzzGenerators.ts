@@ -41,7 +41,13 @@ const plainInline = fc.constantFrom(
   // its `>` — the scanner counts it, then reverts it at the paragraph's
   // blank line (eng-parse-06). Placed LAST in a paragraph often enough by
   // the joiner to end lines.
-  'compare a<b'
+  'compare a<b',
+  // Prose `</letter` at end of line: a line-truncated CLOSING "tag". Never
+  // counted — a close tag cannot carry attributes and a line-start `>`
+  // is a blockquote, so it can only be prose (2026-08-19 review P1: the
+  // corpus had truncated opens only, and the on-the-spot decrement let a
+  // boundary cross a still-open `<style>`).
+  'closing </b'
 );
 
 /** APPROX #1 — prose brackets count as reference taint. */
@@ -412,6 +418,7 @@ export const COVERAGE_MARKERS: Record<string, RegExp> = {
   invalidLinkDef: /\]:(?: \/u\(x| \/u\)| <u<v>| <u| \/u\\ x)(?:\n| "title)|\]:\n/,
   rawTextBlock: /<(?:script|style|textarea|pre)>/,
   proseTruncatedTag: /a<b\n/,
+  proseTruncatedClose: /<\/b\n/,
   reviewShapes: /<!-- c --> <\/s>|<\?x\?><details>|<\/t>\ntext|<details> <\?php|x="`">b`/,
   treeQuirks: /<\/br>|<\/p>|<td>s<\/td>\n\n|<col>/,
   unicodeBlank: /\n[\u3000\u00a0]\n|```\u00a0\n|\$\$\u3000\n|"t"\u00a0|\u3000<!--/,

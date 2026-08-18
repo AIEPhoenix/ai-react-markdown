@@ -394,6 +394,19 @@ y$ which spans lines`;
     expect(preprocessLaTeX(info)).toBe('``` js `x`\n$$x^2$$');
   });
 
+  test('2026-08-19 review P2-2: a code span cannot cross a blank line — lone backticks in different paragraphs stay literal', () => {
+    // Two paragraphs each holding one stray backtick: CommonMark never pairs
+    // them, so the math between them is live and converts.
+    const content = 'Press the ` key to open.\n\nEuler: $e^{i\\pi} = -1$ inline.\n\nType ` again to close.\n';
+    const expected = 'Press the ` key to open.\n\nEuler: $$e^{i\\pi} = -1$$ inline.\n\nType ` again to close.\n';
+    expect(preprocessLaTeX(content)).toBe(expected);
+    // Whitespace-only lines are blank too (spaces / tabs / CR).
+    expect(preprocessLaTeX('a ` b\n \t\r\n$x$\n\nc ` d')).toBe('a ` b\n \t\r\n$$x$$\n\nc ` d');
+    // A span that wraps a soft line break inside ONE paragraph still pairs
+    // and still protects its content.
+    expect(preprocessLaTeX('a `code\n$x$ more` b\n\n$y$')).toBe('a `code\n$x$ more` b\n\n$$y$$');
+  });
+
   test('handles unclosed inline code backtick gracefully', () => {
     const content = 'text ` unclosed $x^2$';
     const expected = 'text ` unclosed $$x^2$$';

@@ -276,6 +276,18 @@ export interface FreezeScanCheckpoint {
    *  tagBalance but not yet confirmed by a later `>` — reverted at the next
    *  blank line (a tag cannot span one). See TRUNCATED_TAG_RE. */
   pendingTruncatedTags: string[];
+  /** Line-truncated CLOSING tags (`</div` + EOL, no `>`) inside an html-flow
+   *  run, waiting for a `>` on a later line of the same run. Unlike opens
+   *  they are NOT counted up front: a close tag cannot carry attributes, so
+   *  `para </style` (prose to micromark, still-open element to parse5 —
+   *  RAWTEXT waits for the `>`) must not zero the balance (2026-08-19
+   *  review P1 — the boundary crossed an open `<style>`). Confirmed and
+   *  applied only when a later line of the run brings the `>` (parse5
+   *  completes the end tag; micromark's block ends at the blank anyway);
+   *  dropped unapplied at the blank (element stays counted — over-block).
+   *  Paragraph-context truncated closes are never pended: a line-start `>`
+   *  is a blockquote to micromark, so `</b\n>` cannot complete inline. */
+  pendingTruncatedCloses: string[];
 }
 
 const VOID_TAGS = new Set([
@@ -480,6 +492,7 @@ function freshCheckpoint(defListEnabled: boolean, mathFlow: boolean, referenceTa
     htmlSeamPending: false,
     phasePoisonedAt: Infinity,
     pendingTruncatedTags: [],
+    pendingTruncatedCloses: [],
   };
 }
 
@@ -937,6 +950,9 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
       for (const tag of cp.pendingTruncatedTags) applyTag(tag, true);
       cp.pendingTruncatedTags = [];
     }
+    // Truncated closes that never got their `>` stay UNAPPLIED (see the
+    // field doc): the element remains counted — over-block, never under.
+    cp.pendingTruncatedCloses = [];
     cp.blankRun += 1;
     cp.lastBlankStart = ln.start;
     cp.candidates.push({
@@ -1334,6 +1350,13 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     if (cp.pendingTruncatedTags.length > 0 && ln.text.includes('>')) {
       cp.pendingTruncatedTags = [];
     }
+    // …and completes every pending truncated CLOSE of this html-flow run:
+    // parse5 emits the end tag at that `>`. Applied here, not at the
+    // truncated line (2026-08-19 review P1).
+    if (cp.pendingTruncatedCloses.length > 0 && ln.text.includes('>')) {
+      for (const tag of cp.pendingTruncatedCloses) applyTag(tag, true);
+      cp.pendingTruncatedCloses = [];
+    }
     // Line-truncated tag start — anchor on the LAST `<` of the line.
     if (!cp.commentOpen) {
       const lastLt = tagText.lastIndexOf('<');
@@ -1342,7 +1365,15 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
         if (m2) {
           const closing = m2[1] === '/';
           const tag = m2[2].toLowerCase();
-          if (!VOID_TAGS.has(tag)) {
+          if (closing) {
+            // Never counted on the spot (2026-08-19 review P1: `para </style`
+            // zeroed the balance while `<style>` was still open in BOTH
+            // grammars — the fuzz corpus had truncated opens only). In an
+            // html-flow run the `>` may still arrive on a later line of the
+            // run — pend it; in paragraph context it cannot complete
+            // (line-start `>` is a blockquote), so it is prose: nothing.
+            if (!VOID_TAGS.has(tag) && inRawText) cp.pendingTruncatedCloses.push(tag);
+          } else if (!VOID_TAGS.has(tag)) {
             applyTag(tag, closing);
             // Only a PARAGRAPH-line truncation can turn out to be prose. In an
             // html-flow run the bytes are raw: parse5 keeps tokenizing the

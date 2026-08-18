@@ -596,6 +596,37 @@ describe('splice equivalence — adversarial fixtures', () => {
     assertStreamEquivalence('crlf', chunkSnapshots(payload, 9), BASELINE);
   });
 
+  test('2026-08-19 review P2-1: a lone CR is a line ending — rebased tail line numbers stay exact', () => {
+    // `x\r\r\ny`: micromark counts `\r`, `\r\n` and `\n` as one line ending
+    // each; a lone `\r` in the frozen prefix used to leave every tail
+    // `position.line` one short (offsets and shape were right).
+    for (const [name, payload] of [
+      ['lone-cr', 'x\r\r\ny\n\nz\n\nw settles.\n\ntail paragraph.\n'],
+      ['lone-cr-blank', 'text\r\r\nmore\n\nz\n\nw\n\ntail.\n'],
+      ['lone-cr-in-list', '- a\r  b\n\npara\n\nmore [a]\n\n[a]: /u\n\ntail.\n'],
+    ] as const) {
+      const stats = assertStreamEquivalence(name, chunkSnapshots(payload, 6), BASELINE);
+      expect(stats.incrementalFrames).toBeGreaterThan(0);
+    }
+  });
+
+  test('2026-08-19 review P1: a line-truncated CLOSING tag never zeroes the balance', () => {
+    // `para </style` is prose to micromark and an unfinished end tag to
+    // parse5 (RAWTEXT waits for the `>`): the `<style>` element is still
+    // open in both grammars, and the boundary must not cross it.
+    for (const [name, payload] of [
+      ['truncated-close-style', '<style>\n\npara </style\n\ntail para\n\nmore.\n'],
+      ['truncated-close-textarea', '<textarea>\n\npara </textarea\n\ntail para\n\nmore.\n'],
+      ['truncated-close-div', '<div>\n\npara </div\n\ntail para\n\nmore.\n\n</div>\n\nend.\n'],
+      // Html-flow run: `</div` + `>` on the next line IS the end tag (parse5
+      // completes it; micromark's block ends at the blank) — the close is
+      // applied at the `>` line, and the tail keeps splicing.
+      ['truncated-close-flow', '<div>\ncontent\n</div\n>\n\ntail\n\nend paragraph.\n\nmore.\n'],
+    ] as const) {
+      assertStreamEquivalence(name, chunkSnapshots(payload, 5), BASELINE);
+    }
+  });
+
   test('duplicate label: prefix def wins over a later tail def (first-def-wins)', () => {
     const payload =
       '[a]: https://first.example\n\nuse [text][a] here.\n\nfiller paragraph.\n\n[a]: https://second.example\n\ntail.\n';

@@ -1185,10 +1185,19 @@ function countTrailingNewlines(value: string): number {
   return n;
 }
 
-/** Newlines in `text` before `end` (defaults to the whole string) — the
- *  bound avoids allocating prefix slices on the per-frame hot path. */
+/** Line endings in `text` before `end` (defaults to the whole string) — the
+ *  bound avoids allocating prefix slices on the per-frame hot path.
+ *  Counts what micromark counts: `\n`, `\r\n` and a LONE `\r` are one line
+ *  ending each (2026-08-19 review P2-1: a lone `\r` in the frozen prefix
+ *  left every rebased tail `position.line` one short — offsets and shape
+ *  were right, only the line numbers drifted). Two indexOf sweeps keep the
+ *  hot path allocation-free; a `\r` directly followed by `\n` is the CRLF
+ *  pair, already counted by the `\n` sweep. */
 function countNewlines(text: string, end = text.length): number {
   let count = 0;
   for (let i = text.indexOf('\n'); i !== -1 && i < end; i = text.indexOf('\n', i + 1)) count += 1;
+  for (let i = text.indexOf('\r'); i !== -1 && i < end; i = text.indexOf('\r', i + 1)) {
+    if (text.charCodeAt(i + 1) !== 10 /* \n */) count += 1;
+  }
   return count;
 }

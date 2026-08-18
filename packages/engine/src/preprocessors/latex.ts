@@ -114,10 +114,20 @@ function lineIndentBefore(content: string, pos: number): number {
 function findClosingBacktickRun(content: string, start: number, n: number): number {
   let i = start;
   while (i < content.length) {
-    if (content[i] === '`') {
+    const ch = content[i];
+    if (ch === '`') {
       const runLen = getRepeatedMarkerLength(content, i, '`');
       if (runLen === n) return i;
       i += runLen;
+    } else if (ch === '\n') {
+      // A code span cannot cross a blank line (it ends the paragraph): two
+      // lone backticks in different paragraphs are literal, and pairing
+      // them would shield every `$…$` in between from conversion
+      // (2026-08-19 review P2-2 — inline sibling of the v2.4.1 fence fix).
+      let j = i + 1;
+      while (j < content.length && (content[j] === ' ' || content[j] === '\t' || content[j] === '\r')) j += 1;
+      if (j >= content.length || content[j] === '\n') return -1;
+      i += 1;
     } else {
       i += 1;
     }
@@ -323,16 +333,24 @@ function escapeCurrencyDollarSigns(text: string): string {
     }
 
     let needEscape = true;
-    let restBeforeNextMatchOrEnd = '';
-    if (i < currencyMatches.length - 1) {
-      const nextMatch = currencyMatches[i + 1];
-      if (nextMatch.index - match.index > 1) {
-        restBeforeNextMatchOrEnd = text.substring(match.index + 1, nextMatch.index);
+    // Only the FIRST line after this match matters below; bound the slice
+    // by the next line ending instead of splitting the whole remainder into
+    // a line array on every match — O(remainder) per frame on the hot path
+    // for the last match (2026-08-19 review).
+    const restStart = match.index + 1;
+    const restEnd = i < currencyMatches.length - 1 ? currencyMatches[i + 1].index : text.length;
+    let firstLineBeforeNextMatch = '';
+    if (restEnd - restStart > 0) {
+      let eol = restEnd;
+      for (let k = restStart; k < restEnd; k++) {
+        const c = text.charCodeAt(k);
+        if (c === 10 /* \n */ || c === 13 /* \r */) {
+          eol = k;
+          break;
+        }
       }
-    } else {
-      restBeforeNextMatchOrEnd = text.substring(match.index + 1);
+      firstLineBeforeNextMatch = text.substring(restStart, eol);
     }
-    const firstLineBeforeNextMatch = restBeforeNextMatchOrEnd.split(/\r\n|\r|\n/g)[0];
     if (Array.from(firstLineBeforeNextMatch.matchAll(NO_ESCAPED_DOLLAR_REGEX)).length % 2 !== 0) {
       const wholeLineBeforeNextMatchWithoutCurrentDollar = currentLineProcessed + firstLineBeforeNextMatch;
       if (Array.from(wholeLineBeforeNextMatchWithoutCurrentDollar.matchAll(NO_ESCAPED_DOLLAR_REGEX)).length % 2 !== 0) {
