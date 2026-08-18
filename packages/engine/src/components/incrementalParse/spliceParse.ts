@@ -361,10 +361,10 @@ function rebaseDualWalk(
           : undefined;
       if (seg) {
         point.offset! += seg.offsetDelta;
-        point.line += seg.lineDelta;
+        if (typeof point.line === 'number') point.line += seg.lineDelta;
       } else {
         if (point.offset !== undefined) point.offset += offsetDelta;
-        point.line += lineDelta;
+        if (typeof point.line === 'number') point.line += lineDelta;
       }
     }
   }

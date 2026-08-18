@@ -161,6 +161,39 @@ describe('computeFreezeBoundary — raw HTML blockers', () => {
     expect(computeFreezeBoundary(closed, OFF)).toBe(closed.indexOf('zzz'));
   });
 
+  test('v2.4.1 review follow-up: every trim in the scanner is ASCII-only', () => {
+    // A def rest ending in NBSP / U+3000 is a paragraph → `[a]` stays tainted.
+    expect(computeFreezeBoundary('[a]\n\n[a]: /u "t"\u00a0\n\npara\n\nzzz', OFF)).toBe(0);
+    expect(computeFreezeBoundary('[a]\n\n[a]: <#>\u3000\n\npara\n\nzzz', OFF)).toBe(0);
+    const real = '[a]\n\n[a]: /u "t" \n\npara\n\nzzz';
+    expect(computeFreezeBoundary(real, OFF)).toBe(real.indexOf('zzz'));
+    // U+3000 before a paragraph-inline `<!--` is TEXT: the comment never
+    // closes inside the paragraph, so the `<details>` is a real open block.
+    expect(computeFreezeBoundary('\u3000<!-- c\n<details>\n\n-->\n\npara\n\nzzz', OFF)).toBe(0);
+    expect(computeFreezeBoundary(' x <!-- c\n<details>\n\n-->\n\npara\n\nzzz', OFF)).toBe(0);
+    // Label normalization keeps NBSP like micromark's normalizeIdentifier.
+    expect(computeFreezeBoundary('[\u00a0a] x\n\n[a]: /u\n\npara\n\nzzz', OFF)).toBe(0);
+  });
+
+  test('v2.4.1 review follow-up: a FAILED inline link leaves a live shortcut reference', () => {
+    // `[foo](bad url)`: space in a bare destination → not a link; `[foo]` is
+    // a shortcut reference a later def can retarget.
+    expect(computeFreezeBoundary('[foo](bad url) x\n\npara\n\nzzz', OFF)).toBe(0);
+    expect(computeFreezeBoundary('[foo](\n\npara\n\nzzz', OFF)).toBe(0);
+    expect(computeFreezeBoundary('[foo](/u "open\n\npara\n\nzzz', OFF)).toBe(0);
+    // Well-formed resources are inline links — no taint.
+    for (const ok of ['[foo](/u) x', '[foo]() x', '[foo](</u v> "t") x', "[foo](/u 't') x", '[foo](/u(x)y) x']) {
+      const doc = `${ok}\n\npara\n\nzzz`;
+      expect(computeFreezeBoundary(doc, OFF), ok).toBe(doc.indexOf('zzz'));
+    }
+  });
+
+  test('v2.4.1 review follow-up: a cross-line label inside a blockquote drops the `>` marker', () => {
+    const doc = '> see [foo\n> bar] end\n\n[foo bar]: /u\n\nzzz';
+    expect(computeFreezeBoundary(doc, OFF)).toBe(doc.indexOf('zzz'));
+    expect(computeFreezeBoundary('> see [foo\n> bar] end\n\npara\n\nzzz', OFF)).toBe(0);
+  });
+
   test('v2.4.1 review P3: CRLF line endings judge like LF (the `\\r` is not line content)', () => {
     // A bare list-marker line under CRLF is still a list marker (blocker 3):
     // LF stops at the `-` line; CRLF used to freeze straight past it.

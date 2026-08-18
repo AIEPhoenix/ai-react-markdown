@@ -80,7 +80,13 @@ const unicodeBlankArb = fc.constantFrom(
   'foo line\n\u3000\n\u3000\nbar joins the paragraph',
   'nbsp line\n\u00a0\nstill one paragraph',
   '```\ncode\n```\u00a0\nstill inside the fence\n```',
-  '$$\nx\n$$\u3000\nstill inside math\n$$'
+  '$$\nx\n$$\u3000\nstill inside math\n$$',
+  // A def rest ending in NBSP is a PARAGRAPH (`[a]` stays a live ref); a
+  // U+3000 before a paragraph-inline `<!--` is text, so the comment never
+  // closes inside the paragraph and the `<details>` below is a real open
+  // block (adversarial review of the first fix).
+  '[a]: /u "t"\u00a0',
+  '\u3000<!-- c\n<details>\n\n-->'
 );
 
 /** A shortcut reference whose label spans a soft line break — micromark
@@ -89,9 +95,18 @@ const unicodeBlankArb = fc.constantFrom(
  *  with `crossLineDefLabelArb` so a later definition can retarget it. */
 const crossLineRefInline = labelArb.map((l) => `see [${l}\n${l}] end`);
 
+/** `[label](bad url)`: the inline resource FAILS micromark's grammar (space
+ *  in a bare destination), so `[label]` is a live shortcut reference a later
+ *  def retargets — the `(`-follow skip must not release it (v2.4.1 review
+ *  follow-up). `[label](/u "t")` is the well-formed control. */
+const failedInlineLinkInline = fc
+  .tuple(labelArb, fc.boolean())
+  .map(([l, ok]) => (ok ? `see [${l}](/u "t") linked` : `see [${l}](bad url) not a link`));
+
 const inlineArb = fc.oneof(
   { weight: 4, arbitrary: plainInline },
   { weight: 1, arbitrary: crossLineRefInline },
+  { weight: 1, arbitrary: failedInlineLinkInline },
   { weight: 2, arbitrary: proseBracketInline },
   { weight: 2, arbitrary: codeSpanInline },
   { weight: 1, arbitrary: underCountInline }
@@ -179,6 +194,7 @@ const rawHtmlArb = fc.oneof(
 
 const HTML_CLOSERS: Record<string, string> = {
   '<details>': '</details>',
+  '\u3000<!-- c\n<details>\n\n-->': '</details>',
   '<!--': '-->',
   '<div': 'class="x">content</div>',
   ...Object.fromEntries(
@@ -378,6 +394,7 @@ export const COVERAGE_MARKERS: Record<string, RegExp> = {
   rawTextBlock: /<(?:script|style|textarea|pre)>/,
   proseTruncatedTag: /a<b\n/,
   reviewShapes: /<!-- c --> <\/s>|<\?x\?><details>|<\/t>\ntext|<details> <\?php|x="`">b`/,
-  unicodeBlank: /\n[\u3000\u00a0]\n|```\u00a0\n|\$\$\u3000\n/,
+  unicodeBlank: /\n[\u3000\u00a0]\n|```\u00a0\n|\$\$\u3000\n|"t"\u00a0|\u3000<!--/,
+  failedInlineLink: /\]\(bad url\)/,
   crossLineRef: /see \[(?:a|b|spec|注一)\n(?:a|b|spec|注一)\] end/,
 };

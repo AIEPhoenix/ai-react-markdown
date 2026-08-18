@@ -345,6 +345,12 @@ const BACKTICK_RUN_RE = /`+/g;
  */
 const MD_BLANK_RE = /^[ \t\r]*$/;
 const isMdBlank = (text: string): boolean => MD_BLANK_RE.test(text);
+/** ASCII-only counterparts of `trim()` / `trimStart()` — every verdict in
+ *  this file must strip exactly what micromark strips (adversarial review
+ *  of the first fix: a def rest ending in NBSP registered a ghost def; a
+ *  U+3000 before a paragraph-inline `<!--` skipped the divergence poison). */
+const mdTrim = (text: string): string => text.replace(/^[ \t\r]+|[ \t\r]+$/g, '');
+const mdTrimStart = (text: string): string => text.replace(/^[ \t\r]+/, '');
 
 function computeIndent(text: string): number {
   let indent = 0;
@@ -378,7 +384,7 @@ function lastUnclosedBracket(text: string): number {
 }
 
 function normalizeLabel(label: string): string {
-  const collapsed = label.trim().replace(/[ \t\r\n]+/g, ' ');
+  const collapsed = label.replace(/[ \t\r\n]+/g, ' ').replace(/^ | $/g, '');
   return collapsed ? normalizeIdentifier(collapsed) : '';
 }
 
@@ -490,11 +496,11 @@ function freshCheckpoint(defListEnabled: boolean, mathFlow: boolean, referenceTa
  * register — the documented A2 conservative edge.
  */
 function isPlausibleLinkDefRest(rest: string): boolean {
-  const t = rest.trim();
+  const t = mdTrim(rest);
   if (t === '') return false; // destination-less
   const destEnd = linkDestinationEnd(t);
   if (destEnd === -1) return false; // micromark rejects the destination → paragraph
-  const after = t.slice(destEnd).trim();
+  const after = mdTrim(t.slice(destEnd));
   if (after === '') return true;
   const opener = after[0];
   if (opener !== '"' && opener !== "'" && opener !== '(') return false;
@@ -506,7 +512,7 @@ function isPlausibleLinkDefRest(rest: string): boolean {
       i += 1;
       continue;
     }
-    if (after[i] === closer) return after.slice(i + 1).trim() === '';
+    if (after[i] === closer) return isMdBlank(after.slice(i + 1));
   }
   return false; // title still open at EOL
 }
@@ -564,6 +570,43 @@ function linkDestinationEnd(t: string): number {
   }
   if (balance !== 0 || i === 0) return -1;
   return i;
+}
+
+/**
+ * micromark's inline-link resource grammar (`(` destination? title? `)`)
+ * on ONE line, starting at the `(` at `openIdx`. Returns the index just past
+ * the closing `)`, or -1 when the resource is malformed here — the bracket
+ * text before it is then a live shortcut reference.
+ */
+function inlineResourceEnd(text: string, openIdx: number): number {
+  let i = openIdx + 1;
+  const skipWs = () => {
+    while (i < text.length && (text[i] === ' ' || text[i] === '\t')) i += 1;
+  };
+  skipWs();
+  if (text[i] === ')') return i + 1; // `()` — empty resource is valid
+  const destEnd = linkDestinationEnd(text.slice(i));
+  if (destEnd === -1) return -1;
+  i += destEnd;
+  const beforeWs = i;
+  skipWs();
+  if (text[i] === ')') return i + 1;
+  if (i === beforeWs) return -1; // title must be whitespace-separated
+  const opener = text[i];
+  if (opener !== '"' && opener !== "'" && opener !== '(') return -1;
+  const closer = opener === '(' ? ')' : opener;
+  for (i += 1; i < text.length; i++) {
+    if (text[i] === '\\') {
+      i += 1;
+      continue;
+    }
+    if (text[i] === closer) {
+      i += 1;
+      skipWs();
+      return text[i] === ')' ? i + 1 : -1;
+    }
+  }
+  return -1; // title still open at EOL
 }
 
 /** Blocker-3 classification of a block-START line (raw text; markers are
@@ -751,7 +794,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
       ln.text
         .replace(/<!--[\s\S]*?-->/g, ' ')
         .replace(/<!--[\s\S]*$/, ' ')
-        .trim() === '';
+        .replace(/[ \t\r]/g, '') === '';
     if (!defShapedLine && !commentOnly) {
       cp.htmlSeamPending = false;
     }
@@ -960,7 +1003,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
   // attribute quoting, so ambiguous starters POISON the hazard verdict
   // instead: candidates near the run are rejected outright (pure
   // over-block), which is correct whichever construct micromark chooses.
-  const tagStart = ln.indent <= 3 ? /^<\/?([A-Za-z][A-Za-z0-9-]*)/.exec(ln.text.trimStart()) : null;
+  const tagStart = ln.indent <= 3 ? /^<\/?([A-Za-z][A-Za-z0-9-]*)/.exec(mdTrimStart(ln.text)) : null;
   if (tagStart) {
     cp.htmlFlowSinceBlank = true;
     if (!TYPE6_NAMES.has(tagStart[1].toLowerCase())) cp.hazardVerdict = true;
@@ -975,7 +1018,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
   // followed by a def line that a later append turns into a paragraph —
   // direction-battery counterexample surfaced by the overlapping-
   // terminator generator family, 2026-08). Feeds the blocker-6 check only.
-  const rawFlowStart = ln.indent <= 3 && /^<(?:!--|\?|![A-Za-z]|!\[CDATA\[)/.test(ln.text.trimStart());
+  const rawFlowStart = ln.indent <= 3 && /^<(?:!--|\?|![A-Za-z]|!\[CDATA\[)/.test(mdTrimStart(ln.text));
 
   // Same-line code-span masking for HTML/ref/footnote extraction. A null
   // mask means "unsafe to mask here" — scan the raw text (over-blocking).
@@ -1025,7 +1068,12 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
   if (cp.referenceTaint) {
     const pushRef = (offset: number, inner: string, followAt: number): void => {
       const follow = scanText[followAt];
-      if (follow === '(') return; // inline link/image
+      // `[text](…)` is an inline link only when the resource is WELL-FORMED
+      // on this line; `[foo](bad url)` fails micromark's resource grammar
+      // and `[foo]` falls back to a shortcut reference a later def can
+      // retarget (adversarial review). A resource that continues on the
+      // next line is unverifiable here → taint (over-block).
+      if (follow === '(' && inlineResourceEnd(scanText, followAt) !== -1) return;
       let label: string;
       let footnote = false;
       if (inner.startsWith('^')) {
@@ -1051,10 +1099,15 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     if (pending) {
       const close = firstUnescaped(scanText, ']');
       const open = firstUnescaped(scanText, '[');
+      // A continuation line inside a blockquote carries its `>` marker in
+      // the source but not in micromark's label — strip it, or the joined
+      // label (`foo > bar`) could never match its def and the taint would
+      // never lift (adversarial review). Wrong-way stripping only over-taints.
+      const cont = (t: string): string => t.replace(/^ {0,3}>[ \t]?/, '');
       if (close !== -1 && (open === -1 || close < open)) {
-        pushRef(pending.offset, `${pending.text}\n${scanText.slice(0, close)}`, close + 1);
+        pushRef(pending.offset, `${pending.text}\n${cont(scanText.slice(0, close))}`, close + 1);
       } else if (close === -1 && open === -1) {
-        cp.openBracket = { offset: pending.offset, text: `${pending.text}\n${scanText}` };
+        cp.openBracket = { offset: pending.offset, text: `${pending.text}\n${cont(scanText)}` };
       }
     }
     if (scanText.includes('[')) {
@@ -1164,7 +1217,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
         // divergence is poisoned like the others.
         rawSpans.push([pi, pi + 3]);
         pos = pi + 3;
-        if (scanText.slice(0, pi).trim() !== '' || ln.indent > 3) poisonRawDivergence();
+        if (!isMdBlank(scanText.slice(0, pi)) || ln.indent > 3) poisonRawDivergence();
         continue;
       }
       rawSpans.push([pi, pi + 2]);
@@ -1247,7 +1300,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     // html block type 2 (terminator semantics, tracked exactly) and raw/
     // flow-context openers follow parse5's comment state — neither poisons.
     if (cp.commentOpen && lastCommentOpenerIdx !== -1 && !inRawText) {
-      if (tagText.slice(0, lastCommentOpenerIdx).trim() !== '') {
+      if (!isMdBlank(tagText.slice(0, lastCommentOpenerIdx))) {
         cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start + lastCommentOpenerIdx);
       }
     }

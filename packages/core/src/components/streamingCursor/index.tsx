@@ -106,7 +106,7 @@ const STYLE_MARKER = 'data-aimd-streaming-cursor-style';
  * project review, core-render-07). Bump the fingerprint whenever the
  * keyframes change.
  */
-const STYLE_FINGERPRINT = 'v1';
+const STYLE_FINGERPRINT = 'v2'; // v2: keyframe names carry the suffix (2.4.2)
 /** Animation names DERIVE from the fingerprint, so bumping it versions
  *  the keyframes too — the cross-version isolation no longer rests on
  *  remembering to rename them by hand (v2.4.1 review). */
