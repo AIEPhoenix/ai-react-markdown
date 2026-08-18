@@ -93,6 +93,24 @@ describe('computeFreezeBoundary — raw HTML blockers', () => {
     expect(computeFreezeBoundary(closed, OFF)).toBe(closed.indexOf('end'));
   });
 
+  test('a line-truncated `<x` that never gets its `>` is prose — its phantom open is reverted at the blank line', () => {
+    // `if x<y then` used to leave `y` open for the rest of the stream
+    // (2026-08 project review, eng-parse-06 — permanent full-parse cliff).
+    const prose = 'if x<y then\n\nnext paragraph\n\nzzz';
+    expect(computeFreezeBoundary(prose, OFF)).toBe(prose.indexOf('zzz'));
+    // …but a wrapped REAL tag (its `>` arrives on a later line) stays open.
+    expect(computeFreezeBoundary('<div\n  class="a">\ncontent\n\nx\n\nzzz', OFF)).toBe(0);
+    // A `>` on the continuation line confirms even prose-looking shapes
+    // (`<b\nc>` IS an inline tag to micromark) — over-block, status quo.
+    expect(computeFreezeBoundary('a<b\nc>d\n\nx\n\nzzz', OFF)).toBe(0);
+    // Reverted phantom + a stray closer later: balance stays sane.
+    const stray = '<div\n\n</div>\n\nzzz';
+    expect(computeFreezeBoundary(stray, OFF)).toBe(stray.indexOf('zzz'));
+    // Two truncated lines in one paragraph both revert.
+    const two = 'a<b\nc<d\n\nnext\n\nzzz';
+    expect(computeFreezeBoundary(two, OFF)).toBe(two.indexOf('zzz'));
+  });
+
   test('void and self-closing tags do not block', () => {
     const text = 'an image <img src="x"> and <br/> here\n\ntail';
     expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('tail'));

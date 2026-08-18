@@ -36,7 +36,12 @@ const plainInline = fc.constantFrom(
   'plain prose keeps flowing here',
   'and **bold** with `code` mixed in',
   '一段中文散文,含有标点。',
-  'trailing words settle the line'
+  'trailing words settle the line',
+  // Prose `<letter` at end of line: a line-truncated "tag" that never gets
+  // its `>` — the scanner counts it, then reverts it at the paragraph's
+  // blank line (eng-parse-06). Placed LAST in a paragraph often enough by
+  // the joiner to end lines.
+  'compare a<b'
 );
 
 /** APPROX #1 — prose brackets count as reference taint. */
@@ -334,4 +339,5 @@ export const COVERAGE_MARKERS: Record<string, RegExp> = {
   overlappingTerminator: /<!-->|<!--->|<\?>|--!>|<\?x >/,
   invalidLinkDef: /\]:(?: \/u\(x| \/u\)| <u<v>| <u| \/u\\ x)(?:\n| "title)|\]:\n/,
   rawTextBlock: /<(?:script|style|textarea|pre)>/,
+  proseTruncatedTag: /a<b\n/,
 };

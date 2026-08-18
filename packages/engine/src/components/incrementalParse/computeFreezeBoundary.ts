@@ -263,6 +263,10 @@ export interface FreezeScanCheckpoint {
    *  ambiguous tag names stays, but it decays at the next decisive block
    *  start — this field is the phase-corruption backstop that does not. */
   phasePoisonedAt: number;
+  /** Tag names of line-truncated opens (`<div` at EOL) counted into
+   *  tagBalance but not yet confirmed by a later `>` — reverted at the next
+   *  blank line (a tag cannot span one). See TRUNCATED_TAG_RE. */
+  pendingTruncatedTags: string[];
 }
 
 const VOID_TAGS = new Set([
@@ -308,8 +312,14 @@ const TAG_OR_COMMENT_RE = /<(\/?)([A-Za-z][A-Za-z0-9-]*)(?=[\s/>])([^>]*)>|<!--|
 // scan and in `floatingResidue`, which share the state machine.
 /** A tag START whose `>` has not arrived on this line — `<div` at EOL, or
  *  `<div class="a"` with attributes continuing on the next line. Counted as
- *  an open (probe-confirmed hazard); prose like `a<b` at EOL only costs
- *  freeze coverage, never correctness. */
+ *  an open (probe-confirmed hazard) and remembered as PENDING: a tag can
+ *  carry attributes across line endings but never across a blank line, so
+ *  a pending open that reaches the paragraph's blank line without a `>`
+ *  was prose (`if x<y then`) and its phantom open is reverted there. Any
+ *  later `>` before that confirms it (kept open — over-block at worst).
+ *  Without the revert the phantom open lived forever and the whole rest of
+ *  the stream lost the splice, not just that paragraph (2026-08 project
+ *  review, eng-parse-06). */
 const TRUNCATED_TAG_RE = /<(\/?)([A-Za-z][A-Za-z0-9-]*)([^<>]*)$/;
 /** Bracketed inline candidate: link/image reference or shortcut. No nesting
  *  support — plain prose brackets count as taint (conservative direction). */
@@ -421,6 +431,7 @@ function freshCheckpoint(defListEnabled: boolean, mathFlow: boolean, referenceTa
     htmlFlowSinceBlank: false,
     htmlSeamPending: false,
     phasePoisonedAt: Infinity,
+    pendingTruncatedTags: [],
   };
 }
 
@@ -821,6 +832,12 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
 
   // --- blank line: candidate emission + paragraph reset ---
   if (ln.blank) {
+    // Line-truncated tag opens that never got their `>` before this blank
+    // were prose: revert their phantom opens BEFORE judging balance here.
+    if (cp.pendingTruncatedTags.length > 0) {
+      for (const tag of cp.pendingTruncatedTags) applyTag(tag, true);
+      cp.pendingTruncatedTags = [];
+    }
     cp.blankRun += 1;
     cp.lastBlankStart = ln.start;
     cp.candidates.push({
@@ -1145,6 +1162,11 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
         cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start + lastCommentOpenerIdx);
       }
     }
+    // A `>` anywhere on this line confirms every pending truncated open
+    // (attributes may wrap; the tag really is a tag — keep it counted).
+    if (cp.pendingTruncatedTags.length > 0 && scanText.includes('>')) {
+      cp.pendingTruncatedTags = [];
+    }
     // Line-truncated tag start — anchor on the LAST `<` of the line.
     if (!cp.commentOpen) {
       const lastLt = scanText.lastIndexOf('<');
@@ -1153,7 +1175,15 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
         if (m2) {
           const closing = m2[1] === '/';
           const tag = m2[2].toLowerCase();
-          if (!VOID_TAGS.has(tag)) applyTag(tag, closing);
+          if (!VOID_TAGS.has(tag)) {
+            applyTag(tag, closing);
+            // Only a PARAGRAPH-line truncation can turn out to be prose. In an
+            // html-flow run the bytes are raw: parse5 keeps tokenizing the
+            // dangling `<div` into whatever follows the block (fuzz
+            // counterexample: `</details>\n<div\n\n` shortened the seam
+            // separator), so there the open stays counted, unrevertable.
+            if (!closing && !inRawText) cp.pendingTruncatedTags.push(tag);
+          }
         }
       }
     }
