@@ -8,6 +8,19 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 ## 2.4.x — The project-review sweep
 
+### 2.4.1 — Post-release review of 2.4.0: two engine regressions and the SSR byte-identity gaps
+
+A second adversarial review pass over the 2.4.0 diff (probes plus a mini-fuzz over the newly introduced constructs, every failure minimized and replayed on 2.3.3 to separate regressions from pre-existing bugs). Two regressions and a set of pre-existing gaps, all fixed:
+
+- **Regression — the phantom-suffix closer could open a block.** 2.4.0 closed an open fence/math block before appending the coordinated sentinel definitions; for a fence opened INSIDE a list item that later de-indented content had already ended, or one closed by a ≥4-space closer the scanner cannot see, the emitted closer opened a _new_ fence around the sentinel lines (sentinel text in the code block, cross-chunk refs lost — worse than the bug it replaced). Closers are now emitted only for column-0 openers, which are provably top-level; the arbiter harness asserts every closer is output-neutral.
+- **Regression — the truncated-tag revert could drop a real tag** whose `>` sat inside a code-span mask (`<div x="\`">b\``: micromark parses the tag first), and skipped the seam-remnant check while the phantom open was counted. Both under-blocks closed; a real tag whose `<`is outside every mask is now counted even when its`>` is inside one.
+- **Pre-existing under-blocks fixed:** tags on a line touched by a raw construct were never scanned (`?><details>` after a terminator, `<details> <?php` before an opener); whitespace-only floating remnant after a stray end tag counts as seam remnant; a stray end tag's dropped-tag remnant right after a frozen element or definition was duplicated by the splice (the cut now freezes a trailing literal only when it is that html block's own text; a tail led by such a block merges its remnant, and a tail led by a dropped `<div` opener bails to a full parse instead of guessing — the last two surfaced by the release soak once the shape entered the fuzz corpus); the terminator-mention guard missed `[ __aimd_…]`.
+- **Coordinated placeholders now match standalone byte-for-byte** in the four cases the 2.4.0 claim missed — footnote ids are percent-encoded like mdast-util-to-hast's (`[^注]` / `[^a%b]` anchors work; the aggregate footer uses the same encoding), an image reference alone in a paragraph is unwrapped, URLs go through `normalizeUri`, and a blocked URL leaves the attribute off instead of `href=""`. Two of these were also wrong on the client's resolved path since coordination shipped.
+- **Mantine:** language auto-detection restarts when a block is replaced mid-stream (regenerate) instead of keeping the previous block's label; a failed lazy `import('mermaid')` / `import('highlight.js')` is retried instead of cached forever.
+- Docs: `--aim-spacing-sm` consumers, mantine tab labels are lower-cased.
+
+Verification: release soak (splice fuzz 50k / direction battery 20k / K=4 census) clean on the final engine; every fixed shape is a deterministic pin.
+
 ### 2.4.0 — Sixty-three findings from a whole-repository review, fixed in one train
 
 A full review of the four packages (engine / core / mantine / remark-mark-highlight), the Storybook suite, the docs and the release pipeline produced 66 findings — no P0, six P1. This release closes 63 of them (two supply-chain hardening items were declined by design; one style finding was rejected as an intentional visual choice). Grouped by what a consumer can observe:
