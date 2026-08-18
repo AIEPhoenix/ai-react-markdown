@@ -452,7 +452,12 @@ export function buildBlocks(mdast: MdastRoot, hast: HastRoot, source: string): B
     });
 
     const mdastPos = mdastNode.position;
-    if (!mdastPos || mdastPos.start.offset === undefined || mdastPos.end.offset === undefined) {
+    if (!mdastPos || mdastPos.start?.offset === undefined || mdastPos.end?.offset === undefined) {
+      // A third-party remark plugin emitting a half-built position: the
+      // block cannot be cached, but the user's content is never silently
+      // lost — render it uncached like the other no-counterpart fallbacks
+      // above (v2.4.1 review: this path used to drop the hast element).
+      plan.push({ kind: 'inline', el, reactKey: `inline-${hastOffset}` });
       continue;
     }
 
@@ -517,13 +522,16 @@ export function computeBlockFingerprint(
   for (const label of taintLabels.footnoteRefLabels) {
     parts.push(`fn:${label}=${registry.globalNumber(label) ?? 'null'}`);
   }
+  // url/title are JSON-encoded so a `|` inside them cannot collide with the
+  // part separator (url `a|b` + no title ≡ url `a` + title `b` would be a
+  // stale cache hit — v2.4.1 review).
   for (const label of taintLabels.linkRefLabels) {
     const def = registry.resolveLinkDef(label);
-    parts.push(`lr:${label}=${def?.url ?? 'null'}|${def?.title ?? ''}`);
+    parts.push(`lr:${label}=${def ? JSON.stringify([def.url, def.title ?? null]) : 'null'}`);
   }
   for (const label of taintLabels.imageRefLabels) {
     const def = registry.resolveLinkDef(label);
-    parts.push(`ir:${label}=${def?.url ?? 'null'}|${def?.title ?? ''}`);
+    parts.push(`ir:${label}=${def ? JSON.stringify([def.url, def.title ?? null]) : 'null'}`);
   }
   for (const label of taintLabels.footnoteDefLabels) {
     const isCanonical = registry.canonicalFootnoteFor(label) === thisChunkSym ? 1 : 0;

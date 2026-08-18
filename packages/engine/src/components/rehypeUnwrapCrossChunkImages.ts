@@ -25,14 +25,19 @@ const enum Verdict {
   ContainsOther,
 }
 
-function applicable(node: Element, inLink: boolean): Verdict {
+/** `seen.placeholder` flips when any placeholder tag (image OR link) took
+ *  part in the verdict — only such paragraphs are ours to unwrap; plain
+ *  `<img>`/`<a>` paragraphs were already unwrapped by rehype-unwrap-images. */
+function applicable(node: Element, inLink: boolean, seen: { placeholder: boolean }): Verdict {
   let image = Verdict.Unknown;
   for (const child of node.children as ElementContent[]) {
     if (child.type === 'text' && /^\s*$/.test(child.value)) continue;
     if (child.type === 'element' && IMAGE_TAGS.has(child.tagName)) {
+      if (child.tagName !== 'img') seen.placeholder = true;
       image = Verdict.ContainsImage;
     } else if (!inLink && child.type === 'element' && LINK_TAGS.has(child.tagName)) {
-      const inner = applicable(child, true);
+      if (child.tagName !== 'a') seen.placeholder = true;
+      const inner = applicable(child, true, seen);
       if (inner === Verdict.ContainsOther) return Verdict.ContainsOther;
       if (inner === Verdict.ContainsImage) image = Verdict.ContainsImage;
     } else {
@@ -45,15 +50,12 @@ function applicable(node: Element, inLink: boolean): Verdict {
 export function rehypeUnwrapCrossChunkImages() {
   return function transform(tree: Root): void {
     visit(tree, 'element', (node, index, parent) => {
-      if (
-        node.tagName === 'p' &&
-        parent &&
-        typeof index === 'number' &&
-        applicable(node, false) === Verdict.ContainsImage &&
-        // Only paragraphs that actually hold a placeholder — plain <img>
-        // paragraphs were already unwrapped by rehype-unwrap-images.
-        JSON.stringify(node.children).includes('"cross-chunk-image"')
-      ) {
+      if (node.tagName !== 'p' || !parent || typeof index !== 'number') return;
+      // Only paragraphs where a placeholder took part — an image placeholder
+      // OR a link placeholder around a plain `<img>` (`[![pic](url)][ref]`,
+      // v2.4.1 review: the old guard only looked for the image tag).
+      const seen = { placeholder: false };
+      if (applicable(node, false, seen) === Verdict.ContainsImage && seen.placeholder) {
         parent.children.splice(index, 1, ...node.children);
         return [SKIP, index];
       }

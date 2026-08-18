@@ -128,6 +128,38 @@ describe('Registry — Symbol allocation', () => {
     expect(reg.chunkData.size).toBe(0);
   });
 
+  test('v2.4.1 review: contributing under a released symbol is ignored, so the registry still empties', async () => {
+    let emptyCount = 0;
+    const reg = createRegistry(() => {
+      emptyCount++;
+    });
+    const a = reg.allocateSymbol('A');
+    const b = reg.allocateSymbol('B');
+    reg.releaseSymbol('A');
+    await new Promise<void>((r) => queueMicrotask(r));
+    // A late effect of the unmounted chunk contributes with its dead symbol.
+    reg.contributeLabels(a, new Set(['x']), new Set());
+    reg.contributeChunkData(a, {
+      refs: [],
+      defs: new Map(),
+      linkDefs: new Map(),
+      ownFootnoteLabels: new Set(['x']),
+      ownLinkLabels: new Set(),
+    });
+    expect(reg.chunkData.has(a)).toBe(false);
+    expect(reg.labelSet.footnoteLabels.has('x')).toBe(false);
+    // A never-allocated symbol is ignored too.
+    reg.contributeLabels(Symbol('ghost'), new Set(['g']), new Set());
+    expect(reg.labelSet.footnoteLabels.has('g')).toBe(false);
+    // The live chunk still contributes normally.
+    reg.contributeLabels(b, new Set(['y']), new Set());
+    expect(reg.labelSet.footnoteLabels.has('y')).toBe(true);
+    reg.releaseSymbol('B');
+    await new Promise<void>((r) => queueMicrotask(r));
+    expect(emptyCount).toBe(1);
+    expect(reg.chunkData.size).toBe(0);
+  });
+
   test('onEmpty does NOT fire when a partial release leaves refcount > 0', async () => {
     // allocateSymbol the same reactId twice → refcount=2 (Strict-Mode +
     // intentional double-mount, or just two callers sharing an id). One

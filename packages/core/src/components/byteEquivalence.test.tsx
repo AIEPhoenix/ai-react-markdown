@@ -381,6 +381,19 @@ describe('cross-chunk semantic equivalence', () => {
         'blocked destinations render without href/src, not href=""',
         '[j][js] ![i][js] [m][my]\n\n[js]: javascript:alert(1)\n[my]: myapp://x',
       ],
+      // v2.4.1 review: an EMPTY destination is legal (`[x]: <>`) and keeps
+      // href=""/src="" in standalone — only a BLOCKED one drops the attribute.
+      ['empty destination keeps href="" / src=""', '[e][x] ![i][x]\n\n[x]: <>'],
+      // …and a linked image alone in a paragraph is unwrapped through the
+      // link placeholder leg too.
+      [
+        'linked image reference alone in a paragraph (unwrap through the link)',
+        '[![pic][p]][l]\n\n[p]: https://example.com/p.png\n[l]: https://example.com/l',
+      ],
+      [
+        'inline image inside a link reference alone in a paragraph',
+        '[![pic](https://example.com/p.png)][l]\n\n[l]: https://example.com/l',
+      ],
     ];
     for (const [label, doc] of cases) {
       test(label, () => {

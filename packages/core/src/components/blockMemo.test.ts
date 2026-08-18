@@ -707,6 +707,24 @@ describe('buildBlocks — footnoteDefinition fallback parity', () => {
   });
 });
 
+describe('buildBlocks — half-built mdast position (v2.4.1 review)', () => {
+  test('a block whose mdast node lacks an end offset is rendered inline, not dropped', () => {
+    const md = 'Hello\n\nWorld';
+    const { mdast, hast } = runPipeline(md);
+    // A third-party remark plugin that emits `position.end` without offset.
+    const second = mdast.children[1]!;
+    (second.position as { end: { offset?: number } }).end = { ...second.position!.end, offset: undefined };
+    const built = buildBlocks(mdast, hast, md);
+    const kept = built.plan.filter((p) => p.kind === 'inline' && (p.el as HastElement).tagName === 'p');
+    expect(kept).toHaveLength(1);
+    expect(built.blocks).toHaveLength(1);
+    // The uncached item still reaches the render list.
+    const cacheRef = { current: createCache() };
+    const all = renderBlocksWithCache(cacheRef, built.plan, built.globalCtx, emptyPostOptions);
+    expect(all).toHaveLength(built.plan.length);
+  });
+});
+
 // ─── inline non-element preservation ──────────────────────────────────────
 
 describe('buildBlocks — inline (non-element) top-level children', () => {
@@ -896,6 +914,24 @@ describe('computeBlockFingerprint (v6)', () => {
       'doc-user-content-'
     );
     expect(fp).toBe('doc-user-content-|fn:X=1');
+  });
+
+  test('v2.4.1 review: a `|` inside url/title cannot collide with the part separator', () => {
+    const taint = { footnoteRefLabels: [], linkRefLabels: ['X'], imageRefLabels: [], footnoteDefLabels: [] };
+    const fpFor = (url: string, title: string | undefined): string => {
+      const reg = createRegistry();
+      const sym = reg.allocateSymbol('chunk-A');
+      reg.contributeChunkData(sym, {
+        refs: [],
+        defs: new Map(),
+        linkDefs: new Map([['X', { identifier: 'X', url, title }]]),
+        ownFootnoteLabels: new Set(),
+        ownLinkLabels: new Set(['X']),
+      });
+      return computeBlockFingerprint(taint, reg, sym, 'doc-');
+    };
+    expect(fpFor('a|b', undefined)).not.toBe(fpFor('a', 'b'));
+    expect(fpFor('a', 'b')).toBe(fpFor('a', 'b'));
   });
 
   test('canonical change in registry → different fingerprint', () => {

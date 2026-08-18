@@ -130,7 +130,7 @@ export function FootnoteSupNumber({
   const occSuffix = globalOcc !== null && globalOcc > 1 ? `-${globalOcc}` : '';
   return (
     <sup>
-      <a href={`#${clobberPrefix}fn-${safeId}`} id={`${clobberPrefix}fnref-${safeId}${occSuffix}`} data-footnote-ref>
+      <a href={`#${clobberPrefix}fn-${safeId}`} id={`${clobberPrefix}fnref-${safeId}${occSuffix}`} data-footnote-ref="">
         {num}
       </a>
     </sup>
@@ -240,11 +240,12 @@ export function CrossChunkLink({
     policy?.urlTransform ?? defaultUrlTransform,
     policy?.sanitizeSchema ?? defaultSanitizeSchema
   );
-  // A blocked URL leaves the element WITHOUT the attribute — exactly what
-  // rehype-sanitize does to an in-tree `<a>` — rather than `href=""`, which
-  // is a live link to the current page (v2.4.0 review).
+  // A protocol-blocked URL (null) leaves the element WITHOUT the attribute
+  // — exactly what rehype-sanitize does to an in-tree `<a>` (v2.4.0
+  // review); a legal EMPTY destination (`[x]: <>`) or a urlTransform that
+  // returned '' keeps `href=""`, like standalone (v2.4.1 review).
   return (
-    <a href={url || undefined} title={def.title}>
+    <a href={url ?? undefined} title={def.title}>
       {children}
     </a>
   );
@@ -304,7 +305,7 @@ export function CrossChunkImage({
     policy?.urlTransform ?? defaultUrlTransform,
     policy?.sanitizeSchema ?? defaultSanitizeSchema
   );
-  return <img src={url || undefined} alt={alt} title={def.title} />;
+  return <img src={url ?? undefined} alt={alt} title={def.title} />;
 }
 
 /**

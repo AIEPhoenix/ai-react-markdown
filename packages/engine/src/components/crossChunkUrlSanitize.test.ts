@@ -13,16 +13,16 @@ import { extendSanitizeSchema } from './extendSanitizeSchema';
 import { defaultUrlTransform } from './markdown';
 
 describe('sanitizeCrossChunkUrl — default library policy', () => {
-  test('strips javascript: hrefs on <a>', () => {
-    expect(sanitizeCrossChunkUrl('javascript:alert(1)', 'href', 'a', defaultUrlTransform, defaultLibrarySchema)).toBe(
-      ''
-    );
+  test('strips javascript: hrefs on <a> (protocol gate → attribute absent)', () => {
+    expect(
+      sanitizeCrossChunkUrl('javascript:alert(1)', 'href', 'a', defaultUrlTransform, defaultLibrarySchema)
+    ).toBeNull();
   });
 
-  test('strips javascript: srcs on <img>', () => {
-    expect(sanitizeCrossChunkUrl('javascript:alert(1)', 'src', 'img', defaultUrlTransform, defaultLibrarySchema)).toBe(
-      ''
-    );
+  test('strips javascript: srcs on <img> (protocol gate → attribute absent)', () => {
+    expect(
+      sanitizeCrossChunkUrl('javascript:alert(1)', 'src', 'img', defaultUrlTransform, defaultLibrarySchema)
+    ).toBeNull();
   });
 
   test('preserves https:// hrefs', () => {
@@ -53,9 +53,14 @@ describe('sanitizeCrossChunkUrl — default library policy', () => {
 
 describe('sanitizeCrossChunkUrl — both gates must permit (defense in depth)', () => {
   test('gate 1 strips when urlTransform returns null even if schema permits', () => {
-    // urlTransform blocks; schema allows http. Result must be empty.
+    // urlTransform blocks with null; schema allows http. Result must be
+    // absent (null) — the in-tree pass sets the hast property to null.
     const blockAll = () => null as unknown as string;
-    expect(sanitizeCrossChunkUrl('http://allowed.example/', 'href', 'a', blockAll, defaultLibrarySchema)).toBe('');
+    expect(sanitizeCrossChunkUrl('http://allowed.example/', 'href', 'a', blockAll, defaultLibrarySchema)).toBeNull();
+    // …and with '' (defaultUrlTransform's shape) the attribute stays as
+    // `href=""` — the standalone byte behaviour (v2.4.1 review).
+    const blankAll = () => '';
+    expect(sanitizeCrossChunkUrl('http://allowed.example/', 'href', 'a', blankAll, defaultLibrarySchema)).toBe('');
   });
 
   test('gate 2 strips when schema blocks even if urlTransform permits', () => {
@@ -64,7 +69,12 @@ describe('sanitizeCrossChunkUrl — both gates must permit (defense in depth)', 
     // wins. Cross-chunk must match.
     const allowMyapp = (url: string) => url;
     const html = sanitizeCrossChunkUrl('myapp://thing', 'href', 'a', allowMyapp, defaultLibrarySchema);
-    expect(html).toBe('');
+    expect(html).toBeNull();
+  });
+
+  test('v2.4.1 review: a legal empty destination stays "" (renders href=""), unlike a protocol block', () => {
+    expect(sanitizeCrossChunkUrl('', 'href', 'a', defaultUrlTransform, defaultLibrarySchema)).toBe('');
+    expect(sanitizeCrossChunkUrl('javascript:x', 'href', 'a', defaultUrlTransform, defaultLibrarySchema)).toBeNull();
   });
 
   test('both gates permit → URL passes through', () => {
@@ -87,7 +97,7 @@ describe('sanitizeCrossChunkUrl — both gates must permit (defense in depth)', 
       // NOTE: deliberately NOT adding myapp to protocols.src.
     });
     expect(sanitizeCrossChunkUrl('myapp://thing', 'href', 'a', allowMyapp, schema)).toBe('myapp://thing');
-    expect(sanitizeCrossChunkUrl('myapp://thing', 'src', 'img', allowMyapp, schema)).toBe('');
+    expect(sanitizeCrossChunkUrl('myapp://thing', 'src', 'img', allowMyapp, schema)).toBeNull();
   });
 });
 
@@ -155,7 +165,7 @@ describe('sanitizeCrossChunkUrl — missing schema entries', () => {
     const sparseSchema = { tagNames: ['p'] } as unknown as Parameters<typeof sanitizeCrossChunkUrl>[4];
     const allowAll = (url: string) => url;
     // `javascript:` is NOT in defaultSchema.protocols.href → must be stripped.
-    expect(sanitizeCrossChunkUrl('javascript:alert(1)', 'href', 'a', allowAll, sparseSchema)).toBe('');
+    expect(sanitizeCrossChunkUrl('javascript:alert(1)', 'href', 'a', allowAll, sparseSchema)).toBeNull();
     // `https:` IS in defaultSchema.protocols.href → must pass.
     expect(sanitizeCrossChunkUrl('https://example.com/x', 'href', 'a', allowAll, sparseSchema)).toBe(
       'https://example.com/x'
@@ -175,7 +185,7 @@ describe('sanitizeCrossChunkUrl — case-sensitive protocol comparison (upstream
     const allowAll = (url: string) => url;
     // Default schema's protocols.href contains lowercase 'http'/'https' only.
     // 'HTTPS' does not match either, so the URL must be stripped.
-    expect(sanitizeCrossChunkUrl('HTTPS://example.com/x', 'href', 'a', allowAll, defaultLibrarySchema)).toBe('');
+    expect(sanitizeCrossChunkUrl('HTTPS://example.com/x', 'href', 'a', allowAll, defaultLibrarySchema)).toBeNull();
   });
 
   test('canonical-case scheme `https://` still passes', () => {
@@ -194,7 +204,7 @@ describe('sanitizeCrossChunkUrl — case-sensitive protocol comparison (upstream
       s.protocols!.href!.push('MYAPP');
     });
     const allowAll = (url: string) => url;
-    expect(sanitizeCrossChunkUrl('myapp://thing', 'href', 'a', allowAll, upperSchema)).toBe('');
+    expect(sanitizeCrossChunkUrl('myapp://thing', 'href', 'a', allowAll, upperSchema)).toBeNull();
     // Mismatched case in the OTHER direction also rejects.
     expect(sanitizeCrossChunkUrl('MYAPP://thing', 'href', 'a', allowAll, upperSchema)).toBe('MYAPP://thing');
   });

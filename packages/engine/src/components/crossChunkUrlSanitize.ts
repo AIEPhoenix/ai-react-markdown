@@ -4,11 +4,13 @@
  * In the standalone path, every `<a href>` and `<img src>` element passes
  * through TWO gates before render:
  *
- *   1. `urlTransform(url, key, node)` — the caller's allowlist (default:
- *      `defaultUrlTransform`, which mirrors GitHub's protocol allowlist).
- *      Runs in `markdown/transform.ts` during the hast visit pass.
- *   2. `rehype-sanitize` `protocols.<attr>` allowlist — drops the attribute
+ *   1. `rehype-sanitize` `protocols.<attr>` allowlist — drops the attribute
  *      entirely if the URL's protocol isn't permitted for that attribute.
+ *      Runs in the rehype plugin chain.
+ *   2. `urlTransform(url, key, node)` — the caller's allowlist (default:
+ *      `defaultUrlTransform`, which mirrors GitHub's protocol allowlist).
+ *      Runs in `markdown/transform.ts` during the hast visit pass; its
+ *      return value IS the attribute (`''` renders `href=""`).
  *
  * Cross-chunk references skip BOTH passes naturally: the placeholder hast
  * tag (`<cross-chunk-link>` / `<cross-chunk-image>`) carries only a `label`
@@ -81,11 +83,18 @@ function isProtocolAllowed(url: string, allowed: ReadonlyArray<string>): boolean
 }
 
 /**
- * Run a cross-chunk-resolved URL through both standalone gates.
+ * Run a cross-chunk-resolved URL through both standalone gates, in the
+ * standalone ORDER: `rehype-sanitize`'s protocol allowlist runs in the
+ * plugin chain first (a blocked URL loses the attribute entirely), then
+ * `urlTransform` rewrites whatever survived during the hast visit pass (its
+ * return value is the attribute — `''` from `defaultUrlTransform` renders
+ * `href=""`, exactly like a legal empty destination `[x]: <>`).
  *
- * @returns Sanitized URL string. Empty string when either gate strips the
- *   URL — matches `defaultUrlTransform`'s and `rehype-sanitize`'s observable
- *   behavior of replacing a blocked URL with `''`.
+ * @returns `null` when the protocol gate strips the attribute (render it
+ *   ABSENT); otherwise the transformed URL string — possibly `''`, which
+ *   the caller must render as `href=""` / `src=""` to stay byte-identical
+ *   with standalone (v2.4.1 review: the two used to collapse into `''` and
+ *   the placeholder omitted the attribute for `[x]: <>` too).
  */
 export function sanitizeCrossChunkUrl(
   rawUrl: string,
@@ -93,21 +102,15 @@ export function sanitizeCrossChunkUrl(
   tagName: UrlAttrTag,
   urlTransform: UrlTransform,
   schema: SanitizeSchema
-): string {
+): string | null {
   // Gate 0: the same `normalizeUri` mdast-util-to-hast applies to every
   // in-tree `href`/`src` before the gates see it (percent-encodes spaces,
   // non-ASCII, `"`, `<` …). Without it a cross-chunk `<https://x/a b>`
   // rendered `href="https://x/a b"` where standalone renders `a%20b`
   // (v2.4.0 review).
   rawUrl = normalizeUri(rawUrl);
-  // Gate 1: urlTransform — caller's allowlist, called with the correct key
-  // and a synthetic node mirroring what the in-tree pass would have seen.
-  const transformed = urlTransform(rawUrl, key, fakeElement(tagName, key, rawUrl));
-  if (transformed == null) return '';
-  const stringUrl = String(transformed);
-  if (stringUrl === '') return '';
 
-  // Gate 2: rehype-sanitize protocol allowlist. Mirrors hast-util-sanitize's
+  // Gate 1: rehype-sanitize protocol allowlist. Mirrors hast-util-sanitize's
   // exact merge + lookup semantics (see `lib/index.js:235` + `:672`):
   //
   //   1. Upstream merges via `{...defaultSchema, ...options}` — a SHALLOW
@@ -134,6 +137,11 @@ export function sanitizeCrossChunkUrl(
     callerProtocols === undefined || callerProtocols === null
       ? libraryDefaultSchema.protocols?.[key]
       : callerProtocols[key];
-  if (!allowed || allowed.length === 0) return stringUrl;
-  return isProtocolAllowed(stringUrl, allowed) ? stringUrl : '';
+  if (allowed && allowed.length > 0 && !isProtocolAllowed(rawUrl, allowed)) return null;
+
+  // Gate 2: urlTransform — caller's allowlist, called with the correct key
+  // and a synthetic node mirroring what the in-tree pass would have seen.
+  const transformed = urlTransform(rawUrl, key, fakeElement(tagName, key, rawUrl));
+  if (transformed == null) return null;
+  return String(transformed);
 }

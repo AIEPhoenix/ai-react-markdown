@@ -71,10 +71,12 @@ export interface ChunkData {
  * interface. Driving the registry directly is reserved for internal
  * coordinators (the package's own `MarkdownContent` renderer) and tests,
  * which import the wider `RegistryInternal` type from this module.
- * `RegistryInternal` is exported here but NOT re-exported from the package
- * barrel — keeping mutators off the public surface prevents a misbehaving
- * consumer-component from corrupting refcounts, skipping version bumps, or
- * otherwise breaking the invariants the renderer relies on.
+ * `RegistryInternal` is exported from this engine package (the core
+ * renderer consumes it) but NOT from `@ai-react-markdown/core`'s public
+ * barrel — keeping mutators off the consumer-facing surface prevents a
+ * misbehaving consumer-component from corrupting refcounts, skipping
+ * version bumps, or otherwise breaking the invariants the renderer relies
+ * on.
  */
 export interface Registry {
   /** Chunk mount-order Symbol list. **Read-only.** Direct mutation
@@ -134,9 +136,10 @@ export interface Registry {
  * methods and implementation-private fields (reactId-keyed refcount table,
  * subscriber set, microtask-coalesce flag, `_notify` itself).
  *
- * Exported from this module so internal coordinators (`MarkdownContent`)
- * and tests can hold a strongly-typed reference, but **not** re-exported
- * from the package barrel — a consumer flipping `_notifyScheduled = true`
+ * Exported from this module (and the engine barrel) so internal
+ * coordinators (`MarkdownContent`) and tests can hold a strongly-typed
+ * reference, but **not** re-exported from `@ai-react-markdown/core`'s
+ * barrel — a consumer flipping `_notifyScheduled = true`
  * or pushing into `chunkOrder` directly would silently break the
  * coalesce / numbering invariants. The runtime value returned by
  * {@link createRegistry} always satisfies this wider shape; public consumers
@@ -278,6 +281,11 @@ export function createRegistry(onEmpty?: () => void): RegistryInternal {
     },
 
     contributeLabels(symbol: symbol, footnotes: Set<string>, links: Set<string>): void {
+      // A released or never-allocated symbol must not grow chunkData: the
+      // ghost entry would keep `chunkData.size === 0` from ever holding and
+      // the registry would never be evicted (v2.4.1 review). Effects racing
+      // an unmount can legitimately land here — ignore, do not throw.
+      if (!this.chunkOrder.includes(symbol)) return;
       const data = this.chunkData.get(symbol);
       if (data) {
         data.ownFootnoteLabels = footnotes;
@@ -313,6 +321,7 @@ export function createRegistry(onEmpty?: () => void): RegistryInternal {
     },
 
     contributeChunkData(symbol: symbol, data: ChunkData): void {
+      if (!this.chunkOrder.includes(symbol)) return; // see contributeLabels
       this.chunkData.set(symbol, data);
       // Rebuild labelSet too (data may extend or shrink it)
       this.labelSet.footnoteLabels = new Set();

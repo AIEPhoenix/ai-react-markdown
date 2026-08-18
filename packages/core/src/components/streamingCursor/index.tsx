@@ -100,16 +100,22 @@ const STYLE_MARKER = 'data-aimd-streaming-cursor-style';
  * Marker VALUE = a fingerprint of the injected rules. Two library versions
  * on one page (micro-frontends, duplicated installs) each dedupe on their
  * own fingerprint, so a version that changes the rules injects its own tag
- * instead of silently inheriting the first-mounted version's. Bump the
- * suffix in the animation names too whenever the keyframes change — CSS
- * resolves `@keyframes` by name globally, so a same-name/different-body
- * pair would still race (2026-08 project review, core-render-07).
+ * instead of silently inheriting the first-mounted version's. The animation
+ * names carry the same suffix — CSS resolves `@keyframes` by name
+ * globally, so a same-name/different-body pair would still race (2026-08
+ * project review, core-render-07). Bump the fingerprint whenever the
+ * keyframes change.
  */
 const STYLE_FINGERPRINT = 'v1';
+/** Animation names DERIVE from the fingerprint, so bumping it versions
+ *  the keyframes too — the cross-version isolation no longer rests on
+ *  remembering to rename them by hand (v2.4.1 review). */
+const BLINK_ANIMATION = `aimd-streaming-cursor-blink-${STYLE_FINGERPRINT}`;
+const SPIN_ANIMATION = `aimd-streaming-cursor-spin-${STYLE_FINGERPRINT}`;
 
 const CURSOR_KEYFRAMES =
-  '@keyframes aimd-streaming-cursor-blink{0%,100%{opacity:1}50%{opacity:.15}}' +
-  '@keyframes aimd-streaming-cursor-spin{to{transform:rotate(360deg)}}' +
+  `@keyframes ${BLINK_ANIMATION}{0%,100%{opacity:1}50%{opacity:.15}}` +
+  `@keyframes ${SPIN_ANIMATION}{to{transform:rotate(360deg)}}` +
   // Reduced motion: freeze blink/spin and state transitions. The static
   // dot/ring still convey streaming vs stalled without movement.
   '@media (prefers-reduced-motion:reduce){[data-aimd-streaming-indicator] span,[data-aimd-streaming-indicator]{animation:none!important;transition:none!important}}';
@@ -296,7 +302,7 @@ function DefaultStreamingIndicator({ height, lastMutationAt }: AIMarkdownStreami
             backgroundColor: 'currentColor',
             opacity: stalled ? 0 : 1,
             transition: 'opacity 300ms ease',
-            animation: stalled ? 'none' : 'aimd-streaming-cursor-blink 900ms ease-in-out infinite',
+            animation: stalled ? 'none' : `${BLINK_ANIMATION} 900ms ease-in-out infinite`,
           }}
         />
         <span
@@ -321,7 +327,7 @@ function DefaultStreamingIndicator({ height, lastMutationAt }: AIMarkdownStreami
               ...ringLayer,
               borderColor: 'transparent',
               borderTopColor: 'currentColor',
-              animation: stalled ? 'aimd-streaming-cursor-spin 800ms linear infinite' : 'none',
+              animation: stalled ? `${SPIN_ANIMATION} 800ms linear infinite` : 'none',
             }}
           />
         </span>
