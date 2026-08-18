@@ -4,10 +4,10 @@
  * Attention-style tokenizer modeled on `micromark-extension-gfm-strikethrough`,
  * derived from the (MIT, unmaintained) upstreams `remark-mark-highlight` and
  * `micromark-extension-highlight-mark` — both ship this same tokenizer; this
- * package is its maintained continuation. Behavior is pinned byte-for-byte
- * against `remark-mark-highlight@0.1.1` by the parity corpus in
- * `parity.test.ts` (`test/fixtures/baseline-0.1.1.json`, generated BEFORE the
- * swap so it stays an independent oracle).
+ * package is its maintained continuation. Parse behavior (mdast + hast) is
+ * pinned byte-for-byte against `remark-mark-highlight@0.1.1` by the parity
+ * corpus in `parity.test.ts` (`test/fixtures/baseline-0.1.1.json`, generated
+ * BEFORE the swap so it stays an independent oracle).
  *
  * Sequence length is exactly two `=`; open/close classification follows the
  * standard attention flanking rules via `classifyCharacter`.

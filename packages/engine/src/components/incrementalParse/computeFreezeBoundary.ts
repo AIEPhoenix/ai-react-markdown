@@ -163,7 +163,7 @@ export interface FreezeScanResult {
 interface LineRec {
   start: number;
   end: number; // offset of the terminating \n, or text.length for the last line
-  text: string;
+  text: string; // line content WITHOUT the line ending (a CRLF's `\r` is stripped too)
   blank: boolean;
   indent: number; // leading whitespace width, tab = 4 (approximation)
 }
@@ -603,7 +603,12 @@ export function computeFreezeBoundary(
     let end = text.indexOf('\n', start);
     if (end === -1) end = text.length;
     const confirmed = end < text.length;
-    const lineText = text.slice(start, end);
+    // CRLF: the `\r` is line-ending, not line content — every `$`-anchored
+    // rule below (list markers, def shapes, closers) must see the same
+    // bytes it sees under LF (v2.4.1 review: `-\r` missed LIST_MARKER_RE).
+    // Offsets (`start`/`end`) are untouched; only the scanned text shrinks.
+    const rawLine = text.slice(start, end);
+    const lineText = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine;
     const ln: LineRec = {
       start,
       end,

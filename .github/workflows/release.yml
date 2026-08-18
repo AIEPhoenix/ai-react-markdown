@@ -79,6 +79,17 @@ jobs:
                 echo "::error::Tag ${GITHUB_REF_NAME} names no package directory (${PKG_PATH})"
                 exit 1
               fi
+              # Package tags are for INDEPENDENTLY versioned packages only. A
+              # lockstep package must ride the train tag (`vX.Y.Z`), where the
+              # check below refuses a partial train — a `core-vX.Y.Z` tag
+              # would publish one lockstep package alone and bypass it (same
+              # set as LOCKSTEP in scripts/version-packages.mjs).
+              case "$PKG_DIR" in
+                core|engine|mantine)
+                  echo "::error::packages/${PKG_DIR} is a lockstep package — release it with a train tag (v${TAG_VERSION}), not ${GITHUB_REF_NAME}"
+                  exit 1
+                  ;;
+              esac
               ;;
           esac
           PKG_VERSION="$(node -p "require('${PKG_PATH}').version")"

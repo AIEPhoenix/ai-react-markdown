@@ -3,8 +3,10 @@
  * node rendered as `<mark>` via `data.hName`, so no custom hast handler is
  * needed downstream) and to-markdown (serialize back to `==…==`).
  *
- * Node shape and serialization rules are pinned against
- * `remark-mark-highlight@0.1.1` (see `parity.test.ts`).
+ * The node shape (from-markdown direction: mdast + hast) is pinned against
+ * `remark-mark-highlight@0.1.1` by the parity corpus (`parity.test.ts`);
+ * the to-markdown direction is covered by round-trip smokes only — the
+ * baseline fixture records no upstream serializer output.
  *
  * @module mdast
  */

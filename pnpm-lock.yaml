@@ -5,15 +5,15 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  qs@<6.15.2: '>=6.15.2'
-  esbuild@<0.28.1: '>=0.28.1'
-  fast-uri@>=3.0.0 <3.1.5: '>=3.1.5 <4'
-  brace-expansion@>=3.0.0 <5.0.7: '>=5.0.7'
-  react-doctor: 0.8.1
-  react-grab: 0.1.48
   dompurify: ^3.4.0
   uuid: ^11.1.1
+  qs@<6.15.2: '>=6.15.2 <7'
+  fast-uri@>=3.0.0 <3.1.5: '>=3.1.5 <4'
+  brace-expansion@>=3.0.0 <5.0.7: '>=5.0.7 <6'
+  esbuild@<0.28.1: '>=0.28.1'
   typescript@>=7: ^6.0.3
+  react-doctor: 0.8.1
+  react-grab: 0.1.48
 
 importers:
 

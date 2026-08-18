@@ -5,8 +5,10 @@
 //
 // Usage: node scripts/version-packages.mjs <new-version>
 //
-// - Updates "version" in every packages/*/package.json
-// - For non-core packages, updates peerDependencies["@ai-react-markdown/core"] to ^<new-version>
+// - Updates "version" in every LOCKSTEP package (core, engine, mantine — the
+//   release train); independently versioned packages (remark-mark-highlight)
+//   are reported and skipped
+// - For non-core lockstep packages, updates peerDependencies["@ai-react-markdown/core"] to ^<new-version>
 // - Rewrites core version references in README files (install snippets, examples)
 
 import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs';

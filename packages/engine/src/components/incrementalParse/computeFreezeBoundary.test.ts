@@ -161,6 +161,20 @@ describe('computeFreezeBoundary — raw HTML blockers', () => {
     expect(computeFreezeBoundary(closed, OFF)).toBe(closed.indexOf('zzz'));
   });
 
+  test('v2.4.1 review P3: CRLF line endings judge like LF (the `\\r` is not line content)', () => {
+    // A bare list-marker line under CRLF is still a list marker (blocker 3):
+    // LF stops at the `-` line; CRLF used to freeze straight past it.
+    const lf = 'x\n\n-\n\nzzz';
+    const crlf = 'x\r\n\r\n-\r\n\r\nzzz';
+    expect(computeFreezeBoundary(lf, OFF)).toBe(lf.indexOf('-'));
+    expect(computeFreezeBoundary(crlf, OFF)).toBe(crlf.indexOf('-'));
+    // A def line, a fence closer and a blank line all behave the same.
+    const lfDoc = 'see [a]\n\n[a]: /u\n\n```\ncode\n```\n\nzzz';
+    const crlfDoc = lfDoc.replace(/\n/g, '\r\n');
+    expect(computeFreezeBoundary(lfDoc, OFF)).toBe(lfDoc.indexOf('zzz'));
+    expect(computeFreezeBoundary(crlfDoc, OFF)).toBe(crlfDoc.indexOf('zzz'));
+  });
+
   test('v2.4.1 review P1b: a reference label spanning a soft line break taints', () => {
     // The label closes on the next line: shortcut ref `[foo bar]` unresolved.
     expect(computeFreezeBoundary('see [foo\nbar] end\n\nx\n\nzzz', OFF)).toBe(0);

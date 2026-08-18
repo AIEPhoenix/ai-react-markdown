@@ -35,7 +35,7 @@ overrides:
   # (GHSA-h7mw-gpvr-xq4m, < 3.4.0).
   dompurify: ^3.4.0
   uuid: ^11.1.1
-  qs@<6.15.2: '>=6.15.2'
+  qs@<6.15.2: '>=6.15.2 <7'
   # Scoped CVE remediations. Bound BOTH ends: with a bare `>=x` the resolver
   # is free to take the next major. fast-uri did exactly that — `>=3.1.5`
   # pulled 4.1.2, outside the `^3.0.1` that its only consumer (ajv 8.x)
@@ -43,7 +43,7 @@ overrides:
   fast-uri@>=3.0.0 <3.1.5: '>=3.1.5 <4'
   # Selector deliberately bounded below as well, so minimatch's 1.x/2.x
   # instances are not caught by it.
-  brace-expansion@>=3.0.0 <5.0.7: '>=5.0.7'
+  brace-expansion@>=3.0.0 <5.0.7: '>=5.0.7 <6'
   # Dependabot #18 (GHSA dev-server file read, fixed in 0.28.1): the only
   # in-range holdout is dormant tsup's `esbuild: ^0.27.0` dependency —
   # every other dependent allows 0.28 (vite peers ^0.27 || ^0.28). Verified

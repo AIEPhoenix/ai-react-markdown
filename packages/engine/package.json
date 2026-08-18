@@ -7,6 +7,9 @@
   },
   "type": "module",
   "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
   "author": "Brian Lee <aiephoenixbl@gmail.com> (https://github.com/AIEPhoenix)",
   "homepage": "https://github.com/AIEPhoenix/ai-react-markdown/tree/main/packages/engine#readme",
   "repository": {
