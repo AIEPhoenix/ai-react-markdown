@@ -12,9 +12,12 @@ import { testEnv } from '../components/incrementalParse/spliceArbiterHarness';
 /** Replay `chunks` as an append stream, asserting byte-equality per step.
  *  `freezeThreshold: 0` forces a freeze attempt on EVERY call — without it,
  *  short counterexamples never leave the full-reprocess fallback and the
- *  pins pass vacuously. */
+ *  pins pass vacuously; `backoff: false` for the same reason (a failed
+ *  attempt would otherwise skip the next ones and 1-char chunkings would
+ *  stop exercising the cut rules). Backoff can only freeze LESS, so passing
+ *  here implies passing with it on — the P2-3 suite covers the on-state. */
 function replay(chunks: string[]): void {
-  const incremental = createIncrementalLatexPreprocessor({ freezeThreshold: 0 });
+  const incremental = createIncrementalLatexPreprocessor({ freezeThreshold: 0, backoff: false });
   let acc = '';
   for (const chunk of chunks) {
     acc += chunk;
@@ -113,6 +116,150 @@ describe('createIncrementalLatexPreprocessor — pinned counterexamples', () => 
     expect(incremental(b)).toBe(preprocessLaTeX(b));
     // Older content (a discarded-render replay) is a non-append too.
     expect(incremental(a.slice(0, 10))).toBe(preprocessLaTeX(a.slice(0, 10)));
+  });
+});
+
+describe('createIncrementalLatexPreprocessor — failed-freeze backoff and blank-line hazard release (2026-08-19 review P2-3)', () => {
+  /** Stream `doc` in `size`-char appends through a threshold-0 instance
+   *  (backoff ON), asserting byte-equality per step; returns attempt count
+   *  and total frozen bytes. */
+  function replayCounting(doc: string, size: number): { attempts: number; frozen: number } {
+    let attempts = 0;
+    let frozen = 0;
+    const incremental = createIncrementalLatexPreprocessor({
+      freezeThreshold: 0,
+      onAttempt: ({ frozenBytes }) => {
+        attempts++;
+        frozen += frozenBytes;
+      },
+    });
+    for (let i = size; i < doc.length + size; i += size) {
+      const acc = doc.slice(0, i);
+      expect(incremental(acc)).toBe(preprocessLaTeX(acc));
+    }
+    return { attempts, frozen };
+  }
+  /** Replay with backoff ON and assert that at least one freeze happened. */
+  function replayFreezing(chunks: string[]): void {
+    let frozen = 0;
+    const incremental = createIncrementalLatexPreprocessor({
+      freezeThreshold: 0,
+      onAttempt: ({ frozenBytes }) => {
+        frozen += frozenBytes;
+      },
+    });
+    let acc = '';
+    for (const chunk of chunks) {
+      acc += chunk;
+      expect(incremental(acc)).toBe(preprocessLaTeX(acc));
+    }
+    expect(frozen).toBeGreaterThan(0);
+  }
+  const PARA = 'plain prose keeps flowing here with $x^2$ and \\(y\\) inline.\n\n';
+
+  test('a stray `$` early in the document: byte-equal, and attempts stay logarithmic', () => {
+    // `US$` (no digits) is not currency-escaped and keeps parity odd for
+    // every later slice, so the last-cut candidate is never quiescent.
+    // Before: every frame re-scanned the whole active region and re-ran the
+    // candidate for nothing. Now failed attempts back off (active must
+    // double), so their count is O(log n) — not O(frames).
+    const doc = 'intro line one.\n\nprice in US$ today\n\n' + PARA.repeat(120);
+    const frames = Math.ceil(doc.length / 16);
+    const { attempts } = replayCounting(doc, 16);
+    expect(attempts).toBeLessThan(Math.log2(doc.length) + 12);
+    expect(attempts).toBeLessThan(frames / 8);
+  });
+
+  test('a lone backtick: the hazard latch releases at the next blank line and the stream keeps freezing', () => {
+    // A code span cannot cross a blank line, so a lone backtick on a
+    // finished paragraph can never be re-paired by a later append: lines
+    // after the blank are safe cuts again. Byte-equality is the contract.
+    const doc = 'Press the ` key to open the palette.\n\n' + PARA.repeat(120);
+    const { attempts, frozen } = replayCounting(doc, 16);
+    // Progress: nearly the whole document froze (before: nothing after the
+    // backtick, ever). Under backoff a HIGH attempt count is the second
+    // progress signal — attempts run every frame only while freezes keep
+    // succeeding; without the release every attempt fails and the count
+    // collapses to O(log n).
+    expect(frozen).toBeGreaterThan(doc.length - 2 * PARA.length);
+    expect(attempts).toBeGreaterThan(Math.ceil(doc.length / 16) / 3);
+    // Oracle pins: a lone run, then a blank, then a run of the same length —
+    // never a pair; the prefix freezes.
+    replayFreezing(['use ` for $x$\n\n', 'more\n', 'close `\n']);
+    // A mid-line ``` run and a later line-start ``` fence: the blank line
+    // between them settles the first run (it cannot pair across the blank).
+    replayFreezing(['x ``` y\n\n', '```\ncode $z\n```\n', 'tail ``` $w$\n']);
+    // The counterexample from the property suite: an EMPTY remainder after
+    // a segment's last `\n` must not count as a blank line (it is the start
+    // of a line that continues in the next segment).
+    replay(['prose `$1,000.50\n<code>x</code>\n<span title="a\nb">tail\n', '`<co']);
+    // Whitespace after a protected span on the same line is not a blank line
+    // either — that partial line must not release the latch.
+    replay(['a ` b\n<code>x</code>   \n$y$ z ` w\n', ' `\n']);
+    // Two paragraphs, one lone backtick each — never a pair; math between converts.
+    replay(['a ` b\n\n$e^{i\\pi}$ here\n\nc ` d\n', ' more $x$\n']);
+  });
+
+  test('a long streaming `$$` block: attempts inside it back off, freezing resumes after it closes', () => {
+    const block = '$$\n' + '\\int_0^1 x^{2}\\,dx + \\sum_{k=1}^{n} k \\\\\n'.repeat(80);
+    // Enough tail after the block for the active region to reach the next
+    // attempt size (backoff waits for it to double after the last failure —
+    // the recovery lag is the price of the geometric bound).
+    const doc = PARA.repeat(20) + block + '$$\n\n' + PARA.repeat(120);
+    const blockOpenAt = PARA.length * 20;
+    const blockCloseAt = blockOpenAt + block.length + 3;
+    let attemptsInsideBlock = 0;
+    let frozen = 0;
+    let streamed = 0;
+    const incremental = createIncrementalLatexPreprocessor({
+      freezeThreshold: 0,
+      onAttempt: ({ frozenBytes }) => {
+        frozen += frozenBytes;
+        if (streamed > blockOpenAt && streamed < blockCloseAt) attemptsInsideBlock++;
+      },
+    });
+    for (let i = 24; i < doc.length + 24; i += 24) {
+      const acc = doc.slice(0, i);
+      streamed = acc.length;
+      expect(incremental(acc)).toBe(preprocessLaTeX(acc));
+    }
+    // Inside the open block every attempt fails: logarithmic, not per frame.
+    expect(attemptsInsideBlock).toBeLessThan(Math.log2(block.length) + 4);
+    // The prefix froze before the block opened, and the block itself once
+    // the next attempt fired after it closed.
+    expect(frozen).toBeGreaterThan(PARA.length * 18 + block.length);
+  });
+
+  test('backoff resets on non-append input', () => {
+    let attempts = 0;
+    const incremental = createIncrementalLatexPreprocessor({ freezeThreshold: 0, onAttempt: () => attempts++ });
+    const stuck = 'US$ stuck\n\n' + PARA.repeat(40);
+    for (let i = 8; i < stuck.length + 8; i += 8) incremental(stuck.slice(0, i));
+    const before = attempts;
+    // Regeneration: a fresh document must attempt immediately again.
+    const fresh = 'fresh $x$ start\n\n' + PARA;
+    incremental(fresh);
+    expect(attempts).toBe(before + 1);
+    expect(incremental(fresh)).toBe(preprocessLaTeX(fresh));
+  });
+
+  test('backoff on: seeded streams still equal the full run (backoff can only freeze less)', () => {
+    // A small backoff-ON replay over mixed content, complementing the
+    // threshold-0/backoff-OFF property suite below.
+    const doc =
+      'intro $a$ text\n\nUS$ price\n\n' +
+      PARA.repeat(6) +
+      'x ` y\n\n' +
+      PARA.repeat(6) +
+      '$$\nblock\n$$\n\n' +
+      PARA.repeat(6);
+    for (const size of [1, 5, 33]) {
+      const incremental = createIncrementalLatexPreprocessor({ freezeThreshold: 0 });
+      for (let i = size; i < doc.length + size; i += size) {
+        const acc = doc.slice(0, i);
+        expect(incremental(acc)).toBe(preprocessLaTeX(acc));
+      }
+    }
   });
 });
 

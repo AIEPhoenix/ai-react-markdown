@@ -621,8 +621,10 @@ export function preprocessLaTeX(str: string): string {
 //   documents never cut and gracefully degrade to full reprocessing),
 // - inside a TEXT segment of the active region's own split (never inside a
 //   fence / inline span / protected tag region),
-// - with no dangling backtick run before it (an unmatched run can pair with
-//   a run arriving later and re-segment the past),
+// - with no dangling backtick run between the last blank line and it (an
+//   unmatched run can pair with a run arriving later and re-segment the
+//   past — but a code span cannot cross a blank line, so a blank settles
+//   every run before it),
 // - with no LATENT html tag before it — a viable `<`+letter start whose `>`
 //   has not arrived: HTML_TAG_REGEX admits newlines in attributes, so the
 //   match window spans lines and only a `>` anywhere after the `<` settles
@@ -665,6 +667,10 @@ function hasUnclosedTextCommand(text: string): boolean {
  *  its `\]` has not arrived, so a later append changes this segment. */
 const RESIDUAL_OPEN_BRACKET_RE = /(?<!!)\\\[/;
 
+/** Segment whose first non-whitespace bytes are a `$$` — the only shape
+ *  whose B3 seam flag can be set (see processSliceInstrumented). */
+const LEADING_DOUBLE_DOLLAR_RE = /^\s*\$\$/;
+
 interface InstrumentedSlice {
   out: string;
   /** No tail-sensitive transform engaged: safe to freeze this output. */
@@ -676,49 +682,65 @@ interface InstrumentedSlice {
 }
 
 /** The exact per-segment pipeline of {@link preprocessLaTeX}, instrumented
- *  with quiescence flags and WITHOUT the whole-string early-exit (a slice
+ *  with quiescence flags (`probe: false` skips them — output only, plus the
+ *  first segment's seam flag) and WITHOUT the whole-string early-exit (a slice
  *  must not re-decide the early-exit: `\text{a_b}` in a trigger-free slice
  *  still transforms when the FULL string carries a `$` elsewhere). */
-function processSliceInstrumented(slice: string): InstrumentedSlice {
+function processSliceInstrumented(slice: string, probe = true): InstrumentedSlice {
   const segments = splitByProtectedRegions(slice);
-  let out = '';
+  const parts: string[] = [];
   let quiescent = true;
   let truncatedAtSeamStart = false;
   for (let index = 0; index < segments.length; index++) {
     const segment = segments[index];
     if (segment.isCode) {
-      out += segment.text;
+      parts.push(segment.text);
       continue;
     }
     let text = segment.text;
     text = escapeMhchemCommands(text);
     text = escapeCurrencyDollarSigns(text);
     text = convertLatexDelimiters(text);
-    if (RESIDUAL_OPEN_BRACKET_RE.test(text)) quiescent = false;
+    if (probe && RESIDUAL_OPEN_BRACKET_RE.test(text)) quiescent = false;
     text = escapeLatexPipes(text);
-    if (findUnclosedDelimiterStart(text, 'both') !== -1) quiescent = false;
+    if (probe && findUnclosedDelimiterStart(text, 'both') !== -1) quiescent = false;
     text = escapeLatexPipesInUnclosed(text);
-    if (hasUnclosedTextCommand(text)) quiescent = false;
+    if (probe && hasUnclosedTextCommand(text)) quiescent = false;
     text = escapeTextUnderscores(text);
     text = convertSingleToDoubleDollar(text);
-    const unclosedDouble = findUnclosedDelimiterStart(text, 'double-only');
-    if (unclosedDouble !== -1) {
-      quiescent = false;
-      if (index === 0 && text.slice(0, unclosedDouble).trim() === '') {
-        truncatedAtSeamStart = true;
+    // The tail pass (`probe: false`) only needs the FIRST segment's flag,
+    // and that flag needs the segment's first non-blank bytes to be a `$$`
+    // opener — cheap to rule out before the O(segment) unclosed scan (plain
+    // prose is one segment; this scan was the last ~20% over stateless).
+    if (probe || (index === 0 && LEADING_DOUBLE_DOLLAR_RE.test(text))) {
+      const unclosedDouble = findUnclosedDelimiterStart(text, 'double-only');
+      if (unclosedDouble !== -1) {
+        quiescent = false;
+        if (index === 0 && text.slice(0, unclosedDouble).trim() === '') {
+          truncatedAtSeamStart = true;
+        }
       }
     }
     text = truncateUnclosedLatexBlock(text);
-    out += text;
+    parts.push(text);
   }
-  return { out, quiescent, truncatedAtSeamStart };
+  return { out: parts.join(''), quiescent, truncatedAtSeamStart };
+}
+
+/** A raw line holding only spaces / tabs / CR — a CommonMark blank line. */
+function isBlankRawLine(text: string, from: number, to: number): boolean {
+  for (let i = from; i < to; i++) {
+    const c = text.charCodeAt(i);
+    if (c !== 32 && c !== 9 && c !== 13) return false;
+  }
+  return true;
 }
 
 /**
  * Last raw-safe cut in `active`, or -1. Raw conditions only (line start
- * inside a text segment, no dangling backtick run before, no latent `<`);
- * the transformed-output quiescence check happens on the candidate slice
- * afterwards.
+ * inside a text segment, no dangling backtick run before the last blank
+ * line, no latent `<`); the transformed-output quiescence check happens on
+ * the candidate slice afterwards.
  */
 function findRawSafeCut(active: string): number {
   const segments = splitByProtectedRegions(active);
@@ -736,10 +758,30 @@ function findRawSafeCut(active: string): number {
       continue;
     }
     const text = segment.text;
+    // Whether the segment's first (possibly partial) line starts at a real
+    // line start — only then may it count as a blank line below.
+    let atLineStart = offset === 0 || active.charCodeAt(offset - 1) === 10;
     let lineStart = 0;
     while (lineStart <= text.length) {
       const nl = text.indexOf('\n', lineStart);
       const lineEnd = nl === -1 ? text.length : nl;
+      // A dangling backtick run can only be re-segmented by a run arriving
+      // later that PAIRS with it, and a code span cannot cross a blank line
+      // (findClosingBacktickRun stops there; a mid-line run cannot become a
+      // fence, which needs a line-start run of 3+). So a blank line settles
+      // every backtick before it: the hazard latch releases and lines
+      // after the blank are candidates again — instead of a lone backtick
+      // freezing nothing for the rest of the stream (2026-08-19 review
+      // P2-3; oracle-checked: the span search is the only segmentation
+      // decision that looks past a finished line). The blank must be a
+      // WHOLE raw line, exactly what findClosingBacktickRun stops at:
+      // terminated by `\n` inside this segment, only spaces/tabs/CR, and
+      // starting at a real line start — a segment's first partial line sits
+      // after a protected span on the same line, and the remainder after
+      // its last `\n` is the START of a line that continues in the next
+      // segment (property-suite counterexample: an empty remainder released
+      // the latch and a cut landed past a still-unpaired backtick).
+      if (atLineStart && nl !== -1 && isBlankRawLine(text, lineStart, lineEnd)) backtickHazard = false;
       for (let i = lineStart; i < lineEnd; i++) {
         const ch = text[i];
         if (ch === '`') backtickHazard = true;
@@ -752,6 +794,7 @@ function findRawSafeCut(active: string): number {
       if (nl === -1) break;
       if (!backtickHazard && !latentLt) lastCut = offset + nl + 1;
       lineStart = nl + 1;
+      atLineStart = true;
     }
     offset += text.length;
   }
@@ -776,13 +819,36 @@ const DEFAULT_FREEZE_ATTEMPT_THRESHOLD = 512;
  */
 export function createIncrementalLatexPreprocessor(options?: {
   freezeThreshold?: number;
+  /** Failure backoff (default on). Tests that rely on `freezeThreshold: 0`
+   *  to attempt a freeze on EVERY call turn it off, so 1-char chunkings keep
+   *  exercising the cut rules instead of skipping most attempts; backoff
+   *  can only freeze LESS, so passing without it implies passing with it.
+   *  @internal */
+  backoff?: boolean;
+  /** Test hook: called once per freeze ATTEMPT (a scan of the active
+   *  region) with the region's length and how many source bytes the
+   *  attempt froze (0 = failed), so the backoff bound and freeze progress
+   *  can be pinned. @internal */
+  onAttempt?: (info: { activeLength: number; frozenBytes: number }) => void;
 }): (content: string) => string {
   const freezeThreshold = options?.freezeThreshold ?? DEFAULT_FREEZE_ATTEMPT_THRESHOLD;
+  const onAttempt = options?.onAttempt;
+  const backoff = options?.backoff ?? true;
   let prevSource = '';
   let prevOutput = '';
   let frozenSrcEnd = 0;
   let frozenOut = '';
   let triggered = false;
+  // Failure backoff (2026-08-19 review P2-3): a candidate that is not
+  // quiescent stays that way for as long as it is the candidate (its bytes
+  // never change under append — an early stray `$` keeps parity odd for
+  // every later slice), yet each frame paid a full active-region scan plus
+  // a wasted candidate pass on top of the unavoidable tail pass (3× the
+  // stateless cost on such documents). After a failed attempt the next one
+  // waits until the active region has doubled; failed-attempt cost is then
+  // a geometric series (≤ 4·O(n) over the whole stream). Freezing later
+  // never changes output — every frame equals `preprocessLaTeX(full)`.
+  let nextAttemptLen = 0;
 
   return function incrementalPreprocessLaTeX(source: string): string {
     if (source === prevSource) return prevOutput;
@@ -791,6 +857,7 @@ export function createIncrementalLatexPreprocessor(options?: {
       frozenSrcEnd = 0;
       frozenOut = '';
       triggered = false;
+      nextAttemptLen = 0;
     }
     if (!triggered) {
       // Monotone gate (B4): while the ACCUMULATED string has no trigger, the
@@ -808,18 +875,36 @@ export function createIncrementalLatexPreprocessor(options?: {
       triggered = true;
     }
     let active = source.slice(frozenSrcEnd);
-    if (active.length > freezeThreshold) {
+    if (active.length > freezeThreshold && active.length >= nextAttemptLen) {
+      const activeLength = active.length;
+      let advanced = false;
+      let frozenBytes = 0;
+      const freeze = (cut: number, slice: InstrumentedSlice) => {
+        frozenOut += slice.out;
+        frozenSrcEnd += cut;
+        active = source.slice(frozenSrcEnd);
+        advanced = true;
+        frozenBytes = cut;
+      };
       const cut = findRawSafeCut(active);
       if (cut > 0) {
         const candidate = processSliceInstrumented(active.slice(0, cut));
-        if (candidate.quiescent) {
-          frozenOut += candidate.out;
-          frozenSrcEnd += cut;
-          active = source.slice(frozenSrcEnd);
-        }
+        if (candidate.quiescent) freeze(cut, candidate);
       }
+      // A shorter fallback cut (largest cut before the first non-quiescent
+      // segment) was designed and rejected: quiescence is segment-granular
+      // (plain prose is ONE segment) and, with the threshold, the unfrozen
+      // prefix before trouble is < threshold bytes anyway — the backoff
+      // alone brings a permanently-failing document to ≈ the stateless
+      // cost (oracle review, 2026-08-19).
+      nextAttemptLen = advanced || !backoff ? 0 : active.length * 2;
+      onAttempt?.({ activeLength, frozenBytes });
     }
-    const tail = processSliceInstrumented(active);
+    // Tail pass: transforms only — its `quiescent` is never read, only the
+    // first segment's B3 flag, so the per-segment probes are skipped (they
+    // were ~40% on top of the stateless cost for a document whose freeze
+    // never succeeds; the backoff had already removed the other 2×).
+    const tail = processSliceInstrumented(active, false);
     // B3 seam correction: the original's segment-level `trimEnd` reaches
     // back across our cut when the truncated `$$` block's segment starts
     // with nothing but whitespace. Applied at COMPOSE time only — the
