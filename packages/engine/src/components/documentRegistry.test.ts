@@ -54,6 +54,18 @@ describe('Registry — Symbol allocation', () => {
     expect(reg.chunkOrder.length).toBe(0);
   });
 
+  test('an unbalanced extra release is ignored — refcount never goes negative, cleanup still fires (eng-stream-03)', async () => {
+    const reg = createRegistry();
+    reg.allocateSymbol('react-id-1');
+    reg.releaseSymbol('react-id-1');
+    reg.releaseSymbol('react-id-1'); // one too many — must not park refcount at -1
+    await new Promise<void>((r) => queueMicrotask(r));
+    expect(reg.chunkOrder.length).toBe(0); // the deferred cleanup still ran
+    // A fresh allocate after that mints a live entry again (no leaked -1).
+    const sym = reg.allocateSymbol('react-id-1');
+    expect(reg.chunkOrder).toEqual([sym]);
+  });
+
   test('Strict Mode unmount-remount cycle preserves Symbol identity', async () => {
     const reg = createRegistry();
     const s1 = reg.allocateSymbol('react-id-1');

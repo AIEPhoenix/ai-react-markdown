@@ -97,7 +97,10 @@ export interface Registry {
 
   subscribe(cb: () => void): () => void;
 
-  // Selectors (memoized internally by version).
+  // Selectors — pure reads over chunkOrder × chunkData, recomputed on every
+  // call (NOT memoized: each is a linear walk of the registry; placeholder
+  // components already gate their re-renders on `version`, so callers pay
+  // one walk per registry mutation, not per render).
   canonicalFootnoteFor(label: string): symbol | null;
   canonicalLinkFor(label: string): symbol | null;
   globalNumber(label: string): number | null;
@@ -211,6 +214,19 @@ export function createRegistry(onEmpty?: () => void): RegistryInternal {
     releaseSymbol(reactId: string): void {
       const entry = this._reactIdMap.get(reactId);
       if (!entry) return;
+      if (entry.refcount <= 0) {
+        // Already fully released and awaiting the deferred cleanup (or a
+        // caller released more than it allocated). Decrementing further
+        // would park the refcount below zero, where the `=== 0` cleanup
+        // check never fires and the chunk leaks forever with onEmpty
+        // eviction disabled (2026-08 project review, eng-stream-03).
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn(
+            `[ai-react-markdown] Registry.releaseSymbol("${reactId}") called with no matching allocateSymbol — ignoring (unbalanced release).`
+          );
+        }
+        return;
+      }
       entry.refcount--;
       if (entry.refcount === 0) {
         queueMicrotask(() => {
