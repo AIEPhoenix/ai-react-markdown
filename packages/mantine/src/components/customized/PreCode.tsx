@@ -64,18 +64,20 @@ function useAutoDetectedLanguage(codeText: string, enabled: boolean, streaming: 
     // swap): a guess made for the old text is worthless for the new one.
     // Drop it so the schedule restarts (v2.4.0 review: the old label stuck
     // for the whole new stream until its end).
-    if (detected !== null && codeText.length < detected.atLength) {
-      setDetected(null);
-      return;
-    }
+    // Do NOT return here: `detected` is not a dep, so a state reset alone
+    // would never re-run the effect and a non-streaming replacement stayed
+    // "unknown" for good (v2.4.1 review) — evaluate the schedule against
+    // the cleared prior in this same pass.
+    const prior = detected !== null && codeText.length < detected.atLength ? null : detected;
+    if (prior !== detected) setDetected(null);
     if (codeText.length < AUTODETECT_MIN_CHARS) return;
     const due =
-      detected === null ||
+      prior === null ||
       // Not streaming: the verdict must be for THIS text (end-of-stream, or a
       // static content update).
-      (!streaming && detected.finalFor !== codeText) ||
+      (!streaming && prior.finalFor !== codeText) ||
       // Streaming: doubled since the last guess.
-      (streaming && codeText.length >= detected.atLength * 2);
+      (streaming && codeText.length >= prior.atLength * 2);
     if (!due) return;
     let cancelled = false;
     loadHljsForAutoDetect().then(
@@ -115,6 +117,34 @@ export function preloadMantineCodeAssets(): Promise<void> {
     () => undefined,
     () => undefined
   );
+}
+
+/**
+ * Cheap tell that a streamed JSON block is complete: it ends with a closing
+ * bracket AND its brackets balance to zero outside string literals. A
+ * balanced prefix can still be invalid JSON (deepParseJson then just
+ * returns the text), but an in-progress pretty-printed block is never
+ * balanced, so the parse is skipped on the way through.
+ */
+export function jsonLooksComplete(text: string): boolean {
+  if (!/[}\]]\s*$/.test(text)) return false;
+  let depth = 0;
+  let inString = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    if (inString) {
+      if (c === 92 /* \\ */) i += 1;
+      else if (c === 34 /* " */) inString = false;
+    } else if (c === 34) {
+      inString = true;
+    } else if (c === 123 || c === 91) {
+      depth += 1;
+    } else if (c === 125 || c === 93) {
+      depth -= 1;
+      if (depth < 0) return false;
+    }
+  }
+  return depth === 0 && !inString;
 }
 
 /**
@@ -194,11 +224,12 @@ const MantineAIMPreCode = memo(
       // prefix never parses, so trying deepParseJson on every chunk of a
       // growing block was O(n²) work for nothing (pkg-small-06) — but a
       // block that finished mid-document must not wait for the whole
-      // message to end. A complete JSON value ends in `}`, `]`, `"`, a
-      // digit or a literal; the cheap tell that rules out the common
-      // in-progress shapes is "ends with a closing bracket".
-      const looksComplete = /[}\]]\s*$/.test(usedCodeStr);
-      if (usedCodeStr && (looksComplete || !streaming) && usedCodeLanguage === 'json') {
+      // message to end. "Ends with a closing bracket" alone was not enough
+      // of a tell: pretty-printed JSON (the common LLM shape) ends a chunk
+      // on `}` / `]` at almost every nesting level, so the parse still ran
+      // on nearly every chunk (v2.4.1 review). Only a BALANCED bracket
+      // scan (strings skipped, one linear pass) admits the parse.
+      if (usedCodeStr && usedCodeLanguage === 'json' && (!streaming || jsonLooksComplete(usedCodeStr))) {
         const deepParsedResult = deepParseJson(usedCodeStr);
         usedCodeStr =
           typeof deepParsedResult === 'string' ? deepParsedResult : JSON.stringify(deepParsedResult, null, 2);

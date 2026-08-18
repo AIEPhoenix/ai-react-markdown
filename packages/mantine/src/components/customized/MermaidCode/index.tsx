@@ -43,6 +43,9 @@ type Mermaid = typeof mermaidModule;
  * cached module-wide; the source-view warm-up covers the loading window.
  */
 let mermaidPromise: Promise<Mermaid> | null = null;
+/** Bounded automatic retries of a failed mermaid module download. */
+const MERMAID_LOAD_RETRIES = 3;
+const MERMAID_LOAD_RETRY_MS = 1500;
 const loadMermaid = (): Promise<Mermaid> => {
   // A rejected load is not cached — the next render attempt retries.
   mermaidPromise ??= import('mermaid').then(
@@ -193,6 +196,15 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
   const lastSuccessRef = useRef<{ code: string; isDark: boolean } | null>(null);
   const [view, setViewState] = useState<MermaidView>({ kind: 'source' });
   const [showOriginalCode, setShowOriginalCode] = useState(false);
+  /** Bumped (after a short delay) when the mermaid MODULE failed to load, so
+   *  the effect re-runs on otherwise unchanged inputs and retries the
+   *  download. A download failure is not a diagram error: it must neither
+   *  consume the corrective obligation nor show the error tab (v2.4.1
+   *  review — the corrective pass is one-shot, so a transient network
+   *  failure on it left a permanent "Render Error" that nothing re-tried).
+   *  Bounded by MERMAID_LOAD_RETRIES per generation. */
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const loadFailuresRef = useRef(0);
 
   useEffect(() => {
     // View updates funnel through here so the ref mirror can't desync from
@@ -213,6 +225,7 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
       // here is idempotent — a StrictMode double-run is harmless.
       needsCorrectiveRef.current = false;
       lastSuccessRef.current = null;
+      loadFailuresRef.current = 0;
       applyView({ kind: 'source' });
       if (ref.current) {
         ref.current.innerHTML = '';
@@ -239,9 +252,24 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
     const renderVersion = ++renderVersionRef.current;
     let cancelled = false;
 
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
     const renderMermaid = async () => {
+      let mermaid: Mermaid;
       try {
-        const mermaid = await loadMermaid();
+        mermaid = await loadMermaid();
+      } catch {
+        // Module load failed: keep whatever is showing (source view or the
+        // last diagram), leave the corrective obligation armed, and retry
+        // the download a bounded number of times.
+        if (cancelled || renderVersion !== renderVersionRef.current) return;
+        if (loadFailuresRef.current < MERMAID_LOAD_RETRIES) {
+          loadFailuresRef.current += 1;
+          retryTimer = setTimeout(() => setLoadAttempt((n) => n + 1), MERMAID_LOAD_RETRY_MS);
+        }
+        return;
+      }
+      loadFailuresRef.current = 0;
+      try {
         if (!ref.current || cancelled || renderVersion !== renderVersionRef.current) {
           return;
         }
@@ -320,11 +348,13 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
 
     return () => {
       cancelled = true;
+      if (retryTimer !== undefined) clearTimeout(retryTimer);
     };
     // `streaming` in the deps is what drives the end-of-stream corrective
     // pass: the flip to false re-runs this effect on the (unchanged) final
     // code, so the last state reflects the full diagram source.
-  }, [props.code, isDark, showOriginalCode, streaming]);
+    // `loadAttempt` re-runs it after a failed module download.
+  }, [props.code, isDark, showOriginalCode, streaming, loadAttempt]);
 
   const viewSvgInNewWindow = useCallback(() => {
     handleViewSVGInNewWindow(ref.current?.querySelector('svg'), isDark);
