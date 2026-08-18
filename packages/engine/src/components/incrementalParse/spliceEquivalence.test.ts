@@ -423,6 +423,15 @@ describe('splice equivalence — fuzz-found regressions', () => {
       [4, 1, 4, 4, 4, 1, 4, 4],
       0,
     ],
+    // v2.4.2 review P1-1/P1-2: parse5 SYNTHESIZES a stray `</br>` / `</p>`
+    // (the tail-only parse cannot), and a stray `<td>` foster-parents the
+    // following table's cell text to the root, merging the table's own line
+    // endings into the separator after it.
+    ['review-242-p1-stray-br-end-tag', 'x\n\n</br>\n\ny\n', [1], 0],
+    ['review-242-p1-stray-p-end-tag', 'x\n\n</p>\n\ny\n', [4], 1],
+    ['review-242-p1-stray-br-with-text', 'x\n\n</br>\ntext\n\ny\n', [3, 5], 0],
+    ['review-242-p1-stray-td-then-table', '<td>s</td>\n\n| a |\n| - |\n\nx\n\ny\n', [1], 0],
+    ['review-242-p1-stray-td-then-table-defaults', '<td>s</td>\n\n| a |\n| - |\n\nx\n\ny\n', [3, 5], 1],
     ['review-241-p1b-cross-line-full-ref', 'see [text\nmore][foo] end\n\nx\n\ny\n\n[foo]: /url\n', [4], 0],
   ];
 

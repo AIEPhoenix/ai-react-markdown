@@ -852,6 +852,15 @@ function alignPrefixCut(
   // ones and stays in this branch (first freeze straight from a full-parse
   // tree — later frames see the merged, position-less artifact).
   const lastIsLiteral = last !== undefined && last.type === 'text' && last.value.trim() !== '';
+  if (lastIsLiteral && pairIdx >= 0 && visibles[pairIdx].type !== 'html') {
+    // Root-level literal text owned by a NON-html block: a stray `<td>`
+    // earlier in the document made parse5 foster-parent the following GFM
+    // table's cell text to the root and destroy the table skeleton, whose
+    // internal line endings then merged into the separator AFTER it — a
+    // separator the cut never sees (it lives past the boundary) and the
+    // rebuild cannot reproduce (v2.4.2 review P1-2). Out of model — bail.
+    return null;
+  }
   const litOwnerEnd = pairIdx >= 0 ? visibles[pairIdx].position?.end?.offset : undefined;
   const litEnd = lastIsLiteral ? last.position?.end?.offset : undefined;
   if (lastIsLiteral && last.position !== undefined && (litEnd === undefined || litOwnerEnd === undefined)) {
@@ -1056,8 +1065,15 @@ function stripInjectedHast(
  */
 function tailLeadingTextIsHoist(tailMdastChildren: MdastContent[], tailHastChildren: HastContent[]): boolean | null {
   const firstText = tailHastChildren[0];
-  if (!firstText) return false;
   const firstVisible = tailMdastChildren.find((c) => !isWrapInvisible(c));
+  // HTML's two end-tag SYNTHESIS exceptions: a stray `</br>` becomes a
+  // `<br>` and a stray `</p>` an empty `<p>` (every other unmatched end tag
+  // is dropped). The full parse synthesizes them in body context; the
+  // tail-only parse, which opens on the stray tag, does not — the element
+  // is simply absent from the tail hast, so no join rule can put it back
+  // (v2.4.2 review P1-1: `x\n\n</br>\n\ny` lost its `<br>`). Bail.
+  if (firstVisible?.type === 'html' && /^\s*<\/(?:br|p)\b/i.test(firstVisible.value)) return null;
+  if (!firstText) return false;
   if (!isSeparatorText(firstText)) {
     // Position-less NON-whitespace leading text: the tail starts with an
     // html block whose leading end tag the tokenizer DROPPED (`</t>\ntext`

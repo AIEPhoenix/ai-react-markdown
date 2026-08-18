@@ -177,7 +177,23 @@ const rawTextBlockArb = fc.constantFrom(
   "<script>alert('<div>')</script> same-line close"
 );
 
+/**
+ * parse5 tree-construction quirks no generator carried (v2.4.2 review P1):
+ * a stray `</br>` / `</p>` end tag is SYNTHESIZED (`<br>` / empty `<p>`)
+ * rather than dropped — the tail-only parse cannot reproduce that; a
+ * stray `<td>` outside any table makes the following GFM table's cell text
+ * foster-parent to the root and its skeleton vanish.
+ */
+const treeQuirkArb = fc.constantFrom(
+  '</br>',
+  '</p>',
+  '</br>\ntext after a synthesized br',
+  '<td>s</td>\n\n| a |\n| - |',
+  '<td>s</td>\n\n| a | b |\n| - | - |\n| 1 | 2 |'
+);
+
 const rawHtmlArb = fc.oneof(
+  { weight: 1, arbitrary: treeQuirkArb },
   { weight: 2, arbitrary: fc.constant('<details>\n<summary>t</summary>\nbody prose\n</details>') },
   // APPROX #2 — cross-line self-closing tag stays an over-blocking opener.
   { weight: 2, arbitrary: fc.constant('<embed\n  src="x"\n/>') },
@@ -394,6 +410,7 @@ export const COVERAGE_MARKERS: Record<string, RegExp> = {
   rawTextBlock: /<(?:script|style|textarea|pre)>/,
   proseTruncatedTag: /a<b\n/,
   reviewShapes: /<!-- c --> <\/s>|<\?x\?><details>|<\/t>\ntext|<details> <\?php|x="`">b`/,
+  treeQuirks: /<\/br>|<\/p>|<td>s<\/td>\n\n\|/,
   unicodeBlank: /\n[\u3000\u00a0]\n|```\u00a0\n|\$\$\u3000\n|"t"\u00a0|\u3000<!--/,
   failedInlineLink: /\]\(bad url\)/,
   crossLineRef: /see \[(?:a|b|spec|注一)\n(?:a|b|spec|注一)\] end/,

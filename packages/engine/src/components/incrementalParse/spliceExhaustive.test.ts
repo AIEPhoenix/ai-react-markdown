@@ -44,6 +44,7 @@ const TOKENS = [
   '<d>',
   '</d>',
   '<d',
+  '</br>',
   '/>',
   '<!--',
   // Bare closers/openers so the census can COMPOSE the overlapping and
