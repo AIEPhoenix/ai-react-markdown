@@ -6,9 +6,11 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 ---
 
-## 2.4.x — The project-review sweep
+## 2.5.x — Chunk order you control
 
-### 2.4.6 — Second review round of 2.4.5: five parse5-model gaps in the freeze scanner, an escape-blind `$$` in the LaTeX pass
+### 2.5.0 — Second review round of 2.4.5: five parse5-model gaps in the freeze scanner, an escape-blind `$$` in the LaTeX pass, and `documentIndex`
+
+The one new API is `documentIndex` (last bullet); everything else is a fix.
 
 A second seven-track review at 2.4.5 (`project-review-2026-08-19-r2.md`) — its P1 section, all reproduced with the equivalence oracle, plus what the adversarial re-checks of the fixes turned up. First batch, engine only:
 
@@ -41,6 +43,8 @@ Third batch — the cache/streaming defects the review filed under P2:
 - **New optional prop `documentIndex` — chunk order stops depending on mount order.** Cross-chunk state (footnote numbering, which chunk renders the aggregate footer) follows the order chunks register in, which was mount order. A virtualized transcript breaks that: a message scrolled out of view unmounts and, scrolling back, re-registers _after_ the chunks that stayed mounted — footnotes renumber and the footer moves into the middle of the document (`useId` is position-derived, so a remounted chunk cannot reclaim its slot on its own). Pass any stable per-chunk ordinal and the registry keeps chunks sorted by it. Optional, and omitting it keeps the previous behaviour exactly; chunks that supply an index sort ahead of chunks that do not, so a partial rollout degrades predictably. The cross-chunk guide's "on the roadmap" note is now the documented prop.
 
 Verification: every fixed shape is a deterministic pin (red on 2.4.5); release soak (splice fuzz 50k / direction battery 20k / K=4 census, LaTeX incremental property suite at 10 000 streams) clean on the final engine; five oracle passes over the fixes.
+
+## 2.4.x — The project-review sweep
 
 ### 2.4.5 — Full review of 2.4.3: a truncated end tag zeroed the tag balance, lone-CR line numbers, code spans across paragraphs
 
