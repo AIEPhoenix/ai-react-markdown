@@ -277,14 +277,20 @@ const AggregateFootnotesIfLastImpl: FC<AggregateFootnotesIfLastProps> = ({
   // The aggregate is content-determined by (version, prefix, orphan-flag);
   // anything else (postOptions identity changes that don't change render
   // output) is irrelevant to the tree.
+  // The "am I the last chunk" test lives INSIDE the factory: every chunk
+  // mounts one of these, and only the last one's tree is ever used — with
+  // the test outside, every chunk rebuilt the aggregate on every version
+  // bump (`buildAggregateTree` is O(chunks × refs)), O(N²) on the initial
+  // mount of N chunks (2026-08-19 review r2 P3).
   const tree = useMemo(
-    () => buildAggregateTree(registry, clobberPrefix, preserveOrphanReferences),
+    () => {
+      const order = registry.chunkOrder;
+      if (order.length === 0 || order[order.length - 1] !== thisChunkSym) return null;
+      return buildAggregateTree(registry, clobberPrefix, preserveOrphanReferences);
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [registry, registry.version, clobberPrefix, preserveOrphanReferences]
+    [registry, registry.version, clobberPrefix, preserveOrphanReferences, thisChunkSym]
   );
-  const order = registry.chunkOrder;
-  if (order.length === 0) return null;
-  if (order[order.length - 1] !== thisChunkSym) return null;
   if (!tree) return null;
   // Our `tree` is memoised by registry.version, so a non-version-bumping
   // parent re-render re-enters the same cached tree. That is safe without a

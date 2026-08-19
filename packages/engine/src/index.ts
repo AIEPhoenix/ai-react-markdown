@@ -17,7 +17,12 @@ export * from './fixtures/scenarios';
 // ── M3: incremental-parse engine + definition machinery ──────────────────
 export * from './components/incrementalParse';
 export { codePointSnapshots } from './components/incrementalParse/codePointSnapshots';
-export * from './components/collectDefLabels';
+export {
+  collectDefLabels,
+  createDefLabelScanner,
+  type DefLabels,
+  type DefLabelScanner,
+} from './components/collectDefLabels';
 export * from './components/extractDefBodiesFromHast';
 export * from './components/extractContributions';
 export * from './components/documentRegistry';

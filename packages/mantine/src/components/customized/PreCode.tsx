@@ -2,7 +2,6 @@
 
 import { HTMLAttributes, memo, useEffect, useMemo, useRef, useState } from 'react';
 import { CodeHighlight, CodeHighlightTabs } from '@mantine/code-highlight';
-import { deepParseJson } from 'deep-parse-json';
 import { useAIMarkdownState, useAIMarkdownTheme } from '@ai-react-markdown/core';
 import { useMantineCodeBlockOptions } from '../../hooks/useMantineCodeBlockOptions';
 import MantineAIMMermaidCode from './MermaidCode';
@@ -137,9 +136,52 @@ export function preloadMantineCodeAssets(): Promise<void> {
 }
 
 /**
+ * Pretty-print helper: `JSON.parse` the block and expand string values that
+ * are themselves JSON DOCUMENTS (an object or array — the tool-call
+ * transcript shape, where a `tool_result` field is one escaped blob), so
+ * both levels print indented. Strings that merely parse as a JSON
+ * PRIMITIVE (`"true"`, `"123"`, `"null"`) are left alone: the previous
+ * `deep-parse-json` dependency turned `{"flag":"true"}` into
+ * `{"flag":true}` — a type rewrite of what the model wrote, and the copy
+ * button ships the rewritten bytes (2026-08-19 review r2 P2-14). Returns
+ * the input unchanged when it is not valid JSON.
+ */
+export function prettyPrintJson(text: string): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return text;
+  }
+  return JSON.stringify(expandNestedJson(parsed), null, 2);
+}
+
+function expandNestedJson(value: unknown): unknown {
+  if (typeof value === 'string') {
+    const t = value.trim();
+    if (t.length > 1 && (t[0] === '{' || t[0] === '[')) {
+      try {
+        const inner: unknown = JSON.parse(t);
+        if (inner !== null && typeof inner === 'object') return expandNestedJson(inner);
+      } catch {
+        /* not a nested document — keep the string */
+      }
+    }
+    return value;
+  }
+  if (Array.isArray(value)) return value.map(expandNestedJson);
+  if (value !== null && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = expandNestedJson(v);
+    return out;
+  }
+  return value;
+}
+
+/**
  * Cheap tell that a streamed JSON block is complete: it ends with a closing
  * bracket AND its brackets balance to zero outside string literals. A
- * balanced prefix can still be invalid JSON (deepParseJson then just
+ * balanced prefix can still be invalid JSON (prettyPrintJson then just
  * returns the text), but an in-progress pretty-printed block is never
  * balanced, so the parse is skipped on the way through.
  */
@@ -238,7 +280,7 @@ const MantineAIMPreCode = memo(
       if (isSpecialCodeBlock) return null;
       let usedCodeStr = props.codeText;
       // JSON pretty-print as soon as the block LOOKS complete: a streamed
-      // prefix never parses, so trying deepParseJson on every chunk of a
+      // prefix never parses, so trying to pretty-print every chunk of a
       // growing block was O(n²) work for nothing (pkg-small-06) — but a
       // block that finished mid-document must not wait for the whole
       // message to end. "Ends with a closing bracket" alone was not enough
@@ -247,9 +289,7 @@ const MantineAIMPreCode = memo(
       // on nearly every chunk (v2.4.1 review). Only a BALANCED bracket
       // scan (strings skipped, one linear pass) admits the parse.
       if (usedCodeStr && usedCodeLanguage === 'json' && (!streaming || jsonLooksComplete(usedCodeStr))) {
-        const deepParsedResult = deepParseJson(usedCodeStr);
-        usedCodeStr =
-          typeof deepParsedResult === 'string' ? deepParsedResult : JSON.stringify(deepParsedResult, null, 2);
+        usedCodeStr = prettyPrintJson(usedCodeStr);
       }
       return usedFileName === 'unknown' ? (
         <CodeHighlight

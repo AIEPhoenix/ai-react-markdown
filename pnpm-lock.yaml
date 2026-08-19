@@ -330,9 +330,6 @@ importers:
 
   packages/mantine:
     dependencies:
-      deep-parse-json:
-        specifier: ^2.0.0
-        version: 2.0.0
       mermaid:
         specifier: ^11.16.1
         version: 11.16.1
@@ -3201,9 +3198,6 @@ packages:
 
   deep-is@0.1.4:
     resolution: {integrity: sha512-oIPzksmTg4/MriiaYGO+okXDT7ztn/w3Eptv/+gSIdMdKsJo0u4CfYNFJPy+4SKMuCqGw2wxnA+URMg3t8a/bQ==}
-
-  deep-parse-json@2.0.0:
-    resolution: {integrity: sha512-tDr7ojkafPLqECGR5Jfwu33NAKiXPhxS0fTCXpTg9fkrRxJHYzDM/v6J5o1JMwsIEGjanB93U0+YB57G1SLTtg==}
 
   default-browser-id@5.0.1:
     resolution: {integrity: sha512-x1VCxdX4t+8wVfd1so/9w+vQ4vx7lKd2Qp5tDRutErwmR85OgmfX7RlLRMWafRMY7hbEiXIbudNrjOAPa/hL8Q==}
@@ -8254,8 +8248,6 @@ snapshots:
   deep-eql@5.0.2: {}
 
   deep-is@0.1.4: {}
-
-  deep-parse-json@2.0.0: {}
 
   default-browser-id@5.0.1: {}
 

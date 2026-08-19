@@ -116,6 +116,25 @@ jobs:
               echo "::error::packages/mantine peer @ai-react-markdown/core is '${PEER}', expected '^${TAG_VERSION}'"
               exit 1
             fi
+            # The two other dependency edges that ship with the train (2026-08-19
+            # review r2 P2-17):
+            # - core pins engine EXACTLY (`workspace:*` → `X.Y.Z`); that promise
+            #   is documented in the engine README and has no other guard —
+            #   `workspace:^` would pass every other gate and widen it silently.
+            CORE_ENGINE="$(node -p "require('./packages/core/package.json').dependencies['@ai-react-markdown/engine']")"
+            if [ "$CORE_ENGINE" != "workspace:*" ]; then
+              echo "::error::packages/core must depend on @ai-react-markdown/engine as 'workspace:*' (exact pin), found '${CORE_ENGINE}'"
+              exit 1
+            fi
+            # - engine depends on remark-mark-highlight (its own version line)
+            #   via `workspace:^`, which publish expands to `^<local version>`;
+            #   that version must already exist on npm or the train's engine
+            #   is uninstallable.
+            RMH_VERSION="$(node -p "require('./packages/remark-mark-highlight/package.json').version")"
+            if ! npm view "@ai-react-markdown/remark-mark-highlight@${RMH_VERSION}" version >/dev/null 2>&1; then
+              echo "::error::@ai-react-markdown/remark-mark-highlight@${RMH_VERSION} is not on npm yet — publish it (tag remark-mark-highlight-v${RMH_VERSION}) before the train"
+              exit 1
+            fi
           fi
 
       # Full quality gate — mirrors CI so a tag can't ship anything main
@@ -164,15 +183,30 @@ jobs:
       - name: Upgrade npm (OIDC exchange needs ≥ 11.5.1)
         run: npm install -g npm@^11.5.1 && npm --version
 
+      # A pre-release version (`x.y.z-beta.1` — the version script and the
+      # tag filter both accept it) must not take over the `latest` dist-tag:
+      # npm gives every publish `latest` unless told otherwise (2026-08-19
+      # review r2 P2-16). The dist-tag is the pre-release identifier's first
+      # word (`beta.1` → `beta`, `rc.2` → `rc`), `next` when it has none.
       - name: Publish to npm (OIDC trusted publishing + provenance)
         run: |
+          VERSION="${GITHUB_REF_NAME##*v}"
+          DIST_TAG_ARGS=()
+          case "$VERSION" in
+            *-*)
+              PRE="${VERSION#*-}"
+              PRE_ID="${PRE%%[.0-9]*}"
+              DIST_TAG_ARGS=(--tag "${PRE_ID:-next}")
+              echo "Pre-release ${VERSION}: publishing under dist-tag '${DIST_TAG_ARGS[1]}'"
+              ;;
+          esac
           case "$GITHUB_REF_NAME" in
             v*)
-              pnpm publish -r --access public --no-git-checks
+              pnpm publish -r --access public --no-git-checks "${DIST_TAG_ARGS[@]}"
               ;;
             *-v*)
               PKG_DIR="${GITHUB_REF_NAME%-v*}"
-              pnpm publish --filter "./packages/${PKG_DIR}" --access public --no-git-checks
+              pnpm publish --filter "./packages/${PKG_DIR}" --access public --no-git-checks "${DIST_TAG_ARGS[@]}"
               ;;
           esac
 

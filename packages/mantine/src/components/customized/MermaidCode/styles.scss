@@ -20,22 +20,27 @@
 
     .chart-type-tag {
       padding: calc(0.2125rem * var(--mantine-scale)) calc(0.5625rem * var(--mantine-scale));
-      /* Theme tokens, not literal black/white — a consumer's custom light
-         palette must reach this tag like it reaches everything else. */
-      color: var(--mantine-color-text);
+      /* Scheme-INDEPENDENT theme tokens (`--mantine-color-black` /
+         `-white` come from theme.black / theme.white, so a custom palette
+         still reaches this tag). The `.dark` variant below is driven by the
+         resolved `colorScheme` prop, not by the Provider's scheme — under a
+         dark Provider with `colorScheme="light"` a scheme-bound token like
+         `--mantine-color-text` resolves near-white on this light card and
+         disappears (2026-08-19 review r2 P2-13; the reverse pairing was
+         fixed in 2.4.5). */
+      color: var(--mantine-color-black);
       border: 1px solid var(--mantine-color-gray-3);
-      background: var(--mantine-color-body);
+      background: var(--mantine-color-white);
       border-radius: var(--mantine-radius-default);
       font-size: var(--mantine-font-size-xs);
       font-weight: 700;
     }
 
     .action-icon {
-      color: var(--mantine-color-text);
+      color: var(--mantine-color-black);
       opacity: 0.5;
 
       &:hover {
-        color: var(--mantine-color-bright);
         opacity: 1;
       }
     }
@@ -67,6 +72,12 @@
          Provider — there `--mantine-color-text` resolves to the LIGHT
          scheme's text and the icon disappears on dark-8 (2026-08-19 review). */
       color: var(--mantine-color-dark-0);
+
+      /* Same specificity as the base hover rule and later in the sheet, so
+         without this the dark hover only changed opacity (r2 P3). */
+      &:hover {
+        color: var(--mantine-color-white);
+      }
     }
   }
 }

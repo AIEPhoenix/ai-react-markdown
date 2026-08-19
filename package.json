@@ -14,6 +14,7 @@
     "version-packages": "node scripts/version-packages.mjs",
     "packcheck": "pnpm --filter './packages/*' -r exec attw --pack . && pnpm --filter './packages/*' -r exec publint",
     "check:overrides": "node scripts/assert-overrides-in-sync.mjs",
+    "bench": "vitest bench --run --project unit",
     "preflight": "pnpm check:overrides && pnpm lint && pnpm format:check && pnpm build && pnpm packcheck && pnpm -r typecheck && pnpm typecheck && pnpm vitest run",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build"

@@ -64,7 +64,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "plugins"
   ],
   "exports": {
     ".": {

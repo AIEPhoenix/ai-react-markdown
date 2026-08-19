@@ -67,18 +67,22 @@ const loadMermaid = (): Promise<Mermaid> => {
 let initializedTheme: 'dark' | 'light' | null = null;
 
 /**
- * PREMISE (documented, not enforced — v2.4.2 review P3-3): mermaid's config
- * is a module-level singleton shared with the host application when the
- * bundler dedupes the package. This renderer asserts `securityLevel:
- * 'strict'` whenever it (re)initializes for a theme; a host that calls
- * `mermaid.initialize({ securityLevel: 'loose' })` in between runs the
- * next diagram under its own setting until the next theme flip here.
- * Re-asserting on every streamed chunk would re-run mermaid's config merge
- * per frame; hosts sharing the instance should keep it strict themselves.
+ * mermaid's config is a module-level singleton shared with the host
+ * application when the bundler dedupes the package, and a host that enables
+ * `click` interactions calls `mermaid.initialize({ securityLevel: 'loose' })`
+ * — the officially documented way. Under `loose` mermaid skips DOMPurify
+ * and its output goes into this component's `innerHTML` verbatim: an
+ * LLM-authored diagram string could then run script in the page origin.
+ * So the theme cache alone is not enough of a guard: before every render
+ * the current `securityLevel` is read back (`getConfig()` — one property
+ * read, not a config merge) and a non-strict value forces a re-initialize
+ * (2026-08-19 review r2 P2-11; the v2.4.2 "documented premise" made this
+ * the host's problem — it is ours, the innerHTML is ours).
  */
 const ensureMermaidInitialized = (mermaid: Mermaid, isDark: boolean) => {
   const theme = isDark ? 'dark' : 'light';
-  if (initializedTheme === theme) return;
+  const currentLevel = (mermaid as { getConfig?: () => { securityLevel?: string } }).getConfig?.().securityLevel;
+  if (initializedTheme === theme && currentLevel === 'strict') return;
   mermaid.initialize({
     startOnLoad: false,
     securityLevel: 'strict',
@@ -446,6 +450,45 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
         <div className="chart-header">
           <div className="chart-type-tag">{view.kind === 'diagram' ? view.chartType : 'unknown'}</div>
           <Flex align="center" justify="flex-end" gap={0}>
+            {/* The "open in a new window" action is a real button here rather
+                than a `role="button"` on the SVG container: a button's
+                content is presentational to assistive tech, so the diagram's
+                own text and mermaid's accTitle/accDescr were unreachable, and
+                any `click … href` link mermaid emitted sat inside a button
+                (invalid, not tabbable) — 2026-08-19 review r2 P3. The
+                container below is `role="img"` with a description. */}
+            {/* Always rendered (also under SSR / the source warm-up, where it
+                is a no-op until the SVG exists) so server and client markup
+                agree. */}
+            {
+              <Tooltip label="Open in new window">
+                <ActionIcon
+                  size={28}
+                  className="action-icon"
+                  variant="transparent"
+                  aria-label="Open Mermaid diagram in a new window"
+                  onClick={viewSvgInNewWindow}
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    strokeWidth="2"
+                    stroke="currentColor"
+                    fill="none"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    width="18px"
+                    height="18px"
+                    aria-hidden="true"
+                  >
+                    <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+                    <path d="M12 6h-6a2 2 0 0 0 -2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-6"></path>
+                    <path d="M11 13l9 -9"></path>
+                    <path d="M15 4h5v5"></path>
+                  </svg>
+                </ActionIcon>
+              </Tooltip>
+            }
             <Tooltip label="Show Mermaid Code">
               <ActionIcon
                 size={28}
@@ -499,16 +542,9 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
         <pre
           ref={ref}
           style={PRE_STYLE}
-          role="button"
-          tabIndex={0}
-          aria-label="Open Mermaid diagram in a new window"
+          role="img"
+          aria-label={view.kind === 'diagram' ? `Mermaid ${view.chartType} diagram` : 'Mermaid diagram'}
           onClick={viewSvgInNewWindow}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault();
-              viewSvgInNewWindow();
-            }
-          }}
         />
       </div>
     </>

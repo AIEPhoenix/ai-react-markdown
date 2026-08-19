@@ -148,6 +148,12 @@ describe('computeFreezeBoundary — raw HTML blockers', () => {
     ]) {
       expect(computeFreezeBoundary(doc, OFF), doc).toBe(0);
     }
+    // …but a paragraph's truncated `<td b` that never gets its `>` is prose:
+    // reverted at the blank, not poisoned (r2 P3); confirmed by a later `>`
+    // it poisons.
+    const prose = 'compare a<td b\n\nnext\n\nzzz';
+    expect(computeFreezeBoundary(prose, OFF)).toBe(prose.indexOf('zzz'));
+    expect(computeFreezeBoundary('compare a<td b\nc>\n\n| a |\n| - |\n\nzzz', OFF)).toBe(0);
   });
 
   test('oracle review of 2.4.4: after a line ending inside a tag, the next line up to the first `>` is attribute garbage', () => {

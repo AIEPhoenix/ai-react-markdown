@@ -133,6 +133,35 @@ describe('crossChunkPlaceholders', () => {
     expect(second).not.toContain('>4</a>');
   });
 
+  test('FootnoteSupNumber on a chunk without a symbol yet still shows a known number (no id)', () => {
+    // A chunk's first frame: `chunkSym` is state and still null while the
+    // registry already numbers the label (another chunk contributed). Used
+    // to render nothing (r2 P3 carry-over of the 2.4.5 fix).
+    function SeedNoSymbol({ children }: { children: ReactNode }) {
+      const ctx = __internalGetContext();
+      const registry = ctx!.getRegistry('doc');
+      const existing = registry.allocateSymbol('existing');
+      registry.contributeChunkData(existing, {
+        refs: [{ label: 'X', kind: 'footnote' }],
+        defs: new Map(),
+        linkDefs: new Map(),
+        ownFootnoteLabels: new Set(),
+        ownLinkLabels: new Set(),
+      });
+      return <>{children}</>;
+    }
+    const html = renderToString(
+      <WithProvider documentId="doc">
+        <SeedNoSymbol>
+          <FootnoteSupNumber label="X" localOccurrence={1} />
+        </SeedNoSymbol>
+      </WithProvider>
+    );
+    expect(html).toContain('data-footnote-ref');
+    expect(html).toContain('>1</a>');
+    expect(html).not.toContain('fnref-x');
+  });
+
   test('CrossChunkLink fallback flattens rich children to plain text (no [object Object])', () => {
     // When the [text] slot contained inline markup like `[**bold**][X]`,
     // react-markdown hands CrossChunkLink a React element tree as children.

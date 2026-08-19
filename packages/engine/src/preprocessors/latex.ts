@@ -119,17 +119,17 @@ function findClosingBacktickRun(content: string, start: number, n: number): numb
       const runLen = getRepeatedMarkerLength(content, i, '`');
       if (runLen === n) return i;
       i += runLen;
-    } else if (ch === '\n') {
+    } else if (ch === '\n' || ch === '\r') {
       // A code span cannot cross a blank line (it ends the paragraph): two
       // lone backticks in different paragraphs are literal, and pairing
       // them would shield every `$…$` in between from conversion
       // (2026-08-19 review P2-2 — inline sibling of the v2.4.1 fence fix).
-      // Only `\n`-terminated blank lines are recognized (a lone-`\r` blank
-      // is not — conservative: the span still pairs there, both pipelines
-      // agree, math between stays unconverted as before).
+      // Line endings are `\n`, `\r\n` and a lone `\r` (r2 P3): a blank line
+      // is an ending, optional spaces/tabs, then another ending (or EOF).
       let j = i + 1;
-      while (j < content.length && (content[j] === ' ' || content[j] === '\t' || content[j] === '\r')) j += 1;
-      if (j >= content.length || content[j] === '\n') return -1;
+      if (ch === '\r' && content[j] === '\n') j += 1;
+      while (j < content.length && (content[j] === ' ' || content[j] === '\t')) j += 1;
+      if (j >= content.length || content[j] === '\n' || content[j] === '\r') return -1;
       i += 1;
     } else {
       i += 1;
@@ -293,7 +293,6 @@ function escapeMhchemCommands(text: string) {
 }
 
 const CURRENCY_REGEX = /(?<![\\$])\$(?!\$)(?=\d+(?:,\d{3})*(?:\.\d+)?(?:[KMBkmb])?(?:\s|$|[^a-zA-Z\d]))/g;
-const NO_ESCAPED_DOLLAR_REGEX = /(?<![\\$])\$(?!\$)/g;
 // Match \[...\] and \(...\) as LaTeX delimiters, but exclude:
 // - !\[...\] (markdown image)
 // - \[...\]( (markdown link)
@@ -321,6 +320,22 @@ const LATEX_BLOCK_REGEX = new RegExp(
 const TEXT_COMMAND = '\\text{';
 const SINGLE_DOLLAR_REGEX = /(?<![\\$])\$(?!\$)((?:[^$\n]|\\[$])+?)(?<!\\)(?<!`)\$(?!\$)/g;
 
+/** Bare `$` count in `str[from, to)`: a `$` not preceded by `\\` or `$` and
+ *  not followed by `$` (the old NO_ESCAPED_DOLLAR_REGEX rule), with the
+ *  characters just outside the range supplied so a range can be counted in
+ *  isolation and summed with its neighbours: `prev` stands in for
+ *  `str[from - 1]`, `next` for `str[to]`. */
+function countBareDollars(str: string, from: number, to: number, prev: string, next: string): number {
+  let n = 0;
+  for (let j = from; j < to; j++) {
+    if (str.charCodeAt(j) !== 36 /* $ */) continue;
+    const before = j > from ? str[j - 1] : prev;
+    const after = j + 1 < to ? str[j + 1] : next;
+    if (before !== '\\' && before !== '$' && after !== '$') n += 1;
+  }
+  return n;
+}
+
 /**
  * Escape currency dollar signs (e.g. $100, $1,000.50) so they are not
  * misinterpreted as LaTeX delimiters.
@@ -335,9 +350,29 @@ function escapeCurrencyDollarSigns(text: string): string {
   let lastIndex = 0;
   const currencyMatches = Array.from(text.matchAll(CURRENCY_REGEX));
 
-  // Track the processed content of the current line incrementally
-  // to avoid O(n²) from joining all parts on every match.
+  // Track the processed content of the current line incrementally, together
+  // with its bare-`$` COUNT: the parity check below used to re-scan the whole
+  // processed line on every match, O(line²) for a line with many currency
+  // hits (12 KB table row: 59 ms per frame; 8 KB: 243 ms — 2026-08-19
+  // review r2 P2-1). Appending a piece adds its own count plus a seam
+  // correction (the previous last `$` loses its "not followed by `$`" when
+  // the piece starts with `$`).
   let currentLineProcessed = '';
+  let currentLineDollars = 0;
+  const appendToLine = (piece: string): void => {
+    if (piece.length === 0) return;
+    const prevLast = currentLineProcessed.length > 0 ? currentLineProcessed[currentLineProcessed.length - 1] : '';
+    const prevBeforeLast = currentLineProcessed.length > 1 ? currentLineProcessed[currentLineProcessed.length - 2] : '';
+    const prevLastCounted = prevLast === '$' && prevBeforeLast !== '\\' && prevBeforeLast !== '$';
+    if (prevLastCounted && piece[0] === '$') currentLineDollars -= 1;
+    currentLineDollars += countBareDollars(piece, 0, piece.length, prevLast, '');
+    currentLineProcessed += piece;
+  };
+  const resetLine = (rest: string): void => {
+    currentLineProcessed = '';
+    currentLineDollars = 0;
+    appendToLine(rest);
+  };
 
   for (let i = 0; i < currencyMatches.length; i++) {
     const match = currencyMatches[i];
@@ -347,9 +382,9 @@ function escapeCurrencyDollarSigns(text: string): string {
     // Update currentLineProcessed: keep only content after the last newline.
     const newlineIdx = Math.max(segment.lastIndexOf('\n'), segment.lastIndexOf('\r'));
     if (newlineIdx !== -1) {
-      currentLineProcessed = segment.substring(newlineIdx + 1);
+      resetLine(segment.substring(newlineIdx + 1));
     } else {
-      currentLineProcessed += segment;
+      appendToLine(segment);
     }
 
     let needEscape = true;
@@ -371,11 +406,22 @@ function escapeCurrencyDollarSigns(text: string): string {
       }
       firstLineBeforeNextMatch = text.substring(restStart, eol);
     }
-    if (Array.from(firstLineBeforeNextMatch.matchAll(NO_ESCAPED_DOLLAR_REGEX)).length % 2 !== 0) {
-      const wholeLineBeforeNextMatchWithoutCurrentDollar = currentLineProcessed + firstLineBeforeNextMatch;
-      if (Array.from(wholeLineBeforeNextMatchWithoutCurrentDollar.matchAll(NO_ESCAPED_DOLLAR_REGEX)).length % 2 !== 0) {
-        needEscape = false;
-      }
+    const restDollars = countBareDollars(firstLineBeforeNextMatch, 0, firstLineBeforeNextMatch.length, '', '');
+    if (restDollars % 2 !== 0) {
+      // Parity of `currentLineProcessed + firstLineBeforeNextMatch` (the
+      // current `$` itself excluded), summed from the two counts with the
+      // seam corrected both ways.
+      const L = currentLineProcessed;
+      const lLast = L.length > 0 ? L[L.length - 1] : '';
+      const lBeforeLast = L.length > 1 ? L[L.length - 2] : '';
+      const lLastCounted = lLast === '$' && lBeforeLast !== '\\' && lBeforeLast !== '$';
+      const f0 = firstLineBeforeNextMatch[0];
+      let whole = currentLineDollars + restDollars;
+      // L's last `$` is now followed by F's first char.
+      if (lLastCounted && f0 === '$') whole -= 1;
+      // F's first `$` was counted with an empty predecessor; L supplies one.
+      if (f0 === '$' && (lLast === '\\' || lLast === '$') && firstLineBeforeNextMatch[1] !== '$') whole -= 1;
+      if (whole % 2 !== 0) needEscape = false;
     }
 
     const replacement = needEscape ? '\\$' : '$';
@@ -383,7 +429,7 @@ function escapeCurrencyDollarSigns(text: string): string {
     // Append to currentLineProcessed so subsequent parity checks on the same
     // line see the correct count of unescaped `$` (e.g. a left-as-`$` opener
     // that the next match's check must count).
-    currentLineProcessed += replacement;
+    appendToLine(replacement);
     lastIndex = match.index + 1;
   }
   parts.push(text.substring(lastIndex));
@@ -516,8 +562,10 @@ function escapeLatexPipesInUnclosed(text: string): string {
  * Only tracks `$$` — single `$` does not trigger mathFlow and is harmless
  * when `singleDollarTextMath` is `false`.
  */
-function truncateUnclosedLatexBlock(text: string): string {
-  const unclosedStart = findUnclosedDelimiterStart(text, 'double-only');
+function truncateUnclosedLatexBlock(
+  text: string,
+  unclosedStart = findUnclosedDelimiterStart(text, 'double-only')
+): string {
   if (unclosedStart === -1) return text;
 
   // Strip the unclosed $$ block and any trailing whitespace before it.
@@ -732,8 +780,12 @@ function processSliceInstrumented(slice: string, probe = true): InstrumentedSlic
     // and that flag needs the segment's first non-blank bytes to be a `$$`
     // opener — cheap to rule out before the O(segment) unclosed scan (plain
     // prose is one segment; this scan was the last ~20% over stateless).
+    // The scan result feeds truncateUnclosedLatexBlock too — one O(segment)
+    // pass, not two (r2 P2-2: a tail starting with `$$`, the streaming
+    // display block's steady state, scanned twice per frame).
+    let unclosedDouble: number | undefined;
     if (probe || (index === 0 && LEADING_DOUBLE_DOLLAR_RE.test(text))) {
-      const unclosedDouble = findUnclosedDelimiterStart(text, 'double-only');
+      unclosedDouble = findUnclosedDelimiterStart(text, 'double-only');
       if (unclosedDouble !== -1) {
         quiescent = false;
         if (index === 0 && text.slice(0, unclosedDouble).trim() === '') {
@@ -741,7 +793,7 @@ function processSliceInstrumented(slice: string, probe = true): InstrumentedSlic
         }
       }
     }
-    text = truncateUnclosedLatexBlock(text);
+    text = truncateUnclosedLatexBlock(text, unclosedDouble);
     parts.push(text);
   }
   return { out: parts.join(''), quiescent, truncatedAtSeamStart };

@@ -4,6 +4,7 @@ import { h } from 'hastscript';
 import type { Element, Root } from 'hast';
 import { defaultSchema } from 'rehype-sanitize';
 import { mergeClassNameAllowlist, sanitizeSchema } from './sanitizeSchema';
+import { extendSanitizeSchema } from './extendSanitizeSchema';
 
 function firstChildElement(tree: ReturnType<typeof sanitize>): Element {
   const root = tree as Element | Root;
@@ -207,26 +208,32 @@ describe('sanitizeSchema cross-package isolation', () => {
   // other consumer in the process. The current implementation deep-clones at
   // module init; these tests pin that contract so a refactor can't regress it.
 
-  test('mutating attributes.a does not affect defaultSchema.attributes.a', () => {
+  test('the export is deep-frozen — a mutation throws in strict mode and never reaches defaultSchema', () => {
+    // 2026-08-19 review r2 P3: the README calls it a read-only singleton;
+    // `sanitizeSchema.tagNames.push('script')` used to widen the sanitizer
+    // for every renderer in the process.
     const before = [...((defaultSchema.attributes?.a ?? []) as unknown[])];
-    const ours = sanitizeSchema.attributes?.a as unknown[] | undefined;
-    expect(ours).toBeDefined();
-    ours!.push('data-mutated' as never);
-    // Library export grew; upstream untouched.
-    expect(ours!.length).toBeGreaterThan(before.length);
+    expect(Object.isFrozen(sanitizeSchema)).toBe(true);
+    expect(Object.isFrozen(sanitizeSchema.attributes?.a)).toBe(true);
+    expect(Object.isFrozen(sanitizeSchema.protocols?.href)).toBe(true);
+    expect(Object.isFrozen(sanitizeSchema.tagNames)).toBe(true);
+    expect(() => (sanitizeSchema.tagNames as string[]).push('script')).toThrow(TypeError);
+    expect(() => (sanitizeSchema.attributes?.a as unknown[]).push('data-x')).toThrow(TypeError);
+    expect(sanitizeSchema.tagNames).not.toContain('script');
     expect(defaultSchema.attributes?.a).toEqual(before);
-    // Cleanup so subsequent tests aren't affected.
-    ours!.length = before.length;
+    // The extension API still hands out a mutable draft.
+    const extended = extendSanitizeSchema((d) => {
+      d.tagNames?.push('mark-x');
+    });
+    expect(Object.isFrozen(extended)).toBe(false);
+    expect(extended.tagNames).toContain('mark-x');
   });
 
-  test('mutating protocols.href does not affect defaultSchema.protocols.href', () => {
-    const before = [...((defaultSchema.protocols?.href ?? []) as unknown[])];
-    const ours = sanitizeSchema.protocols?.href as unknown[] | undefined;
-    expect(ours).toBeDefined();
-    ours!.push('myapp' as never);
-    expect(ours!.length).toBeGreaterThan(before.length);
-    expect(defaultSchema.protocols?.href).toEqual(before);
-    ours!.length = before.length;
+  test('raw-text elements are stripped WITH their content', () => {
+    // `<style>a{b:c}</style>` used to leave `a{b:c}` as body text.
+    for (const tag of ['style', 'title', 'textarea', 'noframes', 'xmp', 'iframe', 'script']) {
+      expect(sanitizeSchema.strip, tag).toContain(tag);
+    }
   });
 
   test('tagNames identity is independent of defaultSchema.tagNames', () => {

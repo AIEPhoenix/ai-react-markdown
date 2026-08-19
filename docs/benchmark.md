@@ -11,7 +11,17 @@ the engines are semantically unchanged in 2.0.) Read
 each mechanism does; this document is the numbers.
 
 Everything here is reproducible from the Storybook comparison stories — the
-methodology section tells you exactly which story and which toggles.
+methodology section tells you exactly which story and which toggles. It is a
+manual, in-browser procedure (there is no CLI that emits these tables); the
+one scripted micro-benchmark in the repo is `pnpm bench` (Vitest bench —
+currently the LaTeX preprocessor's stateless vs incremental cost).
+
+> **Snapshot date.** The numbers below were measured on 2026-07-15 against
+> 1.x builds (React dev build). Later releases changed parts of the
+> streaming cost picture — notably 2.4.5's LaTeX incremental back-off (a
+> permanently-failing freeze went from ~3× the stateless cost to ~1×) and
+> the freeze-scanner model fixes since — without being re-measured here.
+> Treat the tables as the shape of the effect, not as current absolutes.
 
 ---
 
@@ -160,6 +170,8 @@ memo-enabled baseline).
   the def settles.
 
 ## Reproducing
+
+Manual (the comparison stories drive the real renderer in a browser):
 
 ```sh
 pnpm storybook   # → http://localhost:6006

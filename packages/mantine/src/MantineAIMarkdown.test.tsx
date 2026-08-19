@@ -45,11 +45,21 @@ describe('MantineAIMarkdown smoke', () => {
     expect(html).toMatch(/>typescript</);
   });
 
-  test('json code fence is deep-parsed and pretty-printed', () => {
+  test('json code fence is pretty-printed; nested JSON documents expand, primitive-looking strings do not', () => {
     const html = renderMarkdown(<MantineAIMarkdown content={'```json\n{"a":{"b":1}}\n```'} />);
-    // deepParseJson + JSON.stringify(..., null, 2) reformats the one-liner —
+    // JSON.parse + JSON.stringify(..., null, 2) reformats the one-liner —
     // the indented `"b": 1` line only exists if pretty-printing ran.
     expect(stripTags(html)).toContain('&quot;b&quot;: 1');
+    // A string holding a JSON OBJECT expands (tool-transcript shape)…
+    const nested = renderMarkdown(<MantineAIMarkdown content={'```json\n{"tool_result":"{\\"hits\\":[1]}"}\n```'} />);
+    expect(stripTags(nested)).toContain('&quot;hits&quot;: [');
+    // …but `"true"` / `"123"` / `"null"` stay strings — no type rewrite of
+    // what the model wrote (r2 P2-14).
+    const prim = renderMarkdown(<MantineAIMarkdown content={'```json\n{"flag":"true","n":"123","z":"null"}\n```'} />);
+    const text = stripTags(prim);
+    expect(text).toContain('&quot;flag&quot;: &quot;true&quot;');
+    expect(text).toContain('&quot;n&quot;: &quot;123&quot;');
+    expect(text).toContain('&quot;z&quot;: &quot;null&quot;');
   });
 
   test('caller customComponents override the Mantine pre default', () => {
@@ -90,8 +100,11 @@ describe('MantineAIMarkdown smoke', () => {
     const html = renderMarkdown(<MantineAIMarkdown content={'```mermaid\ngraph TD;\nA-->B;\n```'} />);
     expect(html).toContain('aria-label="Show Mermaid code"');
     expect(html).toContain('aria-label="Copy Mermaid code"');
-    expect(html).toMatch(
-      /<pre[^>]+role="button"[^>]+tabindex="0"[^>]+aria-label="Open Mermaid diagram in a new window"/
-    );
+    // The open action is a real header button; the SVG container is an
+    // image with a description (its content stays reachable to assistive
+    // tech — r2 P3), not a `role="button"` wrapping the diagram.
+    expect(html).toContain('aria-label="Open Mermaid diagram in a new window"');
+    expect(html).toMatch(/<pre[^>]+role="img"[^>]+aria-label="Mermaid diagram"/);
+    expect(html).not.toMatch(/<pre[^>]+role="button"/);
   });
 });

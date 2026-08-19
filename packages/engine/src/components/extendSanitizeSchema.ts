@@ -87,6 +87,12 @@ export type SanitizeSchema = typeof defaultSchema;
  *   uncaught — there is no try/catch. Callers usually invoke this once at
  *   module load, where a thrown error surfaces as a startup-time crash and
  *   is the correct failure mode.
+ * - **Widening is total.** Adding a tag to `tagNames` admits that element
+ *   with ALL of its semantics — `script`, `iframe`, `style`, `object`,
+ *   `form`, `base` re-enter the tree verbatim, and the two-gate URL story
+ *   in the README / SECURITY.md no longer describes your renderer. Prefer
+ *   allowing an attribute or a protocol over allowing an element; treat
+ *   any element you add as trusted input.
  *
  * @param modifier - Receives a deep clone of the library default. Mutate it
  *   freely; either return the (possibly different) result, or return

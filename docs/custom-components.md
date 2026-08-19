@@ -166,6 +166,8 @@ If you supply `pre` yourself, you fully replace Mantine's code-block pipeline:
 
 That's sometimes what you want (you have your own highlighter) — just be aware of the consequence.
 
+The reverse holds too: because Mantine's `pre` renders the fenced block through its own `CodeHighlight` / Mermaid / JSON pipeline, it does **not** mount the `code` element inside — so a `customComponents.code` override only reaches **inline** code (`` `like this` ``), never fenced blocks. To customize fenced-block rendering under `@ai-react-markdown/mantine`, override `pre` (and take over highlighting), or use the `codeBlock` group prop (`defaultExpanded`, `autoDetectUnknownLanguage`) documented in the package README.
+
 ---
 
 ## Accessing the underlying mdast/hast node

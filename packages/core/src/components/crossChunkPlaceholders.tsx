@@ -96,6 +96,8 @@ export function FootnoteSupNumber({
     registry && chunkSym && localOccurrence !== null && num !== null
       ? registry.globalOccurrenceForRef(chunkSym, label, localOccurrence)
       : null;
+  // (`chunkSym === null` with a numbered label falls through to the id-less
+  //  mark below — see the note there.)
   if (num === null) {
     // No global number yet — server render, or the client's first frame
     // before the contribute effect. Render the STANDALONE mark (local
@@ -124,7 +126,11 @@ export function FootnoteSupNumber({
       </sup>
     );
   }
-  if (localOccurrence !== null && !chunkSym) return null;
+  // No chunk symbol yet (`chunkSym` is state, null on a chunk's very first
+  // frame) while the label is already numbered by another chunk: same
+  // "known number, unregistered occurrence" transient as below — show the
+  // number, no id (r2 P3 carry-over of the 2.4.5 fix; it used to render
+  // nothing, and SSR shipped a footer backref pointing at no anchor).
   // Append `-N` when this is the 2nd+ occurrence of the same label across
   // the document. The first occurrence keeps the bare `fnref-${id}` so a
   // ref-once-only doc renders byte-identical to the pre-multi-ref design.

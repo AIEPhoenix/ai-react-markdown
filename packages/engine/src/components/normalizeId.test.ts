@@ -31,19 +31,15 @@ describe('normalizeId', () => {
 });
 
 describe('normalizeForMatch', () => {
-  test('also resolves backslash escapes', () => {
-    expect(normalizeForMatch('foo\\]bar')).toBe('FOO]BAR');
+  test('is normalizeId — micromark identifiers keep their backslashes, so the source is NOT unescaped', () => {
+    // `[^a\*b]`: identifier `a\*b` (label `a*b`); registry keys come from
+    // the identifier, the pre-check must find that exact form in the source.
+    expect(normalizeForMatch('ref [^a\\*b] here')).toBe(normalizeId('ref [^a\\*b] here'));
+    expect(normalizeForMatch('ref [^a\\*b] here')).toContain('A\\*B');
+    expect(normalizeForMatch('foo\\]bar')).toBe('FOO\\]BAR');
+    expect(normalizeForMatch('x\\λ')).toBe(normalizeId('x\\λ'));
   });
   test('still collapses whitespace + uppercase', () => {
     expect(normalizeForMatch('Foo  Bar')).toBe('FOO BAR');
-  });
-  test('only backslash + ASCII punctuation is an escape (CommonMark) — other backslashes are literal', () => {
-    // `\d`, `\λ`, `\ ` keep their backslash in the identifier; stripping it
-    // made the PASS 0.5 pre-check miss such labels (2026-08-19 review).
-    expect(normalizeForMatch('a\\db')).toBe(normalizeId('a\\db'));
-    expect(normalizeForMatch('x\\λ')).toBe(normalizeId('x\\λ'));
-    expect(normalizeForMatch('x\\ y')).toBe(normalizeId('x\\ y'));
-    // Every ASCII punctuation escape still resolves.
-    expect(normalizeForMatch('a\\*b\\_c\\\\d')).toBe('A*B_C\\D');
   });
 });

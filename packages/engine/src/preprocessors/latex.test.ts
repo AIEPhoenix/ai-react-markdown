@@ -416,8 +416,13 @@ y$ which spans lines`;
     const content = 'Press the ` key to open.\n\nEuler: $e^{i\\pi} = -1$ inline.\n\nType ` again to close.\n';
     const expected = 'Press the ` key to open.\n\nEuler: $$e^{i\\pi} = -1$$ inline.\n\nType ` again to close.\n';
     expect(preprocessLaTeX(content)).toBe(expected);
-    // Whitespace-only lines are blank too (spaces / tabs / CR).
+    // Whitespace-only lines are blank too (spaces / tabs), under any line
+    // ending — `\r\n` and a lone `\r` included (r2 P3).
     expect(preprocessLaTeX('a ` b\n \t\r\n$x$\n\nc ` d')).toBe('a ` b\n \t\r\n$$x$$\n\nc ` d');
+    expect(preprocessLaTeX('a ` b\r\r$x$\r c ` d')).toBe('a ` b\r\r$$x$$\r c ` d');
+    expect(preprocessLaTeX('a ` b\r\n\r\n$x$\r\nc ` d')).toBe('a ` b\r\n\r\n$$x$$\r\nc ` d');
+    // A soft line break (single ending) still pairs.
+    expect(preprocessLaTeX('a `code\r$x$ more` b')).toBe('a `code\r$x$ more` b');
     // A span that wraps a soft line break inside ONE paragraph still pairs
     // and still protects its content.
     expect(preprocessLaTeX('a `code\n$x$ more` b\n\n$y$')).toBe('a `code\n$x$ more` b\n\n$$y$$');

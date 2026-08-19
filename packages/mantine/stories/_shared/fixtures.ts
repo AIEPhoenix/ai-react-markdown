@@ -68,9 +68,9 @@ export const LONG_CODE_DOC: string = [
 
 /**
  * Minified JSON, including a field whose value is itself a JSON document
- * encoded as a string. The Mantine code block runs `deep-parse-json` before
- * printing, so both levels come out formatted — the nested one stops being an
- * unreadable escaped blob.
+ * encoded as a string. The Mantine code block expands string values that are
+ * JSON documents before printing, so both levels come out formatted — the
+ * nested one stops being an unreadable escaped blob.
  */
 export const JSON_PAYLOAD_DOC: string = [
   '# A minified JSON payload',

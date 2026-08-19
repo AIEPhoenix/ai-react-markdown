@@ -1,7 +1,8 @@
 /**
- * Internal barrel for incremental (prefix-freeze) parsing. NOT re-exported
- * from the package barrel — consumers opt in via
- * the resolved `incrementalParse` value, never by calling these directly.
+ * Barrel for incremental (prefix-freeze) parsing. Re-exported from the
+ * package root (`advanceIncrementalParse` and friends are public engine
+ * API for framework adapters); the React renderer itself opts in via the
+ * resolved `incrementalParse` value and never calls these directly.
  */
 
 export { advanceIncrementalParse } from './advanceIncrementalParse';

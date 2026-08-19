@@ -107,7 +107,7 @@ When in doubt, pin your overrides explicitly rather than relying on defaults.
 If you find a documented API that doesn't behave as described, or a customization recipe that breaks at a version boundary, please open an issue with:
 
 - the document name and section,
-- the package version (`@ai-react-markdown/core@2.0.x` …),
+- the exact package version (`@ai-react-markdown/core@x.y.z` …),
 - a minimal reproduction,
 - the observed vs expected behavior.
 

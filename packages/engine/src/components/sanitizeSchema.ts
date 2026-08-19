@@ -67,15 +67,42 @@ const crossChunkTags = ['cross-chunk-link', 'cross-chunk-image', 'footnote-sup']
  * extension API is still {@link extendSanitizeSchema}, which clones again
  * per call; this layer just makes the exported singleton safe if someone
  * skips the helper.
+ *
+ * **Deep-frozen.** The engine barrel exports this object, and a mutation
+ * (`sanitizeSchema.tagNames.push('script')`) would silently widen the
+ * sanitizer for every renderer in the process — the README calls it a
+ * read-only singleton, so it is one (2026-08-19 review r2 P3). lodash
+ * `cloneDeep` of a frozen graph yields a MUTABLE copy, so
+ * `extendSanitizeSchema` drafts are unaffected.
+ *
+ * `strip` (elements dropped WITH their content, instead of unwrapped to
+ * their children) covers the raw-text elements whose content is never
+ * prose: `<style>a{b:c}</style>` used to leave `a{b:c}` as body text —
+ * common in LLM answers that emit a `<style>` block (r2 P3).
  */
-export const sanitizeSchema: Schema = cloneDeep({
-  ...defaultSchema,
-  tagNames: [...(defaultSchema.tagNames || []), 'mark', ...crossChunkTags],
-  attributes: {
-    ...defaultSchema.attributes,
-    code: mergeClassNameAllowlist(defaultSchema.attributes?.code, ['math-inline', 'math-display']),
-    'cross-chunk-link': ['label', 'referenceType', 'documentId', 'localUrl', 'localTitle'],
-    'cross-chunk-image': ['label', 'referenceType', 'documentId', 'alt', 'localUrl', 'localTitle'],
-    'footnote-sup': ['label', 'localOccurrence', 'localNumber', 'documentId'],
-  },
-});
+function deepFreeze<T>(value: T): T {
+  if (value !== null && typeof value === 'object' && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const key of Object.keys(value as object)) deepFreeze((value as Record<string, unknown>)[key]);
+  }
+  return value;
+}
+
+/** Raw-text elements stripped with their content (see above). `script` is
+ *  rehype-sanitize's own default. */
+const STRIPPED_TAGS = ['script', 'style', 'title', 'textarea', 'noframes', 'noembed', 'xmp', 'iframe', 'plaintext'];
+
+export const sanitizeSchema: Schema = deepFreeze(
+  cloneDeep({
+    ...defaultSchema,
+    tagNames: [...(defaultSchema.tagNames || []), 'mark', ...crossChunkTags],
+    attributes: {
+      ...defaultSchema.attributes,
+      code: mergeClassNameAllowlist(defaultSchema.attributes?.code, ['math-inline', 'math-display']),
+      'cross-chunk-link': ['label', 'referenceType', 'documentId', 'localUrl', 'localTitle'],
+      'cross-chunk-image': ['label', 'referenceType', 'documentId', 'alt', 'localUrl', 'localTitle'],
+      'footnote-sup': ['label', 'localOccurrence', 'localNumber', 'documentId'],
+    },
+    strip: [...new Set([...(defaultSchema.strip || []), ...STRIPPED_TAGS])],
+  })
+);

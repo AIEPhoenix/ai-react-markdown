@@ -6,7 +6,7 @@
 [![types](https://img.shields.io/npm/types/@ai-react-markdown/engine?logo=typescript&logoColor=white&color=3178c6)](https://www.typescriptlang.org/)
 
 [![Node ≥20](https://img.shields.io/badge/Node-%E2%89%A520-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
-[![ESM + CJS](https://img.shields.io/badge/module-ESM%20%2B%20CJS-f7df1e?logo=javascript&logoColor=black)](#installation)
+[![ESM + CJS](https://img.shields.io/badge/module-ESM%20%2B%20CJS-f7df1e?logo=javascript&logoColor=black)](#install)
 [![license](https://img.shields.io/npm/l/@ai-react-markdown/engine?color=green)](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/LICENSE)
 
 [![CI](https://img.shields.io/github/actions/workflow/status/AIEPhoenix/ai-react-markdown/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/AIEPhoenix/ai-react-markdown/actions/workflows/ci.yml)

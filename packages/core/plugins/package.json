@@ -1,0 +1,9 @@
+{
+  "name": "@ai-react-markdown/core/plugins",
+  "private": true,
+  "description": "Stub for resolvers that do not read the `exports` map (Node 10-style / `moduleResolution: node`): points the `plugins` subpath at the built entry, matching the `typesVersions` mapping in the package root.",
+  "main": "../dist/plugins/index.cjs",
+  "module": "../dist/plugins/index.js",
+  "types": "../dist/plugins/index.d.ts",
+  "sideEffects": false
+}

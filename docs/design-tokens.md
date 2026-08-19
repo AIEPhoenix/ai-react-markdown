@@ -117,8 +117,8 @@ Same names, declared on `.aim-typography-root.dark`. Either selector wins based 
 
 ```css
 .aim-typography-root.dark {
-  --aim-color-text: #e5e7eb;
-  --aim-color-anchor: #60a5fa;
+  --aim-color-text: #c9d1d9;
+  --aim-color-anchor: #58a6ff;
   /* … */
 }
 ```

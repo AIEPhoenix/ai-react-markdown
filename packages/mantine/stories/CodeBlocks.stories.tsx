@@ -139,8 +139,9 @@ export const LanguageTabs: MantineStory = {
  * single line above arrives as an indented tree.
  *
  * It goes one level further than `JSON.parse` + `JSON.stringify`: the renderer
- * uses `deep-parse-json`, which also parses *strings whose contents are
- * themselves JSON*. Watch the `tool_result` field — in the source it is one
+ * also expands *strings whose contents are themselves a JSON object or
+ * array* (primitive-looking strings such as `"true"` or `"123"` are left as
+ * written). Watch the `tool_result` field — in the source it is one
  * escaped string full of `\"`, and in the output it has become a real nested
  * object with its own indentation. Tool-call transcripts are full of that
  * shape, and it is the case where raw JSON is least readable.

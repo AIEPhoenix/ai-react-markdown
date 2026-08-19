@@ -173,7 +173,7 @@ Both types are **aliases** that track their upstream package shapes:
 
 These types **may change with the upstream packages' major versions**. The library re-exports them so consumers don't need a direct dependency on the upstream packages for type imports; the trade-off is that if `rehype-sanitize` ships a major bump that changes the schema shape, `SanitizeSchema` here changes in lockstep.
 
-Build your sanitize schema via [`extendSanitizeSchema`](./url-sanitization.md#gate-2-sanitizeschema-via-extendsanitizeschema) rather than hand-typing the schema literal — the helper insulates you from most upstream shape changes.
+Build your sanitize schema via [`extendSanitizeSchema`](./url-sanitization.md#sanitizeschema-gate-1-via-extendsanitizeschema) rather than hand-typing the schema literal — the helper insulates you from most upstream shape changes.
 
 ---
 

@@ -10,3 +10,7 @@ storybook-static/
 .DS_Store
 
 .claude/*.local.*
+# Local tool state that only `.git/info/exclude` used to hide — a fresh
+# clone running the same tooling would otherwise see them in `git status`.
+**/.claude/scheduled_tasks.lock
+**/.impeccable/

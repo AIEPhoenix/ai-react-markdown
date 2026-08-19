@@ -25,15 +25,17 @@ export function normalizeId(s: string): string {
 }
 
 /**
- * Same as {@link normalizeId} plus resolution of backslash escapes.
- * Used by PASS 0.5 substring pre-check against raw chunk source text:
- * sources may write `[foo\]bar]` but the resulting label identifier is
- * `foo]bar`, so we must unescape source before substring matching.
+ * The form of raw chunk SOURCE that the PASS 0.5 substring pre-check compares
+ * registry labels against. It is exactly {@link normalizeId}: micromark's
+ * `identifier` (what the registry keys are built from) is the label's
+ * source bytes with backslashes KEPT (`[^a\*b]` → `a\*b`; only the `label`
+ * field is unescaped), so the source must NOT be unescaped before matching
+ * — an unescaping pass made every label holding an escaped punctuation
+ * character miss the pre-check for good, and the cross-chunk reference
+ * rendered as literal `[text][label]` (2026-08-19 review r2 P2-5; the
+ * 2.4.5 narrowing to ASCII punctuation kept the wrong premise). Kept as a
+ * named export for API stability.
  */
 export function normalizeForMatch(s: string): string {
-  // CommonMark only treats backslash + ASCII PUNCTUATION as an escape; a
-  // backslash before anything else (`\d`, `\λ`, `\ `) is a literal
-  // backslash that stays in the identifier. Stripping it unconditionally
-  // made the PASS 0.5 pre-check miss such labels (2026-08-19 review).
-  return normalizeIdentifier(s.replace(/\\([!-/:-@[-`{-~])/g, '$1'));
+  return normalizeIdentifier(s);
 }

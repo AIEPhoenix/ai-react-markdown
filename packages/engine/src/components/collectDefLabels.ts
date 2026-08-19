@@ -91,7 +91,7 @@ const BLANK_LINE_RE = /\r?\n[ \t]*\r?\n/g;
  *  Plain non-overlapping scan: for runs of blanks ("\n\n\n") this can land
  *  a newline or two early, but the slack is whitespace-only and whitespace
  *  can never satisfy DEF_LINE_START_RE, so the decision is identical.
- *  @internal exported for tests only — the fast path is otherwise
+ *  @internal exported for tests only (module path — not on the package barrel) — the fast path is otherwise
  *  indistinguishable from a full parse whose sets came out equal. */
 export function lastRegionStart(source: string): number {
   BLANK_LINE_RE.lastIndex = 0;
@@ -125,7 +125,7 @@ export function lastRegionStart(source: string): number {
  *  start (the region begins just past a blank line or at the document
  *  start). Residual over-matching (e.g. `[x]:` inside an open code fence)
  *  is safe: it costs a redundant full parse, never a wrong result.
- *  @internal exported for tests only. */
+ *  @internal exported for tests only (module path — not on the package barrel). */
 export const DEF_LINE_START_RE = /^[ \t>*+\d.)-]*\[(?:[^\]\\]|\\[\s\S])*\]:/m;
 
 export interface DefLabelScanner {

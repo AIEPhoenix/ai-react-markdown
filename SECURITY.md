@@ -14,7 +14,7 @@ This creates a private channel between you and the maintainer. We'll triage as s
 
 ## What to include
 
-- The package and version (`@ai-react-markdown/core@1.x.y` / `@ai-react-markdown/mantine@1.x.y`).
+- The package and exact version (`@ai-react-markdown/core@x.y.z` / `@ai-react-markdown/engine@x.y.z` / `@ai-react-markdown/mantine@x.y.z`).
 - A **minimal** markdown input that triggers the vulnerability — the smallest input that demonstrates the issue.
 - The relevant `<AIMarkdown>` / `<MantineAIMarkdown>` props (custom `urlTransform`, `sanitizeSchema`, etc.). If you're using defaults, say so.
 - The observed behavior (what was rendered) vs the expected (what should have been filtered).

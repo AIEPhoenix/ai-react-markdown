@@ -126,19 +126,21 @@
   dl > * {
     padding-top: calc(var(--aim-font-size-mantine-base) * 0.5);
   }
+  /* Logical properties, like the ul/ol rules above: a RTL container mirrors
+     the definition list too (r2 P3). LTR rendering is unchanged. */
   dt {
     width: 30%;
     font-weight: bold;
-    text-align: right;
+    text-align: end;
   }
   dd {
     width: 60%;
-    padding-left: calc(var(--aim-font-size-mantine-base) * 0.5);
-    margin-left: 0px;
+    padding-inline-start: calc(var(--aim-font-size-mantine-base) * 0.5);
+    margin-inline-start: 0px;
   }
   dd + dd {
     width: 100%;
-    padding-left: calc(30% + var(--aim-font-size-mantine-base));
+    padding-inline-start: calc(30% + var(--aim-font-size-mantine-base));
   }
   dt + dt {
     padding-right: 60%;

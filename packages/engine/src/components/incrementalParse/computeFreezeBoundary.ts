@@ -1651,6 +1651,11 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     // the tag's own closer (`<div x="\`">b\``: micromark parses the tag
     // first, the span never forms) — v2.4.0 review R2(a).
     if (cp.pendingTruncatedTags.length > 0 && ln.text.includes('>')) {
+      // A confirmed pending table-part open (`<td` + attributes wrapping)
+      // is a real stray table part: poison from here (see TABLE_PART_NAMES).
+      if (cp.pendingTruncatedTags.some((t) => TABLE_PART_NAMES.has(t))) {
+        cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
+      }
       cp.pendingTruncatedTags = [];
     }
     // Line-truncated tag start — anchor on the LAST `<` of the line.
@@ -1666,7 +1671,13 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
         if (m2) {
           const closing = m2[1] === '/';
           const tag = m2[2].toLowerCase();
-          if (TABLE_PART_NAMES.has(tag)) cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start + lastLt);
+          // Table-part poison for a TRUNCATED shape only where it is markup
+          // for sure (a real html-flow run); in paragraph context `compare
+          // a<td b` may be prose — poison waits for the `>` that confirms the
+          // pending open (r2 P3), otherwise the blank line reverts it.
+          if (TABLE_PART_NAMES.has(tag) && cp.htmlFlowReal) {
+            cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start + lastLt);
+          }
           // In a REAL html-flow run parse5 stays inside this tag across the
           // line ending — open, close or void alike (`<br` + `</div>` on the
           // next line: the `</div>` is garbage). See `tagAcrossLines`.
