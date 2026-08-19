@@ -16,6 +16,7 @@ import remarkRehype from 'remark-rehype';
 import remarkSqueezeParagraphs from 'remark-squeeze-paragraphs';
 import remarkRemoveComments from 'remark-remove-comments';
 import rehypeRaw from 'rehype-raw';
+import { buildCrossChunkHandlers } from '@ai-react-markdown/engine';
 import rehypeSanitize from 'rehype-sanitize';
 import { VFile } from 'vfile';
 import type { Element as HastElement, Root as HastRoot } from 'hast';
@@ -978,6 +979,55 @@ describe('buildBlocks per-block taintLabels (v6)', () => {
     expect(lb.hastDigest).toBe(la.hastDigest); // the edit is outside the swallowed extent
     expect(lb.hasReference).toBe(true); // …so only the taint flag separates the frames
     expect(linkBefore.globalCtx).not.toBe(linkAfter.globalCtx);
+  });
+
+  test('2026-08-19 review r2 P2-8, coordinated leg: swallowed placeholders carry their baked occurrence into the fingerprint', () => {
+    // The standalone leg is covered above; this is the leg the whole P2-8
+    // fix exists for — a coordinated pipeline bakes `localOccurrence` into
+    // `footnote-sup` placeholders, and an unclosed container swallows them.
+    const buildCoordinated = (source: string) => {
+      const processor = unified()
+        .use(remarkParse)
+        .use(remarkGfm)
+        .use(remarkRehype, {
+          allowDangerousHtml: true,
+          handlers: buildCrossChunkHandlers(),
+          // The handler reads these off `state.options`.
+          phantomFootnoteLabels: new Set<string>(),
+          preserveOrphan: false,
+          documentId: 'doc',
+        } as never)
+        .use(rehypeRaw);
+      const mdast = processor.parse(source);
+      const hast = processor.runSync(mdast, source) as HastRoot;
+      return buildBlocks(mdast as MdastRoot, hast, source);
+    };
+    // `b[^x]` → `b[^w]` is equal-length and sits BEFORE the container, so the
+    // container's raw/position/digest are untouched — but it changes the
+    // swallowed `c[^x]` from x's 2nd occurrence to its 1st.
+    const before = buildCoordinated('a[^w] b[^x]\n\n<details>\n\nc[^x]\n\n[^w]: w\n\n[^x]: x\n');
+    const after = buildCoordinated('a[^w] b[^w]\n\n<details>\n\nc[^x]\n\n[^w]: w\n\n[^x]: x\n');
+    const cb = before.blocks.find((b) => b.raw.startsWith('<details'))!;
+    const ca = after.blocks.find((b) => b.raw.startsWith('<details'))!;
+    expect(cb.hastDigest).toBe(ca.hastDigest);
+    expect(cb.startOffset).toBe(ca.startOffset);
+    // The placeholder scan is what separates the two frames here.
+    expect(cb.taintLabels?.footnoteRefLabels).toContain('X');
+    expect(cb.taintLabels?.footnoteRefLocalCtx).toBeDefined();
+    expect(cb.taintLabels!.footnoteRefLocalCtx).not.toBe(ca.taintLabels!.footnoteRefLocalCtx);
+    // …and it reaches the fingerprint, which is what the cache actually keys on.
+    const reg = createRegistry();
+    const sym = reg.allocateSymbol('chunk');
+    reg.contributeChunkData(sym, {
+      refs: [{ label: 'X', kind: 'footnote' }],
+      defs: new Map(),
+      linkDefs: new Map(),
+      ownFootnoteLabels: new Set(),
+      ownLinkLabels: new Set(),
+    });
+    expect(computeBlockFingerprint(cb.taintLabels!, reg, sym, 'doc-')).not.toBe(
+      computeBlockFingerprint(ca.taintLabels!, reg, sym, 'doc-')
+    );
   });
 
   test('non-TAINT block has taintLabels undefined', () => {

@@ -97,14 +97,14 @@ interface AIMarkdownContentProps {
   content: string;
   /** Optional react-markdown component overrides (e.g. custom code block renderer). */
   customComponents?: AIMarkdownCustomComponents;
+  /** This chunk's position in the document — see the `documentIndex` prop
+   *  on `<AIMarkdown>`. Undefined keeps registration in mount order. */
+  documentIndex?: number;
   /**
    * Optional URL transform applied during the hast pipeline. When omitted,
    * the vendored Markdown wrapper falls back to its built-in
    * `defaultUrlTransform` (https/mailto/etc. allowlist).
    */
-  /** This chunk's position in the document — see the `documentIndex` prop
-   *  on `<AIMarkdown>`. Undefined keeps registration in mount order. */
-  documentIndex?: number;
   urlTransform?: MarkdownOptions['urlTransform'];
   /**
    * Optional `rehype-sanitize` schema. When omitted, the library default
