@@ -236,11 +236,15 @@ const crossLineTagGarbageArb = fc.constantFrom(
 
 /** Second review round (2026-08-19 r2): quotes and bogus comments across
  *  the line ending — its own family so the meters see enough of each. */
-const crossLineQuoteBogusArb = fc.constantFrom(
+const danglingQuoteArb = fc.constantFrom(
   // Dangling OPEN quote at the line ending (r2 P1-2): the next line's `>`
-  // is a value byte; the outer element stays open.
+  // is a value byte; the outer element stays open. Its own family so the
+  // coverage meter clears its floor at any seed.
   '<div>\n<hr title="\n<p></div>\n\ntail para',
   '<div>\n<span class="\n</div>\n\ntail para',
+  '<div>\n<b title="\n</div>\n\ntail para'
+);
+const crossLineQuoteBogusArb = fc.constantFrom(
   // Attributes on the next line with PAIRED quotes: ordinary (r2 P2-3).
   '<div\n  class="a" data-x=\'b\'>\ncontent\n</div>\n\ntail para',
   '<div\n  title=">"\n>\ncontent\n</div>\n\ntail para',
@@ -249,13 +253,31 @@ const crossLineQuoteBogusArb = fc.constantFrom(
   '<div>\n<!-\n</div>\n\ntail para',
   '<div>\n</\n</div>\n\ntail para',
   '<div>\n<//\n</div>\n\ntail para',
-  '<div>\n<! x > </div>\n\ntail para'
+  '<div>\n<! x > </div>\n\ntail para',
+  // Quoted `>` on the tag's own line (close and open); noscript is HTML.
+  '<div>\n</div a=">\n\ntail para',
+  '<div a="x></div>">\n\ntail para',
+  '<div title="a>b" class="c">x</div>\n\ntail para',
+  'x <noscript> y <b> z </noscript> w\n\ntail para'
+);
+/** Paragraph context: a closing tag with attributes is literal text to
+ *  micromark — the `<div>` stays open (own family for its meter). */
+const paragraphCloseWithAttrsArb = fc.constantFrom(
+  'p <div> x </div a="b"> y\n\ntail para',
+  'p <title> x </title a> y\n\ntail para',
+  'p <span> x </span class="c"> y\n\ntail para',
+  // Alone on a line: not type 7 (a closing tag takes no attributes) and not
+  // type 6 (span/b are not type-6 names) — paragraph text either way.
+  '<span>\n\n</span a="b">\n\ntail para',
+  '<b>\n\n</b a>\n\ntail para'
 );
 
 const rawHtmlArb = fc.oneof(
   { weight: 1, arbitrary: treeQuirkArb },
   { weight: 2, arbitrary: crossLineTagGarbageArb },
   { weight: 2, arbitrary: crossLineQuoteBogusArb },
+  { weight: 1, arbitrary: danglingQuoteArb },
+  { weight: 1, arbitrary: paragraphCloseWithAttrsArb },
   { weight: 2, arbitrary: fc.constant('<details>\n<summary>t</summary>\nbody prose\n</details>') },
   // APPROX #2 — cross-line self-closing tag stays an over-blocking opener.
   { weight: 2, arbitrary: fc.constant('<embed\n  src="x"\n/>') },
@@ -478,8 +500,10 @@ export const COVERAGE_MARKERS: Record<string, RegExp> = {
   proseTruncatedClose: /<\/b\n/,
   crossLineTagGarbage:
     /<\/(?:div|summary|br|span)\n<\/(?:div|details)>|<br\n<\/div>|title=">"\n|class="x"\n<\/div>|<\/i\n<|<br\n<div>|<\/textarea\n<!--|- a\n {2}<\/div\n<div>/,
-  danglingQuote: /<(?:hr title|span class)="\n/,
+  danglingQuote: /<(?:hr title|span class|b title)="\n/,
   bogusComment: /<div>\n(?:<!|<!-|<\/|<\/\/)\n<\/div>|<! x > /,
+  quotedGtOnTagLine: /<\/div a=">|a="x><\/div>"|title="a>b"|<noscript> y <b>/,
+  closeWithAttrsInParagraph: /<\/(?:div a="b"|title a|span class="c")> y|\n<\/(?:span a="b"|b a)>/,
   rawTextElement: /<(?:title|iframe|noframes|xmp)>/,
   loneCr: /\r(?!\n)/,
   reviewShapes: /<!-- c --> <\/s>|<\?x\?><details>|<\/t>\ntext|<details> <\?php|x="`">b`/,

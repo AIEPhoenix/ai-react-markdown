@@ -60,6 +60,10 @@ describe('MantineAIMarkdown smoke', () => {
     expect(text).toContain('&quot;flag&quot;: &quot;true&quot;');
     expect(text).toContain('&quot;n&quot;: &quot;123&quot;');
     expect(text).toContain('&quot;z&quot;: &quot;null&quot;');
+    // A `"__proto__"` key is an own property of the parsed object and must
+    // survive the expansion (null-prototype target), not set the prototype.
+    const proto = renderMarkdown(<MantineAIMarkdown content={'```json\n{"__proto__":{"x":1},"a":"[1]"}\n```'} />);
+    expect(stripTags(proto)).toContain('&quot;__proto__&quot;: {');
   });
 
   test('caller customComponents override the Mantine pre default', () => {
@@ -104,7 +108,8 @@ describe('MantineAIMarkdown smoke', () => {
     // image with a description (its content stays reachable to assistive
     // tech — r2 P3), not a `role="button"` wrapping the diagram.
     expect(html).toContain('aria-label="Open Mermaid diagram in a new window"');
-    expect(html).toMatch(/<pre[^>]+role="img"[^>]+aria-label="Mermaid diagram"/);
-    expect(html).not.toMatch(/<pre[^>]+role="button"/);
+    // No role on the container at all: `role="img"` / `role="button"` would
+    // make the SVG's own accessible name and structure presentational.
+    expect(html).not.toMatch(/<pre[^>]+role="/);
   });
 });

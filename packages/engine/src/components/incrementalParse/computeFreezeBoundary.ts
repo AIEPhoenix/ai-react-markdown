@@ -186,8 +186,7 @@ const TYPE1_NAMES = new Set(['script', 'pre', 'style', 'textarea']);
 /** parse5 elements whose CONTENT is text to the tokenizer (RAWTEXT /
  *  RCDATA / script data / plaintext): every `<…>` inside is text until the
  *  element's own end tag. Not the CommonMark type-1 list — `title`,
- *  `iframe`, `noframes`, `xmp`, `noembed`, `noscript` (parse5 default:
- *  scripting on) sit in the type-6 list, so their content is a normal html
+ *  `iframe`, `noframes`, `xmp`, `noembed` sit in the type-6 list, so their content is a normal html
  *  block to micromark yet text to parse5, and a `</div>` in there closed the
  *  outer div in the balance (2026-08-19 review r2 P1-4). `plaintext` never
  *  ends. */
@@ -200,7 +199,10 @@ const RAW_TEXT_ELEMENTS = new Set([
   'iframe',
   'noembed',
   'noframes',
-  'noscript',
+  // NOT `noscript`: hast-util-raw constructs parse5 with
+  // `scriptingEnabled: false`, under which `<noscript>` content is ordinary
+  // HTML — modelling it as raw text ignored a `<b>` inside and under-blocked
+  // (oracle review of the r2 batch; regression caught before release).
   'plaintext',
 ]);
 /** Type-6 start: `<`/`</` + name + (whitespace | `>` | `/>` | EOL). */
@@ -208,8 +210,15 @@ const TYPE6_START_RE = /^<\/?([A-Za-z][A-Za-z0-9-]*)(?:[ \t\r]|\/?>|$)/;
 /** Type-1 start: an OPEN tag of a raw-text name + (whitespace | `>` | EOL). */
 const TYPE1_START_RE = /^<(script|pre|style|textarea)(?:[ \t\r]|>|$)/i;
 /** Type-7 start (approximate, no quoted-`>` support): the whole line is
- *  one complete open or closing tag followed only by whitespace. */
-const TYPE7_LINE_RE = /^<(\/?)([A-Za-z][A-Za-z0-9-]*)(?:[ \t\r][^>]*|\/)?>[ \t\r]*$/;
+ *  one complete OPEN tag (attributes allowed) or CLOSING tag (attributes are
+ *  NOT part of a closing tag in CommonMark — `</span a="b">` is a paragraph,
+ *  and treating it as html flow made the scanner apply a close parse5 never
+ *  sees: `<span>\n\n</span a="b">\n\ntail` froze past a still-open span
+ *  (oracle re-check of the r2 batch). Type 6 is unaffected — its names are
+ *  recognized on `</name` + whitespace regardless of what follows.) */
+const TYPE7_LINE_RE = /^(?:<[A-Za-z][A-Za-z0-9-]*(?:[ \t\r][^>]*|\/)?>|<\/[A-Za-z][A-Za-z0-9-]*[ \t\r]*>)[ \t\r]*$/;
+/** The tag name of a TYPE7_LINE_RE match (the line starts `<` or `</`). */
+const t7Name = (line: string): string => /^<\/?([A-Za-z][A-Za-z0-9-]*)/.exec(line)![1];
 
 export interface FreezeBoundaryOptions {
   /** Whether remark-definition-list is in the active plugin chain (the
@@ -1024,12 +1033,21 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     for (const ip of HTML_INTEGRATION_POINTS) if ((cp.tagBalance.get(ip) ?? 0) > 0) return false;
     return true;
   };
+  /** HTML tokenizer rules apply: outside foreign content, or below an HTML
+   *  integration point inside it. (A `<title>` inside `<svg>` is a foreign
+   *  element in the DATA state — no RCDATA switch; oracle review of the r2
+   *  batch.) */
+  const htmlRulesApply = (): boolean => {
+    if (!inForeignContent()) return true;
+    for (const ip of HTML_INTEGRATION_POINTS) if ((cp.tagBalance.get(ip) ?? 0) > 0) return true;
+    return false;
+  };
   const applyTag = (tag: string, closing: boolean): void => {
     // Inside a raw-text element only its own end tag is markup.
     if (cp.rawTextOpen !== null) {
       if (!(closing && tag === cp.rawTextOpen)) return;
       cp.rawTextOpen = null;
-    } else if (!closing && RAW_TEXT_ELEMENTS.has(tag)) {
+    } else if (!closing && RAW_TEXT_ELEMENTS.has(tag) && htmlRulesApply()) {
       cp.rawTextOpen = tag;
       // PLAINTEXT never ends (`</plaintext>` is text too): nothing after it
       // can be modelled — poison from here on.
@@ -1274,7 +1292,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
         TYPE1_START_RE.test(t) ||
         // Type 7 cannot interrupt a paragraph, and excludes the raw-text
         // names (those are type 1 as start tags, paragraph as end tags).
-        (t7 !== null && !cp.prevLineWasText && !TYPE1_NAMES.has(t7[2].toLowerCase()))
+        (t7 !== null && !cp.prevLineWasText && !TYPE1_NAMES.has(t7Name(t).toLowerCase()))
       ) {
         cp.htmlFlowReal = true;
       }
@@ -1553,6 +1571,10 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
       tagText = ' '.repeat(gt + 1) + tagText.slice(gt + 1);
     }
   }
+  // Set when the tag scan itself found a tag that runs past the line end
+  // (quoted attribute value left open): the anchor-on-last-`<` truncation
+  // check below must not count it a second time.
+  let tagHandledAsTruncated = false;
   if (!skipTagScan) {
     TAG_OR_COMMENT_RE.lastIndex = 0;
     let m: RegExpExecArray | null;
@@ -1601,7 +1623,43 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
       const closing = m[1] === '/';
       const tag = m[2].toLowerCase();
       if (TABLE_PART_NAMES.has(tag)) cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start + m.index);
-      const selfClosing = m[3] !== undefined && /\/\s*$/.test(m[3]);
+      let attrs = m[3] ?? '';
+      if (cp.htmlFlowReal && (cp.rawTextOpen === null || (closing && tag === cp.rawTextOpen))) {
+        // The regex ends the tag at the first `>`, but in a real html-flow
+        // run parse5 ends it at the first `>` OUTSIDE a quoted attribute
+        // value (`</div a=">` eats the rest of the line and beyond — a
+        // pre-existing under-block of the r2 P1-2 family, oracle review of
+        // the batch). Walk the attribute area with parse5's state machine:
+        // a later `>` moves the match end; no `>` on the line means the
+        // tag continues on the next line — the truncated path below takes
+        // it, with the quote state carried.
+        const attrStart = m.index + 1 + (closing ? 1 : 0) + m[2].length;
+        const st = { state: 'outside' as TagAttrState };
+        const gt = scanTagAttrs(tagText, attrStart, tagText.length, st);
+        if (gt === -1) {
+          if (!VOID_TAGS.has(tag)) {
+            if (closing) cp.pendingTruncatedCloses.push(tag);
+            else applyTag(tag, false);
+          }
+          scanTagAttrs('\n', 0, 1, st);
+          cp.tagAcrossLines = true;
+          cp.tagAcrossLinesIndent = ln.indent;
+          cp.tagAcrossLinesState = st.state;
+          tagHandledAsTruncated = true;
+          break;
+        }
+        if (gt + 1 !== m.index + m[0].length) {
+          attrs = tagText.slice(attrStart, gt);
+          TAG_OR_COMMENT_RE.lastIndex = gt + 1;
+        }
+      }
+      // Paragraph context (micromark html-text / a non-real run): a CLOSING
+      // tag is only `</name` + optional whitespace + `>` — `</div a="b">` is
+      // literal text and parse5 never sees a close (oracle review of the r2
+      // batch, pre-existing: `p <div> x </div a="b"> y` froze past the open
+      // div). In a real html-flow run parse5 accepts end-tag attributes.
+      if (closing && !cp.htmlFlowReal && !/^\s*$/.test(attrs)) continue;
+      const selfClosing = /\/\s*$/.test(attrs);
       if (VOID_TAGS.has(tag) || (selfClosing && honoursSelfClosing(tag))) continue;
       applyTag(tag, closing);
     }
@@ -1640,6 +1698,8 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
         const closing = mr[1] === '/';
         const tag = mr[2].toLowerCase();
         if (TABLE_PART_NAMES.has(tag)) cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start + mr.index);
+        // Same html-text rule: a closing tag with attributes is text.
+        if (closing && mr[3] !== undefined && !/^\s*$/.test(mr[3])) continue;
         const selfClosing = mr[3] !== undefined && /\/\s*$/.test(mr[3]);
         if (VOID_TAGS.has(tag) || (selfClosing && honoursSelfClosing(tag))) continue;
         applyTag(tag, closing);
@@ -1659,7 +1719,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
       cp.pendingTruncatedTags = [];
     }
     // Line-truncated tag start — anchor on the LAST `<` of the line.
-    if (!cp.commentOpen) {
+    if (!cp.commentOpen && !tagHandledAsTruncated) {
       let lastLt = -1;
       TAG_START_LT_RE.lastIndex = 0;
       for (let ms = TAG_START_LT_RE.exec(tagText); ms !== null; ms = TAG_START_LT_RE.exec(tagText)) {

@@ -143,10 +143,10 @@
     padding-inline-start: calc(30% + var(--aim-font-size-mantine-base));
   }
   dt + dt {
-    padding-right: 60%;
+    padding-inline-end: 60%;
   }
   dt + dt + dd {
     margin-top: calc(var(--aim-font-size-mantine-base) * -1.625);
-    padding-left: calc(30% + var(--aim-font-size-mantine-base));
+    padding-inline-start: calc(30% + var(--aim-font-size-mantine-base));
   }
 }

@@ -171,7 +171,10 @@ function expandNestedJson(value: unknown): unknown {
   }
   if (Array.isArray(value)) return value.map(expandNestedJson);
   if (value !== null && typeof value === 'object') {
-    const out: Record<string, unknown> = {};
+    // Null-prototype target: a `"__proto__"` key (an OWN property after
+    // JSON.parse) must stay a property, not become the prototype and vanish
+    // from the output (oracle review of the r2 batch).
+    const out: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = expandNestedJson(v);
     return out;
   }

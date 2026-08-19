@@ -262,6 +262,34 @@ describe('computeFreezeBoundary — raw HTML blockers', () => {
     expect(computeFreezeBoundary('<div>\n<plaintext>\n</plaintext>\n</div>\n\ntail\n\nzzz', OFF)).toBe(0);
   });
 
+  test('oracle review of the r2 batch: noscript is HTML, quoted `>` on the tag line, no raw text in foreign content', () => {
+    // hast-util-raw: parse5 with scriptingEnabled:false → noscript content is HTML.
+    expect(computeFreezeBoundary('<noscript>\n<div>\n</noscript>\n\ntail\n\nzzz', OFF)).toBe(0);
+    // A `>` inside a quoted value on the tag's own line does not end it.
+    for (const doc of [
+      '<div>\n</div a=">\n\ntail\n\nzzz',
+      '<div a=">\n</div>\n\ntail\n\nzzz',
+      '<div a="x></div>">\n\ntail\n\nzzz',
+    ]) {
+      expect(computeFreezeBoundary(doc, OFF), doc).toBe(0);
+    }
+    // …and a value closed on the NEXT line completes the close there: balanced.
+    const across = '<div>\n</div a="\n">\n\ntail\n\nzzz';
+    expect(computeFreezeBoundary(across, OFF)).toBeGreaterThanOrEqual(across.indexOf('tail'));
+    const paired = '<div title="a>b" class="c">x</div>\n\ntail\n\nzzz';
+    expect(computeFreezeBoundary(paired, OFF)).toBe(paired.indexOf('zzz'));
+    // Foreign content: `<svg><title>` is no RCDATA switch; the `<b>` inside opens.
+    expect(computeFreezeBoundary('<svg>\n<title>\n<b>\n</title>\n</svg>\n\ntail\n\nzzz', OFF)).toBe(0);
+    // Paragraph context: a closing tag with attributes is text (html-text
+    // accepts `</name` + whitespace + `>` only) — the div stays open.
+    expect(computeFreezeBoundary('p <div> x </div a="b"> y\n\ntail\n\nzzz', OFF)).toBe(0);
+    const wsClose = 'p <div> x </div > y\n\ntail\n\nzzz';
+    expect(computeFreezeBoundary(wsClose, OFF)).toBe(wsClose.indexOf('zzz'));
+    // A raw-text element's own end tag with an unterminated quoted value
+    // keeps tokenizing: title stays open.
+    expect(computeFreezeBoundary('<title>\n</title a=">\n\ntail\n\nzzz', OFF)).toBe(0);
+  });
+
   test('v2.4.0 review R2: a truncated tag is not reverted when the raw line closes it inside a masked span, and its seam is still checked', () => {
     // (a) `<div x="\`">b\``: micromark parses the tag first (the backtick
     // is inside a quoted attribute), so the code-span mask hid the tag's

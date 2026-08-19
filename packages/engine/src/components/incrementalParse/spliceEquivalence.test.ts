@@ -715,6 +715,68 @@ describe('splice equivalence — adversarial fixtures', () => {
     }
   });
 
+  test('oracle review of the r2 batch: noscript is plain HTML under rehype-raw, quoted `>` on the tag line, raw text only under HTML rules', () => {
+    for (const [name, payload] of [
+      // hast-util-raw runs parse5 with scriptingEnabled:false: `<noscript>`
+      // content is ordinary HTML, the `<b>` inside is a real open.
+      ['noscript-inline', 'x <noscript> y <b> z </noscript> w\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['noscript-inline-i', 'x <noscript><i>z</noscript>w\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['noscript-block', '<noscript>\n<div>\n</noscript>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      // A `>` inside a quoted attribute value on the tag's OWN line does not
+      // end the tag (pre-existing, same family as r2 P1-2).
+      ['close-quoted-gt', '<div>\n</div a=">\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['close-quoted-gt-title', '<div>\n</div title=">\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['close-quoted-gt-value', '<div>\nx\n</div a="b>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      [
+        'close-quoted-gt-details',
+        '<details>\n<summary>t</summary>\n</details a=">\n\ntail para\n\nmore.\n\nzzz end.\n',
+      ],
+      ['open-quoted-gt', '<div a=">\n</div>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['open-quoted-gt-close-inside', '<div a="x></div>">\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['open-quoted-gt-then-real-close', '<div a="x></div>">\n</div>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['paired-quoted-gt-same-line', '<div title="a>b" class="c">x</div>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['close-quote-across-lines', '<div>\n</div a="\n">\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      // Foreign content: `<title>` inside `<svg>` is a foreign element in the
+      // DATA state — no RCDATA switch, `<b>` inside is a breakout open.
+      ['svg-title-not-rcdata', '<svg>\n<title>\n<b>\n</title>\n</svg>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['svg-title-div', '<svg>\n<title><div></title></svg>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      // …but below an integration point HTML rules (and RCDATA) are back.
+      [
+        'foreignobject-title',
+        '<svg><foreignObject><title><b></title></foreignObject></svg>\n\ntail para\n\nmore.\n\nzzz end.\n',
+      ],
+    ] as const) {
+      for (const size of [1, 3, 7]) assertStreamEquivalence(name, chunkSnapshots(payload, size), BASELINE);
+    }
+  });
+
+  test('oracle re-check of the r2 batch: closing tags with attributes, and a raw-text end tag mid-value', () => {
+    for (const [name, payload] of [
+      // Paragraph context: micromark's html-text accepts `</name` + optional
+      // whitespace + `>` only, so `</div a="b">` is literal TEXT and parse5
+      // never sees a close — the `<div>` wraps the tail (pre-existing).
+      ['para-close-with-attrs', 'p <div> x </div a="b"> y\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['para-close-title-attr', 'p <title> x </title a> y\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['para-close-style-attr', 'p <style> x </style a> y\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['para-close-title-quote', 'p <title> x </title a="> y\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      // …whitespace before the `>` is still a close.
+      ['para-close-ws', 'p <div> x </div > y\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      // Alone on a line it is not type 7 either (and span/b are not type-6
+      // names, so there is no other route into html flow).
+      ['line-close-attrs-span', '<span>\n\n</span a="b">\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['line-close-attrs-b', '<b>\n\n</b a>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['line-close-bare-span', '<span>\n\n</span>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      // A type-6 NAME is html flow whatever follows it: parse5 accepts
+      // attributes on an end tag there, so this one really closes.
+      ['line-close-attrs-div', '<div>\n\n</div a="b">\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      // The raw-text element's own end tag with an unterminated value keeps
+      // tokenizing — the title stays open.
+      ['rawtext-end-tag-quote', '<title>\n</title a=">\n\ntail para\n\nmore.\n\nzzz end.\n'],
+    ] as const) {
+      for (const size of [1, 3, 7]) assertStreamEquivalence(name, chunkSnapshots(payload, size), BASELINE);
+    }
+  });
+
   test('2026-08-19 review r2 P1-3: parse5 bogus comments (`<!` / `</` + non-letter) eat to the next `>`', () => {
     for (const [name, payload] of [
       ['bogus-bang', '<div>\n<!\n</div>\n\ntail para\n\nmore.\n\nzzz end.\n'],

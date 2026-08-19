@@ -74,14 +74,20 @@ let initializedTheme: 'dark' | 'light' | null = null;
  * and its output goes into this component's `innerHTML` verbatim: an
  * LLM-authored diagram string could then run script in the page origin.
  * So the theme cache alone is not enough of a guard: before every render
- * the current `securityLevel` is read back (`getConfig()` — one property
- * read, not a config merge) and a non-strict value forces a re-initialize
+ * the current `securityLevel` is read back (`mermaidAPI.getConfig()` — a
+ * config copy, still far cheaper than `initialize`'s merge + theme
+ * variables + diagram registration) and a non-strict value forces a
+ * re-initialize
  * (2026-08-19 review r2 P2-11; the v2.4.2 "documented premise" made this
  * the host's problem — it is ours, the innerHTML is ours).
  */
 const ensureMermaidInitialized = (mermaid: Mermaid, isDark: boolean) => {
   const theme = isDark ? 'dark' : 'light';
-  const currentLevel = (mermaid as { getConfig?: () => { securityLevel?: string } }).getConfig?.().securityLevel;
+  // `getConfig` lives on `mermaid.mermaidAPI` (deprecated in the types, present
+  // at runtime in mermaid 11) — the default export has none, a cast hid that
+  // and the guard never short-circuited (oracle review of the r2 batch).
+  const api = (mermaid as { mermaidAPI?: { getConfig?: () => { securityLevel?: string } } }).mermaidAPI;
+  const currentLevel = api?.getConfig?.().securityLevel;
   if (initializedTheme === theme && currentLevel === 'strict') return;
   mermaid.initialize({
     startOnLoad: false,
@@ -456,7 +462,7 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
                 own text and mermaid's accTitle/accDescr were unreachable, and
                 any `click … href` link mermaid emitted sat inside a button
                 (invalid, not tabbable) — 2026-08-19 review r2 P3. The
-                container below is `role="img"` with a description. */}
+                container below carries no role at all, for the same reason. */}
             {/* Always rendered (also under SSR / the source warm-up, where it
                 is a no-op until the SVG exists) so server and client markup
                 agree. */}
@@ -539,13 +545,12 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
             </CopyButton>
           </Flex>
         </div>
-        <pre
-          ref={ref}
-          style={PRE_STYLE}
-          role="img"
-          aria-label={view.kind === 'diagram' ? `Mermaid ${view.chartType} diagram` : 'Mermaid diagram'}
-          onClick={viewSvgInNewWindow}
-        />
+        {/* No ARIA role on the container: `role="img"` (like the old
+            `role="button"`) makes its children presentational and hides the
+            SVG's own `role="graphics-document"` + accTitle/accDescr that
+            mermaid emits — the SVG names itself. Click-to-open stays as a
+            pointer convenience; the keyboard/AT path is the header button. */}
+        <pre ref={ref} style={PRE_STYLE} onClick={viewSvgInNewWindow} />
       </div>
     </>
   );
