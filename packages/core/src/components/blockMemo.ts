@@ -119,6 +119,15 @@ export interface BlockInfo {
    * per-frame cost away from huge deterministic subtrees like KaTeX output.
    */
   hastDigest?: string;
+  /** A raw-HTML container that swallowed the synthesized
+   *  `<section data-footnotes>` (rehype-raw reparents the following siblings
+   *  into an unclosed `<details>` / `<div>` mid-stream). The footer is then
+   *  NOT a top-level plan item, so coordinated mode's "skip the local
+   *  footer, the aggregate renders it" rule never fired and the document
+   *  showed two `<section data-footnotes>` with colliding li ids (2026-08-19
+   *  review r2 P2-9). Coordinated renders strip it from this block's subtree;
+   *  standalone renders keep it exactly where the full parse puts it. */
+  containsFootnoteSection?: boolean;
   /** TAINT-block 专属：按节点类型分桶的 label set。Normalized 形态（uppercase）。
    *  Undefined when hasReference === false. */
   taintLabels?: {
@@ -495,7 +504,12 @@ export function buildBlocks(mdast: MdastRoot, hast: HastRoot, source: string): B
       continue;
     }
 
+    // Only a raw-HTML block can have foreign content reparented into it by
+    // rehype-raw (an unclosed container tag mid-stream); markdown-native
+    // blocks derive their whole subtree from their own source range.
+    const isRawHtmlBlock = mdastNode.type === 'html' || viaRangeFallback;
     let hasReference = false;
+    const swallowed = isRawHtmlBlock ? scanSwallowedSubtree(el) : null;
     const footnoteRefLabels: string[] = [];
     const linkRefLabels: string[] = [];
     const imageRefLabels: string[] = [];
@@ -518,6 +532,15 @@ export function buildBlocks(mdast: MdastRoot, hast: HastRoot, source: string): B
       // 'definition' nodes don't carry per-block fingerprint significance
       // (they're metadata, not visible); intentionally not bucketed.
     });
+    // Merge what the container swallowed (see scanSwallowedSubtree): the
+    // mdast walk above saw only the empty `html` node.
+    if (swallowed !== null && swallowed.hasReference) {
+      hasReference = true;
+      footnoteRefLabels.push(...swallowed.refLabels);
+      linkRefLabels.push(...swallowed.linkLabels);
+      imageRefLabels.push(...swallowed.imageLabels);
+      local.push(...swallowed.local);
+    }
     // JSON-encoded: labels may hold any separator character.
     const footnoteRefLocalCtx = local.length > 0 ? JSON.stringify(local) : undefined;
 
@@ -539,10 +562,7 @@ export function buildBlocks(mdast: MdastRoot, hast: HastRoot, source: string): B
     // invalidates when the swallowed extent changes; markdown-native blocks
     // skip the walk (their subtrees derive purely from their own source
     // range, already covered by `raw` + position).
-    const hastDigest =
-      mdastNode.type === 'html' || viaRangeFallback
-        ? computeHtmlBlockDigest(el, source, mdastPos.end.offset)
-        : undefined;
+    const hastDigest = isRawHtmlBlock ? computeHtmlBlockDigest(el, source, mdastPos.end.offset) : undefined;
 
     const info: BlockInfo = {
       raw: extractRaw(mdastNode, source),
@@ -552,6 +572,7 @@ export function buildBlocks(mdast: MdastRoot, hast: HastRoot, source: string): B
       startColumn: mdastPos.start.column,
       hasReference,
       ...(hastDigest !== undefined ? { hastDigest } : {}),
+      ...(swallowed?.hasFootnoteSection ? { containsFootnoteSection: true } : {}),
       ...(hasReference
         ? {
             taintLabels: {
@@ -620,6 +641,93 @@ export function computeBlockFingerprint(
     parts.push(`fd:${label}=${isCanonical}/${registry.getRefsForLabel(label)}`);
   }
   return parts.join('|');
+}
+
+/** A shallow-cloned copy of `el` with any `<section data-footnotes>` in its
+ *  subtree removed (see {@link BlockInfo.containsFootnoteSection}). Only the
+ *  spine down to each removed node is cloned; every other child keeps its
+ *  identity so untouched subtrees stay reference-equal. */
+function withoutFootnoteSection(el: HastElement): HastElement {
+  const prune = (node: HastElement): HastElement => {
+    const kids = node.children;
+    let changed = false;
+    const next: typeof kids = [];
+    for (const child of kids) {
+      if (child.type === 'element') {
+        if (isFootnoteSection(child)) {
+          changed = true;
+          continue;
+        }
+        const pruned = prune(child);
+        if (pruned !== child) changed = true;
+        next.push(pruned);
+        continue;
+      }
+      next.push(child);
+    }
+    return changed ? { ...node, children: next } : node;
+  };
+  return prune(el);
+}
+
+/** Placeholder tags the coordinated pipeline bakes chunk-local facts into. */
+const PLACEHOLDER_TAGS = new Set(['footnote-sup', 'cross-chunk-link', 'cross-chunk-image']);
+
+/**
+ * What a raw-HTML container swallowed, read from the HAST subtree rather
+ * than from the container's mdast node — that node is an empty `html` node
+ * whose own range says nothing about the reparented siblings, so every
+ * mdast-derived taint fact came out empty and the block fell back to the
+ * un-fingerprinted cache key (2026-08-19 review r2 P2-8: an equal-length
+ * edit BEFORE the container changed a `localOccurrence` baked inside it and
+ * the stale subtree stayed cached).
+ *
+ * Reads what is actually baked into the cached ReactNode: the placeholders'
+ * `label` / `localOccurrence` (coordinated), the standalone footnote marks
+ * (`a[data-footnote-ref]`), and whether the synthesized footnote section
+ * landed inside (see {@link BlockInfo.containsFootnoteSection}).
+ */
+function scanSwallowedSubtree(el: HastElement): {
+  hasReference: boolean;
+  refLabels: string[];
+  linkLabels: string[];
+  imageLabels: string[];
+  local: [string, number, number][];
+  hasFootnoteSection: boolean;
+} {
+  const refLabels: string[] = [];
+  const linkLabels: string[] = [];
+  const imageLabels: string[] = [];
+  const local: [string, number, number][] = [];
+  let hasReference = false;
+  let hasFootnoteSection = false;
+  visit(el, 'element', (node: HastElement) => {
+    if (isFootnoteSection(node)) {
+      hasFootnoteSection = true;
+      hasReference = true;
+      return;
+    }
+    const props = (node.properties ?? {}) as Record<string, unknown>;
+    if (PLACEHOLDER_TAGS.has(node.tagName)) {
+      hasReference = true;
+      const label = props.label === undefined ? null : normalizeId(String(props.label));
+      if (label === null) return;
+      if (node.tagName === 'footnote-sup') {
+        refLabels.push(label);
+        // Chunk-local occurrence as BAKED into this placeholder — the exact
+        // value a stale cache hit would keep serving.
+        const occ = Number(props.localOccurrence);
+        const num = Number(props.localNumber);
+        local.push([label, Number.isFinite(occ) ? occ : -1, Number.isFinite(num) ? num : -1]);
+      } else if (node.tagName === 'cross-chunk-link') linkLabels.push(label);
+      else imageLabels.push(label);
+      return;
+    }
+    // Standalone mode bakes footnote numbering into plain marks; their ctx
+    // is the whole-document globalCtx, so the flag alone is enough.
+    if (node.tagName === 'a' && props.dataFootnoteRef !== undefined) hasReference = true;
+  });
+  return { hasReference, refLabels, linkLabels, imageLabels, local, hasFootnoteSection };
 }
 
 /**
@@ -742,13 +850,23 @@ export function renderBlocksWithCache(
       if (valid) {
         node = entry.node; // cache hit: skip everything
       } else {
-        // Coordinated-mode hast post-transforms used to run here, but the
-        // aggregate footer (AggregateFootnotesIfLast) now reconstructs the
+        // The aggregate footer (AggregateFootnotesIfLast) reconstructs the
         // footnote section from registry state, and the synthetic plan item
-        // for `<section data-footnotes>` is skipped earlier in this loop.
-        // Regular blocks never contain a top-level footnote section, so a
-        // post-transform pass would be a no-op anyway.
-        node = renderHastSubtree(item.el, postOptions);
+        // for a TOP-LEVEL `<section data-footnotes>` is skipped earlier in
+        // this loop. A raw-HTML container that swallowed the section is the
+        // one case where it is not top level — strip it here, or the
+        // document renders the local footer inside the container AND the
+        // aggregate one (colliding li ids; r2 P2-9). Standalone renders keep
+        // it where the full parse puts it.
+        node = renderHastSubtree(
+          // Same coordinated-mode test as the top-level synthetic skip above
+          // (registry + a registered chunk Symbol): under SSR the chunk has
+          // not registered yet and the local footer is the right output.
+          block.containsFootnoteSection && postOptions.registry && postOptions.thisChunkSymbol
+            ? withoutFootnoteSection(item.el)
+            : item.el,
+          postOptions
+        );
       }
 
       bucket.push({

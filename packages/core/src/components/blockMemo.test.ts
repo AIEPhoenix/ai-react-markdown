@@ -917,6 +917,55 @@ describe('buildBlocks per-block taintLabels (v6)', () => {
     expect(later.taintLabels!.footnoteRefLocalCtx).toBe(JSON.stringify([['Y', 0, 1]])); // rank 1: the nested [^x] definition took rank 0
   });
 
+  test('2026-08-19 review r2 P2-8/P2-9: an unclosed raw-HTML container reads its taint from the swallowed subtree', () => {
+    // rehype-raw reparents the following siblings into an unclosed
+    // `<details>`; the container's own mdast node is an empty `html` node,
+    // so every mdast-derived taint fact used to come out empty and the block
+    // fell back to the un-fingerprinted cache key.
+    const build = (source: string) => {
+      const processor = unified()
+        .use(remarkParse)
+        .use(remarkGfm)
+        .use(remarkRehype, { allowDangerousHtml: true })
+        .use(rehypeRaw);
+      const mdast = processor.parse(source);
+      const hast = processor.runSync(mdast, source) as HastRoot;
+      return buildBlocks(mdast as MdastRoot, hast, source);
+    };
+    const src = 'a[^w] b[^x]\n\n<details>\n\nc[^x]\n\n[^w]: w\n\n[^x]: x\n';
+    const built = build(src);
+    const container = built.blocks.find((b) => b.raw.startsWith('<details>'));
+    expect(container, 'the unclosed container is a cached block').toBeDefined();
+    // It now declares itself tainted and carries the labels + the local
+    // occurrence values BAKED into the swallowed placeholders/marks.
+    expect(container!.hasReference).toBe(true);
+    // …and it reports that the synthesized footnote section landed inside.
+    expect(container!.containsFootnoteSection).toBe(true);
+    // The top-level plan therefore has NO synthetic item — which is exactly
+    // why coordinated mode has to strip the section from this block instead.
+    expect(built.synthetic).toBeUndefined();
+    // Why `hasReference` is the whole point: an equal-length edit BEFORE the
+    // container changes a footnote number baked INSIDE it (`b[^x]` → `b[^w]`
+    // makes the swallowed `c[^x]` x's 1st ref, not its 2nd), while every
+    // legacy key component of the container stays identical.
+    const after = build('a[^w] b[^w]\n\n<details>\n\nc[^x]\n\n[^w]: w\n\n[^x]: x\n');
+    const afterContainer = after.blocks.find((b) => b.raw.startsWith('<details>'))!;
+    expect(afterContainer.raw).toBe(container!.raw);
+    expect(afterContainer.startOffset).toBe(container!.startOffset);
+    expect(afterContainer.hastDigest).toBe(container!.hastDigest);
+    // With `hasReference` false (the old behaviour) the cache key was
+    // `(raw, occ, '', position, hastDigest)` — identical across both frames,
+    // a guaranteed stale hit. Now the block is tainted, so its ctx is the
+    // document-wide globalCtx in standalone mode…
+    expect(afterContainer.hasReference).toBe(true);
+    expect(after.globalCtx).not.toBe(built.globalCtx);
+    // …and in coordinated mode the swallowed `footnote-sup` placeholders
+    // contribute their baked localOccurrence to the fingerprint as well
+    // (scanSwallowedSubtree); standalone marks carry no such props, which is
+    // why the flag alone has to carry that case.
+    expect(container!.taintLabels).toBeDefined();
+  });
+
   test('non-TAINT block has taintLabels undefined', () => {
     const source = 'Just plain text.';
     const processor = unified().use(remarkParse).use(remarkGfm).use(remarkRehype);

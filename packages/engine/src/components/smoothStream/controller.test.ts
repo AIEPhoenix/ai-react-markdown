@@ -138,6 +138,36 @@ describe('smoothStream controller — mechanics', () => {
     expect(controller.getVisible()).toBe(`a${emoji}b`);
   });
 
+  test('2026-08-19 review r2 P2-6: a frame cut inside a surrogate pair never confirms a boundary that later disappears', () => {
+    // The module contract says a surrogate half or a growing ZWJ sequence is
+    // never revealed mid-cluster. It broke when the frame ended INSIDE a
+    // surrogate pair: the lone high surrogate is a cluster of its own, so the
+    // cluster before it was confirmed — and the completed pair then merged
+    // the two, leaving the revealed prefix inside the merged cluster
+    // (`"👩‍👧‍👦x"` cut at 5 revealed `"👩‍"`). The repo's own streaming
+    // simulator slices by UTF-16 index, so this is the default path.
+    const seg = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+    const legalBoundaries = (text: string) => {
+      const ends = new Set<number>([0]);
+      for (const part of seg.segment(text)) ends.add(part.index + part.segment.length);
+      return ends;
+    };
+    for (const full of ['👩‍👧‍👦x', 'a🇺🇸🇬🇧b', '👍🏽👍', 'a😀b', '👨‍👩‍👧‍👦tail', '🇺🇸🇬🇧🇫🇷', 'x👍🏽y👩‍👧z']) {
+      const ends = legalBoundaries(full);
+      const { controller, advance } = makeHarness(fixedRate(1_000));
+      controller.update('');
+      for (let i = 1; i <= full.length; i++) {
+        controller.update(full.slice(0, i));
+        advance(1_000);
+        const visible = controller.getVisible();
+        expect(ends.has(visible.length), `${JSON.stringify(full)} @${i}: ${JSON.stringify(visible)}`).toBe(true);
+      }
+      controller.finish();
+      advance(1_000);
+      expect(controller.getVisible()).toBe(full);
+    }
+  });
+
   test('ZWJ emoji sequence reveals atomically', () => {
     const family = '👨‍👩‍👧‍👦';
     const { controller, advance } = makeHarness(fixedRate(10));

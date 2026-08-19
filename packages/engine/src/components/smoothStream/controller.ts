@@ -400,7 +400,15 @@ export const createSmoothStreamController = (options: SmoothStreamOptions = {}):
     if (!disposed && !cancelFrame && pending.length > 0) cancelFrame = schedule(tick);
   };
 
-  /** Re-segments the unrevealed tail from the last confirmed boundary. */
+  /** Re-segments the unrevealed tail from the last confirmed boundary.
+   *
+   *  Only the LAST cluster stays tentative, because appending can merge it
+   *  with what follows — with one exception: when the source ends inside a
+   *  surrogate pair, that lone high surrogate is a cluster of its own, and
+   *  the cluster BEFORE it would be confirmed even though the completed pair
+   *  merges the two (`"👩‍👧‍👦x"` cut at 5 revealed `"👩‍"` — a break inside a
+   *  cluster, which the module contract says never happens; 2026-08-19
+   *  review r2 P2-6). Two clusters stay tentative there. */
   const resegmentTail = () => {
     const from = pending.length > 0 ? pending[pending.length - 1] : visibleEnd;
     const ends = graphemeEnds(source.slice(from), from);
@@ -409,7 +417,18 @@ export const createSmoothStreamController = (options: SmoothStreamOptions = {}):
       return;
     }
     tentativeEnd = ends[ends.length - 1];
-    const confirmedEnds = finished ? ends : ends.slice(0, -1);
+    let hold = 1;
+    if (!finished && ends.length > 1) {
+      const last = source.charCodeAt(source.length - 1);
+      const danglingHighSurrogate = last >= 0xd800 && last <= 0xdbff;
+      // …and only when the cluster before it could actually absorb the
+      // completed character: a ZWJ sequence, an emoji modifier (`👍` + skin
+      // tone), a regional-indicator pair. All of them need a non-ASCII
+      // predecessor, so `a` + a dangling surrogate still confirms `a` on the
+      // spot (pinned above).
+      if (danglingHighSurrogate && source.charCodeAt(ends[ends.length - 2] - 1) > 0x7f) hold = 2;
+    }
+    const confirmedEnds = finished ? ends : ends.slice(0, -hold);
     for (const end of confirmedEnds) pending.push(end);
   };
 
