@@ -227,6 +227,16 @@ export function hasMdastSource(node: HastElement): boolean {
  * is load-bearing. Exported for tests.
  */
 export function computeHtmlBlockDigest(el: HastElement, source?: string, ownEnd?: number): string {
+  return computeHtmlBlockDigestWithExtent(el, source, ownEnd).digest;
+}
+
+/** {@link computeHtmlBlockDigest} plus the subtree's max end offset — the end
+ *  of the SWALLOWED extent, which callers need to ask what fell inside. */
+export function computeHtmlBlockDigestWithExtent(
+  el: HastElement,
+  source?: string,
+  ownEnd?: number
+): { digest: string; maxEnd: number } {
   let maxEnd = el.position?.end?.offset ?? 0;
   let count = 0;
   let hasFootnoteSection = false;
@@ -253,7 +263,7 @@ export function computeHtmlBlockDigest(el: HastElement, source?: string, ownEnd?
   // P2-1); the container's own `raw` is unchanged, so the cache hit kept
   // rendering the old text. Hashing the swallowed extent's source closes it.
   const swallowed = source !== undefined && ownEnd !== undefined && maxEnd > ownEnd ? source.slice(ownEnd, maxEnd) : '';
-  return `${maxEnd}:${count}:${hasFootnoteSection ? 1 : 0}:${fnv1a(swallowed)}`;
+  return { digest: `${maxEnd}:${count}:${hasFootnoteSection ? 1 : 0}:${fnv1a(swallowed)}`, maxEnd };
 }
 
 /** FNV-1a 32-bit over UTF-16 code units — cheap, no allocation. */
@@ -396,8 +406,14 @@ export function buildBlocks(mdast: MdastRoot, hast: HastRoot, source: string): B
   }
 
   const ctxParts: unknown[] = [];
+  // Start offsets of every taint node, in document order — used to tell
+  // whether a raw-HTML container swallowed a reference whose RENDERING
+  // depends on a definition outside it (see the isRawHtmlBlock branch).
+  const taintOffsets: number[] = [];
   visit(mdast, (n) => {
     if (!CTX_TYPES.has(n.type)) return;
+    const at = n.position?.start?.offset;
+    if (at !== undefined) taintOffsets.push(at);
     if (n.type === 'footnoteReference') ctxParts.push(['fr', n.identifier]);
     else if (n.type === 'footnoteDefinition') ctxParts.push(['fd', n.identifier, extractRaw(n, source)]);
     else if (n.type === 'linkReference') ctxParts.push(['lr', n.identifier]);
@@ -562,7 +578,31 @@ export function buildBlocks(mdast: MdastRoot, hast: HastRoot, source: string): B
     // invalidates when the swallowed extent changes; markdown-native blocks
     // skip the walk (their subtrees derive purely from their own source
     // range, already covered by `raw` + position).
-    const hastDigest = isRawHtmlBlock ? computeHtmlBlockDigest(el, source, mdastPos.end.offset) : undefined;
+    let hastDigest: string | undefined;
+    let swallowedTaint = false;
+    if (isRawHtmlBlock) {
+      const d = computeHtmlBlockDigestWithExtent(el, source, mdastPos.end.offset);
+      hastDigest = d.digest;
+      // Did the container swallow a reference or definition? The hast scan
+      // above sees coordinated placeholders and standalone footnote marks,
+      // but a standalone LINK/IMAGE reference renders as a plain `<a href>` /
+      // `<img src>` — indistinguishable from an inline link. Ask the mdast
+      // instead: any taint node whose source offset lies inside the swallowed
+      // extent. Without this a definition sitting BEFORE the container (thus
+      // outside the digest's `[ownEnd, maxEnd)` hash) could change the
+      // rendered href while every cache-key component stayed equal.
+      for (const at of taintOffsets) {
+        if (at >= mdastPos.end.offset && at < d.maxEnd) {
+          swallowedTaint = true;
+          break;
+        }
+      }
+    }
+
+    // A standalone link/image reference renders as a plain `<a href>` /
+    // `<img src>`, so only the mdast range test above can see it — fold that
+    // in now that the extent is known.
+    if (swallowedTaint) hasReference = true;
 
     const info: BlockInfo = {
       raw: extractRaw(mdastNode, source),

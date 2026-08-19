@@ -964,6 +964,20 @@ describe('buildBlocks per-block taintLabels (v6)', () => {
     // (scanSwallowedSubtree); standalone marks carry no such props, which is
     // why the flag alone has to carry that case.
     expect(container!.taintLabels).toBeDefined();
+
+    // A standalone LINK reference inside the container renders as a plain
+    // `<a href>` — indistinguishable from an inline link in the hast — so the
+    // subtree scan cannot see it. When its definition sits BEFORE the
+    // container it is also outside the digest's swallowed extent, and every
+    // cache-key component stayed equal while the rendered href changed. The
+    // mdast range test (taint offsets inside `[ownEnd, maxEnd)`) covers it.
+    const linkBefore = build('[r]: /aaa\n\n<details>\n\nsee [u][r]\n');
+    const linkAfter = build('[r]: /bbb\n\n<details>\n\nsee [u][r]\n');
+    const lb = linkBefore.blocks.find((b) => b.raw.startsWith('<details'))!;
+    const la = linkAfter.blocks.find((b) => b.raw.startsWith('<details'))!;
+    expect(lb.hastDigest).toBe(la.hastDigest); // the edit is outside the swallowed extent
+    expect(lb.hasReference).toBe(true); // …so only the taint flag separates the frames
+    expect(linkBefore.globalCtx).not.toBe(linkAfter.globalCtx);
   });
 
   test('non-TAINT block has taintLabels undefined', () => {
