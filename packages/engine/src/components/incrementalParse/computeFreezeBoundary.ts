@@ -131,8 +131,78 @@ const TYPE6_NAMES = new Set(htmlBlockNames);
  *  `<td>` prefix froze a table whose shape depended on the tail). Same
  *  list as spliceParse's TABLE_PART_TAG_RE. */
 const TABLE_PART_NAMES = new Set(['td', 'th', 'tr', 'tbody', 'thead', 'tfoot', 'caption', 'col', 'colgroup']);
-/** Type-1 (raw text) block start names — start tags only. */
+/** HTML start tags that BREAK OUT of foreign content (HTML spec "in foreign
+ *  content": the svg/math is popped and the tag is processed as HTML). */
+const HTML_BREAKOUT_TAGS = new Set([
+  'b',
+  'big',
+  'blockquote',
+  'body',
+  'br',
+  'center',
+  'code',
+  'dd',
+  'div',
+  'dl',
+  'dt',
+  'em',
+  'embed',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'head',
+  'hr',
+  'i',
+  'img',
+  'li',
+  'listing',
+  'menu',
+  'meta',
+  'nobr',
+  'ol',
+  'p',
+  'pre',
+  'ruby',
+  's',
+  'small',
+  'span',
+  'strong',
+  'strike',
+  'sub',
+  'sup',
+  'table',
+  'tt',
+  'u',
+  'ul',
+  'var',
+]);
+/** Elements whose CONTENT is parsed with HTML rules again inside svg/math. */
+const HTML_INTEGRATION_POINTS = ['foreignobject', 'desc', 'mi', 'mo', 'mn', 'ms', 'mtext', 'annotation-xml'];
+/** CommonMark type-1 block start names — start tags only. */
 const TYPE1_NAMES = new Set(['script', 'pre', 'style', 'textarea']);
+/** parse5 elements whose CONTENT is text to the tokenizer (RAWTEXT /
+ *  RCDATA / script data / plaintext): every `<…>` inside is text until the
+ *  element's own end tag. Not the CommonMark type-1 list — `title`,
+ *  `iframe`, `noframes`, `xmp`, `noembed`, `noscript` (parse5 default:
+ *  scripting on) sit in the type-6 list, so their content is a normal html
+ *  block to micromark yet text to parse5, and a `</div>` in there closed the
+ *  outer div in the balance (2026-08-19 review r2 P1-4). `plaintext` never
+ *  ends. */
+const RAW_TEXT_ELEMENTS = new Set([
+  'script',
+  'style',
+  'textarea',
+  'title',
+  'xmp',
+  'iframe',
+  'noembed',
+  'noframes',
+  'noscript',
+  'plaintext',
+]);
 /** Type-6 start: `<`/`</` + name + (whitespace | `>` | `/>` | EOL). */
 const TYPE6_START_RE = /^<\/?([A-Za-z][A-Za-z0-9-]*)(?:[ \t\r]|\/?>|$)/;
 /** Type-1 start: an OPEN tag of a raw-text name + (whitespace | `>` | EOL). */
@@ -232,6 +302,16 @@ export interface FreezeScanCheckpoint {
   piOpen: boolean;
   declOpen: boolean;
   cdataOpen: boolean;
+  /** parse5 BOGUS COMMENT open inside a real html-flow run: `<!` not
+   *  followed by `--` / letter / `[CDATA[`, or `</` not followed by a
+   *  letter (`<!\n`, `<!-`, `</\n`, `<//`) — eaten up to the next `>`;
+   *  a `</div>` inside is comment text, not a close (2026-08-19 review r2
+   *  P1-3: the balance zeroed past an open div). micromark has no such
+   *  construct: those bytes are just html-block content. */
+  bogusOpen: boolean;
+  /** The RAW_TEXT_ELEMENTS element currently open (its content is text to
+   *  parse5): tags and comment tokens are ignored until `</name>`. */
+  rawTextOpen: string | null;
   inFence: boolean;
   fenceChar: string;
   fenceLen: number;
@@ -326,6 +406,10 @@ export interface FreezeScanCheckpoint {
    *  — or may still be the same html block (root-level `  </div\n</div>`,
    *  still garbage). Unknowable here → poison (oracle 3rd pass). */
   tagAcrossLinesIndent: number;
+  /** parse5's position inside that tag's attribute area at the end of the
+   *  last scanned line (see TagAttrState). A quoted value left open swallows
+   *  `>` and line endings; a `>` that arrives while `outside` ends the tag. */
+  tagAcrossLinesState: TagAttrState;
   /** The html-flow run since the last blank REALLY started as a micromark
    *  html block (type 6 / type 1 / a paragraph-not-interrupting type 7) —
    *  as opposed to `htmlFlowSinceBlank`, which any `<tag` / `</tag` line
@@ -390,7 +474,50 @@ const TAG_OR_COMMENT_RE = /<(\/?)([A-Za-z][A-Za-z0-9-]*)(?=[\s/>])([^>]*)>|<!--|
  *  Without the revert the phantom open lived forever and the whole rest of
  *  the stream lost the splice, not just that paragraph (2026-08 project
  *  review, eng-parse-06). */
-const TRUNCATED_TAG_RE = /<(\/?)([A-Za-z][A-Za-z0-9-]*)([^<>]*)$/;
+const TRUNCATED_TAG_RE = /<(\/?)([A-Za-z][A-Za-z0-9-]*)([^>]*)$/;
+/** Anchor for the truncated-tag check: the LAST `<` that starts a tag name
+ *  (`<x` / `</x`). Anchoring on the last `<` of any kind missed `<div a=<`
+ *  (attribute bytes may hold `<`; parse5 keeps the div open) — oracle
+ *  re-check of r2, pre-existing. */
+const TAG_START_LT_RE = /<\/?[A-Za-z]/g;
+/** parse5 tokenizer position inside a tag's attribute area, tracked across
+ *  line endings for `tagAcrossLines` (2026-08-19 review r2 P1-2 / P2-3):
+ *  `outside` = before/in an attribute name (a `"` here starts a NAME, not a
+ *  value); `afterEq` = just past `=`; `unquoted` = in an unquoted value
+ *  (whitespace ends it); `"` / `'` = inside a quoted value — `>` and line
+ *  endings are value bytes there, only the matching quote leaves it. */
+type TagAttrState = 'outside' | 'afterEq' | 'unquoted' | '"' | "'";
+/** Advance the attribute-area state over `text[from, to)`; returns the
+ *  index of the `>` that ENDS the tag, or -1 with the state carried in
+ *  `out.state`. */
+function scanTagAttrs(text: string, from: number, to: number, out: { state: TagAttrState }): number {
+  let st = out.state;
+  for (let i = from; i < to; i++) {
+    const c = text[i];
+    if (st === '"' || st === "'") {
+      if (c === st) st = 'outside';
+      continue;
+    }
+    const ws = c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f';
+    if (st === 'afterEq') {
+      if (ws) continue;
+      if (c === '"' || c === "'") st = c;
+      else if (c === '>') return i;
+      else st = 'unquoted';
+      continue;
+    }
+    if (st === 'unquoted') {
+      if (ws) st = 'outside';
+      else if (c === '>') return i;
+      continue;
+    }
+    // outside
+    if (c === '=') st = 'afterEq';
+    else if (c === '>') return i;
+  }
+  out.state = st;
+  return -1;
+}
 /** Bracketed inline candidate: link/image reference or shortcut. No nesting
  *  support — plain prose brackets count as taint (conservative direction). */
 const REF_RE = /!?\[((?:[^[\]\\]|\\.)*)\]/g;
@@ -521,6 +648,8 @@ function freshCheckpoint(defListEnabled: boolean, mathFlow: boolean, referenceTa
     openTotal: 0,
     commentOpen: false,
     piOpen: false,
+    bogusOpen: false,
+    rawTextOpen: null,
     declOpen: false,
     cdataOpen: false,
     inFence: false,
@@ -544,6 +673,7 @@ function freshCheckpoint(defListEnabled: boolean, mathFlow: boolean, referenceTa
     pendingTruncatedCloses: [],
     tagAcrossLines: false,
     tagAcrossLinesIndent: 0,
+    tagAcrossLinesState: 'outside',
     htmlFlowReal: false,
   };
 }
@@ -708,15 +838,28 @@ export function computeFreezeBoundary(
   let start = cp.confirmedOffset;
   let tailLine: LineRec | null = null;
   while (start < text.length) {
-    let end = text.indexOf('\n', start);
-    if (end === -1) end = text.length;
-    const confirmed = end < text.length;
-    // CRLF: the `\r` is line-ending, not line content — every `$`-anchored
-    // rule below (list markers, def shapes, closers) must see the same
-    // bytes it sees under LF (v2.4.1 review: `-\r` missed LIST_MARKER_RE).
-    // Offsets (`start`/`end`) are untouched; only the scanned text shrinks.
-    const rawLine = text.slice(start, end);
-    const lineText = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine;
+    // Line endings are what micromark counts: `\n`, `\r\n` and a LONE `\r`
+    // (2026-08-19 review r2 P1-5: splitting on `\n` only hid the fence /
+    // math OPENER after `a\r` inside one scanner line, and a candidate
+    // landed inside the open block). `end` is the LAST byte of the ending
+    // (the `\n` of a CRLF), so `end + 1` is the next line start as before;
+    // `lineText` excludes the ending. A lone `\r` as the very last byte is
+    // NOT confirmed: the `\n` that may follow belongs to the same ending.
+    let end = text.length;
+    let textEnd = text.length;
+    {
+      const nl = text.indexOf('\n', start);
+      const cr = text.indexOf('\r', start);
+      if (cr !== -1 && (nl === -1 || cr < nl)) {
+        textEnd = cr;
+        end = text.charCodeAt(cr + 1) === 10 ? cr + 1 : cr;
+      } else if (nl !== -1) {
+        textEnd = nl;
+        end = nl;
+      }
+    }
+    const confirmed = end < text.length && !(end === text.length - 1 && text.charCodeAt(end) === 13);
+    const lineText = text.slice(start, textEnd);
     const ln: LineRec = {
       start,
       end,
@@ -852,7 +995,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     cp.htmlSeamPending &&
     !ln.blank &&
     !cp.htmlFlowSinceBlank &&
-    !(cp.commentOpen || cp.piOpen || cp.declOpen || cp.cdataOpen)
+    !(cp.commentOpen || cp.piOpen || cp.declOpen || cp.cdataOpen || cp.bogusOpen)
   ) {
     const defShapedLine = DEF_RE.test(ln.text) || FOOTNOTE_DEF_RE.test(ln.text);
     const commentOnly =
@@ -864,7 +1007,34 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
       cp.htmlSeamPending = false;
     }
   }
+  /** Inside `<svg>` / `<math>` parse5 honours the self-closing flag on any
+   *  tag (`<circle/>`); in HTML content it IGNORES it on non-void elements
+   *  — `<div/>` / `<title/>` / `<p/>` OPEN (oracle re-check of r2, pre-
+   *  existing: the scanner skipped them and froze past a div that swallowed
+   *  the tail). Foreign-content depth is approximated by open svg/math. */
+  const inForeignContent = (): boolean => (cp.tagBalance.get('svg') ?? 0) > 0 || (cp.tagBalance.get('math') ?? 0) > 0;
+  /** A self-closing tag parse5 really closes on the spot: the foreign roots
+   *  themselves (`<svg/>`) and tags inside foreign content — EXCEPT the HTML
+   *  breakout names (`<svg><div/>`: parse5 pops the svg and opens a real
+   *  div) and anything inside an HTML integration point (foreignObject /
+   *  desc / MathML text elements: HTML rules again) — oracle 5th pass. */
+  const honoursSelfClosing = (tag: string): boolean => {
+    if (tag === 'svg' || tag === 'math') return true;
+    if (!inForeignContent() || HTML_BREAKOUT_TAGS.has(tag)) return false;
+    for (const ip of HTML_INTEGRATION_POINTS) if ((cp.tagBalance.get(ip) ?? 0) > 0) return false;
+    return true;
+  };
   const applyTag = (tag: string, closing: boolean): void => {
+    // Inside a raw-text element only its own end tag is markup.
+    if (cp.rawTextOpen !== null) {
+      if (!(closing && tag === cp.rawTextOpen)) return;
+      cp.rawTextOpen = null;
+    } else if (!closing && RAW_TEXT_ELEMENTS.has(tag)) {
+      cp.rawTextOpen = tag;
+      // PLAINTEXT never ends (`</plaintext>` is text too): nothing after it
+      // can be modelled — poison from here on.
+      if (tag === 'plaintext') cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
+    }
     if (closing) {
       const count = cp.tagBalance.get(tag) ?? 0;
       if (count > 0) {
@@ -883,7 +1053,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
   // remainder is raw text. Gates fence/math opens, masking, and def
   // registration below, alongside the tag-block flag (htmlFlowSinceBlank).
   const commentOpenAtLineStart = cp.commentOpen;
-  const rawOpenAtLineStart = cp.commentOpen || cp.piOpen || cp.declOpen || cp.cdataOpen;
+  const rawOpenAtLineStart = cp.commentOpen || cp.piOpen || cp.declOpen || cp.cdataOpen || cp.bogusOpen;
 
   // --- fence state (interiors are candidate-free; paragraph resets) ---
   if (cp.inFence) {
@@ -1005,13 +1175,31 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     // Truncated closes that never got their `>` stay UNAPPLIED (see the
     // field doc): the element remains counted — over-block, never under.
     cp.pendingTruncatedCloses = [];
+    // Still inside a QUOTED attribute value at the blank: micromark ends the
+    // html block here, but parse5's tokenizer stays in the value — the
+    // paragraph text after the blank goes in as characters (not tokenized)
+    // and the NEXT raw node's bytes are eaten up to the closing quote. Which
+    // grammar wins where is not modelled: poison (over-block). `outside` /
+    // unquoted at the blank keep the classic behaviour (the pending close is
+    // dropped, the element stays counted).
+    if (cp.tagAcrossLines && (cp.tagAcrossLinesState === '"' || cp.tagAcrossLinesState === "'")) {
+      cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
+    }
     cp.tagAcrossLines = false;
+    cp.tagAcrossLinesState = 'outside';
+    // Same for a bogus comment left open: the block ended, the tokenizer
+    // has not — poison and reset.
+    if (cp.bogusOpen) {
+      cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
+      cp.bogusOpen = false;
+    }
     cp.blankRun += 1;
     cp.lastBlankStart = ln.start;
     cp.candidates.push({
       offset: Math.min(ln.end + 1, text.length),
       blankRun: cp.blankRun,
-      htmlBalanced: cp.openTotal === 0 && !cp.commentOpen && !cp.piOpen && !cp.declOpen && !cp.cdataOpen,
+      htmlBalanced:
+        cp.openTotal === 0 && !cp.commentOpen && !cp.piOpen && !cp.declOpen && !cp.cdataOpen && !cp.bogusOpen,
       hazard: cp.hazardVerdict,
       seamRisk: cp.htmlSeamPending,
       defListSettled: null,
@@ -1266,7 +1454,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
       pos = c + 3;
       continue;
     }
-    if (cp.declOpen) {
+    if (cp.declOpen || cp.bogusOpen) {
       const c = scanText.indexOf('>', pos);
       if (c === -1) {
         rawSpans.push([pos, scanText.length]);
@@ -1274,6 +1462,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
       }
       rawSpans.push([pos, c + 1]);
       cp.declOpen = false;
+      cp.bogusOpen = false;
       pos = c + 1;
       continue;
     }
@@ -1283,10 +1472,20 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     // `<![CDATA[` (third char '[') never match this.
     const dm = scanText.slice(pos).search(/<![A-Za-z]/);
     const decl = dm === -1 ? -1 : pos + dm;
-    const starts = [pi, cd, decl].filter((x) => x !== -1);
+    // parse5 bogus comment openers — only where the bytes are raw to it (a
+    // real html-flow run); in a paragraph `<!` / `</` are literal text that
+    // never reaches the tokenizer. `<!` + letter is the declaration above
+    // (same "until `>`" shape); `<!--` / `<![CDATA[` are their own constructs.
+    const bm = cp.htmlFlowReal ? scanText.slice(pos).search(/<!(?!--|[A-Za-z]|\[CDATA\[)|<\/(?![A-Za-z])/) : -1;
+    const bogus = bm === -1 ? -1 : pos + bm;
+    const starts = [pi, cd, decl, bogus].filter((x) => x !== -1);
     if (starts.length === 0) break;
     const first = Math.min(...starts);
-    if (first === cd) {
+    if (first === bogus) {
+      rawSpans.push([bogus, bogus + 2]);
+      cp.bogusOpen = true;
+      pos = bogus + 2;
+    } else if (first === cd) {
       rawSpans.push([cd, cd + 9]);
       cp.cdataOpen = true;
       pos = cd + 9;
@@ -1331,19 +1530,26 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     // De-indent below the truncated line: possibly out of the container
     // (see `tagAcrossLinesIndent`) — over-block either way.
     if (ln.indent < cp.tagAcrossLinesIndent) poisonRawDivergence();
-    const gt = ln.text.indexOf('>');
+    // Walk the RAW line with parse5's attribute-area state: a `>` inside a
+    // quoted value is a value byte (`<hr title="\n<p></div>` — r2 P1-2: the
+    // first `>` used to end the tag and `</div>` closed the outer div), and
+    // a value whose quotes pair on this line is ordinary (`<div\n
+    // class="a">` — r2 P2-3: any quote before the `>` used to poison the
+    // whole stream, freezing 0.4% of a document instead of 96%).
+    const attrs = { state: cp.tagAcrossLinesState };
+    const gt = scanTagAttrs(ln.text, 0, ln.text.length, attrs);
     if (gt === -1) {
+      // Line ending: ends an unquoted value, is a byte inside a quoted one.
+      scanTagAttrs('\n', 0, 1, attrs);
+      cp.tagAcrossLinesState = attrs.state;
       skipTagScan = true;
     } else {
-      // A quote before the `>`: parse5 is inside an attribute value where
-      // `>` does not end the tag — which `>` really ends it is unknowable
-      // here. Poison the candidates from this line on (over-block).
-      if (/["']/.test(ln.text.slice(0, gt))) poisonRawDivergence();
       // The `>` completes the pending truncated CLOSE (parse5 emits the end
       // tag there); a truncated OPEN was already counted at its line.
       for (const tag of cp.pendingTruncatedCloses) applyTag(tag, true);
       cp.pendingTruncatedCloses = [];
       cp.tagAcrossLines = false;
+      cp.tagAcrossLinesState = 'outside';
       tagText = ' '.repeat(gt + 1) + tagText.slice(gt + 1);
     }
   }
@@ -1352,6 +1558,9 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     let m: RegExpExecArray | null;
     let lastCommentOpenerIdx = -1;
     while ((m = TAG_OR_COMMENT_RE.exec(tagText)) !== null) {
+      // Raw-text element content: comment tokens are text too; tags go
+      // through applyTag, which admits only the element's own end tag.
+      if (cp.rawTextOpen !== null && (m[0] === '<!--' || m[0] === '-->' || m[0] === '--!>')) continue;
       if (m[0] === '<!--') {
         const next = tagText.slice(m.index + 4, m.index + 6);
         if (cp.commentOpen) {
@@ -1393,7 +1602,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
       const tag = m[2].toLowerCase();
       if (TABLE_PART_NAMES.has(tag)) cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start + m.index);
       const selfClosing = m[3] !== undefined && /\/\s*$/.test(m[3]);
-      if (VOID_TAGS.has(tag) || selfClosing) continue;
+      if (VOID_TAGS.has(tag) || (selfClosing && honoursSelfClosing(tag))) continue;
       applyTag(tag, closing);
     }
     // A comment opener that is NOT the line's first token and fails to
@@ -1432,7 +1641,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
         const tag = mr[2].toLowerCase();
         if (TABLE_PART_NAMES.has(tag)) cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start + mr.index);
         const selfClosing = mr[3] !== undefined && /\/\s*$/.test(mr[3]);
-        if (VOID_TAGS.has(tag) || selfClosing) continue;
+        if (VOID_TAGS.has(tag) || (selfClosing && honoursSelfClosing(tag))) continue;
         applyTag(tag, closing);
       }
     }
@@ -1446,7 +1655,12 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     }
     // Line-truncated tag start — anchor on the LAST `<` of the line.
     if (!cp.commentOpen) {
-      const lastLt = tagText.lastIndexOf('<');
+      let lastLt = -1;
+      TAG_START_LT_RE.lastIndex = 0;
+      for (let ms = TAG_START_LT_RE.exec(tagText); ms !== null; ms = TAG_START_LT_RE.exec(tagText)) {
+        lastLt = ms.index;
+        TAG_START_LT_RE.lastIndex = ms.index + 1;
+      }
       if (lastLt !== -1 && !tagText.includes('>', lastLt)) {
         const m2 = TRUNCATED_TAG_RE.exec(tagText.slice(lastLt));
         if (m2) {
@@ -1459,6 +1673,11 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
           if (cp.htmlFlowReal) {
             cp.tagAcrossLines = true;
             cp.tagAcrossLinesIndent = ln.indent;
+            // Where parse5 stands after this line's attribute bytes + the
+            // line ending (m2[3] holds them; no `>` in there by construction).
+            const attrs = { state: 'outside' as TagAttrState };
+            scanTagAttrs(m2[3] + '\n', 0, m2[3].length + 1, attrs);
+            cp.tagAcrossLinesState = attrs.state;
           }
           if (closing) {
             // Never counted on the spot (2026-08-19 review P1: `para </style`

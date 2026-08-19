@@ -394,6 +394,22 @@ y$ which spans lines`;
     expect(preprocessLaTeX(info)).toBe('``` js `x`\n$$x^2$$');
   });
 
+  test('2026-08-19 review r2 P1-1: display `$$` delimiters honour `\\$` escapes', () => {
+    // `\$` + `$` is not a display opener — it used to pair with the real
+    // `$$` far below and rewrite every `|` of the table in between.
+    const doc = 'Cost \\$$x$ each.\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\n$$\nE = mc^2\n$$\n';
+    expect(preprocessLaTeX(doc)).toBe(doc);
+    // `\$$` is not a closer either.
+    expect(preprocessLaTeX('$$ a | b \\$$ c $$\n')).toBe('$$ a \\vert{} b \\$$ c $$\n');
+    // Real display blocks still escape pipes.
+    expect(preprocessLaTeX('$$\na | b\n$$\n')).toBe('$$\na \\vert{} b\n$$\n');
+    // Same lexicon as findUnclosedDelimiterStart: `$$$$` is an EMPTY display
+    // (the `|` after it is outside), an even backslash run does not escape.
+    expect(preprocessLaTeX('a $$$$ |b')).toBe('a $$$$ |b');
+    expect(preprocessLaTeX('a \\\\$$b|c$$ d')).toBe('a \\\\$$b\\vert{}c$$ d');
+    expect(preprocessLaTeX('\\$$$x|y$$ z')).toBe('\\$$$x\\vert{}y$$ z');
+  });
+
   test('2026-08-19 review P2-2: a code span cannot cross a blank line — lone backticks in different paragraphs stay literal', () => {
     // Two paragraphs each holding one stray backtick: CommonMark never pairs
     // them, so the math between them is live and converts.

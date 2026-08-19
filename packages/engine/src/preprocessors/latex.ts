@@ -299,8 +299,25 @@ const NO_ESCAPED_DOLLAR_REGEX = /(?<![\\$])\$(?!\$)/g;
 // - \[...\]( (markdown link)
 const DELIMITERS_REGEX = /(?<!!)\\\[([\S\s]*?[^\\])\\](?!\()|\\\((.*?)\\\)/g;
 const ARRAY_COL_SPEC_OR_PIPE_REGEX = /(\\begin\{(?:array|tabular[x*]?)\}\{[^}]*\})|(?<!\\)\|/g;
-// Display $$ allows multiline; inline $ forbids newlines (consistent with SINGLE_DOLLAR_REGEX)
-const LATEX_BLOCK_REGEX = /\$\$([\S\s]*?)\$\$|(?<![\\$])\$(?!\$)((?:[^$\n]|\\\$)*?)(?<![\\`])\$(?!\$)/g;
+// Display $$ allows multiline; inline $ forbids newlines (consistent with SINGLE_DOLLAR_REGEX).
+// Both display delimiters use EXACTLY the delimiter lexicon of
+// findUnclosedDelimiterStart / isEscapedByBackslashRun: a `$$` preceded by
+// an EVEN run of backslashes (zero included) is a delimiter, an odd run
+// escapes it — nothing else matters, in particular not a preceding `$`
+// (`$$$$` is an empty display, `\$$$x$$` opens at the second `$`). The
+// incremental wrapper freezes on that lexicon's verdict, so any other rule
+// here diverges from it: the old escape-blind opener let `Cost \$$x$ … |
+// table |` pair with a `$$` far below and rewrite the table's pipes
+// (2026-08-19 review r2 P1-1), and a `(?<![\\$])` guard disagreed on `$$$$`
+// / `\$$$` (oracle re-check). Inline stays as it was (line-local; the cut is
+// a line start, so it cannot pair across a freeze).
+const EVEN_BACKSLASHES = String.raw`(?<=(?:^|[^\\])(?:\\\\)*)`;
+const LATEX_BLOCK_REGEX = new RegExp(
+  String.raw`${EVEN_BACKSLASHES}\$\$([\S\s]*?)${EVEN_BACKSLASHES}\$\$|(?<![\\$])\$(?!\$)((?:[^$\n]|\\\$)*?)(?<![\\` +
+    '`' +
+    String.raw`])\$(?!\$)`,
+  'g'
+);
 const TEXT_COMMAND = '\\text{';
 const SINGLE_DOLLAR_REGEX = /(?<![\\$])\$(?!\$)((?:[^$\n]|\\[$])+?)(?<!\\)(?<!`)\$(?!\$)/g;
 

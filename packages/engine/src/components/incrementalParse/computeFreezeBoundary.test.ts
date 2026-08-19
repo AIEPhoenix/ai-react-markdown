@@ -194,6 +194,68 @@ describe('computeFreezeBoundary — raw HTML blockers', () => {
     }
   });
 
+  test('2026-08-19 review r2: attribute quotes across lines, bogus comments, raw-text elements, lone CR', () => {
+    // r2 P1-2 — dangling open quote: the next line's `>` is a value byte.
+    expect(computeFreezeBoundary('<div>\n<hr title="\n<p></div>\n\ntail\n\nzzz', OFF)).toBe(0);
+    // r2 P2-3 — paired quotes on the continuation line: NOT poisoned, the
+    // stream keeps freezing.
+    const paired = '# T\n\n<div\n  class="a">\ncontent\n</div>\n\ntail para\n\nzzz';
+    expect(computeFreezeBoundary(paired, OFF)).toBe(paired.indexOf('zzz'));
+    // r2 P1-3 — bogus comment eats the `</div>`.
+    for (const doc of [
+      '<div>\n<!\n</div>\n\ntail\n\nzzz',
+      '<div>\n</\n</div>\n\ntail\n\nzzz',
+      '<div>\n<//\n</div>\n\ntail\n\nzzz',
+    ]) {
+      expect(computeFreezeBoundary(doc, OFF), doc).toBe(0);
+    }
+    // …but in a paragraph `<!` is text and the next `<div>` is a real open.
+    expect(computeFreezeBoundary('</i\n<!\n<div>\n\ntail\n\nzzz', OFF)).toBe(0);
+    // r2 P1-4 — RCDATA/RAWTEXT content: `</div>` inside `<title>` is text.
+    for (const doc of [
+      '<div>\n<title>\n</div>\n</title>\n\ntail\n\nzzz',
+      '<div>\n<iframe>\n</div>\n</iframe>\n\ntail\n\nzzz',
+    ]) {
+      expect(computeFreezeBoundary(doc, OFF), doc).toBe(0);
+    }
+    // Inline: the `</div>` inside `<title>` is text; the closed title is
+    // balanced, so the boundary reaches the `<div>` (open from there on).
+    const inlineTitle = 'para <title>x</div>y</title> z\n\n<div>\n\ntail\n\nzzz';
+    expect(computeFreezeBoundary(inlineTitle, OFF)).toBe(inlineTitle.indexOf('<div>'));
+    const titleClosed = '<title>a</title>\n\ntail\n\nzzz';
+    expect(computeFreezeBoundary(titleClosed, OFF)).toBe(titleClosed.indexOf('zzz'));
+    // r2 P1-5 — lone CR ends a line: the fence / math opener after `a\r`
+    // is seen, and no candidate lands inside the open block.
+    expect(computeFreezeBoundary('a\r```\ncode\n\ntail\n\nzzz', OFF)).toBe(0);
+    expect(computeFreezeBoundary('a\r$$\nx\n\ntail\n\nzzz', OFF)).toBe(0);
+    const crDoc = 'para one\r\rpara two\r\rzzz';
+    expect(computeFreezeBoundary(crDoc, OFF)).toBe(crDoc.indexOf('zzz'));
+    // A lone `\r` as the LAST byte is not a confirmed ending (a `\n` may follow).
+    expect(computeFreezeBoundary('para one\n\npara two\r', OFF)).toBe('para one\n\n'.length);
+  });
+
+  test('oracle re-check of r2: `<div/>` opens (parse5 ignores the flag on non-void), `<div a=<` is an open, plaintext poisons', () => {
+    expect(computeFreezeBoundary('<div/>\n\ntail\n\nzzz', OFF)).toBe(0);
+    // `<title/>` opens RCDATA: the `</div>` inside is text, `</title>` closes it — balanced after.
+    const titleSc = '<title/>\n</div>\n</title>\n\ntail\n\nzzz';
+    expect(computeFreezeBoundary(titleSc, OFF)).toBe(titleSc.indexOf('zzz'));
+    expect(computeFreezeBoundary('<div>\n<title/>\n</div>\n</title>\n\ntail\n\nzzz', OFF)).toBe(0);
+    // Foreign content honours self-closing: balanced.
+    const svg = '<svg><circle/></svg>\n\ntail\n\nzzz';
+    expect(computeFreezeBoundary(svg, OFF)).toBe(svg.indexOf('zzz'));
+    const svgRoot = '<svg/>\n\ntail\n\nzzz';
+    expect(computeFreezeBoundary(svgRoot, OFF)).toBe(svgRoot.indexOf('zzz'));
+    // HTML breakout / integration point inside svg: HTML rules — `<div/>` opens.
+    expect(computeFreezeBoundary('<svg><div/></svg>\n\ntail\n\nzzz', OFF)).toBe(0);
+    expect(computeFreezeBoundary('<svg><foreignObject><div/></foreignObject></svg>\n\ntail\n\nzzz', OFF)).toBe(0);
+    // `<` inside the attribute area: the tag-name `<` is the anchor.
+    expect(computeFreezeBoundary('<div>\n<div a=<\n</div>\n\ntail\n\nzzz', OFF)).toBe(0);
+    // …prose with two truncated shapes still reverts at the blank.
+    const prose = 'compare a<b c<d\n\nnext\n\nzzz';
+    expect(computeFreezeBoundary(prose, OFF)).toBe(prose.indexOf('zzz'));
+    expect(computeFreezeBoundary('<div>\n<plaintext>\n</plaintext>\n</div>\n\ntail\n\nzzz', OFF)).toBe(0);
+  });
+
   test('v2.4.0 review R2: a truncated tag is not reverted when the raw line closes it inside a masked span, and its seam is still checked', () => {
     // (a) `<div x="\`">b\``: micromark parses the tag first (the backtick
     // is inside a quoted attribute), so the code-span mask hid the tag's

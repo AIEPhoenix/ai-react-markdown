@@ -663,6 +663,105 @@ describe('splice equivalence — adversarial fixtures', () => {
     }
   });
 
+  test('2026-08-19 review r2 P1-2/P2-3: quotes across the line ending follow parse5 attribute-value state', () => {
+    for (const [name, payload] of [
+      // Dangling open quote: the next line's `>` is a value byte, `</div>`
+      // there does not close the outer div (r2 P1-2 — regression of the
+      // first F1 fix, which ended the tag at the first `>`).
+      ['dangling-quote-hr', '<div>\n<hr title="\n<p></div>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['dangling-quote-span', '<div>\n<span class="\n</div>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['dangling-quote-closes-later', '<div>\n<hr title="\n<p></div>\n\ntail para\n\n">\n\nmore.\n\nzzz end.\n'],
+      // Paired quotes on the continuation line are ordinary (r2 P2-3: any
+      // quote used to poison the whole stream).
+      ['paired-quotes', '# T\n\n<div\n  class="a">\ncontent\n</div>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      [
+        'paired-quotes-gt-inside',
+        '<div\n  class=\'a\' data-x="b>c">\ncontent\n</div>\n\ntail para\n\nmore.\n\nzzz end.\n',
+      ],
+      ['unquoted-value', '<div\n  class=a>\ncontent\n</div>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['unquoted-value-eol', '<div\n  class=a\n>\ncontent\n</div>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['quote-in-name-position', '<div>\n</div\n"x">\n\ntail para\n\nmore.\n\nzzz end.\n'],
+    ] as const) {
+      for (const size of [1, 4, 7]) assertStreamEquivalence(name, chunkSnapshots(payload, size), BASELINE);
+    }
+  });
+
+  test('oracle re-check of r2: self-closing syntax on non-void elements, `<` in the attribute area, plaintext', () => {
+    for (const [name, payload] of [
+      // parse5 ignores the self-closing flag on non-void HTML elements: `<div/>` OPENS.
+      ['selfclose-div', '<div/>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['selfclose-div-attr', '<div class="x"/>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['selfclose-title', '<title/>\n</div>\n</title>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['selfclose-p', '<p/>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      // …but foreign content and the foreign roots honour it.
+      ['selfclose-svg-child', '<svg><circle/></svg>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['selfclose-svg-root', '<svg/>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['selfclose-math-child', '<math><mi/></math>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      // …HTML breakout names and integration points inside foreign content
+      // are HTML again: `<div/>` there OPENS.
+      ['selfclose-svg-breakout', '<svg><div/></svg>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      [
+        'selfclose-foreignobject',
+        '<svg><foreignObject><div/></foreignObject></svg>\n\ntail para\n\nmore.\n\nzzz end.\n',
+      ],
+      // Attribute bytes may hold `<`: the truncated-tag anchor is the last
+      // `<` that starts a NAME, so `<div a=<` is still the open it is.
+      ['lt-in-attrs', '<div>\n<div a=<\n</div>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['lt-in-quoted-attr', '<div>\n<span x="<\n</div>\n">\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      // PLAINTEXT never ends.
+      ['plaintext', '<div>\n<plaintext>\n</plaintext>\n</div>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+    ] as const) {
+      for (const size of [1, 4, 7]) assertStreamEquivalence(name, chunkSnapshots(payload, size), BASELINE);
+    }
+  });
+
+  test('2026-08-19 review r2 P1-3: parse5 bogus comments (`<!` / `</` + non-letter) eat to the next `>`', () => {
+    for (const [name, payload] of [
+      ['bogus-bang', '<div>\n<!\n</div>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['bogus-bang-dash', '<div>\n<!-\n</div>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['bogus-slash', '<div>\n</\n</div>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['bogus-double-slash', '<div>\n<//\n</div>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['bogus-same-line', '<div>\n<! x > </div>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      // Left open at the blank: poisoned (micromark ended the block, parse5
+      // is still eating) — the later `</div>` must not release a candidate.
+      ['bogus-open-at-blank', '<div>\n<!\n\ntail para\n\n</div>\n\nmore.\n\nzzz end.\n'],
+      // In a paragraph `<!` is text and the next line's `<div>` is real.
+      ['bogus-in-paragraph', '</i\n<!\n<div>\n\ntail para\n\nmore.\n\nzzz end.\n'],
+    ] as const) {
+      for (const size of [1, 4, 7]) assertStreamEquivalence(name, chunkSnapshots(payload, size), BASELINE);
+    }
+  });
+
+  test('2026-08-19 review r2 P1-4: RAWTEXT / RCDATA elements in the type-6 list hold text, not tags', () => {
+    for (const [name, payload] of [
+      ['rawtext-title', '<div>\n<title>\n</div>\n</title>\n\nt p\n\nm.\n'],
+      ['rawtext-iframe', '<div>\n<iframe>\n</div>\n</iframe>\n\nt p\n\nm.\n'],
+      ['rawtext-noframes', '<div>\n<noframes>\n</div>\n</noframes>\n\nt p\n\nm.\n'],
+      ['rawtext-xmp', '<div>\n<xmp>\n</div>\n</xmp>\n\nt p\n\nm.\n'],
+      ['rawtext-inline', 'para <title>x</div>y</title> z\n\n<div>\n</div>\n\nt p\n\nm.\n'],
+      ['rawtext-comment-inside', '<title>\n<!-- c\n</title>\n\nt p\n\nm.\n\nz.\n'],
+      ['rawtext-uppercase', '<div>\n<TITLE>\n</div>\n</TITLE>\n\nt p\n\nm.\n'],
+    ] as const) {
+      for (const size of [1, 4, 7]) assertStreamEquivalence(name, chunkSnapshots(payload, size), BASELINE);
+    }
+  });
+
+  test('2026-08-19 review r2 P1-5: a lone CR is a line ending to the SCANNER too', () => {
+    for (const [name, payload] of [
+      // `a\r` + fence opener: one scanner line hid the opener (a candidate
+      // landed inside the open code block).
+      ['cr-fence', 'a\r```\ncode\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['cr-math', 'a\r$$\nx=1\n\ntail para\n\nmore.\n\nzzz end.\n'],
+      ['cr-only-doc', 'a\r\r```\rcode\r\r\rtail para\r\rmore.\r\rzzz end.\r'],
+      ['cr-heading-list', '# h\r- x\n\npara\n\nmore\n\nzzz.\n'],
+      ['cr-html', '<div>\r</div>\r\rpara\r\rmore\r\rzzz.\r'],
+      ['cr-def', '[a]:\r/u\n\n[a]\n\nmore\n\nzzz.\n'],
+      ['cr-quote', 'a\r> q\n\npara\n\nmore\n\nzzz.\n'],
+    ] as const) {
+      for (const size of [1, 4, 7]) assertStreamEquivalence(name, chunkSnapshots(payload, size), BASELINE);
+    }
+  });
+
   test('duplicate label: prefix def wins over a later tail def (first-def-wins)', () => {
     const payload =
       '[a]: https://first.example\n\nuse [text][a] here.\n\nfiller paragraph.\n\n[a]: https://second.example\n\ntail.\n';

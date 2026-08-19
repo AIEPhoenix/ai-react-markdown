@@ -230,6 +230,33 @@ describe('createIncrementalLatexPreprocessor — failed-freeze backoff and blank
     expect(frozen).toBeGreaterThan(PARA.length * 18 + block.length);
   });
 
+  test('r2 P1-1: an escaped `\\$` next to a `$` never freezes as a display opener', () => {
+    // The escape-blind display opener paired with the `$$` arriving later
+    // and rewrote the frozen `|` — 8-byte counterexample.
+    replay(['\\$$|$\n', '$$']);
+    replay(['Cost \\$$x$ each.\n\n| a | b |\n| --- | --- |\n\n', '$$\nE\n$$\n']);
+    // The display delimiter lexicon must be EXACTLY findUnclosedDelimiterStart's
+    // (even backslash run = delimiter; a preceding `$` is irrelevant): a
+    // `(?<![\\$])` guard disagreed on these (oracle re-check).
+    for (const doc of [
+      'a $$$$ |b\n\n$$',
+      '\\$$$x$$ a|b\n\n$$',
+      '$$a|\\$$$ b\n\n$$',
+      '$$a\\$$$|b\n\n$$',
+      '$$$$|\n\n$$',
+      'aaa$$$$  |\n\n$$$$\n\n',
+      '$$|a\\\\$$$\n\n$$x^2 a|',
+      '$$$\\\\$$$$|\\\\\\\\ \n\nx^2$$\\\\\\\\',
+      'a \\\\$$b|c$$ d\n\n$$',
+    ]) {
+      for (const size of [1, 2, 3]) {
+        const chunks: string[] = [];
+        for (let i = 0; i < doc.length; i += size) chunks.push(doc.slice(i, i + size));
+        replay(chunks);
+      }
+    }
+  });
+
   test('backoff resets on non-append input', () => {
     let attempts = 0;
     const incremental = createIncrementalLatexPreprocessor({ freezeThreshold: 0, onAttempt: () => attempts++ });

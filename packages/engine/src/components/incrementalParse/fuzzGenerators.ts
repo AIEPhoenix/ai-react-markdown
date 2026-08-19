@@ -182,6 +182,16 @@ const rawTextBlockArb = fc.constantFrom(
   '<pre>\n<div>pre content</div>\n</pre>',
   "<script>alert('<div>')</script> same-line close"
 );
+/** parse5 RAWTEXT / RCDATA elements that sit in the CommonMark type-6 list
+ *  (no hazardVerdict): their content is TEXT to parse5 — a `</div>` inside
+ *  must not close anything (2026-08-19 review r2 P1-4). */
+const rawTextElementArb = fc.constantFrom(
+  '<div>\n<title>\n</div>\n</title>',
+  '<div>\n<iframe>\n</div>\n</iframe>',
+  '<div>\n<noframes>\n<!-- c -->\n</div>\n</noframes>',
+  '<div>\n<xmp>\n</div>\n</xmp>',
+  'para <title>x</div>y</title> z'
+);
 
 /**
  * parse5 tree-construction quirks no generator carried (v2.4.2 review P1):
@@ -224,9 +234,28 @@ const crossLineTagGarbageArb = fc.constantFrom(
   '- a\n  </div\n<div>\n\ntail para'
 );
 
+/** Second review round (2026-08-19 r2): quotes and bogus comments across
+ *  the line ending — its own family so the meters see enough of each. */
+const crossLineQuoteBogusArb = fc.constantFrom(
+  // Dangling OPEN quote at the line ending (r2 P1-2): the next line's `>`
+  // is a value byte; the outer element stays open.
+  '<div>\n<hr title="\n<p></div>\n\ntail para',
+  '<div>\n<span class="\n</div>\n\ntail para',
+  // Attributes on the next line with PAIRED quotes: ordinary (r2 P2-3).
+  '<div\n  class="a" data-x=\'b\'>\ncontent\n</div>\n\ntail para',
+  '<div\n  title=">"\n>\ncontent\n</div>\n\ntail para',
+  // parse5 bogus comments (r2 P1-3): `<!` / `</` + non-letter eat to `>`.
+  '<div>\n<!\n</div>\n\ntail para',
+  '<div>\n<!-\n</div>\n\ntail para',
+  '<div>\n</\n</div>\n\ntail para',
+  '<div>\n<//\n</div>\n\ntail para',
+  '<div>\n<! x > </div>\n\ntail para'
+);
+
 const rawHtmlArb = fc.oneof(
   { weight: 1, arbitrary: treeQuirkArb },
   { weight: 2, arbitrary: crossLineTagGarbageArb },
+  { weight: 2, arbitrary: crossLineQuoteBogusArb },
   { weight: 2, arbitrary: fc.constant('<details>\n<summary>t</summary>\nbody prose\n</details>') },
   // APPROX #2 — cross-line self-closing tag stays an over-blocking opener.
   { weight: 2, arbitrary: fc.constant('<embed\n  src="x"\n/>') },
@@ -236,6 +265,7 @@ const rawHtmlArb = fc.oneof(
   { weight: 2, arbitrary: fc.constant('<!-- a closed comment -->') },
   { weight: 2, arbitrary: overlapSettledArb },
   { weight: 1, arbitrary: rawTextBlockArb },
+  { weight: 1, arbitrary: rawTextElementArb },
   // Unsettled openers (the assembler may close them later or leave them).
   { weight: 4, arbitrary: fc.constantFrom('<details>', '<!--', '<div') },
   { weight: 2, arbitrary: overlapTerminatorArb }
@@ -336,7 +366,10 @@ const hazardBlockArb = fc.oneof(
 
 // --- document assembly ----------------------------------------------------------
 
-const sepArb = fc.constantFrom('\n\n', '\n\n', '\n\n', '\n\n\n', '\n');
+// Lone `\r` and CRLF are line endings to micromark too (r2 P1-5: the
+// scanner split on `\n` only and a fence opener after `a\r` hid inside a
+// paragraph line) — a few of the seams carry them.
+const sepArb = fc.constantFrom('\n\n', '\n\n', '\n\n', '\n\n\n', '\n', '\r\r', '\r\n\r\n', '\r', '\r\n');
 
 /**
  * Assemble blocks into a document. Unsettled raw-HTML openers are CLOSED by
@@ -445,6 +478,10 @@ export const COVERAGE_MARKERS: Record<string, RegExp> = {
   proseTruncatedClose: /<\/b\n/,
   crossLineTagGarbage:
     /<\/(?:div|summary|br|span)\n<\/(?:div|details)>|<br\n<\/div>|title=">"\n|class="x"\n<\/div>|<\/i\n<|<br\n<div>|<\/textarea\n<!--|- a\n {2}<\/div\n<div>/,
+  danglingQuote: /<(?:hr title|span class)="\n/,
+  bogusComment: /<div>\n(?:<!|<!-|<\/|<\/\/)\n<\/div>|<! x > /,
+  rawTextElement: /<(?:title|iframe|noframes|xmp)>/,
+  loneCr: /\r(?!\n)/,
   reviewShapes: /<!-- c --> <\/s>|<\?x\?><details>|<\/t>\ntext|<details> <\?php|x="`">b`/,
   treeQuirks: /<\/br>|<\/p>|<td>s<\/td>\n\n|<col>/,
   unicodeBlank: /\n[\u3000\u00a0]\n|```\u00a0\n|\$\$\u3000\n|"t"\u00a0|\u3000<!--/,
