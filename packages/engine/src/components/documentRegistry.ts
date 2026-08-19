@@ -152,13 +152,23 @@ export interface RegistryInternal extends Registry {
    *  keeps the version monotonic-by-1-per-mount which makes debugging
    *  easier). The granular `allocateSymbol` / `contributeLabels` methods
    *  remain available for tests that need to exercise each step. */
-  registerChunk(reactId: string, footnotes: Set<string>, links: Set<string>): symbol;
-  allocateSymbol(reactId: string): symbol;
+  registerChunk(reactId: string, footnotes: Set<string>, links: Set<string>, documentIndex?: number): symbol;
+  /** `documentIndex` — the chunk's position in the DOCUMENT (not its mount
+   *  order). Without it a chunk joins `chunkOrder` at the end, which is
+   *  wrong for any list that unmounts and remounts chunks: a virtualized
+   *  transcript scrolling back re-registers an earlier chunk after the ones
+   *  still mounted, and footnote numbering plus "which chunk renders the
+   *  aggregate footer" follow that order (2026-08-19 review r2 P2-10).
+   *  Chunks that supply an index are kept sorted by it; chunks without one
+   *  keep mount order after them. */
+  allocateSymbol(reactId: string, documentIndex?: number): symbol;
   releaseSymbol(reactId: string): void;
   contributeLabels(symbol: symbol, footnotes: Set<string>, links: Set<string>): void;
   contributeChunkData(symbol: symbol, data: ChunkData): void;
 
   _reactIdMap: Map<string, { symbol: symbol; refcount: number }>;
+  /** Symbol → the `documentIndex` its chunk supplied (see allocateSymbol). */
+  _chunkIndex: Map<symbol, number>;
   _subscribers: Set<() => void>;
   _notifyScheduled: boolean;
   _notify(): void;
@@ -185,10 +195,12 @@ export function createRegistry(onEmpty?: () => void): RegistryInternal {
     labelSet: { footnoteLabels: new Set<string>(), linkLabels: new Set<string>() },
     version: 0,
     _reactIdMap: new Map<string, { symbol: symbol; refcount: number }>(),
+    /** Symbol → its `documentIndex`, for chunks that supplied one. */
+    _chunkIndex: new Map<symbol, number>(),
     _subscribers: new Set<() => void>(),
     _notifyScheduled: false,
 
-    allocateSymbol(reactId: string): symbol {
+    allocateSymbol(reactId: string, documentIndex?: number): symbol {
       const existing = this._reactIdMap.get(reactId);
       if (existing) {
         existing.refcount++;
@@ -196,17 +208,35 @@ export function createRegistry(onEmpty?: () => void): RegistryInternal {
       }
       const sym = Symbol(reactId);
       this._reactIdMap.set(reactId, { symbol: sym, refcount: 1 });
-      this.chunkOrder.push(sym);
+      if (documentIndex === undefined) {
+        // Mount order — the historical behaviour, and correct whenever
+        // chunks mount once in document order.
+        this.chunkOrder.push(sym);
+      } else {
+        this._chunkIndex.set(sym, documentIndex);
+        // Insert before the first chunk that sits later in the document.
+        // A chunk WITHOUT an index counts as "later" so an indexed chunk
+        // never lands behind one whose position is unknown.
+        let at = this.chunkOrder.length;
+        for (let i = 0; i < this.chunkOrder.length; i++) {
+          const other = this._chunkIndex.get(this.chunkOrder[i]);
+          if (other === undefined || other > documentIndex) {
+            at = i;
+            break;
+          }
+        }
+        this.chunkOrder.splice(at, 0, sym);
+      }
       this._notify();
       return sym;
     },
 
-    registerChunk(reactId: string, footnotes: Set<string>, links: Set<string>): symbol {
+    registerChunk(reactId: string, footnotes: Set<string>, links: Set<string>, documentIndex?: number): symbol {
       // Composition of allocateSymbol + contributeLabels. Both `_notify`
       // calls coalesce into a single microtask wake-up, so the perf
       // shape is the same as the granular pair — the API just expresses
       // the canonical "register one chunk" intent.
-      const sym = this.allocateSymbol(reactId);
+      const sym = this.allocateSymbol(reactId, documentIndex);
       this.contributeLabels(sym, footnotes, links);
       return sym;
     },
@@ -235,6 +265,7 @@ export function createRegistry(onEmpty?: () => void): RegistryInternal {
             this._reactIdMap.delete(reactId);
             const idx = this.chunkOrder.indexOf(entry.symbol);
             if (idx !== -1) this.chunkOrder.splice(idx, 1);
+            this._chunkIndex.delete(entry.symbol);
             this.chunkData.delete(entry.symbol);
             // Rebuild labelSet from the surviving chunks. The contribute paths
             // (`contributeLabels`, `contributeChunkData`) already rebuild this

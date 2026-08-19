@@ -140,6 +140,26 @@ export interface AIMarkdownProps<TMetadata extends AIMarkdownMetadata = AIMarkdo
    */
   documentId?: string;
   /**
+   * This chunk's position in the DOCUMENT, when several `<AIMarkdown>`
+   * instances share a `documentId` inside `<AIMarkdownDocuments>`.
+   *
+   * Cross-chunk state (footnote numbering, which chunk renders the
+   * aggregate footer) follows the order chunks register in. Without this
+   * prop that is MOUNT order, which is correct as long as chunks mount once
+   * in document order — the common case, so the prop is optional and the
+   * default behaviour is unchanged.
+   *
+   * Pass it when chunks can mount out of order or remount: a **virtualized
+   * transcript** that unmounts messages scrolled out of view re-registers
+   * them at the end when they scroll back, which renumbers footnotes and
+   * moves the aggregate footer under whichever chunk registered last. Any
+   * stable per-chunk ordinal works (the message's index in your list).
+   *
+   * Ignored outside `<AIMarkdownDocuments>` (a standalone document is its
+   * own chunk 0).
+   */
+  documentIndex?: number;
+  /**
    * Override the per-attribute URL rewriter (Gate 2 of the two-gate model).
    * Runs at render time during the hast traversal in `renderHastSubtree`,
    * after Gate 1 (`rehype-sanitize` schema) has already filtered URLs by
@@ -367,6 +387,7 @@ const AIMarkdownComponent = <TMetadata extends AIMarkdownMetadata = AIMarkdownMe
   variant,
   colorScheme,
   documentId,
+  documentIndex,
   urlTransform,
   sanitizeSchema,
   streamingCursor,
@@ -478,6 +499,7 @@ const AIMarkdownComponent = <TMetadata extends AIMarkdownMetadata = AIMarkdownMe
         incrementalParse={resolvedEngine.incrementalParse}
         preserveOrphanReferences={resolvedEngine.preserveOrphanReferences}
         enginePlugins={resolvedEngine.enginePlugins}
+        documentIndex={documentIndex}
       />
       {usedStreaming && StreamingCursor ? <StreamingCursor /> : null}
     </>

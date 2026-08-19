@@ -34,6 +34,57 @@ function _readonlyContractGuard(_reg: Registry): void {
 }
 void _readonlyContractGuard;
 
+describe('documentIndex ordering (2026-08-19 review r2 P2-10)', () => {
+  test('without an index chunks keep mount order (unchanged default)', () => {
+    const r = createRegistry();
+    const a = r.allocateSymbol('a');
+    const b = r.allocateSymbol('b');
+    expect(r.chunkOrder).toEqual([a, b]);
+  });
+
+  test('a remounted chunk returns to its document position instead of the end', () => {
+    // The virtualized-transcript case: chunk A scrolls out of view, unmounts,
+    // then scrolls back while B stays mounted. With mount order alone A lands
+    // after B, which renumbers footnotes and moves the aggregate footer.
+    const r = createRegistry();
+    const a = r.allocateSymbol('a', 0);
+    const b = r.allocateSymbol('b', 1);
+    expect(r.chunkOrder).toEqual([a, b]);
+    r.releaseSymbol('a');
+    return Promise.resolve().then(() => {
+      expect(r.chunkOrder).toEqual([b]);
+      const a2 = r.allocateSymbol('a-again', 0);
+      expect(r.chunkOrder).toEqual([a2, b]);
+    });
+  });
+
+  test('out-of-order registration sorts by index', () => {
+    const r = createRegistry();
+    const c = r.allocateSymbol('c', 2);
+    const a = r.allocateSymbol('a', 0);
+    const b = r.allocateSymbol('b', 1);
+    expect(r.chunkOrder).toEqual([a, b, c]);
+  });
+
+  test('un-indexed chunks stay after indexed ones, in mount order', () => {
+    const r = createRegistry();
+    const plain = r.allocateSymbol('plain');
+    const indexed = r.allocateSymbol('indexed', 5);
+    const plain2 = r.allocateSymbol('plain2');
+    expect(r.chunkOrder).toEqual([indexed, plain, plain2]);
+  });
+
+  test('releasing an indexed chunk drops its index bookkeeping', () => {
+    const r = createRegistry();
+    const a = r.allocateSymbol('a', 0);
+    r.allocateSymbol('b', 1);
+    r.releaseSymbol('a');
+    return Promise.resolve().then(() => {
+      expect((r as unknown as { _chunkIndex: Map<symbol, number> })._chunkIndex.has(a)).toBe(false);
+    });
+  });
+});
+
 describe('Registry — Symbol allocation', () => {
   test('allocate same reactId twice returns same Symbol; refcount tracks both', () => {
     const reg = createRegistry();

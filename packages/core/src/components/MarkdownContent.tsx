@@ -102,6 +102,9 @@ interface AIMarkdownContentProps {
    * the vendored Markdown wrapper falls back to its built-in
    * `defaultUrlTransform` (https/mailto/etc. allowlist).
    */
+  /** This chunk's position in the document — see the `documentIndex` prop
+   *  on `<AIMarkdown>`. Undefined keeps registration in mount order. */
+  documentIndex?: number;
   urlTransform?: MarkdownOptions['urlTransform'];
   /**
    * Optional `rehype-sanitize` schema. When omitted, the library default
@@ -125,6 +128,9 @@ interface AIMarkdownContentProps {
 
 interface RendererProps {
   content: string;
+  /** This chunk's position in the document — see the `documentIndex` prop
+   *  on `<AIMarkdown>`. Undefined keeps registration in mount order. */
+  documentIndex?: number;
   usedComponents: AIMarkdownCustomComponents;
   remarkPlugins: RemarkPlugins;
   rehypePlugins: RehypePlugins;
@@ -157,6 +163,7 @@ interface RendererProps {
 const BlockMemoizedRenderer = memo(
   ({
     content,
+    documentIndex,
     usedComponents,
     remarkPlugins,
     rehypePlugins,
@@ -261,13 +268,13 @@ const BlockMemoizedRenderer = memo(
 
     useEffect(() => {
       if (!registry) return;
-      const s = registry.registerChunk(reactId, ownLabels.footnoteLabels, ownLabels.linkLabels);
+      const s = registry.registerChunk(reactId, ownLabels.footnoteLabels, ownLabels.linkLabels, documentIndex);
       setAllocation({ registry, sym: s });
       return () => {
         registry.releaseSymbol(reactId);
         setAllocation(null);
       };
-    }, [reactId, registry, ownLabels]);
+    }, [reactId, registry, ownLabels, documentIndex]);
 
     // G3 — synchronous deps-diff flush. Discards the per-block cache when any
     // option that affects rendered output (but not parse output) changes
@@ -941,6 +948,7 @@ LegacyRenderer.displayName = 'LegacyRenderer';
 const AIMarkdownContent = memo(
   ({
     content,
+    documentIndex,
     customComponents,
     urlTransform,
     sanitizeSchema: customSanitizeSchema,
@@ -990,6 +998,7 @@ const AIMarkdownContent = memo(
     return (
       <Renderer
         content={content}
+        documentIndex={documentIndex}
         usedComponents={usedComponents}
         remarkPlugins={remarkPlugins}
         rehypePlugins={rehypePlugins}
