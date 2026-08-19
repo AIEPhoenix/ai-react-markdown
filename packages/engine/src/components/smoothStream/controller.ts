@@ -420,13 +420,16 @@ export const createSmoothStreamController = (options: SmoothStreamOptions = {}):
     let hold = 1;
     if (!finished && ends.length > 1) {
       const last = source.charCodeAt(source.length - 1);
-      const danglingHighSurrogate = last >= 0xd800 && last <= 0xdbff;
-      // …and only when the cluster before it could actually absorb the
-      // completed character: a ZWJ sequence, an emoji modifier (`👍` + skin
-      // tone), a regional-indicator pair. All of them need a non-ASCII
-      // predecessor, so `a` + a dangling surrogate still confirms `a` on the
-      // spot (pinned above).
-      if (danglingHighSurrogate && source.charCodeAt(ends[ends.length - 2] - 1) > 0x7f) hold = 2;
+      // The completed character may merge with the cluster before the lone
+      // surrogate, so that cluster's end is not settled either. Screening the
+      // predecessor for "could it absorb this" is a trap: an earlier version
+      // required a non-ASCII predecessor, but GB9 lets ANY character take a
+      // following Extend, and the supplementary plane is full of them —
+      // `a` + U+1D165 (musical symbol) and `a` + U+E0101 (variation selector
+      // supplement) both revealed a bare `a` that the next frame merged away.
+      // Two clusters stay tentative whenever the source ends mid-pair; the
+      // cost is one cluster of extra latency for one frame.
+      if (last >= 0xd800 && last <= 0xdbff) hold = 2;
     }
     const confirmedEnds = finished ? ends : ends.slice(0, -hold);
     for (const end of confirmedEnds) pending.push(end);

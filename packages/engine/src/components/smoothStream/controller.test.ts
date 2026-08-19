@@ -130,8 +130,11 @@ describe('smoothStream controller — mechanics', () => {
     controller.update('');
     controller.update(`a${emoji[0]}`);
     advance(1_000);
-    // The dangling high surrogate is the (unconfirmed) trailing grapheme.
-    expect(controller.getVisible()).toBe('a');
+    // Ending mid-pair holds TWO clusters: the lone surrogate, and the cluster
+    // before it — the completed character may merge with it (GB9 lets any
+    // character take a following Extend, and the supplementary plane is full
+    // of them). One frame of latency; the next update releases `a`.
+    expect(controller.getVisible()).toBe('');
     controller.update(`a${emoji}b`);
     controller.finish();
     advance(1_000);
@@ -152,7 +155,22 @@ describe('smoothStream controller — mechanics', () => {
       for (const part of seg.segment(text)) ends.add(part.index + part.segment.length);
       return ends;
     };
-    for (const full of ['👩‍👧‍👦x', 'a🇺🇸🇬🇧b', '👍🏽👍', 'a😀b', '👨‍👩‍👧‍👦tail', '🇺🇸🇬🇧🇫🇷', 'x👍🏽y👩‍👧z']) {
+    for (const full of [
+      '👩‍👧‍👦x',
+      'a🇺🇸🇬🇧b',
+      '👍🏽👍',
+      'a😀b',
+      '👨‍👩‍👧‍👦tail',
+      '🇺🇸🇬🇧🇫🇷',
+      'x👍🏽y👩‍👧z',
+      // GB9: ANY character can take a following Extend, and the supplementary
+      // plane has plenty — an ASCII base merges with a musical symbol or a
+      // variation-selector supplement just the same (oracle review of 2.5.0,
+      // which is why the predecessor is no longer screened for non-ASCII).
+      'a\u{1D165}b',
+      'a\u{E0101}b',
+      '1\u{1F3FB}b',
+    ]) {
       const ends = legalBoundaries(full);
       const { controller, advance } = makeHarness(fixedRate(1_000));
       controller.update('');
@@ -204,7 +222,9 @@ describe('smoothStream controller — mechanics', () => {
     controller.update('');
     controller.update('ab\uD83D'); // lone high surrogate at the tail
     controller.flush();
-    expect(controller.getVisible()).toBe('ab');
+    // `b` is held with the lone surrogate: the completed character could
+    // merge with it (see resegmentTail).
+    expect(controller.getVisible()).toBe('a');
     controller.update('ab\uD83D\uDE00\u200D'); // 😀 + ZWJ (sequence still growing)
     controller.flush();
     expect(controller.getVisible()).toBe('ab'); // 😀‍ is one growing cluster → held

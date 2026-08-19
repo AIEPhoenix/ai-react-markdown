@@ -144,6 +144,12 @@ export interface BlockInfo {
      *  stale occurrence resolves to a null global occurrence and the mark
      *  vanishes (2026-08-19 review P2-4). Absent when the block has no refs. */
     footnoteRefLocalCtx?: string;
+    /** Baked `localUrl` / `localTitle` of swallowed `cross-chunk-link` /
+     *  `-image` placeholders, as `[[label, url, title|null]…]` (JSON). The
+     *  render falls back to these when the registry has no canonical def,
+     *  where the fingerprint's `lr:`/`ir:` part is the constant `null` —
+     *  see scanSwallowedSubtree. Absent when nothing was swallowed. */
+    swallowedDefCtx?: string;
   };
 }
 
@@ -159,6 +165,14 @@ export interface BlockCacheEntry {
   /** Mirrors {@link BlockInfo.hastDigest} — must match for raw-HTML blocks
    *  (undefined === undefined for markdown-native blocks). */
   hastDigest?: string;
+  /** Whether the cached node was rendered with the swallowed footnote
+   *  section STRIPPED (coordinated mode). Without it in the key the strip
+   *  decision is only correct by accident — it happens to co-vary with
+   *  `blockCtx` today through a three-link chain (section ⇒ hasReference ⇒
+   *  fingerprint path, and a non-empty clobberPrefix). Break any link and a
+   *  cached unstripped node would serve after registration: two
+   *  `<section data-footnotes>` with colliding li ids (oracle review, 2.5.0). */
+  strippedFootnoteSection?: boolean;
 }
 
 /** Cache entry for the synthesized footnote section (single slot, keyed by globalCtx). */
@@ -559,6 +573,8 @@ export function buildBlocks(mdast: MdastRoot, hast: HastRoot, source: string): B
     }
     // JSON-encoded: labels may hold any separator character.
     const footnoteRefLocalCtx = local.length > 0 ? JSON.stringify(local) : undefined;
+    const swallowedDefCtx =
+      swallowed !== null && swallowed.bakedDefs.length > 0 ? JSON.stringify(swallowed.bakedDefs) : undefined;
 
     const mdastPos = mdastNode.position;
     if (!mdastPos || mdastPos.start?.offset === undefined || mdastPos.end?.offset === undefined) {
@@ -585,12 +601,21 @@ export function buildBlocks(mdast: MdastRoot, hast: HastRoot, source: string): B
       hastDigest = d.digest;
       // Did the container swallow a reference or definition? The hast scan
       // above sees coordinated placeholders and standalone footnote marks,
-      // but a standalone LINK/IMAGE reference renders as a plain `<a href>` /
+      // but a STANDALONE link/image reference renders as a plain `<a href>` /
       // `<img src>` — indistinguishable from an inline link. Ask the mdast
       // instead: any taint node whose source offset lies inside the swallowed
       // extent. Without this a definition sitting BEFORE the container (thus
       // outside the digest's `[ownEnd, maxEnd)` hash) could change the
       // rendered href while every cache-key component stayed equal.
+      //
+      // What this buys, per mode: in STANDALONE mode the flag switches the
+      // key to `globalCtx`, which encodes every definition's url/title —
+      // strictly stronger. In COORDINATED mode the labels come from the
+      // placeholder scan above (every resolvable reference becomes a
+      // `cross-chunk-*` element), so this test is belt-and-braces there.
+      // `[ownEnd, maxEnd)` is half-open at the low end on purpose: anything
+      // below `ownEnd` is already covered by `raw` (mdast end offsets are
+      // exclusive), and `maxEnd` erring high only over-taints.
       for (const at of taintOffsets) {
         if (at >= mdastPos.end.offset && at < d.maxEnd) {
           swallowedTaint = true;
@@ -621,6 +646,7 @@ export function buildBlocks(mdast: MdastRoot, hast: HastRoot, source: string): B
               imageRefLabels,
               footnoteDefLabels,
               ...(footnoteRefLocalCtx !== undefined ? { footnoteRefLocalCtx } : {}),
+              ...(swallowedDefCtx !== undefined ? { swallowedDefCtx } : {}),
             },
           }
         : {}),
@@ -665,6 +691,7 @@ export function computeBlockFingerprint(
   // Chunk-local occurrence/rank baked into the placeholders (P2-4) — see
   // buildBlocks; JSON-encoded there, so label bytes cannot collide with `|`.
   if (taintLabels.footnoteRefLocalCtx !== undefined) parts.push(`fl:${taintLabels.footnoteRefLocalCtx}`);
+  if (taintLabels.swallowedDefCtx !== undefined) parts.push(`sd:${taintLabels.swallowedDefCtx}`);
   // url/title are JSON-encoded so a `|` inside them cannot collide with the
   // part separator (url `a|b` + no title ≡ url `a` + title `b` would be a
   // stale cache hit — v2.4.1 review).
@@ -705,7 +732,15 @@ function withoutFootnoteSection(el: HastElement): HastElement {
       }
       next.push(child);
     }
-    return changed ? { ...node, children: next } : node;
+    // `data` must be SHARED with the original, not left undefined on the
+    // clone: `buildTransform` stashes the pre-transform URL on
+    // `element.data.originalUrls` and recomputes from it, which is what makes
+    // urlTransform convergent across re-renders (see the contract note in
+    // markdown/Markdown.tsx). With a plain `{...node}` the `data ??= {}` lands
+    // on the throwaway clone, the stash dies with it, and the next frame reads
+    // the ALREADY-transformed value as the original — a non-idempotent
+    // transform compounds (`/x` → `/x?t` → `/x?t?t`). Oracle review of 2.5.0.
+    return changed ? { ...node, data: (node.data ??= {}), children: next } : node;
   };
   return prune(el);
 }
@@ -733,12 +768,14 @@ function scanSwallowedSubtree(el: HastElement): {
   linkLabels: string[];
   imageLabels: string[];
   local: [string, number, number][];
+  bakedDefs: [string, string, string | null][];
   hasFootnoteSection: boolean;
 } {
   const refLabels: string[] = [];
   const linkLabels: string[] = [];
   const imageLabels: string[] = [];
   const local: [string, number, number][] = [];
+  const bakedDefs: [string, string, string | null][] = [];
   let hasReference = false;
   let hasFootnoteSection = false;
   visit(el, 'element', (node: HastElement) => {
@@ -759,15 +796,28 @@ function scanSwallowedSubtree(el: HastElement): {
         const occ = Number(props.localOccurrence);
         const num = Number(props.localNumber);
         local.push([label, Number.isFinite(occ) ? occ : -1, Number.isFinite(num) ? num : -1]);
-      } else if (node.tagName === 'cross-chunk-link') linkLabels.push(label);
+        return;
+      }
+      if (node.tagName === 'cross-chunk-link') linkLabels.push(label);
       else imageLabels.push(label);
+      // `resolveDef` falls back to the placeholder's BAKED `localUrl` /
+      // `localTitle` when the registry has no canonical def — and the
+      // fingerprint writes `lr:LABEL=null` in exactly that case, a constant,
+      // so the rendered href could change while the key did not. Carry the
+      // baked pair SEPARATELY (never folded into the label, which must stay
+      // resolvable by `resolveLinkDef` so a canonical change is still
+      // tracked) — the same argument that put `footnote-sup`'s occurrence in
+      // the footprint; link/image were left asymmetric (oracle review, 2.5.0).
+      if (typeof props.localUrl === 'string') {
+        bakedDefs.push([label, props.localUrl, typeof props.localTitle === 'string' ? props.localTitle : null]);
+      }
       return;
     }
     // Standalone mode bakes footnote numbering into plain marks; their ctx
     // is the whole-document globalCtx, so the flag alone is enough.
     if (node.tagName === 'a' && props.dataFootnoteRef !== undefined) hasReference = true;
   });
-  return { hasReference, refLabels, linkLabels, imageLabels, local, hasFootnoteSection };
+  return { hasReference, refLabels, linkLabels, imageLabels, local, bakedDefs, hasFootnoteSection };
 }
 
 /**
@@ -862,6 +912,11 @@ export function renderBlocksWithCache(
     }
     const occ = bucket.length;
 
+    // Same coordinated-mode test as the top-level synthetic skip above
+    // (registry + a registered chunk Symbol): under SSR the chunk has not
+    // registered yet and the local footer is the right output.
+    const stripSection = Boolean(block.containsFootnoteSection && postOptions.registry && postOptions.thisChunkSymbol);
+
     if (block.hasReference) {
       const useFingerprint =
         postOptions.registry &&
@@ -884,7 +939,8 @@ export function renderBlocksWithCache(
         entry.startOffset === block.startOffset &&
         entry.startLine === block.startLine &&
         entry.startColumn === block.startColumn &&
-        entry.hastDigest === block.hastDigest;
+        entry.hastDigest === block.hastDigest &&
+        Boolean(entry.strippedFootnoteSection) === stripSection;
 
       let node: ReactNode;
       if (valid) {
@@ -898,15 +954,7 @@ export function renderBlocksWithCache(
         // document renders the local footer inside the container AND the
         // aggregate one (colliding li ids; r2 P2-9). Standalone renders keep
         // it where the full parse puts it.
-        node = renderHastSubtree(
-          // Same coordinated-mode test as the top-level synthetic skip above
-          // (registry + a registered chunk Symbol): under SSR the chunk has
-          // not registered yet and the local footer is the right output.
-          block.containsFootnoteSection && postOptions.registry && postOptions.thisChunkSymbol
-            ? withoutFootnoteSection(item.el)
-            : item.el,
-          postOptions
-        );
+        node = renderHastSubtree(stripSection ? withoutFootnoteSection(item.el) : item.el, postOptions);
       }
 
       bucket.push({
@@ -916,6 +964,7 @@ export function renderBlocksWithCache(
         startLine: block.startLine,
         startColumn: block.startColumn,
         hastDigest: block.hastDigest,
+        strippedFootnoteSection: stripSection,
       });
       rendered.push({ node, reactKey: item.reactKey });
       continue;
@@ -930,7 +979,8 @@ export function renderBlocksWithCache(
         entry.startOffset === block.startOffset &&
         entry.startLine === block.startLine &&
         entry.startColumn === block.startColumn &&
-        entry.hastDigest === block.hastDigest;
+        entry.hastDigest === block.hastDigest &&
+        Boolean(entry.strippedFootnoteSection) === stripSection;
       const node = valid ? entry.node : renderHastSubtree(item.el, postOptions);
       bucket.push({
         node,
@@ -939,6 +989,7 @@ export function renderBlocksWithCache(
         startLine: block.startLine,
         startColumn: block.startColumn,
         hastDigest: block.hastDigest,
+        strippedFootnoteSection: stripSection,
       });
       rendered.push({ node, reactKey: item.reactKey });
     }

@@ -162,6 +162,8 @@ export interface RegistryInternal extends Registry {
    *  Chunks that supply an index are kept sorted by it; chunks without one
    *  keep mount order after them. */
   allocateSymbol(reactId: string, documentIndex?: number): symbol;
+  /** @internal Insert a chunk Symbol at its document position. */
+  _placeChunk(sym: symbol, documentIndex?: number): void;
   releaseSymbol(reactId: string): void;
   contributeLabels(symbol: symbol, footnotes: Set<string>, links: Set<string>): void;
   contributeChunkData(symbol: symbol, data: ChunkData): void;
@@ -200,35 +202,88 @@ export function createRegistry(onEmpty?: () => void): RegistryInternal {
     _subscribers: new Set<() => void>(),
     _notifyScheduled: false,
 
-    allocateSymbol(reactId: string, documentIndex?: number): symbol {
+    allocateSymbol(reactId: string, rawDocumentIndex?: number): symbol {
+      // `NaN` compares false against everything, so it would act as a sort
+      // BARRIER (no later chunk ever breaks in front of it) rather than being
+      // ignored. Treat any non-finite value as "no index".
+      const documentIndex =
+        rawDocumentIndex !== undefined && Number.isFinite(rawDocumentIndex) ? rawDocumentIndex : undefined;
+      if (process.env.NODE_ENV !== 'production' && rawDocumentIndex !== undefined && documentIndex === undefined) {
+        console.warn(
+          `[ai-react-markdown] documentIndex must be a finite number — received ${String(rawDocumentIndex)}; ignoring it for this chunk.`
+        );
+      }
       const existing = this._reactIdMap.get(reactId);
       if (existing) {
         existing.refcount++;
+        // A LIVE chunk re-registering with a different position (the effect
+        // deps include `documentIndex`, so a consumer reordering chunks
+        // without remounting them lands here): move it. StrictMode's
+        // double-invoke passes the same value and falls through unchanged.
+        // Presence, not just value: going back to `undefined` (a consumer
+        // that computes the index conditionally) must ALSO take effect —
+        // otherwise `_chunkIndex` keeps a value nobody supplies and
+        // `_placeChunk`'s scan steers OTHER chunks by it. Testing
+        // `get(...) !== documentIndex` alone would regress the common case:
+        // `get` returns undefined for un-indexed chunks too, so every
+        // un-indexed chunk would jump to the tail on each re-register (which
+        // happens on every `ownLabels` change while streaming).
+        const moved =
+          documentIndex !== undefined
+            ? this._chunkIndex.get(existing.symbol) !== documentIndex
+            : this._chunkIndex.has(existing.symbol);
+        if (moved) {
+          const at = this.chunkOrder.indexOf(existing.symbol);
+          if (at !== -1) this.chunkOrder.splice(at, 1);
+          this._placeChunk(existing.symbol, documentIndex);
+          this._notify();
+        }
         return existing.symbol;
       }
       const sym = Symbol(reactId);
       this._reactIdMap.set(reactId, { symbol: sym, refcount: 1 });
-      if (documentIndex === undefined) {
-        // Mount order — the historical behaviour, and correct whenever
-        // chunks mount once in document order.
-        this.chunkOrder.push(sym);
-      } else {
-        this._chunkIndex.set(sym, documentIndex);
-        // Insert before the first chunk that sits later in the document.
-        // A chunk WITHOUT an index counts as "later" so an indexed chunk
-        // never lands behind one whose position is unknown.
-        let at = this.chunkOrder.length;
-        for (let i = 0; i < this.chunkOrder.length; i++) {
-          const other = this._chunkIndex.get(this.chunkOrder[i]);
-          if (other === undefined || other > documentIndex) {
-            at = i;
-            break;
-          }
-        }
-        this.chunkOrder.splice(at, 0, sym);
-      }
+      this._placeChunk(sym, documentIndex);
       this._notify();
       return sym;
+    },
+
+    /** Put `sym` into `chunkOrder` at its document position. Without an index
+     *  it goes last (mount order — the historical behaviour); with one it
+     *  sorts before the first chunk that sits later, where a chunk WITHOUT an
+     *  index counts as "later" so an indexed chunk never lands behind one
+     *  whose position is unknown. */
+    _placeChunk(sym: symbol, documentIndex?: number): void {
+      if (process.env.NODE_ENV !== 'production' && this.chunkOrder.length > 0) {
+        // Mixing the two modes under one documentId is the default failure of
+        // a partial migration, and it FAILS LIKE THE BUG the prop exists to
+        // fix: every un-indexed chunk sorts after every indexed one, so
+        // numbering stops following DOM order and the aggregate footer lands
+        // on the last-MOUNTED un-indexed chunk (oracle review of 2.5.0).
+        const anyIndexed = documentIndex !== undefined || this.chunkOrder.some((s) => this._chunkIndex.has(s));
+        const anyPlain = documentIndex === undefined || this.chunkOrder.some((s) => !this._chunkIndex.has(s));
+        if (anyIndexed && anyPlain) {
+          console.warn(
+            '[ai-react-markdown] Some chunks of this document supply `documentIndex` and some do not. ' +
+              'Indexed chunks always sort ahead of un-indexed ones, so footnote numbering and aggregate-footer ' +
+              'placement will not follow document order. Pass `documentIndex` to every chunk, or to none.'
+          );
+        }
+      }
+      if (documentIndex === undefined) {
+        this._chunkIndex.delete(sym);
+        this.chunkOrder.push(sym);
+        return;
+      }
+      this._chunkIndex.set(sym, documentIndex);
+      let at = this.chunkOrder.length;
+      for (let i = 0; i < this.chunkOrder.length; i++) {
+        const other = this._chunkIndex.get(this.chunkOrder[i]);
+        if (other === undefined || other > documentIndex) {
+          at = i;
+          break;
+        }
+      }
+      this.chunkOrder.splice(at, 0, sym);
     },
 
     registerChunk(reactId: string, footnotes: Set<string>, links: Set<string>, documentIndex?: number): symbol {

@@ -74,6 +74,25 @@ describe('documentIndex ordering (2026-08-19 review r2 P2-10)', () => {
     expect(r.chunkOrder).toEqual([indexed, plain, plain2]);
   });
 
+  test('a live chunk re-registering with a new index moves (oracle review of 2.5.0)', () => {
+    // The effect deps include documentIndex, so a consumer that REORDERS
+    // chunks without remounting them re-registers the same reactId with a
+    // new position. The refcount-reuse path used to return early and keep
+    // the stale slot, so footnote numbering silently followed the old order.
+    const r = createRegistry();
+    const a = r.allocateSymbol('a', 0);
+    const b = r.allocateSymbol('b', 1);
+    expect(r.chunkOrder).toEqual([a, b]);
+    const again = r.allocateSymbol('a', 9);
+    expect(again).toBe(a); // same chunk, same Symbol
+    expect(r.chunkOrder).toEqual([b, a]); // …moved to its new position
+    // StrictMode's double-invoke passes the SAME value: no move, no churn.
+    const version = r.version;
+    expect(r.allocateSymbol('b', 1)).toBe(b);
+    expect(r.chunkOrder).toEqual([b, a]);
+    expect(r.version).toBe(version);
+  });
+
   test('releasing an indexed chunk drops its index bookkeeping', () => {
     const r = createRegistry();
     const a = r.allocateSymbol('a', 0);
