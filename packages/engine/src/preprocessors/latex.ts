@@ -650,29 +650,17 @@ function convertSingleToDoubleDollar(text: string): string {
  * @returns The preprocessed string with normalized LaTeX delimiters.
  */
 export function preprocessLaTeX(str: string): string {
-  // Return early if no LaTeX patterns are found
+  // Return early if no LaTeX patterns are found.
   if (!hasLatexTrigger(str)) return str;
-
-  // Step 1: split by code blocks
-  const segments = splitByProtectedRegions(str);
-
-  // Step 2: process each non-code segment through the LaTeX pipeline
-  const result = segments.map((segment) => {
-    if (segment.isCode) return segment.text;
-
-    let text = segment.text;
-    text = escapeMhchemCommands(text);
-    text = escapeCurrencyDollarSigns(text);
-    text = convertLatexDelimiters(text);
-    text = escapeLatexPipes(text);
-    text = escapeLatexPipesInUnclosed(text);
-    text = escapeTextUnderscores(text);
-    text = convertSingleToDoubleDollar(text);
-    text = truncateUnclosedLatexBlock(text);
-    return text;
-  });
-
-  return result.join('');
+  // The transform chain itself lives in `processSlice` — the incremental
+  // preprocessor needs the same chain with quiescence probes, and until
+  // 2.5.2 the two were written out separately and kept byte-equal BY HAND.
+  // Byte-equality is a hard contract (the incremental wrapper freezes a
+  // prefix of this function's output), so a chain that can drift is a defect
+  // waiting to happen rather than a duplication to tolerate. The only thing
+  // that was ever genuinely different is the whole-string early-exit above,
+  // which a slice must not re-decide — see `processSlice`.
+  return processSlice(str, false).out;
 }
 
 // ─── Incremental (append-aware) wrapper ─────────────────────────────────────
@@ -736,10 +724,10 @@ function hasUnclosedTextCommand(text: string): boolean {
 const RESIDUAL_OPEN_BRACKET_RE = /(?<!!)\\\[/;
 
 /** Segment whose first non-whitespace bytes are a `$$` — the only shape
- *  whose B3 seam flag can be set (see processSliceInstrumented). */
+ *  whose B3 seam flag can be set (see processSlice). */
 const LEADING_DOUBLE_DOLLAR_RE = /^\s*\$\$/;
 
-interface InstrumentedSlice {
+interface SliceResult {
   out: string;
   /** No tail-sensitive transform engaged: safe to freeze this output. */
   quiescent: boolean;
@@ -749,12 +737,16 @@ interface InstrumentedSlice {
   truncatedAtSeamStart: boolean;
 }
 
-/** The exact per-segment pipeline of {@link preprocessLaTeX}, instrumented
- *  with quiescence flags (`probe: false` skips them — output only, plus the
- *  first segment's seam flag) and WITHOUT the whole-string early-exit (a slice
- *  must not re-decide the early-exit: `\text{a_b}` in a trigger-free slice
- *  still transforms when the FULL string carries a `$` elsewhere). */
-function processSliceInstrumented(slice: string, probe = true): InstrumentedSlice {
+/** THE LaTeX transform chain — the single definition of it. Both entry
+ *  points come through here: {@link preprocessLaTeX} with `probe: false`
+ *  (output only), the incremental preprocessor with probes on.
+ *
+ *  `probe` adds the quiescence flags and never touches `out`, so the two
+ *  callers cannot diverge on output. The whole-string early-exit stays OUT
+ *  of here on purpose: a slice must not re-decide it, because `\text{a_b}`
+ *  in a trigger-free slice still transforms when the FULL string carries a
+ *  `$` elsewhere. */
+function processSlice(slice: string, probe = true): SliceResult {
   const segments = splitByProtectedRegions(slice);
   const parts: string[] = [];
   let quiescent = true;
@@ -951,7 +943,7 @@ export function createIncrementalLatexPreprocessor(options?: {
       const activeLength = active.length;
       let advanced = false;
       let frozenBytes = 0;
-      const freeze = (cut: number, slice: InstrumentedSlice) => {
+      const freeze = (cut: number, slice: SliceResult) => {
         frozenOut += slice.out;
         frozenSrcEnd += cut;
         active = source.slice(frozenSrcEnd);
@@ -960,7 +952,7 @@ export function createIncrementalLatexPreprocessor(options?: {
       };
       const cut = findRawSafeCut(active);
       if (cut > 0) {
-        const candidate = processSliceInstrumented(active.slice(0, cut));
+        const candidate = processSlice(active.slice(0, cut));
         if (candidate.quiescent) freeze(cut, candidate);
       }
       // A shorter fallback cut (largest cut before the first non-quiescent
@@ -976,7 +968,7 @@ export function createIncrementalLatexPreprocessor(options?: {
     // first segment's B3 flag, so the per-segment probes are skipped (they
     // were ~40% on top of the stateless cost for a document whose freeze
     // never succeeds; the backoff had already removed the other 2×).
-    const tail = processSliceInstrumented(active, false);
+    const tail = processSlice(active, false);
     // B3 seam correction: the original's segment-level `trimEnd` reaches
     // back across our cut when the truncated `$$` block's segment starts
     // with nothing but whitespace. Applied at COMPOSE time only — the
