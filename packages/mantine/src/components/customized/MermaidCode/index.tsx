@@ -132,11 +132,27 @@ const handleViewSVGInNewWindow = (svgElement: SVGElement | null | undefined, isD
   const text = new XMLSerializer().serializeToString(targetSvg);
   const blob = new Blob([text], { type: 'image/svg+xml' });
   const url = URL.createObjectURL(blob);
-  // `noopener`: the blob URL is same-origin and opens as a top-level SVG
-  // document; under mermaid's default strict securityLevel it is DOMPurify
-  // output, but a host that flips the shared singleton to 'loose' (see the
-  // module note above) would hand that document a live `opener` — cut it
-  // (2026-08-19 review). Costs nothing in the strict case.
+  // The blob URL is same-origin — object URLs inherit the origin that made
+  // them — so this opens as a top-level document in the application's own
+  // origin, and reviews keep flagging it. Examined and kept as it is on
+  // 2026-08-20 (do not re-report):
+  //
+  // Loading the SVG as a document does revive `<script>` elements that sit
+  // inertly in our `innerHTML` (the HTML parser flags scripts inserted that
+  // way non-executable, and a fresh parse does not carry the flag over).
+  // What that misses is that inline `on*` handlers inserted the same way are
+  // NOT inert — `<img src=x onerror>` fires in the page — and neither are
+  // `javascript:` hrefs or `<animate>` retargeting one. Anything that
+  // reaches the DOM with a script vector intact therefore already holds the
+  // page's origin, without a popup. The escalation is only real for markup
+  // where `<script>` survives sanitizing while every handler in the same
+  // injection channel does not, which is not the shape a DOMPurify bypass
+  // takes; and a host CSP with `script-src 'self'` closes even that, since
+  // blob documents inherit the creator's policy.
+  //
+  // `noopener` stays for the ordinary reason — the new context does not need
+  // a handle on this window — not as an answer to the above, which it never
+  // was.
   window.open(url, '_blank', 'noopener');
   // Revoke either way (a blocked popup would otherwise leak the Blob until
   // page unload — 2026-08 project review, pkg-small-09). With `noopener`
