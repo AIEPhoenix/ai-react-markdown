@@ -8,6 +8,15 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 ## 2.5.x — Chunk order you control
 
+### 2.5.2 — Two pieces of logic that were kept identical by hand now have one definition
+
+No behaviour change and no new capability: a scan of the repository for code that had accreted into "remember to update both places", and the two cases where that was true.
+
+- **The LaTeX transform chain existed twice.** `preprocessLaTeX` (stateless) and the incremental preprocessor's per-slice function each wrote out the same eight steps in the same order — the latter's own JSDoc described itself as "the exact per-segment pipeline of `preprocessLaTeX`". Byte-equality between them is load-bearing, since the incremental wrapper freezes a prefix of the stateless output, so a step added to one and not the other is a correctness bug rather than a tidiness problem. `preprocessLaTeX` is now its whole-string early-exit plus a delegation; that early-exit is the only thing that ever genuinely differed and stays outside the shared chain, because a slice must not re-decide it (`\text{a_b}` in a trigger-free slice still transforms when the full string carries a `$` elsewhere).
+- **The `<li>` tail scan existed twice**, one copy on each side of the 2.3.0 package split. Both encode the same fact about `mdast-util-to-hast` — `state.wrap` interleaves `\n` text nodes among an `<li>`'s block children, so the meaningful tail is never simply the last child — and both need it for symmetric reasons: core's aggregate footer appends a backref there, the engine's body extractor strips one and has to find the same node again. Each copy documented half the reason. Both now live in `hastPredicates`, where the split already put the hast helpers shared across it.
+
+Verification, since "refactor" is exactly the claim that deserves evidence: the LaTeX change is 1.15M samples byte-equal against the pre-refactor implementation (hand corpus of 49 hazard pieces plus all 2401 ordered pairs, 250k piece sequences, 400k raw-character strings over the delimiter alphabet, 250k prose-with-LaTeX), with the differential itself mutation-checked. Both changes: full preflight at 1414 tests, LaTeX property suite at 10 000 streams, and the release soak's three legs (splice fuzz 50k / direction battery 20k / K=4 census) clean.
+
 ### 2.5.1 — A resumed stream stops breaking emoji, and one HTML table stops disabling the freeze for a whole document
 
 All fixes. The three items the 2.5.0 backlog had left open, each verified as a real defect before being touched — two of the seven candidates turned out not to be, and are recorded as such rather than fixed.
