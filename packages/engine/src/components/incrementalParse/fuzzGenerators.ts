@@ -182,6 +182,26 @@ const rawTextBlockArb = fc.constantFrom(
   '<pre>\n<div>pre content</div>\n</pre>',
   "<script>alert('<div>')</script> same-line close"
 );
+/** Type-1 block BOUNDARIES, which differ from every other html block:
+ *  the block ends at the line holding the literal closer, and a blank line
+ *  does NOT end it. Both halves were mismodelled until 2026-08-20 (see
+ *  type1BlockFlow.test.ts). The corpus could reach these shapes only when
+ *  `sepArb` happened to pick a single `\n` between a raw-text block and a
+ *  paragraph, which is why 50k splice samples and 20k direction prefixes
+ *  passed for releases on end — bake the shapes in instead of leaving them
+ *  to separator luck. Invalid closers (`</script >`, `</script/>`) leave the
+ *  block open to EOF and are the second half of the family. */
+const type1BoundaryArb = fc.constantFrom(
+  '<script>\nlet a = 1;\n</script>\np <div> x </div a="b"> y',
+  '<pre>\ncode\n</pre>\np <div> x </div a="b"> y',
+  '<style>\n.a{}\n</style>\np <div> x </div a="b"> y',
+  '<textarea>\nt\n</textarea>\np <div> x </div a="b"> y',
+  '<script>a</script>\np <div> y',
+  '<script></script >\n\n```\n```',
+  '<script>\nx\n</script/>\n\n<div>\nd\n</div>',
+  '<pre>\nx\n</pre >\n\n```\ncode\n```',
+  '<script>\nx\n</scripty>\n\n<!-- c -->'
+);
 /** parse5 RAWTEXT / RCDATA elements that sit in the CommonMark type-6 list
  *  (no hazardVerdict): their content is TEXT to parse5 — a `</div>` inside
  *  must not close anything (2026-08-19 review r2 P1-4). */
@@ -260,6 +280,50 @@ const crossLineQuoteBogusArb = fc.constantFrom(
   '<div title="a>b" class="c">x</div>\n\ntail para',
   'x <noscript> y <b> z </noscript> w\n\ntail para'
 );
+/** Type-4 declarations (`<!` + letter) whose `>` terminator lands on a
+ *  LATER line, so `declOpen` has to survive the line boundary. The corpus
+ *  had no `<!` + letter shape at all: every `<!` form was `<!--`, `<!-`,
+ *  `<! x >` or `<![CDATA[`, so the declaration opener and its cross-line
+ *  carry were unreachable from fuzz (verified 2026-08-20 by a drop-write
+ *  mutant on the carry — it survived the whole 784-test engine suite).
+ *  Tags in the body are DATA: counting them would open an element that
+ *  reparents later siblings. */
+const multiLineDeclArb = fc.constantFrom(
+  '<!DOCTYPE\nhtml>\n\ntail para',
+  '<div>\n<!ENTITY x\n<details>\n>\n</div>\n\ntail para',
+  '<!ATTLIST a\nb "c>d"\n>\ntail para',
+  '<div>\n<!NOTATION n\n</div>\n>\n\ntail para'
+);
+/** CDATA whose `]]>` lands on a LATER line. The only CDATA the corpus had
+ *  was self-contained (`selfContainedCdataPi`), so the `c === -1` arm that
+ *  carries `cdataOpen` past EOL was unreachable — same drop-write mutant
+ *  result as the declaration family. Contrast `<?x >` in OVERLAP_OPENERS,
+ *  which does carry `piOpen` across a line, so PI was already covered. */
+const multiLineCdataArb = fc.constantFrom(
+  '<![CDATA[\n<details>\n]]> trailing prose',
+  '<div>\n<![CDATA[\ndata\n]]>\n</div>\n\ntail para',
+  '<![CDATA[\na ]] b\n]]>\ntail para',
+  '<div>\n<![CDATA[\n</div>\n]]>\n\ntail para'
+);
+/** parse5 CONSUMES the document-structure tokens — they emit no node and
+ *  the text around them merges, which rewrites hast BEFORE the construct.
+ *  The scanner poisons the whole document for these (see
+ *  DOCUMENT_STRUCTURE_NAMES); the corpus had none of them, and the
+ *  under-block that hid there shipped through v2.5.2. Indented and fenced
+ *  variants are the control side: there parse5 sees code, not markup, so
+ *  the poison must NOT fire. */
+const documentStructureArb = fc.constantFrom(
+  '<!DOCTYPE html>\n\ntail para',
+  '<!doctype html>\n\ntail para',
+  '<!DOCTYPE html PUBLIC "x">\n\ntail para',
+  '<body>\nx\n</body>\n\ntail para',
+  '<head>\nx\n</head>\n\ntail para',
+  '<html>\nx\n</html>\n\ntail para',
+  '<!DOCTYPE html>\n<html>\n<body>\nx\n</body>\n</html>\n\ntail para',
+  '<BODY>\nx\n</BODY>\n\ntail para',
+  '    <!DOCTYPE html>\n\ntail para',
+  '```html\n<!DOCTYPE html>\n```\n\ntail para'
+);
 /** Paragraph context: a closing tag with attributes is literal text to
  *  micromark — the `<div>` stays open (own family for its meter). */
 const paragraphCloseWithAttrsArb = fc.constantFrom(
@@ -272,10 +336,29 @@ const paragraphCloseWithAttrsArb = fc.constantFrom(
   '<b>\n\n</b a>\n\ntail para'
 );
 
+/** RAWTEXT/RCDATA elements parse5 LIFTS out of the flow (`title`,
+ *  `noframes`, `iframe`), opened INLINE in a paragraph and spanning a line
+ *  ending — the shape that rewrites an already-frozen paragraph. The corpus
+ *  had these names only as block-level runs (`rawTextElementArb`), so the
+ *  inline cross-line form went unsampled for releases on end. The attribute
+ *  close (`</title a>`) is the second half: literal text to micromark, a
+ *  real end tag to parse5's tokenizer. */
+const inlineRawTextSpanArb = fc.constantFrom(
+  'p<title>\n</title>',
+  'p <title> x </title a> y\n\n<div>\n<title>\n</div>\n</title>',
+  'p<iframe>\ninner\n</iframe>',
+  'p<noframes>\n</noframes>',
+  'prose <title>\nlifted\n</title> tail',
+  'p<iframe> x </iframe a> y'
+);
+
 const rawHtmlArb = fc.oneof(
   { weight: 1, arbitrary: treeQuirkArb },
   { weight: 2, arbitrary: crossLineTagGarbageArb },
-  { weight: 2, arbitrary: crossLineQuoteBogusArb },
+  { weight: 3, arbitrary: crossLineQuoteBogusArb },
+  { weight: 2, arbitrary: multiLineDeclArb },
+  { weight: 2, arbitrary: multiLineCdataArb },
+  { weight: 2, arbitrary: documentStructureArb },
   { weight: 1, arbitrary: danglingQuoteArb },
   { weight: 1, arbitrary: paragraphCloseWithAttrsArb },
   { weight: 2, arbitrary: fc.constant('<details>\n<summary>t</summary>\nbody prose\n</details>') },
@@ -287,7 +370,9 @@ const rawHtmlArb = fc.oneof(
   { weight: 2, arbitrary: fc.constant('<!-- a closed comment -->') },
   { weight: 2, arbitrary: overlapSettledArb },
   { weight: 1, arbitrary: rawTextBlockArb },
+  { weight: 2, arbitrary: type1BoundaryArb },
   { weight: 1, arbitrary: rawTextElementArb },
+  { weight: 2, arbitrary: inlineRawTextSpanArb },
   // Unsettled openers (the assembler may close them later or leave them).
   { weight: 4, arbitrary: fc.constantFrom('<details>', '<!--', '<div') },
   { weight: 2, arbitrary: overlapTerminatorArb }
@@ -489,6 +574,9 @@ export const COVERAGE_MARKERS: Record<string, RegExp> = {
   codeSpanMasking: /`(?:<div>|\[x\]|\[\^n\])`/,
   crossLineSelfClosing: /<embed\n/,
   selfContainedCdataPi: /<!\[CDATA\[|<\?instr/,
+  multiLineDecl: /<!(?:DOCTYPE|ENTITY|ATTLIST|NOTATION)[^>\n]*\n/,
+  multiLineCdata: /<!\[CDATA\[\n/,
+  documentStructure: /<!(?:DOCTYPE|doctype)|<\/?(?:body|BODY|head|html)>/,
   multiLineDefTitle: /"title\nwraps"/,
   indentedCodeScanned: /^ {4}(?:<details>|\[\^b\])/m,
   underCountEdge: /<\/(?:b|i)> <(?:!--|\?php)/,
@@ -496,6 +584,7 @@ export const COVERAGE_MARKERS: Record<string, RegExp> = {
   overlappingTerminator: /<!-->|<!--->|<\?>|--!>|<\?x >/,
   invalidLinkDef: /\]:(?: \/u\(x| \/u\)| <u<v>| <u| \/u\\ x)(?:\n| "title)|\]:\n/,
   rawTextBlock: /<(?:script|style|textarea|pre)>/,
+  type1Boundary: /<\/(?:script|pre|style|textarea)(?:>\n[a-z<]|[ /y])/,
   proseTruncatedTag: /a<b\n/,
   proseTruncatedClose: /<\/b\n/,
   crossLineTagGarbage:
@@ -505,6 +594,7 @@ export const COVERAGE_MARKERS: Record<string, RegExp> = {
   quotedGtOnTagLine: /<\/div a=">|a="x><\/div>"|title="a>b"|<noscript> y <b>/,
   closeWithAttrsInParagraph: /<\/(?:div a="b"|title a|span class="c")> y|\n<\/(?:span a="b"|b a)>/,
   rawTextElement: /<(?:title|iframe|noframes|xmp)>/,
+  inlineRawTextSpan: /(?:^|[a-z ])<(?:title|iframe|noframes)>\n|<\/(?:title|iframe) a>/m,
   loneCr: /\r(?!\n)/,
   reviewShapes: /<!-- c --> <\/s>|<\?x\?><details>|<\/t>\ntext|<details> <\?php|x="`">b`/,
   treeQuirks: /<\/br>|<\/p>|<td>s<\/td>\n\n|<col>/,
