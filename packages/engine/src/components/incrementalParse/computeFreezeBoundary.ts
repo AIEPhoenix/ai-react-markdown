@@ -131,6 +131,59 @@ const TYPE6_NAMES = new Set(htmlBlockNames);
  *  `<td>` prefix froze a table whose shape depended on the tail). Same
  *  list as spliceParse's TABLE_PART_TAG_RE. */
 const TABLE_PART_NAMES = new Set(['td', 'th', 'tr', 'tbody', 'thead', 'tfoot', 'caption', 'col', 'colgroup']);
+/** parse5 tree-construction CONSUMES these tokens: in the "before html" /
+ *  "in head" / "in body" insertion modes they are absorbed into the
+ *  document structure and emit NO node into the fragment. Their bytes
+ *  vanish and the text nodes on either side MERGE into one — a merge whose
+ *  result STARTS BEFORE the construct. That is retroactive: a `<!DOCTYPE>`
+ *  arriving later rewrites hast the scanner already froze (2026-08-20,
+ *  16800-shape sweep: `` `\`\`\`\n\`\`\`\n\n<!DOCTYPE>\ne` `` — the text node at
+ *  index 1 goes `"\n"` → `"\n\n"`). Every other line-model invariant here
+ *  assumes a confirmed line only affects itself and what follows, so these
+ *  names cannot be modelled — they poison the whole document instead.
+ *
+ *  Counter-intuitively an UNCLOSED `<body>` was already safe: it left
+ *  `openTotal` at 1, which blocked candidates by accident. Only the
+ *  BALANCED `<body>…</body>` form reaches zero and freezes across. */
+const DOCUMENT_STRUCTURE_NAMES = new Set(['html', 'head', 'body', 'frameset']);
+
+/** The same retroactive constructs as literal openers, for the TRAILING
+ *  PARTIAL line. That line is never confirmed and never enters the
+ *  checkpoint, so `processConfirmedLine` cannot poison from it — yet the
+ *  full parse the frozen prefix is checked against DOES see it, and a
+ *  half-arrived `<!DOCTYPE html` already erases and merges (soak leg 1,
+ *  shards 3 and 9: a snapshot cut mid-doctype froze at a boundary the
+ *  arriving doctype then rewrote). */
+const RETROACTIVE_OPENERS = [
+  '<!doctype',
+  '<html',
+  '<head',
+  '<body',
+  '<frameset',
+  '</html',
+  '</head',
+  '</body',
+  '</frameset',
+];
+
+/** Does a partial line already carry one of them? Matches COMPLETE openers
+ *  only. A "could still become one" arm was tried and reverted: every `<`
+ *  is a prefix of every opener, so a stream cut right after a `<` dropped
+ *  the boundary to 0 — and since the consumer takes
+ *  `min(boundary, prev.stableBoundary)`, one transient dip disables
+ *  freezing for the whole stream permanently. Frames that cut INSIDE an
+ *  opener (`…<!DOCTYP`) need no suppression: the full parse they are
+ *  checked against does not see a doctype there either, so the frozen
+ *  prefix still matches. Suppresses the BOUNDARY only — nothing here may
+ *  reach the checkpoint, since the tail is not confirmed. */
+function tailCarriesRetroactive(text: string): boolean {
+  const lower = text.toLowerCase();
+  for (let i = lower.indexOf('<'); i !== -1; i = lower.indexOf('<', i + 1)) {
+    const rest = lower.slice(i);
+    for (const op of RETROACTIVE_OPENERS) if (rest.startsWith(op)) return true;
+  }
+  return false;
+}
 /** HTML start tags that BREAK OUT of foreign content (HTML spec "in foreign
  *  content": the svg/math is popped and the tag is processed as HTML). */
 const HTML_BREAKOUT_TAGS = new Set([
@@ -209,6 +262,9 @@ const RAW_TEXT_ELEMENTS = new Set([
 const TYPE6_START_RE = /^<\/?([A-Za-z][A-Za-z0-9-]*)(?:[ \t\r]|\/?>|$)/;
 /** Type-1 start: an OPEN tag of a raw-text name + (whitespace | `>` | EOL). */
 const TYPE1_START_RE = /^<(script|pre|style|textarea)(?:[ \t\r]|>|$)/i;
+/** Type 1's end condition is a literal substring anywhere on the line —
+ *  no attributes, no whitespace before `>` (CommonMark 4.6). */
+const TYPE1_CLOSE_RE = /<\/(?:script|pre|style|textarea)>/i;
 /** Type-7 start (approximate, no quoted-`>` support): the whole line is
  *  one complete OPEN tag (attributes allowed) or CLOSING tag (attributes are
  *  NOT part of a closing tag in CommonMark — `</span a="b">` is a paragraph,
@@ -430,6 +486,23 @@ export interface FreezeScanCheckpoint {
    *  htmlFlowSinceBlank swallowed them — a new under-block). Sticky to the
    *  blank; a type 6/1 start on a later line of a non-real run promotes it. */
   htmlFlowReal: boolean;
+  /** The run since the last blank was OPENED by a CommonMark type-1 block
+   *  (`<script` / `<pre` / `<style` / `<textarea`). Type 1 is the one block
+   *  that ends at its CLOSER line rather than at a blank, so `htmlFlowReal`
+   *  being "sticky to the blank" over-ran it: the line after `</script>` is
+   *  a fresh PARAGRAPH to micromark, but the scanner still treated it as
+   *  raw html flow — and in a real run end tags may carry attributes, so a
+   *  `</div a="b">` there was counted as a REAL close. `p <div> x </div
+   *  a="b"> y` after a `</script>` line therefore froze past an element the
+   *  actual parse leaves OPEN, nesting the whole rest of the document
+   *  inside it (2026-08-20 soak leg 2; identical for pre/style/textarea,
+   *  and correct as-is for a type-6 run, which really does reach the blank).
+   *  Only set when the type-1 opener is the line that STARTED the run — a
+   *  `<script>` nested inside an open type-6 block must not end it. */
+  type1FlowOpen: boolean;
+  /** The currently open raw-text element (`rawTextOpen`) was opened INLINE —
+   *  in paragraph context rather than in a real html-flow run. */
+  rawTextInline: boolean;
 }
 
 const VOID_TAGS = new Set([
@@ -684,6 +757,8 @@ function freshCheckpoint(defListEnabled: boolean, mathFlow: boolean, referenceTa
     tagAcrossLinesIndent: 0,
     tagAcrossLinesState: 'outside',
     htmlFlowReal: false,
+    type1FlowOpen: false,
+    rawTextInline: false,
   };
 }
 
@@ -912,8 +987,12 @@ export function computeFreezeBoundary(
   };
 
   // ── pick the last surviving candidate ──
+  // A retroactive construct on the UNCONFIRMED tail line suppresses every
+  // candidate for this frame (see tailCarriesRetroactive). Checked here and
+  // not in the scan so nothing about the partial line is ever baked in.
+  const tailRetroactive = tailLine !== null && tailCarriesRetroactive(tailLine.text);
   let boundary = 0;
-  for (let i = cp.candidates.length - 1; i >= 0; i--) {
+  for (let i = cp.candidates.length - 1; i >= 0 && !tailRetroactive; i--) {
     const c = cp.candidates[i];
     if (!c.htmlBalanced || c.hazard || c.seamRisk) continue;
     // Fence/math phase untrusted past a suppressed open (phasePoisonedAt
@@ -1049,10 +1128,20 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
       cp.rawTextOpen = null;
     } else if (!closing && RAW_TEXT_ELEMENTS.has(tag) && htmlRulesApply()) {
       cp.rawTextOpen = tag;
+      // Paragraph context, i.e. micromark html-TEXT rather than an html
+      // block — the regime where a lifted element rewrites its paragraph.
+      cp.rawTextInline = !cp.htmlFlowReal;
       // PLAINTEXT never ends (`</plaintext>` is text too): nothing after it
       // can be modelled — poison from here on.
       if (tag === 'plaintext') cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
     }
+    // Retroactive construct (see DOCUMENT_STRUCTURE_NAMES): parse5 erases
+    // the tag and merges the text around it, changing hast BEFORE this
+    // point. Poison from offset 0 — nothing in the document is freeze-safe
+    // once one of these is confirmed, and the poison is monotone so it
+    // stays that way. Sits past the raw-text guard on purpose: a `<body>`
+    // inside `<script>` is text to parse5 too, and must not poison.
+    if (DOCUMENT_STRUCTURE_NAMES.has(tag)) cp.phasePoisonedAt = 0;
     if (closing) {
       const count = cp.tagBalance.get(tag) ?? 0;
       if (count > 0) {
@@ -1229,16 +1318,37 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     cp.candidates.push({
       offset: Math.min(ln.end + 1, text.length),
       blankRun: cp.blankRun,
+      // `type1FlowOpen`: an unterminated type-1 block swallows this blank
+      // and everything after it as RAW content, so nothing here is a block
+      // boundary at all. Its tags are invisible to the balance scan
+      // (`rawTextOpen` suppresses them), which is exactly why `openTotal`
+      // reads 0 and the candidate looked safe.
       htmlBalanced:
-        cp.openTotal === 0 && !cp.commentOpen && !cp.piOpen && !cp.declOpen && !cp.cdataOpen && !cp.bogusOpen,
+        cp.openTotal === 0 &&
+        !cp.commentOpen &&
+        !cp.piOpen &&
+        !cp.declOpen &&
+        !cp.cdataOpen &&
+        !cp.bogusOpen &&
+        !cp.type1FlowOpen,
       hazard: cp.hazardVerdict,
       seamRisk: cp.htmlSeamPending,
       defListSettled: null,
     });
     cp.paragraphHasUnpairedRun = false;
     cp.openBracket = null;
-    cp.htmlFlowSinceBlank = false;
-    cp.htmlFlowReal = false;
+    // A type-1 block is the one html block a BLANK LINE does not end — its
+    // only end condition is the literal closer, or end of document. While
+    // one is open the run must survive the blank, or the scanner reads the
+    // block's raw content as markup: `<script></script >` never closes
+    // (CommonMark wants the literal `</script>`; the space makes it text),
+    // so the ``` lines after the blank are raw text to micromark and a real
+    // FENCE to the scanner — a candidate landed inside the html block
+    // (2026-08-20 soak leg 2, third shape).
+    if (!cp.type1FlowOpen) {
+      cp.htmlFlowSinceBlank = false;
+      cp.htmlFlowReal = false;
+    }
     cp.prevLineBlank = true;
     cp.prevLineWasText = false;
     cp.prevLineWasValidDef = false;
@@ -1294,7 +1404,18 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
   // over-block), which is correct whichever construct micromark chooses.
   const tagStart = ln.indent <= 3 ? /^<\/?([A-Za-z][A-Za-z0-9-]*)/.exec(mdTrimStart(ln.text)) : null;
   if (tagStart) {
+    // Gate on `htmlFlowReal`, not on "did the run start here": the latter
+    // reads `htmlFlowSinceBlank`, which ANY `<tag` line start sets as an
+    // over-approximation — `<embed` (not a type-6 name, not a complete
+    // type-7 line) is a PARAGRAPH to micromark, yet it opened the run and so
+    // hid the real type-1 block that followed it. What actually matters is
+    // whether a real html block is already open: type 1 may interrupt a
+    // paragraph, but a `<script>` nested inside an open type-6 block does
+    // not start one. Read before the promotion below, which is this line's
+    // own (2026-08-21 scaled soak, shard 0).
+    const noRealBlockOpen = !cp.htmlFlowReal;
     cp.htmlFlowSinceBlank = true;
+    if (noRealBlockOpen && TYPE1_START_RE.test(mdTrimStart(ln.text))) cp.type1FlowOpen = true;
     if (!TYPE6_NAMES.has(tagStart[1].toLowerCase())) cp.hazardVerdict = true;
     if (!cp.htmlFlowReal) {
       const t = mdTrimStart(ln.text);
@@ -1539,6 +1660,20 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
       pos = pi + 2;
     } else {
       rawSpans.push([decl, decl + 2]);
+      // `<!DOCTYPE` is the one declaration parse5 tokenizes as a real
+      // DOCTYPE rather than a bogus comment, so it is consumed and erased
+      // (retroactive — see DOCUMENT_STRUCTURE_NAMES). `<!ENTITY` and every
+      // other `<!` + letter becomes a comment node and is position-stable.
+      // Gated on block indent only, not on position within the line: an
+      // INLINE `<!DOCTYPE>` in prose measured safe, but proving how far
+      // parse5's insertion modes can reach back is not worth the precision,
+      // so any doctype on a line that could open an html block poisons.
+      // At indent >= 4 the line is indented CODE (or a lazy paragraph
+      // continuation, where the doctype is html-text) — parse5 never sees
+      // markup there, and poisoning cost a boundary of 62 → 0 on a plain
+      // `    <!DOCTYPE html>` block. Backticked mentions are masked out
+      // before this scan and never reach here at all.
+      if (ln.indent <= 3 && /^doctype/i.test(scanText.slice(decl + 2))) cp.phasePoisonedAt = 0;
       cp.declOpen = true;
       pos = decl + 2;
     }
@@ -1671,7 +1806,21 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
       // literal text and parse5 never sees a close (oracle review of the r2
       // batch, pre-existing: `p <div> x </div a="b"> y` froze past the open
       // div). In a real html-flow run parse5 accepts end-tag attributes.
-      if (closing && !cp.htmlFlowReal && !/^\s*$/.test(attrs)) continue;
+      if (closing && !cp.htmlFlowReal && !/^\s*$/.test(attrs)) {
+        // The match ran to the first `>`, swallowing whatever sat in the
+        // "attributes". micromark does not: it backtracks the invalid
+        // closing tag to literal text and re-scans from inside it, so
+        // `</t <div a="">` is text `</t ` plus a REAL html-text `<div a="">`
+        // that parse5 opens. Skipping the whole span left that div
+        // uncounted — an under-block the direction battery caught once the
+        // corpus reached the shape (2026-08-20 soak leg 2, minimised to
+        // `</t <div a="">\n\r```\n```\n\n`, unstable under every future).
+        // Rewinding past the NAME re-scans the swallowed bytes; the
+        // documented `p <div> x </div a="b"> y` case is unaffected, its
+        // attribute area holds no tag.
+        TAG_OR_COMMENT_RE.lastIndex = m.index + 2 + m[2].length;
+        continue;
+      }
       const selfClosing = /\/\s*$/.test(attrs);
       if (VOID_TAGS.has(tag) || (selfClosing && honoursSelfClosing(tag))) continue;
       applyTag(tag, closing);
@@ -1835,6 +1984,27 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     if (floatingResidue(masked, commentOpenAtLineStart).length > 0) {
       cp.htmlSeamPending = true;
     }
+  }
+
+  // The span reaches past this line ending. micromark and parse5 disagree
+  // about where it ENDS — `</title a>` is literal paragraph text to
+  // micromark (a closing tag takes no attributes) while parse5's RCDATA
+  // tokenizer accepts it and closes the element — so from here the scanner
+  // cannot model the span at all: it suppressed a `<div>` the real parse
+  // leaves OPEN, which then grows with every append (2026-08-21 soak leg 2,
+  // boundary 144 with the div at @86 extending to @161). Poison rather than
+  // reject one candidate: the divergence outlives the span.
+  if (cp.rawTextOpen !== null && cp.rawTextInline) {
+    cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
+  }
+
+  // CommonMark type-1 end condition: the line CONTAINS the closer string,
+  // and that line still belongs to the block — so this runs last, after the
+  // line has been scanned as raw flow. The next line starts fresh.
+  if (cp.type1FlowOpen && TYPE1_CLOSE_RE.test(ln.text)) {
+    cp.type1FlowOpen = false;
+    cp.htmlFlowSinceBlank = false;
+    cp.htmlFlowReal = false;
   }
 
   cp.blankRun = 0;

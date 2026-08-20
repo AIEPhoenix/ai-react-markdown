@@ -545,8 +545,15 @@ describe('computeFreezeBoundary — review-hardened blockers (A1/A2/A4/A5/A6)', 
     expect(computeFreezeBoundary('<![CDATA[\n\nx\n', OFF)).toBe(0);
     const piClosed = 'a <?x?> b\n\nzzz';
     expect(computeFreezeBoundary(piClosed, OFF)).toBe(piClosed.indexOf('zzz'));
-    const declClosed = '<!DOCTYPE html>\n\nzzz';
+    // A CLOSED declaration releases like the PI above — but not `<!DOCTYPE`,
+    // which parse5 consumes into the document structure instead of emitting
+    // a comment node, making it retroactive and therefore poisoned outright
+    // (documentStructurePoison.test.ts). This case used `<!DOCTYPE html>`
+    // and asserted a boundary of 17, which is exactly the under-block that
+    // shipped: the doctype rewrote a text node the scanner had frozen.
+    const declClosed = '<!ENTITY x>\n\nzzz';
     expect(computeFreezeBoundary(declClosed, OFF)).toBe(declClosed.indexOf('zzz'));
+    expect(computeFreezeBoundary('<!DOCTYPE html>\n\nzzz', OFF)).toBe(0);
   });
 });
 
