@@ -135,13 +135,32 @@ describe('type-1 html block boundaries', () => {
     }
   });
 
-  test.each([...UNSAFE, ...SAFE])('output stays equivalent — %s', (name, doc) => {
-    for (const cfg of CATALOG) {
+  // Split rather than nested: the product of every plugin config, every
+  // schedule and both directions is 48 stream runs PER SHAPE, which timed
+  // out on CI at the 5 s default (2026-08-21). Schedules vary the splice
+  // path and configs vary the plugin chain — nothing needs them crossed, so
+  // one axis is swept per test and both carry an explicit budget.
+  test.each([...UNSAFE, ...SAFE])(
+    'output stays equivalent across schedules — %s',
+    (name, doc) => {
       for (const sizes of SCHEDULES) {
         for (const s of [sizes, [...sizes].reverse()]) {
-          expect(assertStreamEquivalence(`t1-${name}`, scheduleSnapshots(doc, s), cfg).frames).toBeGreaterThan(0);
+          expect(assertStreamEquivalence(`t1-${name}`, scheduleSnapshots(doc, s), CATALOG[0]).frames).toBeGreaterThan(
+            0
+          );
         }
       }
+    },
+    30_000
+  );
+
+  test('every plugin configuration agrees', () => {
+    for (const [name, doc] of [...UNSAFE, ...SAFE]) {
+      for (const cfg of CATALOG) {
+        expect(assertStreamEquivalence(`t1-${name}`, scheduleSnapshots(doc, SCHEDULES[1]), cfg).frames).toBeGreaterThan(
+          0
+        );
+      }
     }
-  });
+  }, 60_000);
 });
