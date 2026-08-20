@@ -1065,6 +1065,19 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     }
   };
 
+  /** A table part only re-routes parse5 when it appears OUTSIDE a table —
+   *  which is what TABLE_PART_NAMES has always meant, and what the poison
+   *  never checked: a well-formed `<table><tr><td>a</td></tr></table>` killed
+   *  freezing for the whole rest of the document (measured: boundary 0 from
+   *  the table onwards, against 43 for the same prose without it).
+   *  `tagBalance` is the open-element model the straddle bail already trusts,
+   *  so this adds no new assumption — and it is read only to SUPPRESS a
+   *  poison, so a `<table>` the scanner failed to count leaves the old,
+   *  over-blocking behaviour in place (2026-08-20 B1). Every call site sits
+   *  BEFORE this tag's own `applyTag`, so a `<table><td>` on one line has
+   *  the table counted by the time the part is judged. */
+  const strayTablePart = (tag: string): boolean => TABLE_PART_NAMES.has(tag) && (cp.tagBalance.get('table') ?? 0) === 0;
+
   // A type 2-5 raw construct (comment/PI/decl/CDATA) open at the START of
   // this line makes the whole line html-block content — the construct's
   // block ends WITH the line carrying its terminator, so even that line's
@@ -1622,7 +1635,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
       if (cp.commentOpen) continue;
       const closing = m[1] === '/';
       const tag = m[2].toLowerCase();
-      if (TABLE_PART_NAMES.has(tag)) cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start + m.index);
+      if (strayTablePart(tag)) cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start + m.index);
       let attrs = m[3] ?? '';
       if (cp.htmlFlowReal && (cp.rawTextOpen === null || (closing && tag === cp.rawTextOpen))) {
         // The regex ends the tag at the first `>`, but in a real html-flow
@@ -1697,7 +1710,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
         if (startMasked || wholeVisible || inRaw(mr.index) || cp.commentOpen) continue;
         const closing = mr[1] === '/';
         const tag = mr[2].toLowerCase();
-        if (TABLE_PART_NAMES.has(tag)) cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start + mr.index);
+        if (strayTablePart(tag)) cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start + mr.index);
         // Same html-text rule: a closing tag with attributes is text.
         if (closing && mr[3] !== undefined && !/^\s*$/.test(mr[3])) continue;
         const selfClosing = mr[3] !== undefined && /\/\s*$/.test(mr[3]);
@@ -1713,7 +1726,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     if (cp.pendingTruncatedTags.length > 0 && ln.text.includes('>')) {
       // A confirmed pending table-part open (`<td` + attributes wrapping)
       // is a real stray table part: poison from here (see TABLE_PART_NAMES).
-      if (cp.pendingTruncatedTags.some((t) => TABLE_PART_NAMES.has(t))) {
+      if (cp.pendingTruncatedTags.some((t) => strayTablePart(t))) {
         cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
       }
       cp.pendingTruncatedTags = [];
@@ -1735,7 +1748,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
           // for sure (a real html-flow run); in paragraph context `compare
           // a<td b` may be prose — poison waits for the `>` that confirms the
           // pending open (r2 P3), otherwise the blank line reverts it.
-          if (TABLE_PART_NAMES.has(tag) && cp.htmlFlowReal) {
+          if (strayTablePart(tag) && cp.htmlFlowReal) {
             cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start + lastLt);
           }
           // In a REAL html-flow run parse5 stays inside this tag across the

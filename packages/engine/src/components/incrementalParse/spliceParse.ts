@@ -399,6 +399,38 @@ export interface SpliceInput {
 /** Table-part START tags whose appearance outside a table re-routes parse5's
  *  tree construction for the rest of the document. */
 const TABLE_PART_TAG_RE = /<(?:td|th|tr|tbody|thead|tfoot|caption|col|colgroup)\b/i;
+/** Same scan, but positioned: `<table>` / `</table>` and every table part in
+ *  one raw-HTML value, in order. */
+const TABLE_TOKEN_RE = /<(\/?)(table|td|th|tr|tbody|thead|tfoot|caption|col|colgroup)\b/gi;
+
+/**
+ * Does any table part in `values` sit OUTSIDE a table? Only those re-route
+ * parse5; a well-formed `<table><tr><td>a</td></tr></table>` does not, and
+ * bailing on it cost every later frame a full parse (2026-08-20 B1 — the
+ * scanner's TABLE_PART_NAMES poison had the same gap; keep the two in step).
+ *
+ * Depth runs across the whole sequence because `hast-util-raw` feeds every
+ * raw value to ONE parse5 instance: a `<table>` opened in one html node is
+ * still open in the next. Unbalanced `</table>` clamps at zero rather than
+ * going negative, so a stray close cannot mask a later stray part.
+ */
+function hasStrayTablePart(values: Iterable<string>): boolean {
+  let depth = 0;
+  for (const value of values) {
+    TABLE_TOKEN_RE.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = TABLE_TOKEN_RE.exec(value)) !== null) {
+      const closing = m[1] === '/';
+      const tag = m[2].toLowerCase();
+      if (tag === 'table') {
+        depth = closing ? Math.max(0, depth - 1) : depth + 1;
+        continue;
+      }
+      if (depth === 0) return true;
+    }
+  }
+  return false;
+}
 /** The two END tags HTML synthesizes (`<br>` / empty `<p>`) instead of dropping. */
 const STRAY_SYNTHESIZED_END_TAG_RE = /<\/(?:br|p)\b/i;
 
@@ -549,7 +581,7 @@ export function spliceTrees(input: SpliceInput): { mdast: MdastRoot; hast: HastR
   //   while the full parse — already in body — synthesizes / foster-parents
   //   them. Any such tag inside the tail's LEADING run of html blocks
   //   (comments / PIs / declarations do not switch the mode) → bail.
-  if (prefixMdast.some((c) => c.type === 'html' && TABLE_PART_TAG_RE.test(c.value))) return null;
+  if (hasStrayTablePart(prefixMdast.flatMap((c) => (c.type === 'html' ? [c.value] : [])))) return null;
   for (const child of tailMdastChildren) {
     if (isWrapInvisible(child)) continue;
     if (child.type !== 'html') break;
