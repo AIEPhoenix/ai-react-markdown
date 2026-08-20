@@ -8,6 +8,34 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 ## 2.5.x — Chunk order you control
 
+### 2.5.3 — Four families of freeze-scanner under-block, found by closing three holes in the fuzz corpus
+
+All fixes, all pre-existing, and none of them reachable by the corpus that had been guarding this code. The work began as an attempt to add two generator families and ended as four defect families, because the blind spots in the corpus and the blind spots in the scanner had grown from the same set of examples.
+
+The corpus holes came first, and each was confirmed by a mutation that the entire 784-test engine suite waved through:
+
+- **No `<!` + letter shape existed at all.** Every `<!` form in the generators was `<!--`, `<!-`, `<! x >` or `<![CDATA[` — comment, bogus comment, CDATA. The declaration opener and its cross-line carry were unreachable.
+- **CDATA was only ever self-contained.** The single generator was `<![CDATA[<div>data</div>]]> trailing prose`, so the arm that carries `cdataOpen` past end-of-line never ran. (`<?x >` in `OVERLAP_OPENERS` does carry `piOpen` across a line, which is why processing instructions were already covered.)
+- **Raw-text elements appeared only as block-level runs**, never opened inline in a paragraph and spanning a line ending.
+
+What those shapes then exposed:
+
+- **parse5 erases the document-structure tokens, and the erasure is RETROACTIVE.** `<!DOCTYPE …>`, `<html>`, `<head>`, `<body>`, `<frameset>` and their end tags are absorbed by the "before html" / "in head" / "in body" insertion modes and emit no node into the fragment; the text nodes on either side then MERGE into one whose span starts BEFORE the construct. Every other invariant in the line model assumes a confirmed line only affects itself and what follows, so a `<!DOCTYPE>` arriving later rewrote hast the scanner had already frozen (`` ```
+
+`````
+
+<!DOCTYPE>
+e ``: the top-level text node at index 1 goes `"\n"` → `"\n\n"`). Counter-intuitively an UNCLOSED `<body>` was already safe by accident — it left `openTotal` at 1, which blocked candidates for an unrelated reason — so only the BALANCED form reached zero and froze across. These names now poison the document; measured over 38 400 shapes, and a doctype inside a fence, an indented block or an inline code span still freezes exactly as before.
+- **A closing tag with attributes swallowed a real opening tag.** The tag regex ends a match at the first `>`, so `</t <div a="">` matched as one closing tag whose "attributes" were ` <div a=""`; the paragraph-context rule then skipped the whole span. micromark does not: it backtracks the invalid closing tag to literal text and re-scans from inside it, where `<div a="">` is a REAL html-text tag that parse5 opens. The scan now rewinds past the tag NAME instead of skipping the match.
+- **Type-1 html blocks (`<script`, `<pre`, `<style`, `<textarea`) have block boundaries unlike every other html block, and neither half was modelled.** Type 1 ends at the line holding its literal closer rather than at a blank, but `htmlFlowReal` was "sticky to the blank" — so the line after `</script>` was still read as a real html-flow run, where parse5 accepts end tags with attributes, and `p <div> x </div a="b"> y` had its `</div a="b">` counted as a real close. micromark sees a fresh PARAGRAPH there, where that text is literal and the `<div>` stays OPEN; freezing past it nested the whole rest of the document inside that div. Conversely a BLANK LINE does not end type 1 — only the literal closer or EOF — so an unterminated block (`<script></script >` never closes: CommonMark wants the literal `</script>`, and the space makes it text) had its raw content read as markup. And inside such a block the balance scan is blind, since `rawTextOpen` suppresses its tags, so `openTotal` read 0 and a candidate looked perfectly balanced. The type-6 case is the control and still freezes: type 6 really does run to the blank, so the same `</div a="b">` really is a close there.
+- **An inline raw-text span crosses two grammars that disagree about where it ends.** `title`, `noframes` and `iframe` are RAWTEXT/RCDATA to parse5 and type-6 names to CommonMark, and parse5 lifts them out of the flow. Opened inline and spanning a line ending, that rewrites the paragraph they sat in (`p<title>` + newline + `</title>` + blank: the `<p>` goes from children [`p`, `"\n"`] at 0-8 to [`p`, `"\n\n"`] at 0-19 on any append). Worse, `</title a>` is literal paragraph text to micromark but a valid end tag to parse5's tokenizer, so the scanner held `rawTextOpen` across it and suppressed a `<div>` the real parse leaves open. Scope was measured rather than assumed — 40 tag names × 7 shapes, then 12 × 10 — and is exactly those three names, only inline, only across a line ending.
+
+One methodological note worth keeping, because it cost a round: the first type-1 guard asked "did the run start on this line", reading `htmlFlowSinceBlank` — a field ANY `<tag` line start sets as an over-approximation. An `<embed` line (neither a type-6 name nor a complete type-7 line, so a paragraph to micromark) opened the run and hid the real type-1 block behind it. Type 1 may interrupt a paragraph; the question that matters is whether a real html block is already open. Replacing the proxy with `htmlFlowReal` fixed two further counterexamples that had been filed as a separate family.
+
+Freeze rate is unchanged on ordinary documents: 17 realistic shapes — prose, headings, lists, tables, math, fences, references, footnotes, raw HTML, closed `<script>`/`<pre>`, inline tags — all report the identical boundary. The cost falls only on documents that genuinely contain a bare block-level doctype, a balanced `<head>`/`<body>`, an unterminated type-1 block, or an inline raw-text span across a line.
+
+Verification: every fixed shape is a deterministic pin (77 new regression assertions across three files, red before the fix); full preflight at 1491 tests; the release soak's three legs clean; and a scaled run at 400 000 splice-fuzz samples over twelve FRESH seeds, 600 000 direction-battery prefixes over twelve independent chains, and the K=4 census promoted from stride-2 sampling to full enumeration — 36 shards, no failures. Fresh seeds rather than a longer run of the same chain is the point: every defect here was a shape the corpus could already generate and had simply never sampled.
+
 ### 2.5.2 — Two pieces of logic that were kept identical by hand now have one definition
 
 No behaviour change and no new capability: a scan of the repository for code that had accreted into "remember to update both places", and the two cases where that was true.
@@ -478,3 +506,4 @@ The following have been evaluated and consciously **not** shipped, with rational
 - **Built-in CI badges in README** — there is no GitHub Actions setup in this repo at the time of writing. Adding a "build status" badge that would always show "no status" is worse than no badge.
 
 If your use case bumps into one of these deferrals, opening an issue with a concrete scenario is the right way to revisit.
+`````
