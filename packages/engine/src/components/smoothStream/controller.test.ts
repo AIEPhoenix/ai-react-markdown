@@ -186,6 +186,80 @@ describe('smoothStream controller — mechanics', () => {
     }
   });
 
+  test('2026-08-20 A2: resuming a finished/snapped round never reveals a broken cluster', () => {
+    // `finish()`, `snap()` and a finished `flush()` confirm the source's end
+    // unconditionally — a finished stream owes the caller every byte. Then the
+    // round resumes (tool call, user turn) and the source grows past that
+    // offset, which need not be a cluster boundary any more. `hold` cannot
+    // help: it never saw the offset. Left context is what breaks — a lone low
+    // surrogate, a leading ZWJ, an odd position in a regional-indicator run.
+    const seg = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+    const legalBoundaries = (text: string) => {
+      const ends = new Set<number>([0]);
+      for (const part of seg.segment(text)) ends.add(part.index + part.segment.length);
+      return ends;
+    };
+    const corpus = [
+      '\u{1F469}\u200D\u{1F467}\u200D\u{1F466}x',
+      'a\u{1F1FA}\u{1F1F8}\u{1F1EC}\u{1F1E7}b',
+      '\u{1F1FA}\u{1F1F8}\u{1F1EC}\u{1F1E7}\u{1F1EB}\u{1F1F7}',
+      '\u{1F1E6}\u{1F1E7}\u{1F1E8}\u{1F1E9}\u{1F1EA}\u{1F1EB}\u{1F1EC}\u{1F1ED}z', // long RI run: parity is the one thing a window cannot recover
+      '\u{1F44D}\u{1F3FD}\u{1F44D}',
+      '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}\u200D\u{1F466}tail',
+      '\u{1F468}\u200D\u{1F468}\u200D\u{1F466}\u200D\u{1F466}\u{1F469}\u200D\u{1F469}\u200D\u{1F467}\u200D\u{1F467}end',
+      '\u{1F469}\u{1F3FD}\u200D\u{1F692}\u{1F468}\u{1F3FF}\u200D\u{1F33E}q',
+      '\u{1F3F3}\uFE0F\u200D\u{1F308}\u{1F3F4}\u200D\u2620\uFE0F!',
+      'a\u0301e\u0301\u0302\u0303b',
+      'e\u0300\u0301\u0302\u0303\u0304\u0305\u0306\u0307\u0308x',
+      '1\uFE0F\u20E3x',
+      'a\u{1D165}b',
+      'a\u{E0101}b',
+      '\uAC01\uAC01',
+      '\u0915\u094D\u0937\u093F \u0928\u092E\u0938\u094D\u0924\u0947',
+    ];
+    const broken: string[] = [];
+    for (const mode of ['finish', 'finish-drained', 'snap', 'flush'] as const) {
+      for (const full of corpus) {
+        const ends = legalBoundaries(full);
+        for (let cut = 1; cut < full.length; cut += 1) {
+          const { controller, advance } = makeHarness(fixedRate(1_000));
+          // The round the resume starts from may have revealed a broken
+          // cluster already — the stream said it was done. That prefix is
+          // `inherited`; it cannot be taken back, and everything AFTER it
+          // still has to land on real boundaries.
+          let inherited = -1;
+          if (mode === 'snap') {
+            controller.snap(full.slice(0, cut));
+            inherited = cut;
+          } else {
+            controller.update('');
+            controller.update(full.slice(0, cut));
+            controller.finish();
+            if (mode === 'flush') controller.flush();
+            else if (mode === 'finish-drained') for (let i = 0; i < 40; i += 1) advance(1);
+            if (mode !== 'finish') inherited = controller.getVisible().length;
+          }
+          controller.update(full);
+          const seen = new Set<number>();
+          for (let i = 0; i < 40; i += 1) {
+            advance(1);
+            seen.add(controller.getVisible().length);
+          }
+          controller.finish();
+          for (let i = 0; i < 40; i += 1) advance(1);
+          for (const n of seen) {
+            if (!ends.has(n) && n !== inherited) {
+              broken.push(`${mode} ${JSON.stringify(full)} cut=${cut}: visible.length=${n}`);
+            }
+          }
+          if (controller.getVisible() !== full)
+            broken.push(`${mode} ${JSON.stringify(full)} cut=${cut}: never converged`);
+        }
+      }
+    }
+    expect(broken).toEqual([]);
+  });
+
   test('ZWJ emoji sequence reveals atomically', () => {
     const family = '👨‍👩‍👧‍👦';
     const { controller, advance } = makeHarness(fixedRate(10));

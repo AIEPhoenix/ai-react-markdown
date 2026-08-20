@@ -245,6 +245,30 @@ const graphemeEnds = (text: string, base: number): number[] => {
   return ends;
 };
 
+/**
+ * UTF-16 units re-segmented before a resume seam. Grapheme breaking is a
+ * finite-state process, so a window that starts mid-cluster re-synchronises
+ * within a cluster or two and every boundary after that is right — with one
+ * exception, regional indicators, handled separately below. The residual
+ * risk is a single cluster longer than the window (a 30-link ZWJ chain, a
+ * Zalgo pile) straddling the seam, and the cost there is one frame of odd
+ * reveal granularity, never wrong text.
+ */
+const RESUME_LOOKBACK = 64;
+
+const isMidSurrogatePair = (text: string, at: number): boolean =>
+  at > 0 &&
+  at < text.length &&
+  (text.charCodeAt(at - 1) & 0xfc00) === 0xd800 &&
+  (text.charCodeAt(at) & 0xfc00) === 0xdc00;
+
+const RI_FIRST = 0x1f1e6;
+const RI_LAST = 0x1f1ff;
+const isRegionalIndicatorAt = (text: string, at: number): boolean => {
+  const cp = text.codePointAt(at);
+  return cp !== undefined && cp >= RI_FIRST && cp <= RI_LAST;
+};
+
 export const createSmoothStreamController = (options: SmoothStreamOptions = {}): SmoothStreamController => {
   // Option fields are read each tick, so a caller that keeps the object
   // and replaces field values retunes pacing live (the hook relies on
@@ -264,6 +288,17 @@ export const createSmoothStreamController = (options: SmoothStreamOptions = {}):
   let pending: number[] = [];
   let tentativeEnd = 0;
   let finished = false;
+  /**
+   * An offset confirmed as a source end UNCONDITIONALLY — by `finish()`, or
+   * by a `snap()` that revealed everything. Correct at the time: a finished
+   * stream owes the caller every byte it has. But the controller supports
+   * RESUMING (a tool call or a user turn ends the round, then more text
+   * arrives), and an offset that was a source end need not be a cluster
+   * boundary of the longer string. `hold` protects boundaries confirmed by
+   * streaming; it never saw this one. Cleared once segmentation has
+   * confirmed a boundary beyond it.
+   */
+  let seam: number | undefined;
   /** Deadline (clock ms) by which a finished stream must be fully revealed. */
   let drainDeadlineAt: number | undefined;
   let initialized = false;
@@ -408,10 +443,38 @@ export const createSmoothStreamController = (options: SmoothStreamOptions = {}):
    *  the cluster BEFORE it would be confirmed even though the completed pair
    *  merges the two (`"👩‍👧‍👦x"` cut at 5 revealed `"👩‍"` — a break inside a
    *  cluster, which the module contract says never happens; 2026-08-19
-   *  review r2 P2-6). Two clusters stay tentative there. */
+   *  review r2 P2-6). Two clusters stay tentative there.
+   *
+   *  A resume needs more than that — see `seam`. The seam is dropped from
+   *  the schedule if it is still only scheduled, and the tail around it is
+   *  re-segmented with left context instead of from the seam itself
+   *  (2026-08-20 A2). */
   const resegmentTail = () => {
+    if (seam !== undefined && seam < source.length && pending[pending.length - 1] === seam) {
+      // Confirmed but not yet shown, and no longer a boundary we trust.
+      // Only the last entry can be the seam: it is a source end, so nothing
+      // confirmed later is smaller, and this runs before the new ends land.
+      pending.pop();
+    }
     const from = pending.length > 0 ? pending[pending.length - 1] : visibleEnd;
-    const ends = graphemeEnds(source.slice(from), from);
+    let anchor = from;
+    if (seam !== undefined && from <= seam) {
+      // Text already revealed cannot be taken back — one frame showing
+      // U+FFFD is the documented cost — but segmenting FROM a position
+      // whose cluster break depends on what precedes it corrupts every
+      // boundary after it too, and that part is avoidable. `"👩‍👧‍👦x"`
+      // resumed at 4 segmented as ["\uDC67‍", "👦", "x"] and revealed the
+      // family in visibly broken pieces.
+      anchor = Math.max(0, from - RESUME_LOOKBACK);
+      if (isMidSurrogatePair(source, anchor)) anchor -= 1;
+      // GB12/GB13 pair regional indicators off from the START of their run,
+      // so parity is the one thing a bounded window cannot recover. Walk the
+      // whole run instead: `"🇺🇸🇬🇧🇫🇷"` resumed at 2 read 🇸 and 🇬 as one flag.
+      while (anchor >= 2 && isRegionalIndicatorAt(source, anchor - 2)) anchor -= 2;
+    } else {
+      seam = undefined;
+    }
+    const ends = graphemeEnds(source.slice(anchor), anchor);
     if (ends.length === 0) {
       tentativeEnd = from;
       return;
@@ -432,7 +495,9 @@ export const createSmoothStreamController = (options: SmoothStreamOptions = {}):
       if (last >= 0xd800 && last <= 0xdbff) hold = 2;
     }
     const confirmedEnds = finished ? ends : ends.slice(0, -hold);
-    for (const end of confirmedEnds) pending.push(end);
+    // A backed-up anchor re-derives boundaries at or before `from`; those
+    // are settled already (revealed, or still-trusted entries in `pending`).
+    for (const end of confirmedEnds) if (end > from) pending.push(end);
   };
 
   const snap = (next: string) => {
@@ -448,6 +513,7 @@ export const createSmoothStreamController = (options: SmoothStreamOptions = {}):
     visibleEnd = next.length;
     tentativeEnd = next.length;
     pending = [];
+    seam = next.length;
     credit = 0;
     cancelScheduled();
     if (visibleCache !== next) notify();
@@ -495,6 +561,7 @@ export const createSmoothStreamController = (options: SmoothStreamOptions = {}):
       if (tentativeEnd > (pending.length > 0 ? pending[pending.length - 1] : visibleEnd)) {
         pending.push(tentativeEnd);
       }
+      seam = source.length;
       ensureScheduled();
     },
     snap,
