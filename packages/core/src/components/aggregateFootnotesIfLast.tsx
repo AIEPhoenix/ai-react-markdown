@@ -29,7 +29,7 @@ import type { Element as HastElement, ElementContent as HastElementContent } fro
 import { renderHastSubtree } from './markdown';
 import { cloneHastForRender } from './cloneHastForRender';
 import type { Registry } from '@ai-react-markdown/engine';
-import { footnoteSafeId } from '@ai-react-markdown/engine';
+import { footnoteSafeId, lastMeaningfulIdx } from '@ai-react-markdown/engine';
 import type { PostOptions } from './blockMemo';
 
 interface AggregateFootnotesIfLastProps {
@@ -49,27 +49,6 @@ interface OrderedDef {
   bodyHast: HastElementContent[];
   n: number | null;
   withBackref: boolean;
-}
-
-/** Whitespace-only text node — produced by mdast-util-to-hast's
- *  `state.wrap(content, true)` to interleave `\n` between block-level
- *  `<li>` children. We have to look past these to find the actual tail. */
-function isWhitespaceText(c: HastElementContent): boolean {
-  return c.type === 'text' && /^\s*$/.test((c as { value: string }).value);
-}
-
-/** Index of the LAST meaningful (non-whitespace-text) child of `<li>`, or
- *  -1 if no such child exists. Used to decide where to append backrefs:
- *  mdast-util-to-hast's contract is "if the tail of `<li>`'s content array
- *  is `<p>`, push backrefs into it; else push them directly to `<li>`'s
- *  content". The tail check must skip wrap-emitted `\n` text nodes that
- *  surround the meaningful children, otherwise we'd wrongly classify the
- *  trailing `\n` as the tail and bypass the `<p>` append path. */
-function lastMeaningfulIdx(children: HastElementContent[]): number {
-  for (let i = children.length - 1; i >= 0; i--) {
-    if (!isWhitespaceText(children[i])) return i;
-  }
-  return -1;
 }
 
 /**

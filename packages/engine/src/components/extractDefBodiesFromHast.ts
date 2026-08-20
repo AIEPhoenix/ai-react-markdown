@@ -26,6 +26,7 @@ import { SKIP, visit } from 'unist-util-visit';
 import type { Element as HastElement, Root as HastRoot, ElementContent } from 'hast';
 import { normalizeUri } from 'micromark-util-sanitize-uri';
 import { normalizeId } from './normalizeId';
+import { isWhitespaceText, lastMeaningfulIdx } from './hastPredicates';
 
 // Fallback for callers that do not know the exact clobberPrefix. The main
 // renderer passes the prefix explicitly so labels containing regex metacharacters
@@ -102,23 +103,6 @@ function isBackrefAnchor(c: ElementContent): boolean {
   const el = c as HastElement;
   if (el.tagName !== 'a') return false;
   return Boolean(el.properties && 'dataFootnoteBackref' in el.properties);
-}
-
-function isWhitespaceText(c: ElementContent): boolean {
-  if (c.type !== 'text') return false;
-  return /^\s*$/.test((c as { value: string }).value);
-}
-
-/** Index of the last child that isn't a whitespace-only text node, or -1
- *  if no such child exists. mdast-util-to-hast's `state.wrap(content, true)`
- *  inserts `\n` text nodes between (and around) block-level children of
- *  `<li>`; we have to look past those to find the meaningful tail before
- *  deciding which backref-strip case applies. */
-function lastMeaningfulIdx(children: ElementContent[]): number {
-  for (let i = children.length - 1; i >= 0; i--) {
-    if (!isWhitespaceText(children[i])) return i;
-  }
-  return -1;
 }
 
 /**
