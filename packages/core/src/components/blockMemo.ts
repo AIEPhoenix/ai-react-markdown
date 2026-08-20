@@ -245,7 +245,18 @@ export function computeHtmlBlockDigest(el: HastElement, source?: string, ownEnd?
 }
 
 /** {@link computeHtmlBlockDigest} plus the subtree's max end offset — the end
- *  of the SWALLOWED extent, which callers need to ask what fell inside. */
+ *  of the SWALLOWED extent, which callers need to ask what fell inside.
+ *
+ *  Both position sources here are HAST offsets, and every use of the extent
+ *  is unsafe in the SHORT direction (too small and a swallowed reference
+ *  escapes the taint test, so an edit to a definition outside the container
+ *  leaves a stale href in the cache). They are redundant on purpose: the
+ *  container's own end already reaches past the swallowed blocks, because
+ *  `rehype-raw` reparses the raw string and closes the element wherever
+ *  parse5 does — NOT where the mdast `html` node ends, which is just the
+ *  opening tag. The descendant walk covers it a second time. Verified in
+ *  2026-08-20 A1 across 162 container/tail shapes: destroying either source
+ *  alone changes nothing, destroying both under-taints 130 of them. */
 export function computeHtmlBlockDigestWithExtent(
   el: HastElement,
   source?: string,
@@ -311,6 +322,20 @@ export type RenderItem =
   | { kind: 'inline'; el: HastChild; reactKey: string }
   | { kind: 'synthetic'; el: HastElement; reactKey: string };
 
+const EMPTY_LABELS: ReadonlySet<string> = new Set<string>();
+
+/** Extra render-time facts {@link buildBlocks} cannot read off the trees. */
+export interface BuildBlocksOptions {
+  /**
+   * Labels this chunk phantom-injected because another chunk defines them
+   * (already normalized). The coordinated handlers keep these out of
+   * `state.footnoteOrder`, so the cache key's rank must keep them out too —
+   * see the note in the rank pass. Empty / omitted in standalone mode, where
+   * no phantom injection happened.
+   */
+  phantomFootnoteLabels?: ReadonlySet<string>;
+}
+
 /** Result of {@link buildBlocks}. */
 export interface BuildBlocksResult {
   /** Render plan in document order — drives {@link renderBlocksWithCache}. */
@@ -366,7 +391,13 @@ const FOOTNOTE_SECTION_KEY = '__footnote_section__';
  * numbering), then JSON-stringifies the collected tuples. That string is the
  * invalidation key for tainted blocks and the synthetic footnote section.
  */
-export function buildBlocks(mdast: MdastRoot, hast: HastRoot, source: string): BuildBlocksResult {
+export function buildBlocks(
+  mdast: MdastRoot,
+  hast: HastRoot,
+  source: string,
+  options: BuildBlocksOptions = {}
+): BuildBlocksResult {
+  const phantomFootnotes = options.phantomFootnoteLabels ?? EMPTY_LABELS;
   const mdastByOffset = new Map<number, MdastContent>();
   // Sorted [start, end, node] table for the range-containment fallback used
   // when a hast block's offset is INSIDE an mdast node's source range
@@ -424,6 +455,19 @@ export function buildBlocks(mdast: MdastRoot, hast: HastRoot, source: string): B
   // whether a raw-HTML container swallowed a reference whose RENDERING
   // depends on a definition outside it (see the isRawHtmlBlock branch).
   const taintOffsets: number[] = [];
+  /** First index in `taintOffsets` at or after `offset`. The offsets are
+   *  pushed by a document-order `visit`, so the array is already sorted —
+   *  the same property `findContainingMdast` above relies on. */
+  const firstTaintAtOrAfter = (offset: number): number => {
+    let lo = 0;
+    let hi = taintOffsets.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (taintOffsets[mid] < offset) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  };
   visit(mdast, (n) => {
     if (!CTX_TYPES.has(n.type)) return;
     const at = n.position?.start?.offset;
@@ -434,6 +478,21 @@ export function buildBlocks(mdast: MdastRoot, hast: HastRoot, source: string): B
     else if (n.type === 'imageReference') ctxParts.push(['ir', n.identifier]);
     else if (n.type === 'definition') ctxParts.push(['d', n.identifier, n.url, n.title ?? null]);
   });
+  if (process.env.NODE_ENV !== 'production') {
+    // A preorder walk yields non-decreasing start offsets on any well-formed
+    // tree, and `firstTaintAtOrAfter` is a binary search over exactly that.
+    // Same guard, same reason, and the same shape as the one on
+    // `mdastRanges`: the env read stays OUT of the per-node path, which cost
+    // more than the search saved when it was inside it.
+    for (let i = 1; i < taintOffsets.length; i++) {
+      if (taintOffsets[i] < taintOffsets[i - 1]) {
+        throw new Error(
+          'block-memo: taint node start offsets are not source-ordered — ' +
+            'a remark plugin is reordering nodes or emitting bad positions.'
+        );
+      }
+    }
+  }
   const globalCtx = JSON.stringify(ctxParts);
 
   const plan: RenderItem[] = [];
@@ -452,6 +511,16 @@ export function buildBlocks(mdast: MdastRoot, hast: HastRoot, source: string): B
     const counts = new Map<string, number>();
     const ranks = new Map<string, number>();
     const rankOf = (id: string): number => {
+      // A PHANTOM label never enters the engine's footnoteOrder — the
+      // coordinated handlers return early for both its definition and its
+      // references, and its `footnote-sup` gets no `localNumber` at all. It
+      // must not take a rank here either, or the model drifts from the value
+      // actually baked into the placeholder: with `[^A]` cross-chunk and
+      // `[^B]` local, B's baked number is 1 while A is phantom and 2 once A's
+      // definition arrives — and B's rank, counting A both times, stayed 1.
+      // Same raw, same position, same rank: the cache served a superscript
+      // reading 1 under a footer numbering it 2 (2026-08-20 B2).
+      if (phantomFootnotes.has(id)) return -1;
       let rank = ranks.get(id);
       if (rank === undefined) {
         rank = ranks.size;
@@ -464,6 +533,13 @@ export function buildBlocks(mdast: MdastRoot, hast: HastRoot, source: string): B
         // A definition met before the label's first ref can enter the
         // engine's footnoteOrder first (preserveOrphan) — it takes part in
         // the first-appearance rank; its body refs are footer-rendered.
+        //
+        // Modelled as `preserveOrphan: true` unconditionally, which is not
+        // always what the engine does. Deliberate: with orphan protection
+        // OFF the two orderings can disagree, but they disagree the SAME way
+        // in every frame, and the flag only changes by a prop change — which
+        // re-parses the whole pipeline anyway. Phantom status is different:
+        // it flips mid-stream, which is what made it a stale-cache bug.
         rankOf(normalizeId(String(n.identifier)));
         return SKIP;
       }
@@ -613,15 +689,18 @@ export function buildBlocks(mdast: MdastRoot, hast: HastRoot, source: string): B
       // strictly stronger. In COORDINATED mode the labels come from the
       // placeholder scan above (every resolvable reference becomes a
       // `cross-chunk-*` element), so this test is belt-and-braces there.
-      // `[ownEnd, maxEnd)` is half-open at the low end on purpose: anything
-      // below `ownEnd` is already covered by `raw` (mdast end offsets are
-      // exclusive), and `maxEnd` erring high only over-taints.
-      for (const at of taintOffsets) {
-        if (at >= mdastPos.end.offset && at < d.maxEnd) {
-          swallowedTaint = true;
-          break;
-        }
-      }
+      // `[ownEnd, maxEnd)` mixes offset systems on purpose: `ownEnd` is the
+      // MDAST end (where the opening tag stops), `maxEnd` the HAST end
+      // (where parse5 closed the element, past everything it swallowed).
+      // Half-open at the low end because anything below `ownEnd` is already
+      // covered by `raw`, and `maxEnd` erring high only over-taints.
+      // Binary search, not a scan: the linear form was O(taint nodes ×
+      // raw-HTML blocks) on the streaming hot path, and the sortedness it
+      // needs is the same one `findContainingMdast` already assumes
+      // (2026-08-20 B5 — measured at 14% of buildBlocks on a document with
+      // 200 definitions and 120 containers).
+      const first = firstTaintAtOrAfter(mdastPos.end.offset);
+      swallowedTaint = first < taintOffsets.length && taintOffsets[first] < d.maxEnd;
     }
 
     // A standalone link/image reference renders as a plain `<a href>` /

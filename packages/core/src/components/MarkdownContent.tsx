@@ -607,8 +607,17 @@ const BlockMemoizedRenderer = memo(
     // Cut hast into per-block units indexed back to mdast for cache identity,
     // and compute the document-wide ctx digest for cross-block invalidation.
     const built = useMemo(
-      () => measureHere('build', () => buildBlocks(pipeline.mdast, pipeline.hast, content ?? '')),
-      [pipeline, content, measureHere]
+      () =>
+        measureHere('build', () =>
+          buildBlocks(pipeline.mdast, pipeline.hast, content ?? '', {
+            // The block cache's footnote rank models `state.footnoteOrder`,
+            // which phantom labels never enter (2026-08-20 B2). Identity is
+            // stable across renders whose phantom sets match, so this does
+            // not defeat the memo.
+            phantomFootnoteLabels: targetPhantoms.missingFootnotes,
+          })
+        ),
+      [pipeline, content, measureHere, targetPhantoms]
     );
 
     // Streaming-cursor tail signal: classify whether the source tail sits

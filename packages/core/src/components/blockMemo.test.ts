@@ -28,6 +28,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import {
   buildBlocks,
   computeBlockFingerprint,
+  computeHtmlBlockDigestWithExtent,
   createCache,
   isFootnoteSection,
   hasMdastSource,
@@ -36,6 +37,7 @@ import {
   type PostOptions,
 } from './blockMemo';
 import { createRegistry, type Registry } from '@ai-react-markdown/engine';
+import { visit } from 'unist-util-visit';
 
 interface PipelineOptions {
   removeComments?: boolean;
@@ -423,6 +425,122 @@ describe('buildBlocks — edge documents', () => {
 // ─── raw HTML edge cases (validates two-tier offset lookup + occurrence index) ─
 
 describe('buildBlocks — raw HTML', () => {
+  test('2026-08-20 A1: the swallowed extent reaches everything the container actually swallowed', () => {
+    // `maxEnd` bounds the source range a raw-HTML container is held
+    // responsible for, and every use of it is unsafe in the SHORT direction:
+    // too small and a swallowed reference falls outside the taint test, so a
+    // definition edit outside the container leaves a stale href in the cache.
+    // Two independent sources feed it — the container's own hast end offset
+    // (rehype-raw reparses the raw string and closes the element wherever
+    // parse5 does, which is past the swallowed blocks) and the max end over
+    // its hast descendants. Either one alone covers every shape below; the
+    // pin is here so an upgrade that changes how positions survive the
+    // reparse fails loudly instead of silently under-tainting.
+    const openers = [
+      '<details>',
+      '<details>\n<summary>s</summary>',
+      '<div>',
+      '<div class="a">',
+      '<section>',
+      '<blockquote>',
+      '<span>',
+      '<table>',
+      '<table>\n<tbody>',
+      '<table>\n<tr><td>c</td></tr>',
+      '<ul>',
+      '<ul>\n<li>i</li>',
+      '<dl>',
+      '<p>',
+      '<div>\n<div>\n<div>',
+      '<select>',
+      '<button>',
+      '<a href="#z">',
+      '<td>',
+      '<tr>',
+      '<li>',
+      '<summary>',
+      '<div><!-- c -->',
+      '<div a="b>c">',
+      '<h1>',
+      '<pre>',
+      '<code>',
+    ];
+    const tails = [
+      'See [x].',
+      'para one\n\npara two [x]\n\npara three',
+      '- a\n- b [x]\n\n> quote [x]\n',
+      '| h |\n| - |\n| [x] |\n',
+      '```\ncode [x]\n```\n\ntext [x]',
+      '![y][x]\n\n### head [x]\n\nfinal',
+    ];
+    const tooShort: string[] = [];
+    const inert: string[] = [];
+    let checked = 0;
+    for (const opener of openers) {
+      for (const tail of tails) {
+        const md = `[x]: https://a.example\n\n${opener}\n\n${tail}\n`;
+        const { mdast, hast } = runPipeline(md);
+        const containerIdx = mdast.children.findIndex((c) => c.type === 'html');
+        if (containerIdx < 0) continue;
+        const container = mdast.children[containerIdx];
+        const ownEnd = container.position!.end!.offset!;
+        const built = buildBlocks(mdast, hast, md);
+        // Anything after the container that no longer has a top-level block
+        // of its own was swallowed by it.
+        const topStarts = new Set<number>();
+        for (const item of built.plan) if (item.kind === 'block') topStarts.add(item.info.startOffset);
+        let trueEnd = ownEnd;
+        for (const node of mdast.children.slice(containerIdx + 1)) {
+          const start = node.position?.start?.offset;
+          const end = node.position?.end?.offset;
+          if (start === undefined || end === undefined) continue;
+          // Definitions render nothing of their own, so their absence from
+          // the plan says nothing about who swallowed them.
+          if (node.type === 'definition' || node.type === 'footnoteDefinition') continue;
+          if (!topStarts.has(start)) trueEnd = Math.max(trueEnd, end);
+        }
+        const el = hast.children.find(
+          (c): c is HastElement =>
+            c.type === 'element' && c.position?.start?.offset === container.position!.start!.offset
+        );
+        // Sanitize drops some openers outright (`<figure>`, `<svg>`); nothing
+        // to hold responsible then.
+        if (el === undefined) continue;
+        checked += 1;
+        const { maxEnd } = computeHtmlBlockDigestWithExtent(el, md, ownEnd);
+        const label = `${JSON.stringify(opener)} + ${JSON.stringify(tail.slice(0, 16))}`;
+        if (maxEnd < trueEnd) tooShort.push(`${label}: maxEnd=${maxEnd} < ${trueEnd}`);
+        if (trueEnd > ownEnd && maxEnd <= ownEnd) inert.push(`${label}: swallowed, extent empty`);
+      }
+    }
+    expect({ tooShort, inert }).toEqual({ tooShort: [], inert: [] });
+    expect(checked).toBeGreaterThan(100);
+  });
+
+  test('2026-08-20 A1: a definition BEFORE an unclosed container still updates what it swallowed', () => {
+    // The definition sits outside `[ownEnd, maxEnd)`, so the extent hash
+    // cannot see the edit — only the mdast taint test can, by noticing the
+    // swallowed reference and switching the block's key to `globalCtx`.
+    for (const opener of ['<details>', '<div>', '<section>', '<table>', '<ul>', '<p>', '<blockquote>']) {
+      for (const body of ['See [x].', '![y][x]', '[x]']) {
+        const doc = (url: string) => `[x]: ${url}\n\nintro\n\n${opener}\n\n${body}\n`;
+        const cacheRef = { current: createCache() };
+        const first = frame(doc('https://a.example'), cacheRef);
+        const second = frame(doc('https://b.example'), cacheRef);
+        const fresh = frame(doc('https://b.example'), { current: createCache() });
+        const label = `${opener} + ${body}`;
+        expect({ label, html: renderToStaticMarkup(createElement(Fragment, null, ...second.rendered)) }).toEqual({
+          label,
+          html: renderToStaticMarkup(createElement(Fragment, null, ...fresh.rendered)),
+        });
+        // Guard against a vacuous case where both frames render the same.
+        expect(renderToStaticMarkup(createElement(Fragment, null, ...first.rendered))).not.toBe(
+          renderToStaticMarkup(createElement(Fragment, null, ...fresh.rendered))
+        );
+      }
+    }
+  });
+
   test('indented raw HTML: hast div at offset 3, mdast html at 0 — range fallback wins', () => {
     // `   <div>Hi</div>` → one mdast `html` node spanning [0,16]; hast emits
     // a leading text node and a `<div>` element starting at offset 3. The
@@ -979,6 +1097,72 @@ describe('buildBlocks per-block taintLabels (v6)', () => {
     expect(lb.hastDigest).toBe(la.hastDigest); // the edit is outside the swallowed extent
     expect(lb.hasReference).toBe(true); // …so only the taint flag separates the frames
     expect(linkBefore.globalCtx).not.toBe(linkAfter.globalCtx);
+  });
+
+  test('2026-08-20 B2: a phantom label takes no rank, so a phantom→real flip invalidates the blocks it renumbers', () => {
+    // `localNumber` is `state.footnoteOrder.indexOf(id) + 1`, and phantom
+    // labels never enter footnoteOrder — the handlers return early for both
+    // their definition and their references. The cache's rank counted them
+    // anyway, so when a cross-chunk label's definition arrived locally and
+    // every LATER footnote was renumbered, the rank did not move: same raw,
+    // same position, same key, and the cached superscript kept reading 1
+    // under a footer numbering it 2.
+    const buildWithPhantoms = (source: string, phantoms: string[]) => {
+      const processor = unified()
+        .use(remarkParse)
+        .use(remarkGfm)
+        .use(remarkRehype, {
+          allowDangerousHtml: true,
+          handlers: buildCrossChunkHandlers(),
+          phantomFootnoteLabels: new Set(phantoms),
+          preserveOrphan: false,
+          documentId: 'doc',
+        } as never)
+        .use(rehypeRaw);
+      const mdast = processor.parse(source);
+      const hast = processor.runSync(mdast, source) as HastRoot;
+      return {
+        built: buildBlocks(mdast as MdastRoot, hast, source, { phantomFootnoteLabels: new Set(phantoms) }),
+        hast,
+      };
+    };
+    const bakedNumbers = (hast: HastRoot) => {
+      const out: Array<[string, unknown]> = [];
+      visit(hast, 'element', (el: HastElement) => {
+        if (el.tagName === 'footnote-sup') out.push([String(el.properties?.label), el.properties?.localNumber]);
+      });
+      return out;
+    };
+
+    // Frame 1: `[^A]` is defined by ANOTHER chunk, so the pipeline injects a
+    // phantom definition for it. Frame 2: A's real definition has arrived.
+    const before = buildWithPhantoms('see [^A]\n\nsee [^B]\n\n[^B]: bee\n\n[^A]: __aimd_sentinel_fn__\n', ['A']);
+    const after = buildWithPhantoms('see [^A]\n\nsee [^B]\n\n[^B]: bee\n\n[^A]: ay\n', []);
+
+    // The premise: B really is renumbered, and nothing else about its block
+    // moved — without both halves the test proves nothing.
+    expect(bakedNumbers(before.hast)).toEqual([
+      ['a', undefined],
+      ['b', '1'],
+    ]);
+    expect(bakedNumbers(after.hast)).toEqual([
+      ['a', '1'],
+      ['b', '2'],
+    ]);
+    const blockBefore = before.built.blocks.find((b) => b.raw === 'see [^B]')!;
+    const blockAfter = after.built.blocks.find((b) => b.raw === 'see [^B]')!;
+    expect(blockAfter.startOffset).toBe(blockBefore.startOffset);
+    expect(blockAfter.raw).toBe(blockBefore.raw);
+
+    // …so the local ctx is the only thing that can separate the two frames.
+    expect(blockBefore.taintLabels?.footnoteRefLocalCtx).not.toBe(blockAfter.taintLabels?.footnoteRefLocalCtx);
+
+    // And it reaches the fingerprint, which is what the cache keys on.
+    const reg = createRegistry();
+    const sym = reg.allocateSymbol('chunk');
+    expect(computeBlockFingerprint(blockBefore.taintLabels!, reg, sym, '')).not.toBe(
+      computeBlockFingerprint(blockAfter.taintLabels!, reg, sym, '')
+    );
   });
 
   test('2026-08-19 review r2 P2-8, coordinated leg: swallowed placeholders carry their baked occurrence into the fingerprint', () => {
