@@ -10,7 +10,7 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 ### 2.5.4 — The foreign-content model was a bag where the grammar is a stack
 
-One shipped under-block, one root cause, and it was reached by finishing the job 2.5.3 started: the fuzz corpus had never contained an `<svg>` or a `<math>`. `inForeignContent()` therefore never returned true under fuzz, and both foreign branches of the scanner — `honoursSelfClosing()` and `htmlRulesApply()` — had shipped unexercised since they were written.
+Three under-blocks that had already shipped, from two unrelated root causes, both surfaced by finishing the corpus work 2.5.3 started. The first: the fuzz corpus had never contained an `<svg>` or a `<math>`, so `inForeignContent()` never returned true under fuzz and both foreign branches of the scanner — `honoursSelfClosing()` and `htmlRulesApply()` — had shipped unexercised since they were written.
 
 Adding the corpus family took one shard to produce a counterexample, shrunk to 58 bytes:
 
@@ -33,7 +33,7 @@ The `<b>` is a _breakout_ start tag. parse5's "in foreign content" insertion mod
 
 Documents that contain no `<svg>` or `<math>` are bit-for-bit unaffected — every branch here is gated behind `inForeignContent()`, and the whole boundary-assertion suite reports identical numbers.
 
-The first fix was incomplete in a way worth naming: it lived in `applyTag`, and VOID start tags never reach `applyTag` — the caller skips them. `br`, `hr`, `img`, `embed` and `meta` are all breakout names, so `<svg><br><a/></svg>` still honoured the flag. Ten of twelve direction-battery shards said so. The pop is decided by the tag NAME alone, and the spec pops _before_ processing the tag, so whether the tag itself joins the stack is irrelevant; it now runs at the skip sites too.
+The first fix was incomplete in a way worth naming: it lived in `applyTag`, and VOID start tags never reach `applyTag` — the caller skips them. `br`, `hr`, `img`, `embed` and `meta` are all breakout names, so `<svg><br><a/></svg>` still honoured the flag. Ten of twelve direction-battery shards said so. That shape is the second shipped under-block, not merely an incomplete patch: 2.5.3 had no pop at all, so it was wrong there too — the partial fix simply failed to cover it. The pop is decided by the tag NAME alone, and the spec pops _before_ processing the tag, so whether the tag itself joins the stack is irrelevant; it now runs at the skip sites too.
 
 **A second, unrelated family came out of the same corpus work: parse5's script-data escape states.** Inside `<script>`, a `<!--` enters "script data escaped", and a nested `<script` then enters "double escaped" — where `</script>` no longer ends the element, it only steps back to escaped. CommonMark has no such notion: a type-1 block ends at the first line holding the literal closer. After
 
@@ -43,7 +43,7 @@ The first fix was incomplete in a way worth naming: it lived in `applyTag`, and 
 </script>
 ```
 
-micromark says the block is over and a following `$$` opens flow math, while parse5 says the script is still open and swallows it. Unlike the foreign-content cases this one cannot be modelled away — the scanner would still have to pick one grammar and be wrong under the other — so it poisons, which is exactly what blocker 7 exists for. Seven of twelve fuzz shards.
+micromark says the block is over and a following `$$` opens flow math, while parse5 says the script is still open and swallows it. This is the third shipped under-block, and it has nothing to do with foreign content — it came out of the same week's corpus work, not the same defect. Unlike the foreign-content cases this one cannot be modelled away — the scanner would still have to pick one grammar and be wrong under the other — so it poisons, which is exactly what blocker 7 exists for. Seven of twelve fuzz shards.
 
 Two other paths were swept and came back clean, each safe for a reason belonging to a _different_ blocker, which is why they are now pinned rather than trusted:
 
