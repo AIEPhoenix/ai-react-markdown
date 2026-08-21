@@ -8,6 +8,56 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 ## 2.5.x — Chunk order you control
 
+### 2.5.4 — The foreign-content model was a bag where the grammar is a stack
+
+One shipped under-block, one root cause, and it was reached by finishing the job 2.5.3 started: the fuzz corpus had never contained an `<svg>` or a `<math>`. `inForeignContent()` therefore never returned true under fuzz, and both foreign branches of the scanner — `honoursSelfClosing()` and `htmlRulesApply()` — had shipped unexercised since they were written.
+
+Adding the corpus family took one shard to produce a counterexample, shrunk to 58 bytes:
+
+```
+<svg><b></b><textarea>
+x
+</textarea></svg>
+
+[a]: /u
+
+Term
+```
+
+The `<b>` is a _breakout_ start tag. parse5's "in foreign content" insertion mode POPS the foreign root off its stack when one arrives and processes the tag as HTML — but the scanner modelled foreign-content depth as `tagBalance.get('svg') > 0`, a name→count bag, and a bag cannot express a pop it never saw. It kept reporting "still in foreign content" for the rest of the run, with two consequences:
+
+- **`htmlRulesApply()` kept saying "foreign rules", so the `<textarea>` never opened `rawTextOpen`** — and the inline raw-text poison added in 2.5.3 never fired. A fix from the previous release, bypassed by a stale model rather than by a new construct.
+- **`honoursSelfClosing()` honoured a flag parse5 IGNORES.** After the pop, `<svg><div></div><a/></svg>` leaves `<a>` genuinely open in parse5, swallowing everything after it, while the scanner counted no open element at all.
+
+`popForeignRoots()` models the pop. It clears the roots only, where the spec pops every foreign element down to the integration point — deliberately less, because leaving the foreign children counted keeps `openTotal` at or above parse5's stack depth, which is the over-blocking side. Fixed with it: `HTML_INTEGRATION_POINTS` omitted `title`, although an SVG `title` IS an HTML integration point, so a self-closing tag inside `<svg><title>` was skipped where HTML rules open an element. (`annotation-xml` stays in the list unconditionally; it qualifies only when its `encoding` is `text/html`, and treating it as one always over-blocks.)
+
+Documents that contain no `<svg>` or `<math>` are bit-for-bit unaffected — every branch here is gated behind `inForeignContent()`, and the whole boundary-assertion suite reports identical numbers.
+
+The first fix was incomplete in a way worth naming: it lived in `applyTag`, and VOID start tags never reach `applyTag` — the caller skips them. `br`, `hr`, `img`, `embed` and `meta` are all breakout names, so `<svg><br><a/></svg>` still honoured the flag. Ten of twelve direction-battery shards said so. The pop is decided by the tag NAME alone, and the spec pops _before_ processing the tag, so whether the tag itself joins the stack is irrelevant; it now runs at the skip sites too.
+
+**A second, unrelated family came out of the same corpus work: parse5's script-data escape states.** Inside `<script>`, a `<!--` enters "script data escaped", and a nested `<script` then enters "double escaped" — where `</script>` no longer ends the element, it only steps back to escaped. CommonMark has no such notion: a type-1 block ends at the first line holding the literal closer. After
+
+```
+<script>
+<!--<script>
+</script>
+```
+
+micromark says the block is over and a following `$$` opens flow math, while parse5 says the script is still open and swallows it. Unlike the foreign-content cases this one cannot be modelled away — the scanner would still have to pick one grammar and be wrong under the other — so it poisons, which is exactly what blocker 7 exists for. Seven of twelve fuzz shards.
+
+Two other paths were swept and came back clean, each safe for a reason belonging to a _different_ blocker, which is why they are now pinned rather than trusted:
+
+- **Foster parenting.** Text directly inside `<table>` is moved out in front of the table and MERGES with the text node already there — the same retroactive shape as the 2.5.3 doctype family. It holds because an open `<table>` keeps `openTotal` above zero, so the boundary is already parked in front of the merge target before the fostered text exists.
+- **`<template>` in the content.** `rehype-raw` parses in fragment mode with a `<template>` context, so a nested template pushes another insertion mode; its children land in a content fragment that never reaches hast, and the sanitize schema drops the element.
+
+New in this release: `packages/engine/src/components/incrementalParse/GRAMMAR-COVERAGE.md`, which enumerates the two source grammars entry by entry — CommonMark's seven html block types with their start/end/interrupt conditions, parse5's markup-swallowing tokenizer states crossed with element name _and position_, and the insertion modes that erase or move nodes — against what the scanner does about each and whether the corpus can reach it. It also carries the deviation ledger and the ground facts the whole analysis rests on (fragment mode, `<template>` context, `scriptingEnabled: false`, and a sanitize schema that lifts the children of a disallowed element).
+
+The soak battery grew a fourth leg. The `collectDefLabels` lineage runs the scanner with `mathFlow` and `referenceTaint` off and had a fuzz suite that the release script never invoked; it does now. The `remarkInjectPhantomDefs` lineage turned out to be covered already — `spliceFuzz`'s third property drives `runCrossChunk`, which calls `phantomSuffixCloser` on every frame.
+
+The fuzz corpus also grew enough to expose a fragility in its own scaffolding. The coverage meters require every generator family to be sampled at least `RUNS/60` times, and that floor does not scale with the number of families — so each new family dilutes all the others. Growing the raw-HTML pool from 38 to 49 weights took the failure rate across twelve seeds from 1-in-12 to 4-in-12. The default sample count is now 300 rather than 120, at which all twelve clear. Separately, the benign family's engagement floor was 0.3 while the converged value is 0.29-0.32 — a floor sitting on the mean, failing perhaps half of all seeds by construction, on a suite whose whole point is that the soak runs FRESH seeds. It is 0.2 now, which still makes a collapse unmissable.
+
+One methodological note, because it is the more useful half of this release. Every deviation here was first classified as harmless, twice, on the strength of hand-built sweeps: 3140 shapes for the foreign-content cases ("deviates but is absorbed downstream"), and a further matrix for the script-escape family ("real but stable, because a stream only appends"). Both readings were reasonable and both were wrong, and in each case the fuzz corpus refuted them within one shard of the family being added — by crossing it with a link definition, or with a `$$` block, combinations no hand-written matrix contained. **A sweep that confirms a deviation is harmless is much weaker evidence than a sweep that finds nothing at all**, because the shapes you build by hand are drawn from the same understanding that produced the deviation.
+
 ### 2.5.3 — Four families of freeze-scanner under-block, found by closing three holes in the fuzz corpus
 
 All fixes, all pre-existing, and none of them reachable by the corpus that had been guarding this code. The work began as an attempt to add two generator families and ended as four defect families, because the blind spots in the corpus and the blind spots in the scanner had grown from the same set of examples.
