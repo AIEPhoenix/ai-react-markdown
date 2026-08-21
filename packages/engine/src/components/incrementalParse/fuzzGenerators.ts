@@ -352,15 +352,169 @@ const inlineRawTextSpanArb = fc.constantFrom(
   'p<iframe> x </iframe a> y'
 );
 
+/** Foreign content (`<svg>` / `<math>`). The corpus carried NO svg or math
+ *  element at all, so `inForeignContent()` never returned true under fuzz
+ *  and both foreign branches — `honoursSelfClosing` and `htmlRulesApply` —
+ *  were unreachable (2026-08-21 sweep). Two model deviations are proven
+ *  observable in a full parse but produce no stream divergence today,
+ *  because the deviating element ends up spanning the boundary and the
+ *  block split refuses to freeze it. These shapes pin that:
+ *
+ *   - a breakout start tag POPS the svg off parse5's stack while
+ *     `tagBalance` keeps counting it, so in `<svg><div></div><a/></svg>`
+ *     parse5 IGNORES the self-closing flag and leaves `<a>` open (it then
+ *     swallows the rest of the document) while the scanner skips the tag;
+ *   - after the same pop, `<title>` / `<script>` DO switch the tokenizer to
+ *     RCDATA / RAWTEXT, while the scanner still applies foreign rules and
+ *     counts every tag inside them as markup.
+ *
+ *  `svg title` is an HTML integration point the list omits; `annotation-xml`
+ *  is one only when `encoding` is text/html, and the scanner treats it as
+ *  one unconditionally — both over-block, i.e. safe, and both are here so a
+ *  future edit that flips their direction is caught. */
+// Split by outcome, not by theme: the breakout shapes all end in a poison
+// or a blocked candidate, and a family made only of those drags the corpus's
+// incremental-engagement rate under its floor — the splice path then goes
+// undertested for every OTHER family too. Freezable shapes carry the weight;
+// the poisoning ones only need to appear.
+const foreignContentArb = fc.oneof(
+  {
+    weight: 3,
+    arbitrary: fc.constantFrom(
+      // Plain foreign content: the branch itself, never sampled before.
+      '<svg><circle/></svg>',
+      '<svg>\n<circle/>\n</svg>',
+      '<math><mi>x</mi></math>',
+      '<svg/>',
+      '<svg><circle/>',
+      'p <svg><circle/></svg> q'
+    ),
+  },
+  {
+    weight: 1,
+    arbitrary: fc.constantFrom(
+      // Breakout pops the root — the self-closing deviation. `a` / `del` /
+      // `summary` are outside HTML_BREAKOUT_TAGS AND inside the sanitize
+      // allowlist, so the open element survives into hast where it is visible.
+      '<svg><div></div><a/></svg>',
+      '<svg><span></span><del/></svg>',
+      '<math><p></p><summary/></math>',
+      '<svg><br><a/></svg>',
+      // Breakout pops the root — the raw-text deviation.
+      '<svg><div></div><title>\n</div>\n</title></svg>',
+      '<svg><div></div><script>\n<div>\n</script></svg>',
+      '<svg><b></b><textarea>\n</b>\n</textarea></svg>',
+      // Integration points: the modelled one, the omitted one (svg title), and
+      // the conditional one.
+      '<svg><foreignObject><div/></foreignObject></svg>',
+      '<svg><desc><g/></desc></svg>',
+      '<svg><title><g/></title></svg>',
+      '<math><annotation-xml encoding="text/html"><div/></annotation-xml></math>',
+      '<math><annotation-xml><g/></annotation-xml></math>',
+      '<svg><foreignObject><svg><circle/></svg></foreignObject></svg>',
+      // Foreign content crossed with constructs that have their own poison.
+      '<svg><td/></svg>',
+      '<div>\n<svg><circle/></svg>\n</div>',
+      '<script><svg><circle/></script>'
+    ),
+  }
+);
+
+/** Insertion modes the fragment parser re-dispatches to. `rehype-raw`'s
+ *  fragment context is a `<template>` element, so parse5 starts in "in
+ *  template" and `startTagInTemplate` routes each start tag onward: head-ish
+ *  names to "in head", table parts to "in table" / "in row" / "in table
+ *  body" / "in column group", everything else to "in body". Two of those
+ *  routes move nodes:
+ *
+ *   - a `<template>` in the CONTENT pushes another template insertion mode
+ *     and its children land in a content fragment that never reaches hast;
+ *   - text and non-table elements directly inside `<table>` are FOSTER
+ *     PARENTED out in front of the table and MERGE with the text node
+ *     already sitting there — the same retroactive shape as the
+ *     document-structure family.
+ *
+ *  Neither name appeared in the corpus (`template` literally zero times).
+ *  Both were swept clean on 2026-08-21: the foster merge is protected by
+ *  `openTotal` — an open `<table>` blocks every candidate, so the boundary
+ *  is already parked in front of the merge target by the time the fostered
+ *  text arrives. That protection is a side effect of another blocker, which
+ *  is exactly why these shapes are pinned here. */
+const insertionModeArb = fc.constantFrom(
+  '<template>x</template>',
+  '<template>\n<div>x</div>\n</template>',
+  '<template><td>x</td></template>',
+  '<template>x',
+  'p <template>x</template> q',
+  '<table>foster</table>',
+  '<table>foster<tr><td>c</td></tr></table>',
+  '<table>\nfoster\n</table>',
+  '<table><b>x</b></table>',
+  '<table><div>d</div></table>',
+  '<table><caption>cap</caption>foster</table>',
+  '<table><colgroup><col></colgroup>foster</table>'
+);
+
+/** Script-data escape states. Inside `<script>` parse5 moves through
+ *  "script data escaped" on `<!--` and "script data double escaped" on a
+ *  nested `<script`, and in the double-escaped state a `</script>` does NOT
+ *  end the element — it only steps back to escaped. CommonMark has no such
+ *  notion: a type-1 block ends at the first line holding the literal
+ *  `</script>`. So the two grammars disagree about which BYTES are raw,
+ *  which is the shape every under-block so far has had.
+ *
+ *  Swept clean on 2026-08-21 (11 shapes × 2 prefixes × 3 schedules): the
+ *  disagreement is real and visible — `<script>\n<!--<script>\n</script>`
+ *  makes parse5 swallow the paragraph that follows — but STABLE, because
+ *  a stream only ever appends: the byte that flips the state (`<script`
+ *  completing inside the comment) always arrives before the `</script>`
+ *  whose meaning it changes, so no already-frozen attribution is revised.
+ *  Kept in the corpus so that reasoning is re-tested rather than trusted. */
+const scriptEscapeArb = fc.oneof(
+  // Escaped but never DOUBLE escaped — parse5 and CommonMark still agree on
+  // where the block ends, so these stay freezable and keep the family from
+  // starving the incremental path (see foreignContentArb).
+  {
+    weight: 3,
+    arbitrary: fc.constantFrom(
+      '<script><!--x--></script>',
+      '<script><!--</script>',
+      '<script>\n<!--- x\n</script>',
+      '<script>\n<!--\n</script>\n-->\n<div>d</div>',
+      '<style><!--<style></style></style>',
+      '<textarea><!--<textarea></textarea></textarea>'
+    ),
+  },
+  // Double escaped: the grammars disagree, so these poison.
+  {
+    weight: 1,
+    arbitrary: fc.constantFrom(
+      '<script><!--<script></script></script>',
+      '<script>\n<!--<script>\n</script>\n</script>',
+      '<script>\n<!--<script>\n</script>\n<div>d</div>\n</script>',
+      '<script>\n<!--<script>\n</script>'
+    ),
+  }
+);
+
+// Weights are a sampling budget, not a ranking: the coverage meters assert a
+// floor of RUNS/60 hits per family, so a family at weight 1 in a pool this
+// size lands under the floor on ordinary seed variation. Every family
+// therefore sits at 2 or above; raise the whole pool rather than singling one
+// out when a new family is added (2026-08-21: the pool went 38 → 49).
 const rawHtmlArb = fc.oneof(
-  { weight: 1, arbitrary: treeQuirkArb },
+  { weight: 2, arbitrary: treeQuirkArb },
   { weight: 2, arbitrary: crossLineTagGarbageArb },
-  { weight: 3, arbitrary: crossLineQuoteBogusArb },
+  // Weight tracks the pool size: each new family dilutes the others, and
+  // this one carries the `quotedGtOnTagLine` meter, the first to starve
+  // (3 → 4 when the foreign-content/insertion-mode/script-escape families
+  // took the pool from 38 to 42).
+  { weight: 4, arbitrary: crossLineQuoteBogusArb },
   { weight: 2, arbitrary: multiLineDeclArb },
   { weight: 2, arbitrary: multiLineCdataArb },
   { weight: 2, arbitrary: documentStructureArb },
-  { weight: 1, arbitrary: danglingQuoteArb },
-  { weight: 1, arbitrary: paragraphCloseWithAttrsArb },
+  { weight: 2, arbitrary: danglingQuoteArb },
+  { weight: 2, arbitrary: paragraphCloseWithAttrsArb },
   { weight: 2, arbitrary: fc.constant('<details>\n<summary>t</summary>\nbody prose\n</details>') },
   // APPROX #2 — cross-line self-closing tag stays an over-blocking opener.
   { weight: 2, arbitrary: fc.constant('<embed\n  src="x"\n/>') },
@@ -369,10 +523,13 @@ const rawHtmlArb = fc.oneof(
   { weight: 2, arbitrary: fc.constant('<?instr <b> ?> after the pi') },
   { weight: 2, arbitrary: fc.constant('<!-- a closed comment -->') },
   { weight: 2, arbitrary: overlapSettledArb },
-  { weight: 1, arbitrary: rawTextBlockArb },
+  { weight: 2, arbitrary: rawTextBlockArb },
   { weight: 2, arbitrary: type1BoundaryArb },
-  { weight: 1, arbitrary: rawTextElementArb },
+  { weight: 2, arbitrary: rawTextElementArb },
   { weight: 2, arbitrary: inlineRawTextSpanArb },
+  { weight: 2, arbitrary: foreignContentArb },
+  { weight: 2, arbitrary: insertionModeArb },
+  { weight: 2, arbitrary: scriptEscapeArb },
   // Unsettled openers (the assembler may close them later or leave them).
   { weight: 4, arbitrary: fc.constantFrom('<details>', '<!--', '<div') },
   { weight: 2, arbitrary: overlapTerminatorArb }
@@ -601,4 +758,7 @@ export const COVERAGE_MARKERS: Record<string, RegExp> = {
   unicodeBlank: /\n[\u3000\u00a0]\n|```\u00a0\n|\$\$\u3000\n|"t"\u00a0|\u3000<!--/,
   failedInlineLink: /\]\(bad url\)/,
   crossLineRef: /see \[(?:a|b|spec|注一)\n(?:a|b|spec|注一)\] end/,
+  foreignContent: /<svg|<math[>/ ]/,
+  insertionMode: /<template>|<table>(?:foster|<b>|<div>|<caption>|<colgroup>)|<table>\n/,
+  scriptEscape: /<script><!--|<script>\n<!--|<style><!--|<textarea><!--/,
 };
