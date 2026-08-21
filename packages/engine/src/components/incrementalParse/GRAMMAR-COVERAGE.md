@@ -1,0 +1,166 @@
+# Grammar coverage: what the freeze scanner models, and what it does not
+
+`computeFreezeBoundary` decides how much of a streamed markdown prefix can
+never be rewritten by a future append. To decide that it has to predict the
+output of **two** grammars at once:
+
+- **micromark**, which decides where markdown blocks begin and end, and
+- **parse5** (through `rehype-raw`), which re-parses the raw HTML those
+  blocks contain and owns the final hast.
+
+Every under-block found so far — the four families fixed in v2.5.3, and the
+two deviations recorded below — has come from a single field standing in for
+both grammars at once. The scanner's module doc lists the seven _blockers_
+it enforces. This file is the other half: the **source grammars**, entry by
+entry, with what the scanner does about each and whether the fuzz corpus can
+even reach it.
+
+Read it as a to-do list, not as documentation of a finished thing. A row
+that says "not modelled — poisoned instead" is fine. A row that says "not
+modelled" with no poison is a bug waiting to be sampled.
+
+## Ground facts this file depends on
+
+| Fact                                                                                                                                                                                                                                                                                               | Where it is pinned                                                                                                |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `rehype-raw` parses in **fragment** mode, never document mode: `documentMode(tree)` needs a `doctype`/`html` node as the tree's first child, and a markdown pipeline never produces one — a `<!DOCTYPE html>` in the source is a `raw` node, not a `doctype` node.                                 | `hast-util-raw@9.1.0/lib/index.js` (`Parser.getFragmentParser(undefined, parseOptions)`)                          |
+| The fragment context element is **`<template>`**, so the initial insertion mode is **"in template"** — not "in body". `startTagInTemplate` re-dispatches per tag: head-ish names to "in head", table parts to "in table"/"in row"/"in table body"/"in column group", everything else to "in body". | `parse5@7.3.0/dist/parser/index.js` (`getFragmentParser` → `createElement(TN.TEMPLATE, …)`, `startTagInTemplate`) |
+| `scriptingEnabled: false`, so `<noscript>` content is ordinary HTML, not raw text.                                                                                                                                                                                                                 | `hast-util-raw@9.1.0` `parseOptions`; already reflected in `RAW_TEXT_ELEMENTS`                                    |
+| The sanitize schema allows neither `svg`/`math` nor their children, and `hast-util-sanitize` LIFTS the children of a disallowed element rather than dropping them. Foreign-content mistakes are therefore mostly invisible in the final hast — but only mostly (see the deviation ledger).         | `sanitizeSchema.ts` (extends `defaultSchema`)                                                                     |
+
+Everything below is stated against those four facts. If any of them changes
+— a `rehype-raw` upgrade, a schema that allows `svg` — the "safe" column has
+to be re-derived rather than assumed to hold.
+
+## Table A — CommonMark HTML blocks (spec §4.6)
+
+Start conditions are checked at block indent (≤ 3 spaces). "Interrupts" is
+whether the type may begin on a paragraph continuation line.
+
+| Type | Start                                                                                  | End                                                                                                               | Interrupts a paragraph | Scanner                                                                                                                                                                                               | Corpus marker                                      |
+| ---- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| 1    | `<script` / `<pre` / `<style` / `<textarea` + whitespace, `>` or EOL                   | line containing the literal `</script>` / `</pre>` / `</style>` / `</textarea>`; **a blank line does NOT end it** | yes                    | `TYPE1_NAMES`, `TYPE1_START_RE`, `type1FlowOpen`, `TYPE1_CLOSE_RE` — both halves were wrong until v2.5.3                                                                                              | `rawTextBlock`, `type1Boundary`                    |
+| 2    | `<!--`                                                                                 | line containing `-->`                                                                                             | yes                    | `commentOpen`                                                                                                                                                                                         | `unclosedRawOpener`, `overlappingTerminator`       |
+| 3    | `<?`                                                                                   | line containing `?>`                                                                                              | yes                    | `piOpen`                                                                                                                                                                                              | `selfContainedCdataPi`, `overlappingTerminator`    |
+| 4    | `<!` + ASCII letter                                                                    | line containing `>`                                                                                               | yes                    | `declOpen`                                                                                                                                                                                            | `multiLineDecl`                                    |
+| 5    | `<![CDATA[`                                                                            | line containing `]]>`                                                                                             | yes                    | `cdataOpen`                                                                                                                                                                                           | `multiLineCdata`, `selfContainedCdataPi`           |
+| 6    | `<` or `</` + a name from `htmlBlockNames` (62 entries) + whitespace, `>`, `/>` or EOL | blank line                                                                                                        | yes                    | `TYPE6_NAMES` + `TYPE6_START_RE` → `htmlFlowReal`                                                                                                                                                     | `unclosedRawOpener` and most raw-HTML families     |
+| 7    | a complete open or closing tag alone on its line                                       | blank line                                                                                                        | **no**                 | `TYPE7_LINE_RE` + `prevLineWasText`, type-1 names excluded. Exact classification would need attribute-quote parsing, so **ambiguous starters poison `hazardVerdict` instead** — deliberate over-block | `closeWithAttrsInParagraph`, `crossLineTagGarbage` |
+
+Notes the scanner depends on:
+
+- For types 1–5 the terminator's line is part of the block, including the
+  bytes AFTER the terminator. Blocker 6 (raw-remnant seam) exists for this.
+- Type 7's "cannot interrupt a paragraph" is why `prevLineWasText` is read.
+  A closing tag with attributes (`</div a="b">`) is not a valid tag, so it
+  is neither type 6 nor type 7 — plain paragraph text. That was one of the
+  four v2.5.3 families.
+
+## Table B — parse5 tokenizer states that swallow markup
+
+Inside these states every `<…>` is text until the element's own end tag.
+The scanner models them with `rawTextOpen` / `rawTextInline`.
+
+| State                       | Elements                                        | Modelled                                                                                                                                                                                                                                                                    |
+| --------------------------- | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| RCDATA                      | `title`, `textarea`                             | yes                                                                                                                                                                                                                                                                         |
+| RAWTEXT                     | `style`, `xmp`, `iframe`, `noembed`, `noframes` | yes                                                                                                                                                                                                                                                                         |
+| RAWTEXT (scripting on only) | `noscript`                                      | correctly EXCLUDED — `scriptingEnabled: false`                                                                                                                                                                                                                              |
+| SCRIPT_DATA                 | `script`                                        | yes, plus `scriptDataEscaped` for the escape states. A `<!--` inside `<script>` enters "escaped"; a nested `<script` then enters "double escaped", where `</script>` no longer ends the element while CommonMark ends the type-1 block at it. Irreconcilable, so it POISONS |
+| PLAINTEXT                   | `plaintext`                                     | yes, and it POISONS: `</plaintext>` is text too, so nothing after it can be modelled                                                                                                                                                                                        |
+
+Position matters as much as the name, and this is where the corpus was
+thinnest:
+
+| Position                                                    | Behaviour                                                                                                                                                       | Corpus                                                         |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Block-level run                                             | ordinary type-1/type-6 html block                                                                                                                               | `rawTextElementArb`                                            |
+| Opened INLINE in a paragraph, spanning a line ending        | parse5 LIFTS the element out of the flow, rewriting the paragraph already frozen                                                                                | `inlineRawTextSpanArb` — added v2.5.3, this was an under-block |
+| Inside foreign content                                      | **no** tokenizer switch: `<title>` under `<svg>` is a foreign element in the DATA state                                                                         | `foreignContentArb` — added 2026-08-21                         |
+| Inside foreign content AFTER a breakout tag popped the root | switch happens again (HTML rules) — modelled since 2026-08-21 via `popForeignRoots()`; before that the v2.5.3 inline raw-text poison was silently bypassed here | `foreignContentArb`                                            |
+| As the fragment context element                             | irrelevant here: the context is always `<template>`                                                                                                             | —                                                              |
+
+## Table C — insertion modes that ERASE or MOVE nodes
+
+These are the constructs that break the line model's core assumption — that
+a confirmed line only affects itself and what follows.
+
+| Construct                                                                                                    | What parse5 does                                                                                                                               | Scanner                                                                                                                                                                                                                                                                                                       |
+| ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<!DOCTYPE …>`                                                                                               | fragment mode ignores the token entirely; it emits no node and the text around it MERGES, so the merged node STARTS BEFORE the construct       | `phasePoisonedAt = 0` — whole document (v2.5.3)                                                                                                                                                                                                                                                               |
+| `<html>` `<head>` `<body>` `<frameset>` and their end tags                                                   | absorbed into document structure, no node emitted, same retroactive merge                                                                      | `DOCUMENT_STRUCTURE_NAMES` → `phasePoisonedAt = 0` (v2.5.3)                                                                                                                                                                                                                                                   |
+| `<base>` `<basefont>` `<bgsound>` `<link>` `<meta>` `<title>` `<style>` `<script>` `<noframes>` `<template>` | "in template" re-dispatches these to **"in head"**                                                                                             | the raw-text ones via `RAW_TEXT_ELEMENTS`, the void ones via `VOID_TAGS`. `<template>` itself is not modelled and does not need to be: its children go into a content fragment that never reaches hast, and the sanitize schema drops the element — swept clean 2026-08-21, pinned by `insertionMode.test.ts` |
+| `<caption>` `<colgroup>` `<tbody>` `<tfoot>` `<thead>` `<col>` `<tr>` `<td>` `<th>` outside a table          | re-dispatch to a table mode; subsequent character tokens are **foster-parented** out of the table, so a following GFM table's cells can vanish | `TABLE_PART_NAMES` + `strayTablePart`, suppressed when a `<table>` is open (2026-08-20 B1)                                                                                                                                                                                                                    |
+| `</br>`                                                                                                      | synthesized as `<br>`                                                                                                                          | `treeQuirkArb` covers it; balance-wise a void tag                                                                                                                                                                                                                                                             |
+| `</p>` with no open `<p>`                                                                                    | synthesizes an empty `<p>`                                                                                                                     | `treeQuirkArb`                                                                                                                                                                                                                                                                                                |
+| Breakout start tag inside `<svg>`/`<math>`                                                                   | POPS the foreign root off the stack, then processes the tag as HTML                                                                            | `popForeignRoots()` clears the roots (the spec pops every foreign element down to the integration point — clearing less keeps `openTotal` high, i.e. over-blocks)                                                                                                                                             |
+| Misnested formatting elements ("adoption agency")                                                            | re-parents and clones formatting elements                                                                                                      | not modelled; reached only through unbalanced `<b>`/`<i>`, which block on tag balance anyway                                                                                                                                                                                                                  |
+
+## Deviation ledger
+
+Entries are kept after they are fixed, because the reasoning that once
+declared them harmless is itself a thing to distrust.
+
+| ID           | Deviation                                                                                                                                                                                                                                      | Direction                                                                                                      | Status                                                                                  |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| F1           | After a breakout tag pops the foreign root, the scanner still reported "in foreign content" and honoured a self-closing flag parse5 IGNORES: in `<svg><div></div><a/></svg>` parse5 leaves `<a>` OPEN and it swallows the rest of the document | unsafe (under-counted open elements → widened the boundary)                                                    | **fixed** 2026-08-21, `popForeignRoots()`                                               |
+| F2           | After the same pop, `<title>`/`<script>`/`<textarea>` DO switch the tokenizer, while the scanner kept applying foreign rules — so `rawTextOpen` never opened and the v2.5.3 inline raw-text poison never fired                                 | unsafe — **the shipped under-block**, found by fuzz seed 20260851 within one shard of adding the corpus family | **fixed** with F1, same one-line cause                                                  |
+| F3           | `HTML_INTEGRATION_POINTS` omitted `title`, which IS an SVG HTML integration point, so a `<g/>` inside `<svg><title>` honoured a flag HTML rules ignore                                                                                         | unsafe (same shape as F1)                                                                                      | **fixed** 2026-08-21, name added                                                        |
+| F4           | `HTML_INTEGRATION_POINTS` includes `annotation-xml` unconditionally; it is one only when `encoding` is `text/html` or `application/xhtml+xml`                                                                                                  | safe (over-blocks)                                                                                             | open, deliberately                                                                      |
+| F5           | The breakout pop was placed in `applyTag`, which VOID start tags never reach — `br`, `hr`, `img`, `embed` and `meta` are all breakout names, so `<svg><br><a/></svg>` still honoured the self-closing flag                                     | unsafe, same shape as F1                                                                                       | **fixed** 2026-08-21 (`noteBreakout` at the skip sites); ten of twelve direction shards |
+| F6           | parse5's script-data "double escaped" state keeps `<script>` open across a `</script>` that ends CommonMark's type-1 block                                                                                                                     | unsafe — the grammars disagree about which bytes are raw, and no model reconciles them                         | **poisoned** 2026-08-21 (blocker 7's case); seven of twelve fuzz shards                 |
+| APPROX #1–#5 | the five documented approximations                                                                                                                                                                                                             | safe                                                                                                           | open, deliberately                                                                      |
+
+F1–F3 were one root cause: **foreign-content depth was modelled as a count,
+and the grammar it approximates is a stack.** That is also the argument for
+the two-model split — a `Parse5TokenState` owning a real open-element stack
+would have made all three impossible to write, rather than fixable after the
+fact.
+
+Worth recording separately: F1 and F2 were first classified as "deviates but
+is absorbed downstream", on the strength of 3140 hand-built shapes that all
+passed. The absorption was real but partial, and a hand-built sweep cannot
+find the part it misses — the fuzz corpus crossed the family with a link
+definition and a following paragraph, which no hand-written matrix had.
+**A sweep that confirms a deviation is harmless is weaker evidence than a
+sweep that finds nothing at all.**
+
+## Swept, and why each held
+
+Recording the reason matters more than recording the pass: every one of
+these is safe because of a blocker aimed at something else, so a change to
+that blocker can un-safe them silently.
+
+| Path                                       | Sweep                                                            | Held because                                                                                                                                        |
+| ------------------------------------------ | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Foreign content, all four foreign branches | 3140 hand-built shapes, then the fuzz corpus                     | the hand-built sweep passed and was WRONG to reassure: fuzz found the under-block once `foreignContentArb` existed. Now held by `popForeignRoots()` |
+| Foster parenting out of a `<table>`        | 144 shapes with the merge target buried inside the frozen region | an open `<table>` holds `openTotal` above zero, so the boundary parks in front of the merge target BEFORE the fostered text exists                  |
+| `<template>` in the content                | 12 shapes × 3 schedules                                          | children go to a content fragment that never reaches hast, and sanitize drops the element                                                           |
+| Script-data escape states                  | hand sweep passed, fuzz did NOT — see F6                         | not held: the double-escaped state now poisons                                                                                                      |
+
+## Open questions
+
+Ordered by how much they would change the picture.
+
+1. **The adoption agency algorithm.** Currently unreachable because
+   unbalanced formatting elements block on tag balance — that is an
+   accident of another blocker, not a decision, and it is untested as such.
+2. **Lineage coverage — measured, not assumed.** There are three production
+   call sites, and the picture is better than the folklore:
+
+   | Lineage                          | Profile                                                                        | Covered by                                                                                                                        |
+   | -------------------------------- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+   | `advanceIncrementalParse.ts:169` | defaults + `defListEnabled`                                                    | all soak legs                                                                                                                     |
+   | `remarkInjectPhantomDefs.ts:87`  | `defListEnabled:false, referenceTaint:false`, reads checkpoint fields directly | `spliceFuzz`'s third property drives `runCrossChunk`, which calls `phantomSuffixCloser` every frame — so leg 1 covers it          |
+   | `collectDefLabels.ts:211`        | `defListEnabled:false, mathFlow:false, referenceTaint:false`                   | `collectDefLabels.fuzz.test.ts` exists and shares the corpus, but the soak script never ran it — **added as leg 3 on 2026-08-21** |
+
+   What remains open is depth, not existence: the scanner lineage runs at
+   the suite default (100 samples) unless a soak leg scales it.
+
+3. **Corpus weights are a shared budget.** The coverage meters demand every
+   family be sampled `RUNS/60` times, and that floor does not scale with the
+   number of families — so adding one dilutes all the others. Growing the
+   raw-HTML pool from 38 to 49 weights took the failure rate across twelve
+   seeds from 1-in-12 to 4-in-12, until the default sample count went
+   120 → 300. A scheme that derived each floor from its family's weight would
+   remove the coupling; today it is manual.
