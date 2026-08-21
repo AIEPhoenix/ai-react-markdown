@@ -131,9 +131,11 @@ const TYPE6_NAMES = new Set(htmlBlockNames);
  *  `<td>` prefix froze a table whose shape depended on the tail). Same
  *  list as spliceParse's TABLE_PART_TAG_RE. */
 const TABLE_PART_NAMES = new Set(['td', 'th', 'tr', 'tbody', 'thead', 'tfoot', 'caption', 'col', 'colgroup']);
-/** parse5 tree-construction CONSUMES these tokens: in the "before html" /
- *  "in head" / "in body" insertion modes they are absorbed into the
- *  document structure and emit NO node into the fragment. Their bytes
+/** parse5 tree-construction CONSUMES these tokens: `rehype-raw` parses in
+ *  FRAGMENT mode with a `<template>` context, so the run starts in "in
+ *  template" and `startTagInTemplate` routes these names onward to the modes
+ *  that absorb them into document structure — they emit NO node into the
+ *  fragment. Their bytes
  *  vanish and the text nodes on either side MERGE into one — a merge whose
  *  result STARTS BEFORE the construct. That is retroactive: a `<!DOCTYPE>`
  *  arriving later rewrites hast the scanner already froze (2026-08-20,
@@ -233,7 +235,19 @@ const HTML_BREAKOUT_TAGS = new Set([
   'var',
 ]);
 /** Elements whose CONTENT is parsed with HTML rules again inside svg/math. */
-const HTML_INTEGRATION_POINTS = ['foreignobject', 'desc', 'mi', 'mo', 'mn', 'ms', 'mtext', 'annotation-xml'];
+// `title` belongs here too: an SVG `title` is an HTML integration point, so
+// its CONTENT is parsed with HTML rules (a `<g/>` inside it opens an element
+// rather than honouring its self-closing flag). Adding the name is safe for
+// the tokenizer question as well, because every call site asks BEFORE this
+// tag's own `applyTag` counts it: while `<title>` itself is judged the count
+// is still 0, so it does not switch to RCDATA — which is correct, a foreign
+// `title` stays in the DATA state — and once it is open its children see
+// HTML rules, which is also correct. `annotation-xml` is an HTML integration
+// point only when its `encoding` is text/html or application/xhtml+xml;
+// treating it as one unconditionally over-blocks, i.e. errs safe.
+const HTML_INTEGRATION_POINTS = ['foreignobject', 'desc', 'title', 'mi', 'mo', 'mn', 'ms', 'mtext', 'annotation-xml'];
+/** The two foreign-namespace roots markdown can reach. */
+const FOREIGN_ROOT_NAMES = ['svg', 'math'];
 /** CommonMark type-1 block start names — start tags only. */
 const TYPE1_NAMES = new Set(['script', 'pre', 'style', 'textarea']);
 /** parse5 elements whose CONTENT is text to the tokenizer (RAWTEXT /
@@ -503,6 +517,11 @@ export interface FreezeScanCheckpoint {
   /** The currently open raw-text element (`rawTextOpen`) was opened INLINE —
    *  in paragraph context rather than in a real html-flow run. */
   rawTextInline: boolean;
+  /** parse5 is in "script data escaped": a `<!--` has been seen inside the
+   *  open `<script>`. Only meaningful while `rawTextOpen === 'script'`.
+   *  Deliberately NOT cleared by `-->` — staying escaped can only poison
+   *  more often, which is the over-blocking side. */
+  scriptDataEscaped: boolean;
 }
 
 const VOID_TAGS = new Set([
@@ -732,6 +751,7 @@ function freshCheckpoint(defListEnabled: boolean, mathFlow: boolean, referenceTa
     piOpen: false,
     bogusOpen: false,
     rawTextOpen: null,
+    scriptDataEscaped: false,
     declOpen: false,
     cdataOpen: false,
     inFence: false,
@@ -1099,8 +1119,10 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
    *  tag (`<circle/>`); in HTML content it IGNORES it on non-void elements
    *  — `<div/>` / `<title/>` / `<p/>` OPEN (oracle re-check of r2, pre-
    *  existing: the scanner skipped them and froze past a div that swallowed
-   *  the tail). Foreign-content depth is approximated by open svg/math. */
-  const inForeignContent = (): boolean => (cp.tagBalance.get('svg') ?? 0) > 0 || (cp.tagBalance.get('math') ?? 0) > 0;
+   *  the tail). Depth is approximated by open svg/math, kept honest by
+   *  `popForeignRoots` — without the pop this stayed true for the rest of
+   *  the run and reported foreign rules inside plain HTML. */
+  const inForeignContent = (): boolean => FOREIGN_ROOT_NAMES.some((name) => (cp.tagBalance.get(name) ?? 0) > 0);
   /** A self-closing tag parse5 really closes on the spot: the foreign roots
    *  themselves (`<svg/>`) and tags inside foreign content — EXCEPT the HTML
    *  breakout names (`<svg><div/>`: parse5 pops the svg and opens a real
@@ -1121,19 +1143,88 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     for (const ip of HTML_INTEGRATION_POINTS) if ((cp.tagBalance.get(ip) ?? 0) > 0) return true;
     return false;
   };
+  /** parse5's "in foreign content" insertion mode POPS the foreign root when
+   *  a breakout start tag arrives ("while the current node is not a MathML
+   *  text integration point, an HTML integration point, or an element in the
+   *  HTML namespace, pop elements from the stack of open elements"), and
+   *  processes the tag as HTML. `tagBalance` is a name→count bag, so it
+   *  cannot express a pop it never saw — and without this the bag reports
+   *  "still in foreign content" for the whole rest of the run.
+   *
+   *  That is not cosmetic: `htmlRulesApply()` then keeps returning false, so
+   *  a `<textarea>` after the breakout never opens `rawTextOpen`, and the
+   *  inline raw-text poison added in v2.5.3 never fires. `<svg><b></b>
+   *  <textarea>\nx\n</textarea></svg>` followed by a link definition froze
+   *  across a paragraph parse5 had swallowed (2026-08-21 fuzz, seed
+   *  20260851, shrunk to 58 bytes).
+   *
+   *  The bag can only approximate WHICH elements come off: the spec pops
+   *  every foreign element down to the integration point, this clears the
+   *  roots alone. Leaving the foreign children counted keeps `openTotal`
+   *  HIGHER than parse5's stack depth, i.e. over-blocking, which is the safe
+   *  direction. Under an HTML integration point there is no pop at all —
+   *  the adjusted current node is already an HTML element, so the foreign
+   *  branch is never entered. */
+  const popForeignRoots = (): void => {
+    for (const name of FOREIGN_ROOT_NAMES) {
+      const count = cp.tagBalance.get(name) ?? 0;
+      if (count > 0) {
+        cp.tagBalance.set(name, 0);
+        cp.openTotal -= count;
+      }
+    }
+  };
+
+  /** The pop is decided by the tag NAME alone, so it has to run for the
+   *  start tags that never reach `applyTag`: the void ones (`<br>`, `<hr>`,
+   *  `<img>`, `<embed>`, `<meta>` are all in the breakout list) and the
+   *  self-closing ones the caller skips. The spec pops FIRST and processes
+   *  the tag afterwards, so whether the tag itself joins the stack is
+   *  irrelevant — `<svg><br><a/></svg>` pops on the `<br>` even though the
+   *  `<br>` is never counted, which is what makes the `<a/>` an HTML
+   *  element with an ignored self-closing flag (2026-08-21 soak leg 2, ten
+   *  of twelve direction shards). End tags never break out.
+   *
+   *  Called from both the skip sites and `applyTag`; `popForeignRoots` is
+   *  idempotent, so the double call on a counted breakout tag is free. */
+  const noteBreakout = (tag: string, closing: boolean): void => {
+    if (closing || cp.rawTextOpen !== null) return;
+    if (HTML_BREAKOUT_TAGS.has(tag) && !htmlRulesApply()) popForeignRoots();
+  };
+
   const applyTag = (tag: string, closing: boolean): void => {
     // Inside a raw-text element only its own end tag is markup.
     if (cp.rawTextOpen !== null) {
+      // "Script data double escaped": inside an escaped `<script>` a nested
+      // `<script` start tag makes parse5 stop honouring `</script>` — the
+      // first one only steps back to escaped, and the element runs on.
+      // CommonMark has no such notion: a type-1 block ends at the first line
+      // holding the literal closer. So the two grammars disagree about which
+      // BYTES are raw, and no amount of extra modelling reconciles them —
+      // the scanner would have to pick one and be wrong under the other.
+      // That is exactly blocker 7's case, so it poisons (2026-08-21 soak
+      // leg 1, seven of twelve shards; `<script>\n<!--<script>\n</script>\n
+      // </script>` followed by a `$$` block).
+      if (cp.scriptDataEscaped && !closing && tag === 'script') {
+        cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
+      }
       if (!(closing && tag === cp.rawTextOpen)) return;
       cp.rawTextOpen = null;
-    } else if (!closing && RAW_TEXT_ELEMENTS.has(tag) && htmlRulesApply()) {
-      cp.rawTextOpen = tag;
-      // Paragraph context, i.e. micromark html-TEXT rather than an html
-      // block — the regime where a lifted element rewrites its paragraph.
-      cp.rawTextInline = !cp.htmlFlowReal;
-      // PLAINTEXT never ends (`</plaintext>` is text too): nothing after it
-      // can be modelled — poison from here on.
-      if (tag === 'plaintext') cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
+      cp.scriptDataEscaped = false;
+    } else {
+      // Read BEFORE the raw-text check, which asks the same question: the
+      // breakout changes the answer for every tag after it.
+      noteBreakout(tag, closing);
+      if (!closing && RAW_TEXT_ELEMENTS.has(tag) && htmlRulesApply()) {
+        cp.rawTextOpen = tag;
+        cp.scriptDataEscaped = false;
+        // Paragraph context, i.e. micromark html-TEXT rather than an html
+        // block — the regime where a lifted element rewrites its paragraph.
+        cp.rawTextInline = !cp.htmlFlowReal;
+        // PLAINTEXT never ends (`</plaintext>` is text too): nothing after
+        // it can be modelled — poison from here on.
+        if (tag === 'plaintext') cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
+      }
     }
     // Retroactive construct (see DOCUMENT_STRUCTURE_NAMES): parse5 erases
     // the tag and merges the text around it, changing hast BEFORE this
@@ -1730,7 +1821,13 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     while ((m = TAG_OR_COMMENT_RE.exec(tagText)) !== null) {
       // Raw-text element content: comment tokens are text too; tags go
       // through applyTag, which admits only the element's own end tag.
-      if (cp.rawTextOpen !== null && (m[0] === '<!--' || m[0] === '-->' || m[0] === '--!>')) continue;
+      if (cp.rawTextOpen !== null && (m[0] === '<!--' || m[0] === '-->' || m[0] === '--!>')) {
+        // A `<!--` inside `<script>` puts parse5 in "script data escaped",
+        // which is where the two grammars stop agreeing — see the poison in
+        // `applyTag`.
+        if (cp.rawTextOpen === 'script' && m[0] === '<!--') cp.scriptDataEscaped = true;
+        continue;
+      }
       if (m[0] === '<!--') {
         const next = tagText.slice(m.index + 4, m.index + 6);
         if (cp.commentOpen) {
@@ -1822,6 +1919,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
         continue;
       }
       const selfClosing = /\/\s*$/.test(attrs);
+      noteBreakout(tag, closing);
       if (VOID_TAGS.has(tag) || (selfClosing && honoursSelfClosing(tag))) continue;
       applyTag(tag, closing);
     }
@@ -1863,6 +1961,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
         // Same html-text rule: a closing tag with attributes is text.
         if (closing && mr[3] !== undefined && !/^\s*$/.test(mr[3])) continue;
         const selfClosing = mr[3] !== undefined && /\/\s*$/.test(mr[3]);
+        noteBreakout(tag, closing);
         if (VOID_TAGS.has(tag) || (selfClosing && honoursSelfClosing(tag))) continue;
         applyTag(tag, closing);
       }
