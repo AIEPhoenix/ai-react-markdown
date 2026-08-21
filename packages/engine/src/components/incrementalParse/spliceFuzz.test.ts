@@ -34,7 +34,15 @@ import { buildAdvanceOptions, buildCrossChunkAdvanceOptions, CATALOG } from './t
 import { assertStreamEquivalence, runCrossChunk, testEnv, type FramePair } from './spliceArbiterHarness';
 import { benignDocArb, hazardDocArb, scheduleSnapshots, COVERAGE_MARKERS, type FuzzDoc } from './fuzzGenerators';
 
-const RUNS = Number(testEnv('FUZZ_RUNS') ?? 120);
+// 300, not the original 120: the coverage meters below demand every one of
+// the 32 generator families to be sampled at least RUNS/60 times, and at 120
+// the marker with the thinnest weight missed its floor on a third of seeds
+// (measured 2026-08-21 over twelve seeds — 4/12 with this corpus, 1/12 with
+// the smaller pre-2.5.4 pool, so the pool growing from 38 to 49 weights made
+// a pre-existing fragility routine). At 300 all twelve seeds clear it. The
+// soak overrides this anyway; the default is what CI and `pnpm preflight`
+// run, and a suite that fails on a quarter of seeds is worse than a slower one.
+const RUNS = Number(testEnv('FUZZ_RUNS') ?? 300);
 const SEED = Number(testEnv('FUZZ_SEED') ?? 20260717);
 /** ~30-40ms per sample (2 schedules × ~25 frames × oracle+engine) plus slack. */
 const TIMEOUT_MS = Math.max(300_000, RUNS * 300);
@@ -94,10 +102,19 @@ describe(`splice fuzz arbiter (runs=${RUNS} seed=${SEED})`, () => {
       }),
       FC_PARAMS
     );
-    // Anti-vacuity floor: aggregate engagement across the family. Asserted
-    // on aggregates (law of large numbers), so custom seeds stay stable.
+    // Anti-vacuity floor: aggregate engagement across the family. The floor
+    // exists to catch the path COLLAPSING — a change that makes the splice
+    // stop engaging — not to track a few points of drift.
+    //
+    // It was 0.3, which sat ON the mean rather than under it: measured
+    // 2026-08-21 across twelve seeds at 300 samples each, the ratio lands
+    // between 0.29 and 0.32, so three of twelve seeds failed at 0.292-0.295.
+    // Raising the sample count does not help — that IS the converged value.
+    // A floor sitting on the mean fails half the time by construction, and
+    // the soak deliberately runs FRESH seeds, so it would teach everyone
+    // to ignore a red leg. 0.2 keeps a collapse unmissable with real margin.
     expect(totals.frames).toBeGreaterThan(0);
-    expect(totals.incrementalFrames / totals.frames).toBeGreaterThan(0.3);
+    expect(totals.incrementalFrames / totals.frames).toBeGreaterThan(0.2);
   });
 
   test('hazard-dense family: equivalence + generator coverage meters', { timeout: TIMEOUT_MS }, () => {
