@@ -431,6 +431,76 @@ function hasStrayTablePart(values: Iterable<string>): boolean {
   }
   return false;
 }
+/** `startTagInTemplate` routes these names to "in head" WITHOUT first popping
+ *  the template insertion mode — unlike every other start tag, which pops,
+ *  pushes "in body" and REPROCESSES. So when one of them opens a raw-text
+ *  region, `originalInsertionMode` is captured as IN_TEMPLATE in a tail-only
+ *  parse and as IN_BODY in the full one. On the first stray end tag parse5
+ *  leaves TEXT mode and RESTORES that captured mode, and from there the two
+ *  parses dispatch differently: `</p>` synthesizes an empty paragraph in
+ *  "in body" and is ignored in "in template".
+ *
+ *  `a\n\n<title>\n\n*b*\n` — sixteen bytes — was a live under-block:
+ *  boundary 3, and the full parse has an empty `<p>` the spliced tree lacks.
+ *  Same for `<noframes>`, and for `<script>` when the double-escape keeps the
+ *  raw-text region open past its apparent closer.
+ *
+ *  `textarea`/`iframe`/`noembed`/`xmp` take the default branch, pop first and
+ *  capture the CONVERGED mode — measured safe, and left alone. */
+const HEAD_ROUTED_NAMES = new Set([
+  'base',
+  'basefont',
+  'bgsound',
+  'link',
+  'meta',
+  'noframes',
+  'script',
+  'style',
+  'template',
+  'title',
+]);
+/** The head-routed names that open a raw-text region (RCDATA / RAWTEXT /
+ *  script data) — the ones whose capture becomes observable. */
+const HEAD_ROUTED_RAW_TEXT_RE = /<(script|style|title|noframes)(?=[\s/>])/i;
+const ANY_START_TAG_RE = /<([a-z][a-z0-9-]*)(?=[\s/>])/gi;
+
+/** True when the tail's leading html run opens one of those regions with the
+ *  template mode still uncaptured, and does not honestly close it inside the
+ *  run. The closer must be inside the RUN, not the child: `<title>` block,
+ *  blank line, `</title>` block closes it and is measured safe. */
+function headRoutedCaptureUnclosed(values: readonly string[]): boolean {
+  if (values.length === 0) return false;
+  const joined = values.join('\n');
+  const opener = HEAD_ROUTED_RAW_TEXT_RE.exec(joined);
+  if (opener === null) return false;
+  // Any NON-head-routed start tag before the opener already popped the
+  // template mode, so both parses captured the same one and this is safe.
+  // Deciding that needs to know which `<…>` are markup, and a raw construct
+  // makes that undecidable by regex: parse5 ends a bogus comment at the FIRST
+  // `>`, so whether the `<div>` in `<![CDATA[<div>data</div>]]>` is a start
+  // tag depends on where that `>` landed. Refuse to conclude convergence at
+  // all when one is present — over-blocks, and the alternative was a live
+  // under-block (fuzz seed 20270403, a CDATA between the comment and the
+  // `<title>`).
+  const before = joined.slice(0, opener.index);
+  if (/<[!?]/.test(before)) return true;
+  ANY_START_TAG_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = ANY_START_TAG_RE.exec(before)) !== null) {
+    if (!HEAD_ROUTED_NAMES.has(m[1].toLowerCase())) return false;
+  }
+  const name = opener[1].toLowerCase();
+  const after = joined.slice(opener.index + opener[0].length);
+  if (name === 'script') {
+    const close = after.search(/<\/script(?=[\s/>])/i);
+    // No closer, or a `<!--` before it: the escape states may keep the region
+    // open past that tag, so the capture is still live. Over-blocks the
+    // `<!-- … --> </script>` re-exit case, knowingly.
+    return close === -1 || /<!--/.test(after.slice(0, close));
+  }
+  return !new RegExp(`</${name}(?=[\\s/>])`, 'i').test(after);
+}
+
 /** The two END tags HTML synthesizes (`<br>` / empty `<p>`) instead of dropping. */
 const STRAY_SYNTHESIZED_END_TAG_RE = /<\/(?:br|p)\b/i;
 
@@ -582,11 +652,17 @@ export function spliceTrees(input: SpliceInput): { mdast: MdastRoot; hast: HastR
   //   them. Any such tag inside the tail's LEADING run of html blocks
   //   (comments / PIs / declarations do not switch the mode) → bail.
   if (hasStrayTablePart(prefixMdast.flatMap((c) => (c.type === 'html' ? [c.value] : [])))) return null;
+  const leadingHtml: string[] = [];
   for (const child of tailMdastChildren) {
     if (isWrapInvisible(child)) continue;
     if (child.type !== 'html') break;
     if (STRAY_SYNTHESIZED_END_TAG_RE.test(child.value) || TABLE_PART_TAG_RE.test(child.value)) return null;
+    leadingHtml.push(child.value);
   }
+  // …and the same case analysis for the head-routed raw-text names, whose
+  // mode capture the comment above missed: they are precisely the start tags
+  // that do NOT switch the mode to body.
+  if (headRoutedCaptureUnclosed(leadingHtml)) return null;
 
   // Align the cut region against the prefix mdast (stripped-node aware) and
   // rebuild its trailing separators. Bails null on any layout the model

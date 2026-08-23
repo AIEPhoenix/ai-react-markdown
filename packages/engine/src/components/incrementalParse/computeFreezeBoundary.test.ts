@@ -703,13 +703,17 @@ describe('computeFreezeBoundary — suppressed fence/math opens poison the phase
     expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('<details>'));
   });
 
-  test('a paragraph-inline <!-- that never closes poisons from the opener', () => {
+  test('a paragraph-inline <!-- that never closes poisons the whole document', () => {
     // micromark treats the unclosed inline opener as literal text, so the
-    // `<details>` after the blank is REAL and unclosed — candidates past
-    // the opener must be rejected (seed-20260828).
+    // `<details>` after the blank is REAL and unclosed (seed-20260828).
+    // Originally this poisoned from the opener; upgraded to document-wide
+    // on 2026-08-24 — a cross-line comment is a sanitize-REMOVED node whose
+    // removal merges the text on either side, and the merge reaches
+    // BACKWARD past any earlier boundary (the same hole F9 had for
+    // `<?`/`<!`+letter, measured at 173/200 in the scaled soak).
     const text =
       'x\n\nprose <b>x</b> <!-- trailing opener\n\n<details>\n\n<!-- a closed comment -->\n\nsee it\n\nmore\n';
-    expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('prose'));
+    expect(computeFreezeBoundary(text, OFF)).toBe(0);
   });
 
   test('a 4-indented line glued after a fence close is an A1 hazard', () => {

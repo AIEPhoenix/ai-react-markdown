@@ -246,6 +246,39 @@ const HTML_BREAKOUT_TAGS = new Set([
 // point only when its `encoding` is text/html or application/xhtml+xml;
 // treating it as one unconditionally over-blocks, i.e. errs safe.
 const HTML_INTEGRATION_POINTS = ['foreignobject', 'desc', 'title', 'mi', 'mo', 'mn', 'ms', 'mtext', 'annotation-xml'];
+/** parse5 ignores an end tag whose element is not "in scope": the search walks
+ *  DOWN the open-element stack and stops at a barrier. `<div><table></div>`
+ *  therefore leaves the div OPEN — `</div>` is discarded, `</table>` pops only
+ *  the table — and everything after it nests inside that div.
+ *
+ *  A name→count bag cannot see this: it decrements `div` because it counted a
+ *  `div`, and reports balance. That is an UNDER-block, live since the scanner
+ *  was written and found 2026-08-24 (`<div><table></div></table>` freezes at
+ *  41 of 66 while the full parse nests the whole tail inside the div).
+ *  `marquee`, `object`, `template` and `applet` are the same family.
+ *
+ *  Per the HTML spec's "has an element in scope"; the MathML text integration
+ *  points and the SVG ones are barriers too. */
+const SCOPE_BARRIER_NAMES = new Set([
+  'applet',
+  'caption',
+  'html',
+  'table',
+  'td',
+  'th',
+  'marquee',
+  'object',
+  'template',
+  'mi',
+  'mo',
+  'mn',
+  'ms',
+  'mtext',
+  'annotation-xml',
+  'foreignobject',
+  'desc',
+  'title',
+]);
 /** The two foreign-namespace roots markdown can reach. */
 const FOREIGN_ROOT_NAMES = ['svg', 'math'];
 /** CommonMark type-1 block start names — start tags only. */
@@ -517,6 +550,11 @@ export interface FreezeScanCheckpoint {
   /** The currently open raw-text element (`rawTextOpen`) was opened INLINE —
    *  in paragraph context rather than in a real html-flow run. */
   rawTextInline: boolean;
+  /** The open-element stack, in order. `tagBalance` and `openTotal` are
+   *  derived views kept in step with it, but the STACK is the truth: an end
+   *  tag's effect depends on what sits BETWEEN it and its match, which a
+   *  name→count bag cannot represent (see SCOPE_BARRIER_NAMES). */
+  openStack: string[];
   /** parse5 is in "script data escaped": a `<!--` has been seen inside the
    *  open `<script>`. Only meaningful while `rawTextOpen === 'script'`.
    *  Deliberately NOT cleared by `-->` — staying escaped can only poison
@@ -751,6 +789,7 @@ function freshCheckpoint(defListEnabled: boolean, mathFlow: boolean, referenceTa
     piOpen: false,
     bogusOpen: false,
     rawTextOpen: null,
+    openStack: [],
     scriptDataEscaped: false,
     declOpen: false,
     cdataOpen: false,
@@ -1173,6 +1212,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
         cp.openTotal -= count;
       }
     }
+    if (cp.openStack.length > 0) cp.openStack = cp.openStack.filter((n) => !FOREIGN_ROOT_NAMES.includes(n));
   };
 
   /** The pop is decided by the tag NAME alone, so it has to run for the
@@ -1233,13 +1273,51 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     // stays that way. Sits past the raw-text guard on purpose: a `<body>`
     // inside `<script>` is text to parse5 too, and must not poison.
     if (DOCUMENT_STRUCTURE_NAMES.has(tag)) cp.phasePoisonedAt = 0;
+    // `<template>` is the second kind of erasure. Its children go into a
+    // content FRAGMENT (`hast-util-from-parse5` hangs them off `.content`,
+    // not `.children`), and the sanitize pass then drops the element — so a
+    // template block vanishes whole, children and all, and the text around
+    // it merges. Inside a container the damage is worse: the direction
+    // battery measured a list item swallowing the rest of the document
+    // (`- a\n<template>\n<div>x</div>\n</template>` + blank + prose — the
+    // later paragraphs land INSIDE the li, and a one-character append
+    // rewrites the frozen region via lazy continuation; blockquote form
+    // identical; 2026-08-24, scaled soak leg 2). The top-level form measured
+    // stable, but "measured harmless" has been refuted three times this
+    // week, and erasure merges reach backward (the F9 lesson) — so the
+    // poison is document-wide, same as the names above. An earlier sweep
+    // recorded template as "swept clean"; that sweep sampled shapes with
+    // blank lines around the block, which is exactly the layout where the
+    // merge stays invisible.
+    if (tag === 'template' && !closing) cp.phasePoisonedAt = 0;
     if (closing) {
+      // Walk down for the match, stopping at a scope barrier. No match in
+      // scope means parse5 DISCARDS this end tag and the element stays open —
+      // so the counts must not move either.
+      let idx = -1;
+      for (let i = cp.openStack.length - 1; i >= 0; i--) {
+        if (cp.openStack[i] === tag) {
+          idx = i;
+          break;
+        }
+        if (SCOPE_BARRIER_NAMES.has(cp.openStack[i])) break;
+      }
+      if (idx === -1) return;
+      // Remove ONLY the matched element. What parse5 does with the elements
+      // above it depends on which end tag this is: a block name generates
+      // implied end tags and pops through, while a formatting name runs the
+      // adoption agency, which re-parents rather than popping. Modelling the
+      // first would under-count the second — measured, it re-opened four
+      // fixtures as fresh under-blocks. Leaving them counted over-blocks,
+      // which is the side this scanner is allowed to be wrong on.
+      cp.openStack.splice(idx, 1);
       const count = cp.tagBalance.get(tag) ?? 0;
       if (count > 0) {
         cp.tagBalance.set(tag, count - 1);
         cp.openTotal -= 1;
       }
     } else {
+      cp.openStack.push(tag);
       cp.tagBalance.set(tag, (cp.tagBalance.get(tag) ?? 0) + 1);
       cp.openTotal += 1;
     }
@@ -1439,6 +1517,25 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     if (!cp.type1FlowOpen) {
       cp.htmlFlowSinceBlank = false;
       cp.htmlFlowReal = false;
+      // A RAWTEXT/RCDATA element still open ACROSS this blank has just had
+      // its micromark block end under it: a type-6 run ends at the blank,
+      // while parse5's raw-text state runs on to the literal end tag. From
+      // here every line lives in both grammars at once — micromark opens
+      // fresh blocks whose ELEMENT nodes hast-util-raw pushes straight into
+      // the tree, while the same bytes are raw TEXT to parse5, so their end
+      // tags never close anything. `<iframe>` + blank + `*b*\n<div>…</div>
+      // \n</iframe>` left the div OPEN swallowing the rest of the document
+      // while the scanner, suppressing every tag under `rawTextOpen`, called
+      // it balanced (63-byte live under-block, direction battery,
+      // 2026-08-24). Document-wide poison, not from-here-on: the element is
+      // sanitize-stripped and its lifted children merge with neighbouring
+      // text — the fuzz4 lesson, same day. Type-1 blocks are exempt because
+      // a blank does NOT end them: there the two grammars agree the content
+      // is raw, which is the case the guard above already keeps alive.
+      // (`rawTextInline` spans have their own poison at the opening line.)
+      if (cp.rawTextOpen !== null && !cp.rawTextInline) {
+        cp.phasePoisonedAt = 0;
+      }
     }
     cp.prevLineBlank = true;
     cp.prevLineWasText = false;
@@ -1670,6 +1767,12 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
   const poisonRawDivergence = (): void => {
     cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
   };
+  /** A `<?` / `<!DECL` / `<![CDATA[` opened PARAGRAPH-INLINE on this line
+   *  (or at code indent). Set only when the opener is not at a position that
+   *  could start an html block — the block forms really do run to their
+   *  terminator, but the inline forms are html-TEXT attempts that any
+   *  block-interrupting next line retracts to literal text. */
+  let inlineRawOpenerIdx = -1;
   while (pos < scanText.length) {
     if (cp.piOpen) {
       const c = scanText.indexOf('?>', pos);
@@ -1731,6 +1834,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     } else if (first === cd) {
       rawSpans.push([cd, cd + 9]);
       cp.cdataOpen = true;
+      if (!isMdBlank(scanText.slice(0, cd)) || ln.indent > 3) inlineRawOpenerIdx = cd;
       pos = cd + 9;
     } else if (first === pi) {
       if (scanText[pi + 2] === '>') {
@@ -1748,6 +1852,7 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
       }
       rawSpans.push([pi, pi + 2]);
       cp.piOpen = true;
+      if (!isMdBlank(scanText.slice(0, pi)) || ln.indent > 3) inlineRawOpenerIdx = pi;
       pos = pi + 2;
     } else {
       rawSpans.push([decl, decl + 2]);
@@ -1766,8 +1871,34 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
       // before this scan and never reach here at all.
       if (ln.indent <= 3 && /^doctype/i.test(scanText.slice(decl + 2))) cp.phasePoisonedAt = 0;
       cp.declOpen = true;
+      if (!isMdBlank(scanText.slice(0, decl)) || ln.indent > 3) inlineRawOpenerIdx = decl;
       pos = decl + 2;
     }
+  }
+  // Blocker 7, completed for the remaining inline raw constructs — and with
+  // the DOCUMENT-WIDE poison, not the from-here-on one. Two stacked failure
+  // modes, both measured 2026-08-24:
+  //
+  //  1. micromark's BLOCK scan can interrupt the paragraph at the next line,
+  //     so the bytes this line model reads as construct interior are a fresh
+  //     html block to micromark. `x <!D y` + newline + `<!DOCTYPE>`: type 4
+  //     interrupts, parse5 erases the doctype — while this scanner read it as
+  //     declaration interior, never ran its poison, and "closed" the
+  //     declaration at the doctype's own `>` (30-byte live under-block).
+  //  2. parse5 reads the whole cross-line construct as ONE bogus comment (to
+  //     the first `>`), i.e. a node the sanitize pass REMOVES — and removing
+  //     it merges the text nodes on either side. That merge reaches BACKWARD:
+  //     in `see … linked\n\n[^a]: def\n<i>y</i> <?php …\n\n<!DOCTYPE html>…`
+  //     the merged separator text sits at index 1 of the root, INSIDE a
+  //     boundary at offset 24, forty bytes before the opener. A poison at the
+  //     opener's own offset provably does not cover it. Erasure-by-sanitize
+  //     is the DOCUMENT_STRUCTURE_NAMES semantics, and gets the same poison.
+  //
+  // (`<!--` has the same erasure shape but its own earlier machinery has kept
+  // every measured variant safe — its poison is not widened here, and the
+  // corpus carries the shapes that would catch it if that ever stops.)
+  if (inlineRawOpenerIdx !== -1 && (cp.piOpen || cp.declOpen || cp.cdataOpen)) {
+    cp.phasePoisonedAt = 0;
   }
   // Raw-construct bytes are data, not markup — mask them (offset-preserving)
   // and scan the REST of the line for tags. The old scan skipped the whole
@@ -1935,9 +2066,22 @@ function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: strin
     // mechanism as the suppressed fence/math opens. Line-START openers are
     // html block type 2 (terminator semantics, tracked exactly) and raw/
     // flow-context openers follow parse5's comment state — neither poisons.
-    if (cp.commentOpen && lastCommentOpenerIdx !== -1 && !inRawText) {
-      if (!isMdBlank(tagText.slice(0, lastCommentOpenerIdx))) {
-        cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start + lastCommentOpenerIdx);
+    // No `!inRawText` gate here, and the poison is document-wide — two
+    // upgrades over the original, both bought by counterexamples:
+    //
+    //  - `inRawText` reads `htmlFlowSinceBlank`, which ANY `<letter` line
+    //    start sets. `<b>x</b> <!-- trailing…` is a PARAGRAPH (`b` is not a
+    //    type-6 name), yet the `<b` start suppressed this poison entirely
+    //    and the document froze at 173 of 200 (2026-08-24 scaled soak,
+    //    direction battery). The line-start check below is the exact
+    //    question the proxy was approximating.
+    //  - a cross-line comment is a sanitize-REMOVED node, and removing it
+    //    merges the text on either side — the merge reaches backward past
+    //    the boundary, so an opener-offset poison has the same hole F9 had
+    //    for `<?`/`<!`+letter. Same rule, same document-wide poison.
+    if (cp.commentOpen && lastCommentOpenerIdx !== -1) {
+      if (!isMdBlank(tagText.slice(0, lastCommentOpenerIdx)) || ln.indent > 3) {
+        cp.phasePoisonedAt = 0;
       }
     }
     // Tags whose `<` sits OUTSIDE every code-span mask but whose `>` sits
