@@ -20,7 +20,7 @@
  */
 
 import rehypeKatex from 'rehype-katex';
-import rehypeRaw from 'rehype-raw';
+import rehypeRaw from '@ai-markdown/rehype-raw';
 import rehypeUnwrapImages from 'rehype-unwrap-images';
 import { rehypeUnwrapCrossChunkImages } from './rehypeUnwrapCrossChunkImages';
 import rehypeSanitize from 'rehype-sanitize';

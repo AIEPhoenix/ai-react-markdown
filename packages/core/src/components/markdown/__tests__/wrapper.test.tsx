@@ -13,7 +13,7 @@
 
 import type { Root } from 'hast';
 import { renderToStaticMarkup } from 'react-dom/server';
-import rehypeRaw from 'rehype-raw';
+import rehypeRaw from '@ai-markdown/rehype-raw';
 import remarkGfm from 'remark-gfm';
 import remarkToc from 'remark-toc';
 import { visit } from 'unist-util-visit';

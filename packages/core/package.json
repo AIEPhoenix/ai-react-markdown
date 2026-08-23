@@ -119,6 +119,7 @@
     "unist-util-visit": "^5.1.0"
   },
   "devDependencies": {
+    "@ai-markdown/rehype-raw": "^7.0.3",
     "@ai-react-markdown/remark-mark-highlight": "workspace:^",
     "@types/lodash-es": "^4.17.12",
     "@types/mdast": "^4.0.4",
@@ -128,7 +129,6 @@
     "react": "^19",
     "react-dom": "^19",
     "rehype-katex": "^7.0.1",
-    "rehype-raw": "^7.0.0",
     "rehype-sanitize": "^6.0.0",
     "rehype-unwrap-images": "^1.0.0",
     "remark-breaks": "^4.0.0",

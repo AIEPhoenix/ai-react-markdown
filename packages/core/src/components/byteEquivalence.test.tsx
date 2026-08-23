@@ -50,7 +50,7 @@ import { remarkDefinitionList, defListHastHandlers } from 'remark-definition-lis
 import remarkRemoveComments from 'remark-remove-comments';
 import remarkSmartypants from 'remark-smartypants';
 import remarkPangu from 'remark-pangu';
-import rehypeRaw from 'rehype-raw';
+import rehypeRaw from '@ai-markdown/rehype-raw';
 import rehypeSanitize from 'rehype-sanitize';
 import rehypeKatex from 'rehype-katex';
 import rehypeUnwrapImages from 'rehype-unwrap-images';

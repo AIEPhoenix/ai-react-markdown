@@ -79,6 +79,7 @@
     }
   },
   "dependencies": {
+    "@ai-markdown/rehype-raw": "^7.0.3",
     "@ai-react-markdown/remark-mark-highlight": "workspace:^",
     "@types/hast": "^3.0.5",
     "@types/mdast": "^4.0.4",
@@ -89,7 +90,6 @@
     "micromark-util-normalize-identifier": "^2.0.1",
     "micromark-util-sanitize-uri": "^2.0.1",
     "rehype-katex": "^7.0.1",
-    "rehype-raw": "^7.0.0",
     "rehype-sanitize": "^6.0.0",
     "rehype-unwrap-images": "^1.0.0",
     "remark-breaks": "^4.0.0",

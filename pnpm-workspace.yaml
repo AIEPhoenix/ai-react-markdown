@@ -14,6 +14,14 @@ allowBuilds:
   '@parcel/watcher': false
   esbuild: false
 
+# Our own fork chain (see the 2.5.5 release notes): freshly published
+# versions must be installable the day they are cut, so the cooldown is
+# waived for exactly the pinned-floor versions.
+minimumReleaseAgeExclude:
+  - '@ai-markdown/hast-util-from-parse5@8.0.5'
+  - '@ai-markdown/hast-util-raw@9.1.3'
+  - '@ai-markdown/rehype-raw@7.0.3'
+
 # This file is the ONLY place pnpm reads settings from (11.x behavior). The
 # root package.json used to carry a `pnpm.overrides` block for pnpm 10; it is
 # gone, and `pnpm check:overrides` fails the build if one reappears, because

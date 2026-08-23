@@ -3,7 +3,7 @@ import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
 import remarkRehype from 'remark-rehype';
-import rehypeRaw from 'rehype-raw';
+import rehypeRaw from '@ai-markdown/rehype-raw';
 import rehypeSanitize from 'rehype-sanitize';
 import { visit } from 'unist-util-visit';
 import { buildCrossChunkHandlers } from './customMdastHandlers';

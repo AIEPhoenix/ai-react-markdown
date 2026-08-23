@@ -15,7 +15,7 @@ import remarkGfm from 'remark-gfm';
 import remarkRehype from 'remark-rehype';
 import remarkSqueezeParagraphs from 'remark-squeeze-paragraphs';
 import remarkRemoveComments from 'remark-remove-comments';
-import rehypeRaw from 'rehype-raw';
+import rehypeRaw from '@ai-markdown/rehype-raw';
 import { buildCrossChunkHandlers } from '@ai-react-markdown/engine';
 import rehypeSanitize from 'rehype-sanitize';
 import { VFile } from 'vfile';

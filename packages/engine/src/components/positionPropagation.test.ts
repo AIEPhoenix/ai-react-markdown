@@ -24,7 +24,7 @@ import remarkSqueezeParagraphs from 'remark-squeeze-paragraphs';
 import remarkCjkFriendly from 'remark-cjk-friendly';
 import remarkCjkFriendlyGfmStrikethrough from 'remark-cjk-friendly-gfm-strikethrough';
 import remarkRehype from 'remark-rehype';
-import rehypeRaw from 'rehype-raw';
+import rehypeRaw from '@ai-markdown/rehype-raw';
 import rehypeSanitize from 'rehype-sanitize';
 import rehypeKatex from 'rehype-katex';
 import rehypeUnwrapImages from 'rehype-unwrap-images';
