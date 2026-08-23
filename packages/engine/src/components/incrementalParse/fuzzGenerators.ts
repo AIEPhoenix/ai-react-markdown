@@ -443,6 +443,8 @@ const foreignContentArb = fc.oneof(
 const insertionModeArb = fc.constantFrom(
   '<template>x</template>',
   '<template>\n<div>x</div>\n</template>',
+  '- a\n<template>\n<div>x</div>\n</template>',
+  '> q\n<template>\n<div>x</div>\n</template>',
   '<template><td>x</td></template>',
   '<template>x',
   'p <template>x</template> q',
@@ -502,6 +504,111 @@ const scriptEscapeArb = fc.oneof(
 // size lands under the floor on ordinary seed variation. Every family
 // therefore sits at 2 or above; raise the whole pool rather than singling one
 // out when a new family is added (2026-08-21: the pool went 38 → 49).
+/** End tags parse5 DISCARDS because a scope barrier hides their element.
+ *  `<div><table></div></table>` leaves the div OPEN — `</div>` is a parse
+ *  error and is ignored, `</table>` pops only the table — so every later block
+ *  nests inside the div. The scanner counted both tags balanced and froze; the
+ *  bug shipped, because a name→count bag cannot represent what sits BETWEEN an
+ *  open and its close (2026-08-24, found by sweeping the forward-independence
+ *  identity over prefix/tail pairs rather than by fuzz).
+ *
+ *  Note the outer name must be a type-6 name: with `<b>` or `<a>` outside,
+ *  micromark reads a paragraph and the synthesised `<p>` wrapper makes parse5
+ *  close the construct cleanly, so the shape never reaches the scanner. */
+const scopeBarrierArb = fc.oneof(
+  {
+    weight: 2,
+    arbitrary: fc.constantFrom(
+      '<div><table></div></table>',
+      '<div><marquee></div></marquee>',
+      '<div><object></div></object>',
+      '<div><template></div></template>',
+      '<div><applet></div></applet>',
+      '<section><table></section></table>',
+      '<blockquote><object></blockquote></object>'
+    ),
+  },
+  {
+    // Controls: no barrier, so the end tag really closes and the document
+    // must keep freezing. Without these the family only ever poisons.
+    weight: 3,
+    arbitrary: fc.constantFrom(
+      '<div><span></div></span>',
+      '<div><p></div></p>',
+      '<div><table></table></div>',
+      '<table><tr><td>c</td></tr></table>',
+      '<div><em></div></em>'
+    ),
+  }
+);
+
+/** Head-routed raw-text openers whose region is still OPEN where a tail-only
+ *  parse would begin. `startTagInTemplate` sends `title`/`noframes`/`script`/
+ *  `style` to "in head" WITHOUT popping the template insertion mode, so
+ *  `originalInsertionMode` is captured as IN_TEMPLATE in the tail and IN_BODY
+ *  in the full parse; the first stray end tag afterwards restores different
+ *  modes and `</p>` synthesizes a paragraph on one side only.
+ *
+ *  `a\n\n<title>\n\n*b*\n` — sixteen bytes — was a live under-block, found
+ *  by a fresh-seed soak leg on 2026-08-24 and minimised from a 190-byte
+ *  counterexample that only failed on a reversed chunk schedule. The emphasis
+ *  in the trailing block is load-bearing: it takes a NESTED element for the
+ *  divergence to become observable, because a single stray end tag is consumed
+ *  by the mode restore itself. */
+const headRoutedCaptureArb = fc.oneof(
+  {
+    weight: 1,
+    arbitrary: fc.constantFrom(
+      '<title>\n\n*b*',
+      '<noframes>\n\n*b*',
+      '<script>\n<!--<script>\n</script>\n\n*b*',
+      '<title>\n\n[x](y)',
+      '<noframes>\n\n**b**'
+    ),
+  },
+  {
+    // Converged or honestly closed: these must keep splicing, or the family
+    // only ever measures the bail.
+    weight: 2,
+    arbitrary: fc.constantFrom(
+      '<title>t</title>\n\n*b*',
+      '<script>x</script>\n\n*b*',
+      '<title>\n\n</title>\n\n*b*',
+      '<textarea>\n\n*b*',
+      '<iframe>\n\n*b*'
+    ),
+  }
+);
+
+/** Paragraph-inline raw constructs crossing the line ending, and block-level
+ *  raw-text elements crossing a blank line — two shapes where a construct is
+ *  interior to one grammar and structure to the other (2026-08-24, both live
+ *  under-blocks; see rawConstructPhase.test.ts for the mechanism). The unsafe
+ *  members poison to zero, so the safe members carry the sampling weight. */
+const rawPhaseSplitArb = fc.oneof(
+  {
+    weight: 1,
+    arbitrary: fc.constantFrom(
+      'x <!D y\n<!DOCTYPE>',
+      'x <?p y\n<!DOCTYPE ?>',
+      'x <![CDATA[ y\n<!DOCTYPE ]]>',
+      'x <!D y\n<div><table></div></table>',
+      '<iframe>\n\n*b*\n<div>\n<iframe>\n</div>\n</iframe>',
+      '<title>\n\n*b*\n</title>'
+    ),
+  },
+  {
+    weight: 2,
+    arbitrary: fc.constantFrom(
+      'x <!D y>\nplain',
+      'x <?p y?>\nplain',
+      '<!ENTITY x\n<!DOCTYPE html>',
+      '<iframe>x</iframe>',
+      '<iframe>\ny\n</iframe>'
+    ),
+  }
+);
+
 const rawHtmlArb = fc.oneof(
   { weight: 2, arbitrary: treeQuirkArb },
   { weight: 2, arbitrary: crossLineTagGarbageArb },
@@ -530,6 +637,9 @@ const rawHtmlArb = fc.oneof(
   { weight: 2, arbitrary: foreignContentArb },
   { weight: 2, arbitrary: insertionModeArb },
   { weight: 2, arbitrary: scriptEscapeArb },
+  { weight: 2, arbitrary: scopeBarrierArb },
+  { weight: 2, arbitrary: headRoutedCaptureArb },
+  { weight: 2, arbitrary: rawPhaseSplitArb },
   // Unsettled openers (the assembler may close them later or leave them).
   { weight: 4, arbitrary: fc.constantFrom('<details>', '<!--', '<div') },
   { weight: 2, arbitrary: overlapTerminatorArb }
@@ -761,4 +871,7 @@ export const COVERAGE_MARKERS: Record<string, RegExp> = {
   foreignContent: /<svg|<math[>/ ]/,
   insertionMode: /<template>|<table>(?:foster|<b>|<div>|<caption>|<colgroup>)|<table>\n/,
   scriptEscape: /<script><!--|<script>\n<!--|<style><!--|<textarea><!--/,
+  scopeBarrier: /<(?:div|section|blockquote)><(?:table|marquee|object|template|applet)>|<div><(?:span|p|em)><\/div>/,
+  headRoutedCapture: /<(?:title|noframes)>\n\n|<(?:title|noframes)>[a-z]*<\/(?:title|noframes)>/,
+  rawPhaseSplit: /x <(?:!D|\?p|!\[CDATA\[) y|<iframe>\n\n\*b\*|<iframe>x<\/iframe>/,
 };
