@@ -118,7 +118,14 @@
  */
 
 import { htmlBlockNames } from 'micromark-util-html-tag-name';
-import { normalizeIdentifier } from 'micromark-util-normalize-identifier';
+import { isMdBlank, mdTrimStart } from './mdLineText';
+import {
+  collectRefLine,
+  settleRefsAndEarliestUnresolved,
+  DEF_RE,
+  FOOTNOTE_DEF_RE,
+  type UnresolvedRef,
+} from './referenceTaint';
 
 /** CommonMark type-6 block tag names (micromark's own list), lowercase. */
 const TYPE6_NAMES = new Set(htmlBlockNames);
@@ -388,12 +395,6 @@ interface Candidate {
   defListSettled: boolean | null;
 }
 
-interface UnresolvedRef {
-  offset: number;
-  label: string;
-  footnote: boolean;
-}
-
 /** Opaque resume token. Produced by one `computeFreezeBoundary` call and
  *  passed back on the next APPEND-ONLY call; the only supported operations
  *  are storing it and passing it back. The field set is an implementation
@@ -594,11 +595,8 @@ const VOID_TAGS = new Set([
 
 /** CommonMark list markers at block indent (bullet or ordered), incl. bare `-`. */
 const LIST_MARKER_RE = /^ {0,3}(?:[-*+]|\d{1,9}[.)])(?:[ \t]|$)/;
-const FOOTNOTE_DEF_RE = /^ {0,3}\[\^[^\]]*\]:/;
 /** Definition-list description marker (micromark-extension-definition-list). */
 const DEF_LIST_DD_RE = /^ {0,3}:[ \t]/;
-/** Any link/footnote reference definition at block indent. */
-const DEF_RE = /^ {0,3}\[((?:[^[\]\\]|\\.)+)\]:/;
 const FENCE_RE = /^ {0,3}(`{3,}|~{3,})/;
 /** Leading dollar RUN at block indent — math flow fences carry a LENGTH
  *  like code fences (`$$$$` opens a fence only ≥4 dollars can close;
@@ -670,27 +668,7 @@ function scanTagAttrs(text: string, from: number, to: number, out: { state: TagA
   out.state = st;
   return -1;
 }
-/** Bracketed inline candidate: link/image reference or shortcut. No nesting
- *  support — plain prose brackets count as taint (conservative direction). */
-const REF_RE = /!?\[((?:[^[\]\\]|\\.)*)\]/g;
 const BACKTICK_RUN_RE = /`+/g;
-
-/**
- * Markdown whitespace is U+0020 / U+0009 (plus line endings) — NOT the
- * Unicode set JS `trim()` strips. A line holding only U+3000 / U+00A0 is
- * paragraph text (a lazy continuation line) for micromark, and a fence
- * closer followed by NBSP is not a closer. Using `trim()` here made the
- * scanner emit a candidate inside an unfinished paragraph (v2.4.1 review
- * P1 — CJK output does carry full-width-space-only lines).
- */
-const MD_BLANK_RE = /^[ \t\r]*$/;
-const isMdBlank = (text: string): boolean => MD_BLANK_RE.test(text);
-/** ASCII-only counterparts of `trim()` / `trimStart()` — every verdict in
- *  this file must strip exactly what micromark strips (adversarial review
- *  of the first fix: a def rest ending in NBSP registered a ghost def; a
- *  U+3000 before a paragraph-inline `<!--` skipped the divergence poison). */
-const mdTrim = (text: string): string => text.replace(/^[ \t\r]+|[ \t\r]+$/g, '');
-const mdTrimStart = (text: string): string => text.replace(/^[ \t\r]+/, '');
 
 function computeIndent(text: string): number {
   let indent = 0;
@@ -700,32 +678,6 @@ function computeIndent(text: string): number {
     else break;
   }
   return indent;
-}
-
-/** Index of the first unescaped `ch` in `text`, or -1. */
-function firstUnescaped(text: string, ch: string): number {
-  for (let i = 0; i < text.length; i++) {
-    if (text[i] === '\\') i += 1;
-    else if (text[i] === ch) return i;
-  }
-  return -1;
-}
-
-/** Index of the last unescaped `[` that has no unescaped `]` after it, or -1. */
-function lastUnclosedBracket(text: string): number {
-  let open = -1;
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (c === '\\') i += 1;
-    else if (c === '[') open = i;
-    else if (c === ']') open = -1;
-  }
-  return open;
-}
-
-function normalizeLabel(label: string): string {
-  const collapsed = label.replace(/[ \t\r\n]+/g, ' ').replace(/^ | $/g, '');
-  return collapsed ? normalizeIdentifier(collapsed) : '';
 }
 
 /**
@@ -838,132 +790,6 @@ function freshCheckpoint(
   };
 }
 
-/**
- * Rest-of-line check for a link definition after `[label]:`: a non-empty
- * destination (angle-bracketed or a bare non-whitespace run), then nothing
- * or a title that CLOSES on this line with nothing after it. Everything
- * else — no destination, non-title garbage, garbage after a closed title
- * (`"t"a`), or a title left OPEN at EOL (its continuation line may append
- * garbage that invalidates the whole def: `"t\nt2"a`, K=4 census) — is
- * rejected: the line is (or may become) a paragraph whose `[label]` stays
- * a live ref. Rejecting a real def only over-blocks (refs stay tainted);
- * registering a ghost under-blocks. Multi-line titles therefore never
- * register — the documented A2 conservative edge.
- */
-function isPlausibleLinkDefRest(rest: string): boolean {
-  const t = mdTrim(rest);
-  if (t === '') return false; // destination-less
-  const destEnd = linkDestinationEnd(t);
-  if (destEnd === -1) return false; // micromark rejects the destination → paragraph
-  const after = mdTrim(t.slice(destEnd));
-  if (after === '') return true;
-  const opener = after[0];
-  if (opener !== '"' && opener !== "'" && opener !== '(') return false;
-  const closer = opener === '(' ? ')' : opener;
-  // Find the UNESCAPED closing delimiter; the def is valid only when it
-  // exists on this line and nothing but whitespace follows it.
-  for (let i = 1; i < after.length; i++) {
-    if (after[i] === '\\') {
-      i += 1;
-      continue;
-    }
-    if (after[i] === closer) return isMdBlank(after.slice(i + 1));
-  }
-  return false; // title still open at EOL
-}
-
-/**
- * micromark's link-destination grammar (micromark-factory-destination),
- * applied to a trimmed def rest. Returns the index just past the
- * destination, or -1 when micromark would REJECT it — the def line is then
- * a paragraph whose `[label]` stays a live shortcut ref. Two forms:
- *   - `<…>`: any characters except line endings and UNESCAPED `<` / `>`
- *     (whitespace is legal); unclosed at EOL → reject. `<>` is valid.
- *   - bare: a non-empty run without whitespace or ASCII control characters;
- *     unescaped parentheses must balance, and a `)` at balance zero ENDS
- *     the destination (whatever follows must then be a title or nothing).
- * The old check accepted any `<…>` with a `>` somewhere and any bare run —
- * `[a]: <u<v>` / `[a]: /u(x` registered GHOST defs that released reference
- * taint early (2026-08 project-review P1; ghost defs are the unsafe
- * direction — see the def-registration comment in processConfirmedLine).
- */
-function linkDestinationEnd(t: string): number {
-  if (t.startsWith('<')) {
-    for (let i = 1; i < t.length; i++) {
-      const ch = t[i];
-      // `enclosedEscape`: a backslash only escapes `<`, `>`, `\`; before
-      // anything else it is a literal backslash and the next character is
-      // judged on its own.
-      if (ch === '\\' && (t[i + 1] === '<' || t[i + 1] === '>' || t[i + 1] === '\\')) {
-        i += 1;
-        continue;
-      }
-      if (ch === '>') return i + 1;
-      if (ch === '<') return -1;
-    }
-    return -1; // unclosed angle destination
-  }
-  let balance = 0;
-  let i = 0;
-  for (; i < t.length; i++) {
-    const code = t.charCodeAt(i);
-    if (code === 0x20 || code === 0x09) break; // whitespace ends the run
-    if (code < 0x20 || code === 0x7f) return -1; // ASCII control
-    const ch = t[i];
-    // `rawEscape`: only `(`, `)`, `\` are escapable; `\ ` is a literal
-    // backslash followed by whitespace, which ENDS the run (review probe:
-    // skipping any next char swallowed the space and registered a ghost).
-    if (ch === '\\' && (t[i + 1] === '(' || t[i + 1] === ')' || t[i + 1] === '\\')) {
-      i += 1;
-      continue;
-    }
-    if (ch === '(') balance += 1;
-    else if (ch === ')') {
-      if (balance === 0) break; // ends the destination
-      balance -= 1;
-    }
-  }
-  if (balance !== 0 || i === 0) return -1;
-  return i;
-}
-
-/**
- * micromark's inline-link resource grammar (`(` destination? title? `)`)
- * on ONE line, starting at the `(` at `openIdx`. Returns the index just past
- * the closing `)`, or -1 when the resource is malformed here — the bracket
- * text before it is then a live shortcut reference.
- */
-function inlineResourceEnd(text: string, openIdx: number): number {
-  let i = openIdx + 1;
-  const skipWs = () => {
-    while (i < text.length && (text[i] === ' ' || text[i] === '\t')) i += 1;
-  };
-  skipWs();
-  if (text[i] === ')') return i + 1; // `()` — empty resource is valid
-  const destEnd = linkDestinationEnd(text.slice(i));
-  if (destEnd === -1) return -1;
-  i += destEnd;
-  const beforeWs = i;
-  skipWs();
-  if (text[i] === ')') return i + 1;
-  if (i === beforeWs) return -1; // title must be whitespace-separated
-  const opener = text[i];
-  if (opener !== '"' && opener !== "'" && opener !== '(') return -1;
-  const closer = opener === '(' ? ')' : opener;
-  for (i += 1; i < text.length; i++) {
-    if (text[i] === '\\') {
-      i += 1;
-      continue;
-    }
-    if (text[i] === closer) {
-      i += 1;
-      skipWs();
-      return text[i] === ')' ? i + 1 : -1;
-    }
-  }
-  return -1; // title still open at EOL
-}
-
 /** Blocker-3 classification of a block-START line (raw text; markers are
  *  never inside code spans at block indent). Returns the new rolling
  *  verdict, or null when the line is ambiguous (verdict unchanged). */
@@ -1041,17 +867,8 @@ export function computeFreezeBoundary(
     start = end + 1;
   }
 
-  // ── settle references (monotone: entries only ever leave) ──
-  if (cp.unresolvedRefs.length > 0) {
-    const settled = (defEnd: number): boolean => cp.lastBlankStart >= defEnd;
-    cp.unresolvedRefs = cp.unresolvedRefs.filter((ref) => {
-      const table = ref.footnote ? cp.footnoteDefs : cp.defs;
-      const defEnd = table.get(ref.label);
-      return defEnd === undefined || !settled(defEnd);
-    });
-  }
-  let earliestUnresolved = Infinity;
-  for (const ref of cp.unresolvedRefs) earliestUnresolved = Math.min(earliestUnresolved, ref.offset);
+  // ── settle references (blocker 5 — referenceTaint.ts) ──
+  const earliestUnresolved = settleRefsAndEarliestUnresolved(cp);
 
   // ── blocker 4: defList settled check (decided by the NEXT line) ──
   const defListSettled = (c: Candidate): boolean => {
@@ -1676,112 +1493,9 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   if (unpaired) cp.paragraphHasUnpairedRun = true;
   const scanText = masked ?? ln.text;
 
-  // Blocker 5: definitions (block-start or def-chain only — A2) and refs.
-  // Inside an html flow run a def-shaped line is RAW TEXT — micromark never
-  // registers it. Registering a ghost def is the UNSAFE direction twice
-  // over: it releases reference taint early AND makes the footnote replay
-  // inject a definition the real parse does not have (fuzz-arbiter
-  // counterexample). Refs stay extracted regardless: extra candidates only
-  // over-taint.
-  const defShaped = inRawText ? null : DEF_RE.exec(scanText);
-  // micromark requires a NON-EMPTY destination followed by nothing but an
-  // optional TITLE for a link definition. A bare `[label]:` line, or one
-  // with non-title garbage after the destination (`[x]: /u[x]: /u` — K=4
-  // census counterexamples), is a PARAGRAPH whose `[label]` stays a live
-  // shortcut ref that a LATER real def can retarget. Rejecting a real def
-  // here only over-blocks (refs stay tainted); registering a ghost
-  // under-blocks. Footnote defs legitimately have empty bodies.
-  const def =
-    defShaped !== null &&
-    (defShaped[1].startsWith('^') || isPlausibleLinkDefRest(scanText.slice(defShaped.index + defShaped[0].length)))
-      ? defShaped
-      : null;
-  const defLineStart = isBlockStart || !cp.prevLineWasText || cp.prevLineWasValidDef;
-  const validDef = def !== null && defLineStart;
-  if (validDef) {
-    const label = def![1];
-    if (label.startsWith('^')) {
-      const key = normalizeLabel(label.slice(1));
-      if (key && !cp.footnoteDefs.has(key)) cp.footnoteDefs.set(key, ln.end);
-    } else {
-      const key = normalizeLabel(label);
-      if (key && !cp.defs.has(key)) cp.defs.set(key, ln.end);
-    }
-  }
-  // Blocker 5 collection is skipped entirely under referenceTaint=false
-  // (the def-label scanner profile): definition IDENTITY is a block-level
-  // fact independent of how inline references resolve, and taint would
-  // collapse the boundary to the body's first citation while a def footer
-  // streams (defs settle only after a trailing blank line).
-  if (cp.referenceTaint) {
-    const pushRef = (offset: number, inner: string, followAt: number): void => {
-      const follow = scanText[followAt];
-      // `[text](…)` is an inline link only when the resource is WELL-FORMED
-      // on this line; `[foo](bad url)` fails micromark's resource grammar
-      // and `[foo]` falls back to a shortcut reference a later def can
-      // retarget (adversarial review). A resource that continues on the
-      // next line is unverifiable here → taint (over-block).
-      if (follow === '(' && inlineResourceEnd(scanText, followAt) !== -1) return;
-      let label: string;
-      let footnote = false;
-      if (inner.startsWith('^')) {
-        footnote = true;
-        label = normalizeLabel(inner.slice(1));
-      } else if (follow === '[') {
-        const explicit = /^\[((?:[^[\]\\]|\\.)*)\]/.exec(scanText.slice(followAt));
-        label = normalizeLabel(explicit && explicit[1] ? explicit[1] : inner);
-      } else {
-        // Shortcut reference candidate. Plain prose brackets ("[sic]") land
-        // here too — a future definition COULD retarget them, so they count.
-        label = normalizeLabel(inner);
-      }
-      if (label) cp.unresolvedRefs.push({ offset, label, footnote });
-    };
-    // A bracket left open on an earlier line of this paragraph: it closes
-    // here (label = the joined text — micromark's label grammar allows soft
-    // line breaks, and normalizeLabel folds them), stays open when this line
-    // has no bracket at all, or dies when a NEW `[` comes first (a label
-    // cannot contain an unescaped `[`; that `[` may itself pend below).
-    const pending = cp.openBracket;
-    cp.openBracket = null;
-    if (pending) {
-      const close = firstUnescaped(scanText, ']');
-      const open = firstUnescaped(scanText, '[');
-      // A continuation line inside a blockquote carries its `>` marker in
-      // the source but not in micromark's label — strip it, or the joined
-      // label (`foo > bar`) could never match its def and the taint would
-      // never lift (adversarial review). Wrong-way stripping only over-taints.
-      const cont = (t: string): string => t.replace(/^ {0,3}>[ \t]?/, '');
-      if (close !== -1 && (open === -1 || close < open)) {
-        pushRef(pending.offset, `${pending.text}\n${cont(scanText.slice(0, close))}`, close + 1);
-      } else if (close === -1 && open === -1) {
-        cp.openBracket = { offset: pending.offset, text: `${pending.text}\n${cont(scanText)}` };
-      }
-    }
-    if (scanText.includes('[')) {
-      // `[label]:` is only definition-shaped when THIS line registers it as
-      // a def (the label bracket of validDef). On a paragraph CONTINUATION
-      // line the same bytes are literal text where micromark still parses
-      // `[label]` as a shortcut reference — skipping it there under-taints
-      // and lets a later definition retarget frozen output (fuzz
-      // counterexample: a def line glued under a paragraph). Extra
-      // candidates only over-taint.
-      const defBracket = validDef ? def!.index + def![0].indexOf('[') : -1;
-      REF_RE.lastIndex = 0;
-      let m: RegExpExecArray | null;
-      while ((m = REF_RE.exec(scanText)) !== null) {
-        const followAt = m.index + m[0].length;
-        if (scanText[followAt] === ':' && m.index === defBracket) continue; // the def's own label
-        pushRef(ln.start + m.index, m[1], followAt);
-      }
-      // The LAST unescaped `[` with no `]` after it stays open into the next
-      // paragraph line (a def line's own label never reaches here unclosed).
-      const trailingOpen = lastUnclosedBracket(scanText);
-      if (trailingOpen !== -1) {
-        cp.openBracket = { offset: ln.start + trailingOpen, text: scanText.slice(trailingOpen + 1) };
-      }
-    }
-  }
+  // Blocker 5 (reference taint) — moved to referenceTaint.ts as a pure
+  // move (two-model plan P2); the module doc carries the rationale.
+  const { validLinkDef } = collectRefLine(cp, ln.start, ln.end, scanText, inRawText, isBlockStart);
 
   // Blocker 1: raw-block (types 3–5) state machine, then tag balance.
   // `rawSpans` records the byte ranges this line contributes to raw
@@ -2295,5 +2009,5 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   // def-shaped line glued under it is literal body text and registering it
   // would be a ghost def (fuzz counterexample). Refs on that line stay
   // extracted (footnote bodies parse inline content).
-  cp.prevLineWasValidDef = validDef && !def![1].startsWith('^');
+  cp.prevLineWasValidDef = validLinkDef;
 }
