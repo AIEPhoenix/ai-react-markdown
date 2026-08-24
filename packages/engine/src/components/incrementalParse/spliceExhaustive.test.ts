@@ -76,10 +76,17 @@ const MAX_K = Number(testEnv('EXHAUSTIVE_K') ?? 3);
 const CUT_STRIDE = Number(testEnv('EXHAUSTIVE_STRIDE') ?? (MAX_K >= 3 ? 3 : 1));
 /**
  * Deep-run parallelism: a census is ONE vitest test — one worker, one
- * core. `EXHAUSTIVE_SHARD=i/N` makes this process drive only every Nth
- * document (odometer order), so N shard processes launched side by side
- * cover the space in ~1/N wall-clock:
+ * core. `EXHAUSTIVE_SHARD=i/N` makes this process drive a deterministic
+ * 1/N hash-scatter of the documents, so N shard processes launched side
+ * by side cover the space in ~1/N wall-clock:
  *   for i in $(seq 0 11); do EXHAUSTIVE_K=4 EXHAUSTIVE_SHARD=$i/12 … & done
+ * The assignment hashes the doc counter instead of taking `docs % N`:
+ * the counter is an odometer in base TOKENS.length, and whenever the
+ * alphabet size shares a factor with N the high digits vanish from the
+ * residue (30² ≡ 0 mod 12), leaving shard membership a function of the
+ * LAST tokens only. Token identity drives per-doc cost (length² via the
+ * cut count, ×2 configs on `: `), so that correlation produced a stable
+ * ×1.5 wall-clock skew across census shards (measured 2026-08-24).
  * The doc/schedule counters still count the whole space walk, so the
  * sanity floors scale by TOTAL below.
  */
@@ -143,7 +150,10 @@ describe(`splice exhaustive sweep (K=${MAX_K}, alphabet=${TOKENS.length})`, () =
       const idx = new Array<number>(k).fill(0);
       for (;;) {
         docs += 1;
-        if (docs % SHARD_TOTAL !== SHARD_INDEX) {
+        // Multiplicative hash, HIGH bits: low bits of `docs * odd` depend
+        // only on low bits of `docs`, which would re-import the odometer
+        // correlation the hash exists to break.
+        if ((Math.imul(docs, 0x9e3779b1) >>> 16) % SHARD_TOTAL !== SHARD_INDEX) {
           // Not this shard's document — advance the odometer without even
           // building the string.
           let s = k - 1;
