@@ -196,6 +196,109 @@ definition and a following paragraph, which no hand-written matrix had.
 **A sweep that confirms a deviation is harmless is weaker evidence than a
 sweep that finds nothing at all.**
 
+## P1 conformance instruments (two-model plan)
+
+Built 2026-08-24. Three instruments plus a pinned diff corpus; none touch
+production code.
+
+| Instrument           | File                                                                                    | Verdict authority                                                                                                                                                                                                  |
+| -------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Engine probe         | `conformanceOracles.ts` `engineProbe`                                                   | **Authoritative.** Streams `doc` then `doc + probe` through the real engine and deep-equals frame 2 against a fresh full parse, positions included, never gated on `usedIncremental`. A mismatch is a defect.      |
+| (M) span oracle      | `conformanceOracles.ts` `mSpanDisagreement`                                             | Attribution. Covering-span sets at every frozen-region line start; in sweeps SNAPSHOT-anchored — `parse(doc)` vs `parse(doc+probe)` — per the bad-oracle finding below. Spans, not types.                          |
+| (P) identity oracles | `conformanceOracles.ts` `rawLayerIdentityDisagreement` / `pipelineIdentityDisagreement` | Design instruments, prefix-anchored — home ground is HAND fixtures (formElement, F10). Sweeps run them only behind `ORACLE_RAW=1`: at scanner-granted boundaries the prefix anchoring overclaims, see below.       |
+| Boundary diff        | `boundaryDiff.test.ts` + `boundaryBaseline.json`                                        | Regression net (§2.3). Per-sample boundaries over the pinned corpus × three lineages (engine/scanner/phantom); increases FAIL until the baseline is regenerated with a ledger entry; decreases report a histogram. |
+| Pinned corpus        | `pinnedCorpus.ts`                                                                       | 17 frozen fixture docs + 3 purpose-built REF_RESOLUTION docs + 2000 pinned-seed fuzz samples, fingerprinted against fast-check drift.                                                                              |
+
+**One measured architecture fact** (it reshaped T1.2): the system's safety
+contract is scanner boundary PLUS the splice-side guards. The bare node-list
+identity at the scanner's boundary diverges for tails the splice
+legitimately refuses — a `<td>` tail diverges after ANY paragraph prefix
+(tail-alone fragment parse still starts "in template"; the full parse
+popped to "in body"). An oracle that failed on that would be wrong, and one
+that silently skipped it would mask F8. Hence the authority split above.
+
+### Mutation check (§2.3) — the harness has failed on purpose
+
+| Planted mutation                          | Result                                                                                                                   |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `blankRun += 1` → `+= 2`                  | diff FAILS (boundary increases)                                                                                          |
+| drop `c.hazard` from candidate acceptance | diff FAILS (increases)                                                                                                   |
+| drop the `<template>` erasure poison      | diff FAILS (increases)                                                                                                   |
+| drop the link-def registration ((R) path) | 15 samples move down (REF_RESOLUTION ×2 + 13 fuzz), reported in the decrease histogram — conservative direction, visible |
+
+The fixture library contains ZERO link reference definitions (measured
+while validating the fourth mutation) — freezing past a resolved link ref
+was covered only by ~13 of 2000 fuzz samples until the REF_RESOLUTION docs
+pinned it by name.
+
+### Classification ledger (T1.5)
+
+**The load-bearing entry is a bad-oracle finding.** The first sweep ran
+the layer instruments PREFIX-anchored — `parse(prefix)` vs
+`parse(prefix+tail)` — and produced ~3.7k `info` firings at soak scale in
+uniform every-probe families (firing even for the EMPTY probe). Diagnosis:
+the scanner grants a boundary GIVEN every confirmed line of the snapshot
+(blockers 3/4 settle candidates on evidence PAST the boundary), and the
+engine cuts the SNAPSHOT's parse at the boundary — it never parses the
+bare prefix. The prefix-anchored instrument asserts a strictly stronger
+claim than the scanner makes, so those firings said nothing about the
+scanner. Re-anchored to the snapshot (`parse(doc)` vs `parse(doc+probe)`),
+the same 2×2000-doc sweep reports **zero** instrument firings and zero
+defects. Per T1.5's own rule: the oracle was wrong; fixed, and said so.
+
+Real divergence families the prefix-anchored instruments DID surface, kept
+as exemptions for `ORACLE_RAW=1` runs and hand analysis — every direction
+is refuse-or-absorb, never an under-block:
+
+| #   | Family                                                                                                                                                           | Mechanism that owns it                               | Direction                                                 |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | --------------------------------------------------------- |
+| E1  | Table-part tails (`<td>` probe): tail-alone fragment dispatch differs from in-context by construction (the F8 shape)                                             | splice-side stray-table-part bail                    | tail refused → full path                                  |
+| E2  | GFM-table internal whitespace is foster-parented to the root and merges with the seam separator (grouping only, values conserved)                                | blocker-6 seam handling / splice seam synthesis      | seam-absorbed                                             |
+| E3  | Footnote ref/def split across the boundary: tail-alone parse sees orphans, full parse resolves them — the raw() identity is stated WITHOUT the phantom mechanism | phantom injection replay (`remarkInjectPhantomDefs`) | production machinery, pinned by `assertStreamEquivalence` |
+
+`formElement` remains the standing latent divergence (design §2.1): raw
+layer fires, sanitize masks the element, the grouping echo keeps the final
+layer firing; the scanner never grants the boundary (openStack keeps the
+implicitly-closed form counted). Pinned as an oracle self-test.
+
+### T1.4 sweep result (2026-08-24)
+
+Two seeds × (2000 benign + 2000 hazard docs) × ~9 probes each, plus the
+20-doc realistic corpus × its catalog configs, snapshot-anchored: **zero
+defects, zero instrument firings**. Probe-level incremental engagement:
+benign 17449/18616 (93.7%), hazard 14472/16381 (88.3%) — the sweep
+exercised the splice, not the fallback. Under lie-mode 2 this is a
+regression net's green, not a safety proof.
+
+### T1.6 baseline (2026-08-24, v2.5.5 + P0)
+
+Boundary histogram over the pinned corpus, engine lineage, as a fraction
+of document length (zeros dominated by the hazard-dense family — that is
+the family's job):
+
+```
+zero 1331   1-25% 324   26-50% 202   51-75% 103   76-99% 60   100% 0
+```
+
+Realistic-doc boundaries (bytes frozen / doc length): GFM_BASICS 203/892,
+PROSE_SAMPLE 225/500, TABLES_DOC 534/866, TASK_LIST_DOC 22/369 (list
+continuation hazard — expected), FOOTNOTES_DOC 227/882,
+DEFINITION_LIST_DOC 547/673, MATH_DOC 530/587, CJK_MIXED_DOC 271/434,
+RTL_DOC 129/274, MARK_HIGHLIGHT_DOC 385/442, SMARTYPANTS_DOC 466/528,
+COMMENTS_DOC 545/604, URL_SCHEMES_DOC 432/595, LINKED_PROSE_DOC 676/750,
+CODE_SAMPLES_DOC 833/864, SECRETS_DOC 350/382, KITCHEN_SINK 2149/3857,
+REF_RESOLUTION_LINK 91/95, REF_RESOLUTION_FOOTNOTE 92/96,
+REF_RESOLUTION_TITLED 89/93.
+
+Per-family marker coverage over the 2000 pinned fuzz samples: every one of
+the 36 families ≥ 35 hits (floor 33 = RUNS/60); minima `headRoutedCapture`
+35, `quotedGtOnTagLine` 37, `rawPhaseSplit` 46, `scriptEscape` 46.
+
+**Standing caveat (lie-mode 2).** Every corpus above was selected by
+surviving ALL CLEAN runs, so a green sweep under-reports by construction.
+These instruments are regression nets and classification machinery; only
+fresh-seed soak is a safety argument.
+
 ## Swept, and why each held
 
 Recording the reason matters more than recording the pass: every one of
