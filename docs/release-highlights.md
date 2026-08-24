@@ -6,6 +6,28 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 ---
 
+## 2.6.x — Instruments before surgery
+
+### 2.6.0 — The freeze scanner gets conformance oracles, a pinned diff corpus, and an opaque checkpoint
+
+No runtime behaviour changes in this release — it is the prerequisite and instrumentation stage (P0 + P1) of a planned refactor that will split the freeze scanner's single line model into two per-grammar models. Everything here exists so that the stages that DO change behaviour can be judged by machines instead of by argument.
+
+**`FreezeScanCheckpoint` is now an opaque token.** The checkpoint's 42-field shape was published through `dist/index.d.ts` — reachable via `computeFreezeBoundary`'s signature and `IncrementalParseState.scanCheckpoint` — so every internal field the refactor deletes would have been a breaking change to a public 2.x type. The public type now carries only a structural brand key (`'~freezeScanCheckpoint'` — a `unique symbol` would be nominal-incompatible across the dual `.d.ts`/`.d.cts` entries); the real shape lives in an intra-package interface the d.ts rollup cannot reach. The one production consumer that read fields (`phantomSuffixCloser`) now calls a narrow accessor, `pendingFenceCloser`, which keeps the phase-trust and column-0-only decisions inside the scanner module. If you were reaching into the checkpoint from outside: those fields were never API, and the type now says so.
+
+**Table D closes a documentation debt the safety argument rested on.** Freeze candidates sit only at confirmed blank lines; the justification is "every construct whose semantics span a blank line is handled". That enumeration existed nowhere. `GRAMMAR-COVERAGE.md` now tables it in three groups — blocks the blank sits inside (fences, math, HTML types 1–5, the blocker-3 continuations, the parse5-side crossings), content after the blank that re-parses content before it (the def-list back-claim, reference retargeting, the erasure merges, the seam), and constructs the grammar itself stops at the blank — each row naming the covering mechanism. Adding a syntax extension to the chain now means adding rows first.
+
+**Conformance oracles (new, test-only).** The authoritative instrument streams a document and then the document plus an adversarial probe tail through the real engine and deep-equals the result against a fresh full parse — positions included, never gated on whether the splice engaged. The probe battery includes the shapes no generator was producing: `<form>` after an implicitly-closed form, table parts, definitions colliding with labels the prefix actually used. A micromark-layer span oracle attributes failures to the markdown grammar; a differential parse5-layer identity oracle keeps the `formElement`-class latent divergences visible (sanitize masks the element difference — and `sanitizeSchema` is a public prop, so "masked" is not "gone").
+
+Building the instruments produced three measured findings worth more than the instruments:
+
+- **The safety contract is the scanner's boundary PLUS the splice-side guards.** A bare "prefix and tail parse independently and concatenate" identity fails for tails the splice legitimately refuses — a `<td>` tail diverges after ANY paragraph prefix, because a tail-alone fragment parse still starts in parse5's "in template" mode while the full parse long since popped to "in body". An oracle unaware of this either cries wolf or silently masks the F8 family.
+- **A conformance oracle can overclaim.** The first sweep anchored its comparison on the bare prefix and produced ~3.7k uniform firings at soak scale — all noise: the scanner grants a boundary given every confirmed line of the snapshot (blockers 3 and 4 settle candidates on evidence PAST the boundary), and the engine cuts the snapshot's parse, never a parse of the bare prefix. Re-anchored, the same 2×2000-document sweep reports zero firings and zero defects. The bad-oracle entry is recorded with the same weight as a bug.
+- **The fixture library contained zero link reference definitions.** Measured while validating the harness with planted mutations: freezing past a RESOLVED link reference — the (R) dimension of the safety condition — was exercised by almost nothing. Three purpose-built documents now pin it by name.
+
+**The boundary-diff harness runs on every test invocation.** 6060 pinned boundaries (17 frozen fixture documents + 3 reference-resolution documents + 2000 pinned-seed fuzz samples, each under the three production grammar profiles) are compared against a committed baseline: any boundary INCREASE fails until the baseline is deliberately regenerated alongside a ledger entry naming the fixed under-block; decreases print a histogram and pass. The harness was not trusted until it failed on purpose — four planted mutations (a `blankRun` off-by-one, a dropped blocker, a dropped poison, a dropped definition registration), four caught.
+
+Verification: preflight at 1581 tests; the conformance sweep at 2×2000 documents on two seeds, zero defects; the four-leg fresh-seed soak ALL CLEAN.
+
 ## 2.5.x — Chunk order you control
 
 ### 2.5.5 — Order, mode, and phase: three things a line scanner cannot count
