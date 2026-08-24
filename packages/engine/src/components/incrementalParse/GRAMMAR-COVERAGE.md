@@ -8,8 +8,8 @@ output of **two** grammars at once:
 - **parse5** (through `rehype-raw`), which re-parses the raw HTML those
   blocks contain and owns the final hast.
 
-Every under-block found so far — the four families fixed in v2.5.3, and the
-two deviations recorded below — has come from a single field standing in for
+Every under-block found so far — v2.5.3 through v2.5.5, all in the
+deviation ledger below — has come from a single field standing in for
 both grammars at once. The scanner's module doc lists the seven _blockers_
 it enforces. This file is the other half: the **source grammars**, entry by
 entry, with what the scanner does about each and whether the fuzz corpus can
@@ -95,6 +95,71 @@ a confirmed line only affects itself and what follows.
 | `</p>` with no open `<p>`                                                                                    | synthesizes an empty `<p>`                                                                                                                     | `treeQuirkArb`                                                                                                                                                                                                                                                                                                |
 | Breakout start tag inside `<svg>`/`<math>`                                                                   | POPS the foreign root off the stack, then processes the tag as HTML                                                                            | `popForeignRoots()` clears the roots (the spec pops every foreign element down to the integration point — clearing less keeps `openTotal` high, i.e. over-blocks)                                                                                                                                             |
 | Misnested formatting elements ("adoption agency")                                                            | re-parents and clones formatting elements                                                                                                      | not modelled; reached only through unbalanced `<b>`/`<i>`, which block on tag balance anyway                                                                                                                                                                                                                  |
+
+## Table D — constructs that reach across a confirmed blank line
+
+Candidates are emitted at exactly one kind of place: a **confirmed blank
+line** (`processConfirmedLine`, the `ln.blank` branch — one candidate per
+blank, at `ln.end + 1`; the trailing partial line is never blank, because a
+line only counts as blank once its terminating newline exists). The safety
+argument for that placement is: _every construct, in either grammar, whose
+semantics span a blank line is enumerated here, and each row names the
+mechanism that covers it._ This table is that enumeration — the
+completeness obligation the placement rule rests on. A construct that
+crosses a blank and has no row here is an under-block waiting to be
+sampled, exactly like an unpoisoned "not modelled" row in Tables A–C.
+
+Enumeration domain: CommonMark core blocks, plus the syntax-adding
+extensions the engine actually enables (`pluginChain.ts`: GFM, math,
+definition lists when `defListEnabled`, `==mark==` highlight — the rest of
+the chain is mdast transforms with no grammar effect), plus the parse5
+fragment grammar. **Adding a syntax extension to the chain means adding
+rows here first.**
+
+### D1 — the blank sits INSIDE a block (the block continues past it)
+
+| Construct                                               | Why it crosses                                                                                                                       | Mechanism                                                                                                                                   |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fenced code interior                                    | a blank does not end a fence (§4.5)                                                                                                  | `inFence` returns before candidate emission — interiors are candidate-free                                                                  |
+| `$$` flow-math interior                                 | fence-like; blank interior allowed                                                                                                   | `inMath`, same early return. Under `mathFlow: false` the extension is off and `$$` is paragraph text — no crossing exists to cover          |
+| HTML block type 1 interior                              | a blank does NOT end it (§4.6)                                                                                                       | `type1FlowOpen` → candidate emitted with `htmlBalanced: false`                                                                              |
+| HTML block types 2–5 interiors                          | end at `-->` / `?>` / `>` / `]]>`, not at a blank                                                                                    | `commentOpen` / `piOpen` / `declOpen` / `cdataOpen` in `htmlBalanced`                                                                       |
+| Indented code block                                     | blank + ≥4-indent lines merge into one block (§4.4)                                                                                  | blocker 3: `classifyBlockStart` indent ≥ 4 → rolling `hazardVerdict`, candidate `hazard`                                                    |
+| List item continuation                                  | blank + indented content extends the item (§5.2)                                                                                     | blocker 3: `LIST_MARKER_RE` sets the verdict; only a column-0 non-marker block start clears it                                              |
+| Footnote definition body (GFM)                          | continuation rule mirrors list items                                                                                                 | blocker 3: `FOOTNOTE_DEF_RE`                                                                                                                |
+| Definition-list `: ` description body                   | continuation rule mirrors list items                                                                                                 | blocker 3: `DEF_LIST_DD_RE` (only when `defListEnabled`)                                                                                    |
+| Fence opened at ≥4 indent inside a list item            | the scanner's fence model only opens at 0–3 indent; the real fence still crosses blanks                                              | blocker 3 again: indent ≥ 4 is a `hazardVerdict` true on its own, so every candidate under it is rejected                                   |
+| Any UNCLOSED element at the blank (parse5)              | micromark's block ended; parse5's element is still open and swallows what follows — including `<svg>`/foreign roots                  | `openTotal !== 0` → `htmlBalanced: false`; accuracy of the count is the `openStack` + scope-barrier walk (F7) and `popForeignRoots` (F1/F5) |
+| RAWTEXT/RCDATA element open across the blank (parse5)   | type-6 ended (micromark) while parse5's raw-text state runs on — grammars disagree about every later byte                            | F10: document-wide poison at the blank; type 1 exempt (a blank ends neither grammar — they agree)                                           |
+| Quoted attribute value still open at the blank (parse5) | micromark ends the block; parse5's tokenizer stays inside the value                                                                  | poison at the blank (`tagAcrossLinesState` quote check in the blank branch)                                                                 |
+| Bogus comment still open at the blank (parse5)          | same shape: block ended, tokenizer did not                                                                                           | poison at the blank (`bogusOpen` check in the blank branch)                                                                                 |
+| Stray table-part tag before the blank (parse5)          | re-routes insertion modes so a LATER GFM table's cell text is foster-parented out — the effect lands across any number of blanks     | `strayTablePart` poisons candidates from the tag on, suppressed while a real `<table>` is open (B1)                                         |
+| Suppressed fence/math open inside an html-flow run      | whether the run swallows the opener is container-dependent; if it really opened, the interior crosses blanks with the phase inverted | blocker 7: `phasePoisonedAt` at the suppressed open                                                                                         |
+
+### D2 — content AFTER the blank re-parses content BEFORE it
+
+| Construct                                             | Why it reaches back                                                                                                                                                                                                                  | Mechanism                                                                                                                                       |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Definition-list `: ` term claim                       | the extension scans BACKWARD across exactly one blank to claim the previous paragraph as `<dt>`                                                                                                                                      | blocker 4: `defListSettled` — `blankRun >= 2` is immune, otherwise the NEXT confirmed line must never match `^ {0,3}:[ \t]` (`canBecomeDdLine`) |
+| `[label]:` definition retargeting an earlier `[text]` | reference-ness is decided at parse time; the def may sit ANY number of blanks below the ref                                                                                                                                          | blocker 5: `unresolvedRefs` / `earliestUnresolved`; a def only settles once a confirmed blank FOLLOWS it                                        |
+| `[^label]:` retargeting an earlier `[^label]`         | same, separate label namespace                                                                                                                                                                                                       | blocker 5, `footnoteDefs`                                                                                                                       |
+| Retroactive construct on the unconfirmed TAIL line    | a doctype/structure tag still being typed would poison everything once confirmed                                                                                                                                                     | `tailCarriesRetroactive` suppresses every candidate for the frame, without baking partial-line state                                            |
+| Sanitize-erasure text merge (parse5 + sanitize)       | doctype, `<html>`/`<head>`/`<body>`/`<frameset>`, `<template>`, paragraph-inline `<?`/`<!`/`<![CDATA[`/`<!--`: the construct's bytes vanish and the text on either side MERGES into a node that starts BEFORE it — past any boundary | `phasePoisonedAt = 0`, document-wide (Table C rows; F9/F11/F12 — an opener-offset poison measurably did not cover the backward merge)           |
+| Floating raw remnant as the last frozen child         | the remnant's hast shape (position vs seam-owned) depends on whether a sibling FOLLOWS it — i.e. on the block after the blank                                                                                                        | blocker 6: `seamRisk` rejects candidates while the remnant is the last frozen child                                                             |
+
+### D3 — cannot cross a blank (the grammar itself closes the case)
+
+No mechanism needed; each row cites the rule that forbids the crossing.
+
+| Construct                        | Rule that stops it at the blank                                                                                                                                                                                                                        |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Setext underline                 | must directly follow paragraph content; a blank ends the paragraph first (§4.3)                                                                                                                                                                        |
+| GFM table delimiter row          | must directly follow the header row — a blank between them kills the table                                                                                                                                                                             |
+| Definition title on its own line | the title continues the definition only with NO blank between it and the destination                                                                                                                                                                   |
+| Lazy paragraph continuation      | lazy lines continue a paragraph; a blank ends the paragraph                                                                                                                                                                                            |
+| Blockquote                       | a blank ends it; a later `>` opens a NEW quote (no lazy crossing)                                                                                                                                                                                      |
+| HTML block types 6–7             | their END condition IS the blank line (§4.6)                                                                                                                                                                                                           |
+| Every inline construct           | emphasis, code spans, autolinks, strikethrough, `==mark==`, inline `$` math all live inside one paragraph, which the blank ends. Cross-LINE code spans inside a paragraph are the masking rule's job (module doc) — intra-paragraph, never cross-blank |
 
 ## Deviation ledger
 
