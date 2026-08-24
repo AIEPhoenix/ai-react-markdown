@@ -412,6 +412,14 @@ const foreignContentArb = fc.oneof(
       '<math><annotation-xml encoding="text/html"><div/></annotation-xml></math>',
       '<math><annotation-xml><g/></annotation-xml></math>',
       '<svg><foreignObject><svg><circle/></svg></foreignObject></svg>',
+      // Raw-text element started DIRECTLY inside foreign content, no
+      // breakout first (P3a/B1): whether the tokenizer switches there is
+      // the question the bag cannot answer — these must POISON, and an
+      // over-claimed switch measurably RAISED the boundary before the
+      // T3.3b wrapper pinned the direction.
+      '<svg><title><div></title></svg>',
+      '<svg><textarea><div></textarea></svg>',
+      '<math><title>\n<div>\n</title></math>',
       // Foreign content crossed with constructs that have their own poison.
       '<svg><td/></svg>',
       '<div>\n<svg><circle/></svg>\n</div>',

@@ -250,9 +250,12 @@ describe('computeFreezeBoundary — raw HTML blockers', () => {
     const titleSc = '<title/>\n</div>\n</title>\n\ntail\n\nzzz';
     expect(computeFreezeBoundary(titleSc, OFF)).toBe(titleSc.indexOf('zzz'));
     expect(computeFreezeBoundary('<div>\n<title/>\n</div>\n</title>\n\ntail\n\nzzz', OFF)).toBe(0);
-    // Foreign content honours self-closing: balanced.
+    // Post-collapse (two-model T3.4) a self-closing FOREIGN CHILD is
+    // counted open on purpose — exactness needed the breakout list that
+    // was the F1/F2/F5 family. The measured cost of this over-block is
+    // reported in the stage's boundary diff (12 corpus docs, all svg).
     const svg = '<svg><circle/></svg>\n\ntail\n\nzzz';
-    expect(computeFreezeBoundary(svg, OFF)).toBe(svg.indexOf('zzz'));
+    expect(computeFreezeBoundary(svg, OFF)).toBe(0);
     const svgRoot = '<svg/>\n\ntail\n\nzzz';
     expect(computeFreezeBoundary(svgRoot, OFF)).toBe(svgRoot.indexOf('zzz'));
     // HTML breakout / integration point inside svg: HTML rules — `<div/>` opens.

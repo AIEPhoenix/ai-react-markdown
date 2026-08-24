@@ -198,7 +198,11 @@ describe('foreign content', () => {
    *  boundaries. */
   test('documents without a foreign root are untouched', () => {
     expect(boundary('<div><b></b><textarea>\nx\n</textarea></div>\n\n[a]: /u\n\nTerm\n')).toBe(53);
-    expect(boundary('<svg><textarea>\nx\n</textarea></svg>\n\n[a]: /u\n\nTerm\n')).toBe(46);
+    // …while a raw-text element START inside foreign content now POISONS
+    // (T3.3b): whether the tokenizer switches there is unknowable to the
+    // bag, and both wrong answers were shipped bugs (F2 one way, the
+    // measured boundary RISE the other).
+    expect(boundary('<svg><textarea>\nx\n</textarea></svg>\n\n[a]: /u\n\nTerm\n')).toBe(0);
   });
 
   /** Foreign content must not disturb the poisons that already exist. */

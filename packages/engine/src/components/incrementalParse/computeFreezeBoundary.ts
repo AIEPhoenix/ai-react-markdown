@@ -195,52 +195,6 @@ function tailCarriesRetroactive(text: string): boolean {
 }
 /** HTML start tags that BREAK OUT of foreign content (HTML spec "in foreign
  *  content": the svg/math is popped and the tag is processed as HTML). */
-const HTML_BREAKOUT_TAGS = new Set([
-  'b',
-  'big',
-  'blockquote',
-  'body',
-  'br',
-  'center',
-  'code',
-  'dd',
-  'div',
-  'dl',
-  'dt',
-  'em',
-  'embed',
-  'h1',
-  'h2',
-  'h3',
-  'h4',
-  'h5',
-  'h6',
-  'head',
-  'hr',
-  'i',
-  'img',
-  'li',
-  'listing',
-  'menu',
-  'meta',
-  'nobr',
-  'ol',
-  'p',
-  'pre',
-  'ruby',
-  's',
-  'small',
-  'span',
-  'strong',
-  'strike',
-  'sub',
-  'sup',
-  'table',
-  'tt',
-  'u',
-  'ul',
-  'var',
-]);
 /** Elements whose CONTENT is parsed with HTML rules again inside svg/math. */
 // `title` belongs here too: an SVG `title` is an HTML integration point, so
 // its CONTENT is parsed with HTML rules (a `<g/>` inside it opens an element
@@ -252,7 +206,6 @@ const HTML_BREAKOUT_TAGS = new Set([
 // HTML rules, which is also correct. `annotation-xml` is an HTML integration
 // point only when its `encoding` is text/html or application/xhtml+xml;
 // treating it as one unconditionally over-blocks, i.e. errs safe.
-const HTML_INTEGRATION_POINTS = ['foreignobject', 'desc', 'title', 'mi', 'mo', 'mn', 'ms', 'mtext', 'annotation-xml'];
 /** parse5 ignores an end tag whose element is not "in scope": the search walks
  *  DOWN the open-element stack and stops at a barrier. `<div><table></div>`
  *  therefore leaves the div OPEN — `</div>` is discarded, `</table>` pops only
@@ -1021,88 +974,37 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       cp.htmlSeamPending = false;
     }
   }
-  /** Inside `<svg>` / `<math>` parse5 honours the self-closing flag on any
-   *  tag (`<circle/>`); in HTML content it IGNORES it on non-void elements
-   *  — `<div/>` / `<title/>` / `<p/>` OPEN (oracle re-check of r2, pre-
-   *  existing: the scanner skipped them and froze past a div that swallowed
-   *  the tail). Depth is approximated by open svg/math, kept honest by
-   *  `popForeignRoots` — without the pop this stayed true for the rest of
-   *  the run and reported foreign rules inside plain HTML. */
+  /** Post-collapse (T3.4) this deliberately OVER-claims: parse5 pops the
+   *  foreign root on a breakout tag, and no pop is modelled any more — the
+   *  bag says "foreign" until the root's own end tag. Both consumers point
+   *  the over-claim the safe way (self-closing tags stay counted; raw-text
+   *  switches poison). */
   // T3.3 direction contract: every `tagBalance` read goes through a wrapper
   // whose NAME carries the safe direction of doubt. This one may OVER-claim
   // (saying "foreign" when parse5 left it keeps self-closing tags counted —
   // over-blocking); the table one below must UNDER-claim.
   const possiblyInsideForeign = (): boolean => FOREIGN_ROOT_NAMES.some((name) => (cp.tagBalance.get(name) ?? 0) > 0);
-  /** A self-closing tag parse5 really closes on the spot: the foreign roots
-   *  themselves (`<svg/>`) and tags inside foreign content — EXCEPT the HTML
-   *  breakout names (`<svg><div/>`: parse5 pops the svg and opens a real
-   *  div) and anything inside an HTML integration point (foreignObject /
-   *  desc / MathML text elements: HTML rules again) — oracle 5th pass. */
-  const honoursSelfClosing = (tag: string): boolean => {
-    if (tag === 'svg' || tag === 'math') return true;
-    if (!possiblyInsideForeign() || HTML_BREAKOUT_TAGS.has(tag)) return false;
-    for (const ip of HTML_INTEGRATION_POINTS) if ((cp.tagBalance.get(ip) ?? 0) > 0) return false;
-    return true;
-  };
-  /** HTML tokenizer rules apply: outside foreign content, or below an HTML
-   *  integration point inside it. (A `<title>` inside `<svg>` is a foreign
-   *  element in the DATA state — no RCDATA switch; oracle review of the r2
-   *  batch.) */
-  const htmlRulesApply = (): boolean => {
-    if (!possiblyInsideForeign()) return true;
-    for (const ip of HTML_INTEGRATION_POINTS) if ((cp.tagBalance.get(ip) ?? 0) > 0) return true;
-    return false;
-  };
-  /** parse5's "in foreign content" insertion mode POPS the foreign root when
-   *  a breakout start tag arrives ("while the current node is not a MathML
-   *  text integration point, an HTML integration point, or an element in the
-   *  HTML namespace, pop elements from the stack of open elements"), and
-   *  processes the tag as HTML. `tagBalance` is a name→count bag, so it
-   *  cannot express a pop it never saw — and without this the bag reports
-   *  "still in foreign content" for the whole rest of the run.
-   *
-   *  That is not cosmetic: `htmlRulesApply()` then keeps returning false, so
-   *  a `<textarea>` after the breakout never opens the raw-text mask, and the
-   *  inline raw-text poison added in v2.5.3 never fires. `<svg><b></b>
-   *  <textarea>\nx\n</textarea></svg>` followed by a link definition froze
-   *  across a paragraph parse5 had swallowed (2026-08-21 fuzz, seed
-   *  20260851, shrunk to 58 bytes).
-   *
-   *  The bag can only approximate WHICH elements come off: the spec pops
-   *  every foreign element down to the integration point, this clears the
-   *  roots alone. Leaving the foreign children counted keeps `openTotal`
-   *  HIGHER than parse5's stack depth, i.e. over-blocking, which is the safe
-   *  direction. Under an HTML integration point there is no pop at all —
-   *  the adjusted current node is already an HTML element, so the foreign
-   *  branch is never entered. */
-  const popForeignRoots = (): void => {
-    for (const name of FOREIGN_ROOT_NAMES) {
-      const count = cp.tagBalance.get(name) ?? 0;
-      if (count > 0) {
-        cp.tagBalance.set(name, 0);
-        cp.openTotal -= count;
-      }
-    }
-    if (cp.openStack.length > 0) cp.openStack = cp.openStack.filter((n) => !FOREIGN_ROOT_NAMES.includes(n));
-  };
-
-  /** The pop is decided by the tag NAME alone, so it has to run for the
-   *  start tags that never reach `applyTag`: the void ones (`<br>`, `<hr>`,
-   *  `<img>`, `<embed>`, `<meta>` are all in the breakout list) and the
-   *  self-closing ones the caller skips. The spec pops FIRST and processes
-   *  the tag afterwards, so whether the tag itself joins the stack is
-   *  irrelevant — `<svg><br><a/></svg>` pops on the `<br>` even though the
-   *  `<br>` is never counted, which is what makes the `<a/>` an HTML
-   *  element with an ignored self-closing flag (2026-08-21 soak leg 2, ten
-   *  of twelve direction shards). End tags never break out.
-   *
-   *  Called from both the skip sites and `applyTag`; `popForeignRoots` is
-   *  idempotent, so the double call on a counted breakout tag is free. */
-  const noteBreakout = (tag: string, closing: boolean): void => {
-    if (closing || inRawTextTok(cp.p5Tok)) return;
-    if (HTML_BREAKOUT_TAGS.has(tag) && !htmlRulesApply()) popForeignRoots();
-  };
-
+  /** A self-closing tag parse5 really closes on the spot. Post-collapse
+   *  (two-model T3.4): ONLY the foreign roots themselves — foreign
+   *  elements honour the flag in any context. Every other self-closing
+   *  tag is counted OPEN: being exact needed the breakout and
+   *  integration-point enumerations whose mis-claims were the F1/F2/F5
+   *  family, and counting keeps `openTotal` at or above parse5's stack
+   *  depth — the over-blocking side. The measured cost is that well-formed
+   *  self-closed children (`<svg><circle/></svg>`) stay counted past the
+   *  `</svg>` (its scope walk removes only the svg), which blocks freezing
+   *  for the rest of the document — reported with the stage's diff. */
+  const honoursSelfClosing = (tag: string): boolean => tag === 'svg' || tag === 'math';
+  /** T3.3b, the third wrapper direction: whether the tokenizer SWITCHES
+   *  for a raw-text element start tag near foreign content is unknowable
+   *  to a name-count bag. OVER-claiming the switch opens the raw-text mask
+   *  parse5 is not in — the mask suppresses the tag scan, so candidates
+   *  get MORE likely to survive and the boundary RISES (measured:
+   *  `<svg><title><div></title></svg>` is safe today only because the
+   *  un-switched `<div>` sits on the open stack). UNDER-claiming keeps the
+   *  mask shut where parse5 opens it — F2, the shipped under-block.
+   *  Neither direction is safe, so the honest answer is a poison. */
+  const foreignRawTextSwitchUnknowable = (): boolean => possiblyInsideForeign();
   const applyTag = (tag: string, closing: boolean): void => {
     // Inside a raw-text element only its own end tag is markup.
     if (inRawTextTok(cp.p5Tok)) {
@@ -1122,10 +1024,9 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       if (!(closing && tag === rawTextElement(cp.p5Tok))) return;
       cp.p5Tok = { kind: 'data' };
     } else {
-      // Read BEFORE the raw-text check, which asks the same question: the
-      // breakout changes the answer for every tag after it.
-      noteBreakout(tag, closing);
-      if (!closing && RAW_TEXT_ELEMENTS.has(tag) && htmlRulesApply()) {
+      if (!closing && RAW_TEXT_ELEMENTS.has(tag) && foreignRawTextSwitchUnknowable()) {
+        cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
+      } else if (!closing && RAW_TEXT_ELEMENTS.has(tag)) {
         // Migration collision rule (P3a): entering raw text while another
         // non-data state is live would silently drop that state's blocking
         // effect — poison instead, which can only lower the boundary.
@@ -1830,7 +1731,6 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
         continue;
       }
       const selfClosing = /\/\s*$/.test(attrs);
-      noteBreakout(tag, closing);
       if (VOID_TAGS.has(tag) || (selfClosing && honoursSelfClosing(tag))) continue;
       applyTag(tag, closing);
     }
@@ -1885,7 +1785,6 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
         // Same html-text rule: a closing tag with attributes is text.
         if (closing && mr[3] !== undefined && !/^\s*$/.test(mr[3])) continue;
         const selfClosing = mr[3] !== undefined && /\/\s*$/.test(mr[3]);
-        noteBreakout(tag, closing);
         if (VOID_TAGS.has(tag) || (selfClosing && honoursSelfClosing(tag))) continue;
         applyTag(tag, closing);
       }
