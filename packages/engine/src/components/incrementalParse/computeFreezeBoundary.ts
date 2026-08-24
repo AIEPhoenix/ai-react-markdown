@@ -395,6 +395,37 @@ interface Candidate {
   defListSettled: boolean | null;
 }
 
+/** parse5 tokenizer macro-state at a LINE BOUNDARY (two-model P3a, T3.1).
+ *  A PARTITION of {data, rawText, script, bogus} — measured before the
+ *  design was frozen: the within-tag attribute position co-exists with any
+ *  of these (`<iframe>\n</iframe a="`), so it is the separate `pendingTag`
+ *  overlay, NOT a member. `openedInline` is captured AT OPEN (the old
+ *  `rawTextInline` latch — `htmlFlowReal` is reset before the poison that
+ *  reads it, so a live read would lose the poison). Members are REPLACED,
+ *  never mutated: checkpoints are shared mutable state, and a module-level
+ *  token constant would alias across mounted documents. */
+type P5Tok =
+  | { kind: 'data' }
+  /** RAWTEXT / RCDATA content: everything is text until `</element`. */
+  | { kind: 'rawText'; element: string; openedInline: boolean }
+  /** SCRIPT_DATA, with the `<!--` escape flag. Double-escape is NOT
+   *  modelled — a nested `<script` poisons instead (blocker 7 / F6); its
+   *  retirement belongs to stage P3b. */
+  | { kind: 'script'; escaped: boolean; openedInline: boolean }
+  /** Bogus comment: eaten to the next `>`. */
+  | { kind: 'bogus' };
+
+/** The raw-text MASK predicate: while it holds, `applyTag` admits only the
+ *  element's own end tag, so nothing reaches the balance — a raw-text state
+ *  the model believes in but parse5 is not in makes candidates MORE likely
+ *  to survive (the unsafe direction). BOTH kinds mask; every read site goes
+ *  through this one predicate so no rewrite can drop the script kind. */
+const inRawTextTok = (t: P5Tok): t is Extract<P5Tok, { kind: 'rawText' | 'script' }> =>
+  t.kind === 'rawText' || t.kind === 'script';
+/** The open raw-text element's name, or null when none is open. */
+const rawTextElement = (t: P5Tok): string | null =>
+  t.kind === 'rawText' ? t.element : t.kind === 'script' ? 'script' : null;
+
 /** Opaque resume token. Produced by one `computeFreezeBoundary` call and
  *  passed back on the next APPEND-ONLY call; the only supported operations
  *  are storing it and passing it back. The field set is an implementation
@@ -428,16 +459,11 @@ export interface FreezeScanCheckpointInternal extends FreezeScanCheckpoint {
   piOpen: boolean;
   declOpen: boolean;
   cdataOpen: boolean;
-  /** parse5 BOGUS COMMENT open inside a real html-flow run: `<!` not
+  /** parse5's tokenizer macro-state (see `P5Tok`). Bogus comment (`<!` not
    *  followed by `--` / letter / `[CDATA[`, or `</` not followed by a
-   *  letter (`<!\n`, `<!-`, `</\n`, `<//`) — eaten up to the next `>`;
-   *  a `</div>` inside is comment text, not a close (2026-08-19 review r2
-   *  P1-3: the balance zeroed past an open div). micromark has no such
-   *  construct: those bytes are just html-block content. */
-  bogusOpen: boolean;
-  /** The RAW_TEXT_ELEMENTS element currently open (its content is text to
-   *  parse5): tags and comment tokens are ignored until `</name>`. */
-  rawTextOpen: string | null;
+   *  letter — eaten up to the next `>`; micromark has no such construct),
+   *  raw-text content, script data with its escape flag. */
+  p5Tok: P5Tok;
   inFence: boolean;
   fenceChar: string;
   fenceLen: number;
@@ -524,24 +550,25 @@ export interface FreezeScanCheckpointInternal extends FreezeScanCheckpoint {
    *  set: a line without `>` gets no tag scan at all; the line with the
    *  `>` completes the pending close (if any), then only its text after
    *  that `>` is scanned. Cleared there and at the blank line. */
-  tagAcrossLines: boolean;
-  /** Indent of the line that set `tagAcrossLines`. A following line that
-   *  DE-INDENTS below it may have left the container (a list item's html
-   *  block ends there; hast-util-raw resets the tokenizer at the li/ul
-   *  boundary, so a `<div>` on that line is a real start tag, not garbage)
-   *  — or may still be the same html block (root-level `  </div\n</div>`,
-   *  still garbage). Unknowable here → poison (oracle 3rd pass). */
-  tagAcrossLinesIndent: number;
-  /** parse5's position inside that tag's attribute area at the end of the
-   *  last scanned line (see TagAttrState). A quoted value left open swallows
-   *  `>` and line endings; a `>` that arrives while `outside` ends the tag. */
-  tagAcrossLinesState: TagAttrState;
+  pendingTag: {
+    /** parse5's position inside the tag's attribute area at the end of the
+     *  last scanned line (see TagAttrState). A quoted value left open
+     *  swallows `>` and line endings; a `>` while `outside` ends the tag. */
+    attr: TagAttrState;
+    /** Indent of the line that entered the tag. A following line that
+     *  DE-INDENTS below it may have left the container (a list item's html
+     *  block ends there; hast-util-raw resets the tokenizer at the li/ul
+     *  boundary, so a `<div>` on that line is a real start tag, not
+     *  garbage) — or may still be the same html block (root-level
+     *  `  </div\n</div>`, still garbage). Unknowable here → poison. */
+    indent: number;
+  } | null;
   /** The html-flow run since the last blank REALLY started as a micromark
    *  html block (type 6 / type 1 / a paragraph-not-interrupting type 7) —
    *  as opposed to `htmlFlowSinceBlank`, which any `<tag` / `</tag` line
    *  start sets (over-approximation, fine for its over-blocking uses). Only
    *  in a real run are the bytes raw to parse5 across line endings; the
-   *  cross-line-tag garbage model (`tagAcrossLines`, pended closes) is
+   *  cross-line-tag garbage model (`pendingTag`, pended closes) is
    *  gated on it — in a paragraph starting `</i` the next line's `<div>` /
    *  `<!--` are REAL blocks (oracle re-check of 2.4.4: gating on
    *  htmlFlowSinceBlank swallowed them — a new under-block). Sticky to the
@@ -561,19 +588,11 @@ export interface FreezeScanCheckpointInternal extends FreezeScanCheckpoint {
    *  Only set when the type-1 opener is the line that STARTED the run — a
    *  `<script>` nested inside an open type-6 block must not end it. */
   type1FlowOpen: boolean;
-  /** The currently open raw-text element (`rawTextOpen`) was opened INLINE —
-   *  in paragraph context rather than in a real html-flow run. */
-  rawTextInline: boolean;
   /** The open-element stack, in order. `tagBalance` and `openTotal` are
    *  derived views kept in step with it, but the STACK is the truth: an end
    *  tag's effect depends on what sits BETWEEN it and its match, which a
    *  name→count bag cannot represent (see SCOPE_BARRIER_NAMES). */
   openStack: string[];
-  /** parse5 is in "script data escaped": a `<!--` has been seen inside the
-   *  open `<script>`. Only meaningful while `rawTextOpen === 'script'`.
-   *  Deliberately NOT cleared by `-->` — staying escaped can only poison
-   *  more often, which is the over-blocking side. */
-  scriptDataEscaped: boolean;
 }
 
 const VOID_TAGS = new Set([
@@ -631,7 +650,7 @@ const TRUNCATED_TAG_RE = /<(\/?)([A-Za-z][A-Za-z0-9-]*)([^>]*)$/;
  *  re-check of r2, pre-existing. */
 const TAG_START_LT_RE = /<\/?[A-Za-z]/g;
 /** parse5 tokenizer position inside a tag's attribute area, tracked across
- *  line endings for `tagAcrossLines` (2026-08-19 review r2 P1-2 / P2-3):
+ *  line endings for `pendingTag` (2026-08-19 review r2 P1-2 / P2-3):
  *  `outside` = before/in an attribute name (a `"` here starts a NAME, not a
  *  value); `afterEq` = just past `=`; `unquoted` = in an unquoted value
  *  (whitespace ends it); `"` / `'` = inside a quoted value — `>` and line
@@ -756,10 +775,8 @@ function freshCheckpoint(
     openTotal: 0,
     commentOpen: false,
     piOpen: false,
-    bogusOpen: false,
-    rawTextOpen: null,
+    p5Tok: { kind: 'data' },
     openStack: [],
-    scriptDataEscaped: false,
     declOpen: false,
     cdataOpen: false,
     inFence: false,
@@ -781,12 +798,9 @@ function freshCheckpoint(
     phasePoisonedAt: Infinity,
     pendingTruncatedTags: [],
     pendingTruncatedCloses: [],
-    tagAcrossLines: false,
-    tagAcrossLinesIndent: 0,
-    tagAcrossLinesState: 'outside',
+    pendingTag: null,
     htmlFlowReal: false,
     type1FlowOpen: false,
-    rawTextInline: false,
   };
 }
 
@@ -995,7 +1009,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     cp.htmlSeamPending &&
     !ln.blank &&
     !cp.htmlFlowSinceBlank &&
-    !(cp.commentOpen || cp.piOpen || cp.declOpen || cp.cdataOpen || cp.bogusOpen)
+    !(cp.commentOpen || cp.piOpen || cp.declOpen || cp.cdataOpen || cp.p5Tok.kind === 'bogus')
   ) {
     const defShapedLine = DEF_RE.test(ln.text) || FOOTNOTE_DEF_RE.test(ln.text);
     const commentOnly =
@@ -1048,7 +1062,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
    *  "still in foreign content" for the whole rest of the run.
    *
    *  That is not cosmetic: `htmlRulesApply()` then keeps returning false, so
-   *  a `<textarea>` after the breakout never opens `rawTextOpen`, and the
+   *  a `<textarea>` after the breakout never opens the raw-text mask, and the
    *  inline raw-text poison added in v2.5.3 never fires. `<svg><b></b>
    *  <textarea>\nx\n</textarea></svg>` followed by a link definition froze
    *  across a paragraph parse5 had swallowed (2026-08-21 fuzz, seed
@@ -1085,13 +1099,13 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
    *  Called from both the skip sites and `applyTag`; `popForeignRoots` is
    *  idempotent, so the double call on a counted breakout tag is free. */
   const noteBreakout = (tag: string, closing: boolean): void => {
-    if (closing || cp.rawTextOpen !== null) return;
+    if (closing || inRawTextTok(cp.p5Tok)) return;
     if (HTML_BREAKOUT_TAGS.has(tag) && !htmlRulesApply()) popForeignRoots();
   };
 
   const applyTag = (tag: string, closing: boolean): void => {
     // Inside a raw-text element only its own end tag is markup.
-    if (cp.rawTextOpen !== null) {
+    if (inRawTextTok(cp.p5Tok)) {
       // "Script data double escaped": inside an escaped `<script>` a nested
       // `<script` start tag makes parse5 stop honouring `</script>` — the
       // first one only steps back to escaped, and the element runs on.
@@ -1102,22 +1116,29 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       // That is exactly blocker 7's case, so it poisons (2026-08-21 soak
       // leg 1, seven of twelve shards; `<script>\n<!--<script>\n</script>\n
       // </script>` followed by a `$$` block).
-      if (cp.scriptDataEscaped && !closing && tag === 'script') {
+      if (cp.p5Tok.kind === 'script' && cp.p5Tok.escaped && !closing && tag === 'script') {
         cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
       }
-      if (!(closing && tag === cp.rawTextOpen)) return;
-      cp.rawTextOpen = null;
-      cp.scriptDataEscaped = false;
+      if (!(closing && tag === rawTextElement(cp.p5Tok))) return;
+      cp.p5Tok = { kind: 'data' };
     } else {
       // Read BEFORE the raw-text check, which asks the same question: the
       // breakout changes the answer for every tag after it.
       noteBreakout(tag, closing);
       if (!closing && RAW_TEXT_ELEMENTS.has(tag) && htmlRulesApply()) {
-        cp.rawTextOpen = tag;
-        cp.scriptDataEscaped = false;
-        // Paragraph context, i.e. micromark html-TEXT rather than an html
-        // block — the regime where a lifted element rewrites its paragraph.
-        cp.rawTextInline = !cp.htmlFlowReal;
+        // Migration collision rule (P3a): entering raw text while another
+        // non-data state is live would silently drop that state's blocking
+        // effect — poison instead, which can only lower the boundary.
+        if (cp.p5Tok.kind !== 'data') cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
+        // openedInline: paragraph context, i.e. micromark html-TEXT rather
+        // than an html block — the regime where a lifted element rewrites
+        // its paragraph. Captured HERE: `htmlFlowReal` is reset before the
+        // blank-line poison that reads this, so a live read loses it.
+        const openedInline = !cp.htmlFlowReal;
+        cp.p5Tok =
+          tag === 'script'
+            ? { kind: 'script', escaped: false, openedInline }
+            : { kind: 'rawText', element: tag, openedInline };
         // PLAINTEXT never ends (`</plaintext>` is text too): nothing after
         // it can be modelled — poison from here on.
         if (tag === 'plaintext') cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
@@ -1204,7 +1225,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   // remainder is raw text. Gates fence/math opens, masking, and def
   // registration below, alongside the tag-block flag (htmlFlowSinceBlank).
   const commentOpenAtLineStart = cp.commentOpen;
-  const rawOpenAtLineStart = cp.commentOpen || cp.piOpen || cp.declOpen || cp.cdataOpen || cp.bogusOpen;
+  const rawOpenAtLineStart = cp.commentOpen || cp.piOpen || cp.declOpen || cp.cdataOpen || cp.p5Tok.kind === 'bogus';
 
   // --- fence state (interiors are candidate-free; paragraph resets) ---
   if (cp.inFence) {
@@ -1333,16 +1354,15 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     // grammar wins where is not modelled: poison (over-block). `outside` /
     // unquoted at the blank keep the classic behaviour (the pending close is
     // dropped, the element stays counted).
-    if (cp.tagAcrossLines && (cp.tagAcrossLinesState === '"' || cp.tagAcrossLinesState === "'")) {
+    if (cp.pendingTag !== null && (cp.pendingTag.attr === '"' || cp.pendingTag.attr === "'")) {
       cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
     }
-    cp.tagAcrossLines = false;
-    cp.tagAcrossLinesState = 'outside';
+    cp.pendingTag = null;
     // Same for a bogus comment left open: the block ended, the tokenizer
     // has not — poison and reset.
-    if (cp.bogusOpen) {
+    if (cp.p5Tok.kind === 'bogus') {
       cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
-      cp.bogusOpen = false;
+      cp.p5Tok = { kind: 'data' };
     }
     cp.blankRun += 1;
     cp.lastBlankStart = ln.start;
@@ -1352,7 +1372,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       // `type1FlowOpen`: an unterminated type-1 block swallows this blank
       // and everything after it as RAW content, so nothing here is a block
       // boundary at all. Its tags are invisible to the balance scan
-      // (`rawTextOpen` suppresses them), which is exactly why `openTotal`
+      // (the raw-text mask suppresses them), which is exactly why `openTotal`
       // reads 0 and the candidate looked safe.
       htmlBalanced:
         cp.openTotal === 0 &&
@@ -1360,7 +1380,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
         !cp.piOpen &&
         !cp.declOpen &&
         !cp.cdataOpen &&
-        !cp.bogusOpen &&
+        (cp.p5Tok.kind as P5Tok['kind']) !== 'bogus' &&
         !cp.type1FlowOpen,
       hazard: cp.hazardVerdict,
       seamRisk: cp.htmlSeamPending,
@@ -1387,15 +1407,15 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       // the tree, while the same bytes are raw TEXT to parse5, so their end
       // tags never close anything. `<iframe>` + blank + `*b*\n<div>…</div>
       // \n</iframe>` left the div OPEN swallowing the rest of the document
-      // while the scanner, suppressing every tag under `rawTextOpen`, called
+      // while the scanner, suppressing every tag under the raw-text mask, called
       // it balanced (63-byte live under-block, direction battery,
       // 2026-08-24). Document-wide poison, not from-here-on: the element is
       // sanitize-stripped and its lifted children merge with neighbouring
       // text — the fuzz4 lesson, same day. Type-1 blocks are exempt because
       // a blank does NOT end them: there the two grammars agree the content
       // is raw, which is the case the guard above already keeps alive.
-      // (`rawTextInline` spans have their own poison at the opening line.)
-      if (cp.rawTextOpen !== null && !cp.rawTextInline) {
+      // (inline-opened spans have their own poison at the opening line.)
+      if (inRawTextTok(cp.p5Tok) && !cp.p5Tok.openedInline) {
         cp.phasePoisonedAt = 0;
       }
     }
@@ -1559,7 +1579,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       pos = c + 3;
       continue;
     }
-    if (cp.declOpen || cp.bogusOpen) {
+    if (cp.declOpen || cp.p5Tok.kind === 'bogus') {
       const c = scanText.indexOf('>', pos);
       if (c === -1) {
         rawSpans.push([pos, scanText.length]);
@@ -1567,7 +1587,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       }
       rawSpans.push([pos, c + 1]);
       cp.declOpen = false;
-      cp.bogusOpen = false;
+      if (cp.p5Tok.kind === 'bogus') cp.p5Tok = { kind: 'data' };
       pos = c + 1;
       continue;
     }
@@ -1588,7 +1608,11 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     const first = Math.min(...starts);
     if (first === bogus) {
       rawSpans.push([bogus, bogus + 2]);
-      cp.bogusOpen = true;
+      // Migration collision rule (P3a): a bogus opener while raw text is
+      // open is TEXT to parse5 — the old model set a second flag anyway.
+      // Poison instead of overwriting the raw-text state (only lowers).
+      if (cp.p5Tok.kind === 'data') cp.p5Tok = { kind: 'bogus' };
+      else cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
       pos = bogus + 2;
     } else if (first === cd) {
       rawSpans.push([cd, cd + 9]);
@@ -1670,33 +1694,32 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     tagText = tagText.slice(0, from) + ' '.repeat(to - from) + tagText.slice(to);
   }
   // Inside a tag that started on an earlier line of this html-flow run (see
-  // `tagAcrossLines`): up to the first RAW `>` the bytes are attribute
+  // `pendingTag`): up to the first RAW `>` the bytes are attribute
   // garbage to parse5 — no tags, no comments, no truncation there.
   let skipTagScan = false;
-  if (cp.tagAcrossLines) {
+  if (cp.pendingTag !== null) {
     // De-indent below the truncated line: possibly out of the container
-    // (see `tagAcrossLinesIndent`) — over-block either way.
-    if (ln.indent < cp.tagAcrossLinesIndent) poisonRawDivergence();
+    // (see `pendingTag.indent`) — over-block either way.
+    if (ln.indent < cp.pendingTag.indent) poisonRawDivergence();
     // Walk the RAW line with parse5's attribute-area state: a `>` inside a
     // quoted value is a value byte (`<hr title="\n<p></div>` — r2 P1-2: the
     // first `>` used to end the tag and `</div>` closed the outer div), and
     // a value whose quotes pair on this line is ordinary (`<div\n
     // class="a">` — r2 P2-3: any quote before the `>` used to poison the
     // whole stream, freezing 0.4% of a document instead of 96%).
-    const attrs = { state: cp.tagAcrossLinesState };
+    const attrs = { state: cp.pendingTag.attr };
     const gt = scanTagAttrs(ln.text, 0, ln.text.length, attrs);
     if (gt === -1) {
       // Line ending: ends an unquoted value, is a byte inside a quoted one.
       scanTagAttrs('\n', 0, 1, attrs);
-      cp.tagAcrossLinesState = attrs.state;
+      cp.pendingTag = { attr: attrs.state, indent: cp.pendingTag.indent };
       skipTagScan = true;
     } else {
       // The `>` completes the pending truncated CLOSE (parse5 emits the end
       // tag there); a truncated OPEN was already counted at its line.
       for (const tag of cp.pendingTruncatedCloses) applyTag(tag, true);
       cp.pendingTruncatedCloses = [];
-      cp.tagAcrossLines = false;
-      cp.tagAcrossLinesState = 'outside';
+      cp.pendingTag = null;
       tagText = ' '.repeat(gt + 1) + tagText.slice(gt + 1);
     }
   }
@@ -1711,11 +1734,11 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     while ((m = TAG_OR_COMMENT_RE.exec(tagText)) !== null) {
       // Raw-text element content: comment tokens are text too; tags go
       // through applyTag, which admits only the element's own end tag.
-      if (cp.rawTextOpen !== null && (m[0] === '<!--' || m[0] === '-->' || m[0] === '--!>')) {
+      if (inRawTextTok(cp.p5Tok) && (m[0] === '<!--' || m[0] === '-->' || m[0] === '--!>')) {
         // A `<!--` inside `<script>` puts parse5 in "script data escaped",
         // which is where the two grammars stop agreeing — see the poison in
         // `applyTag`.
-        if (cp.rawTextOpen === 'script' && m[0] === '<!--') cp.scriptDataEscaped = true;
+        if (cp.p5Tok.kind === 'script' && m[0] === '<!--') cp.p5Tok = { ...cp.p5Tok, escaped: true };
         continue;
       }
       if (m[0] === '<!--') {
@@ -1759,7 +1782,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       const tag = m[2].toLowerCase();
       if (strayTablePart(tag)) cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start + m.index);
       let attrs = m[3] ?? '';
-      if (cp.htmlFlowReal && (cp.rawTextOpen === null || (closing && tag === cp.rawTextOpen))) {
+      if (cp.htmlFlowReal && (!inRawTextTok(cp.p5Tok) || (closing && tag === rawTextElement(cp.p5Tok)))) {
         // The regex ends the tag at the first `>`, but in a real html-flow
         // run parse5 ends it at the first `>` OUTSIDE a quoted attribute
         // value (`</div a=">` eats the rest of the line and beyond — a
@@ -1777,9 +1800,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
             else applyTag(tag, false);
           }
           scanTagAttrs('\n', 0, 1, st);
-          cp.tagAcrossLines = true;
-          cp.tagAcrossLinesIndent = ln.indent;
-          cp.tagAcrossLinesState = st.state;
+          cp.pendingTag = { attr: st.state, indent: ln.indent };
           tagHandledAsTruncated = true;
           break;
         }
@@ -1904,15 +1925,13 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
           }
           // In a REAL html-flow run parse5 stays inside this tag across the
           // line ending — open, close or void alike (`<br` + `</div>` on the
-          // next line: the `</div>` is garbage). See `tagAcrossLines`.
+          // next line: the `</div>` is garbage). See `pendingTag`.
           if (cp.htmlFlowReal) {
-            cp.tagAcrossLines = true;
-            cp.tagAcrossLinesIndent = ln.indent;
             // Where parse5 stands after this line's attribute bytes + the
             // line ending (m2[3] holds them; no `>` in there by construction).
             const attrs = { state: 'outside' as TagAttrState };
             scanTagAttrs(m2[3] + '\n', 0, m2[3].length + 1, attrs);
-            cp.tagAcrossLinesState = attrs.state;
+            cp.pendingTag = { attr: attrs.state, indent: ln.indent };
           }
           if (closing) {
             // Never counted on the spot (2026-08-19 review P1: `para </style`
@@ -1996,7 +2015,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   // leaves OPEN, which then grows with every append (2026-08-21 soak leg 2,
   // boundary 144 with the div at @86 extending to @161). Poison rather than
   // reject one candidate: the divergence outlives the span.
-  if (cp.rawTextOpen !== null && cp.rawTextInline) {
+  if (inRawTextTok(cp.p5Tok) && cp.p5Tok.openedInline) {
     cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
   }
 
