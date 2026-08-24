@@ -394,9 +394,22 @@ interface UnresolvedRef {
   footnote: boolean;
 }
 
-/** Mutable resume state. All fields describe the scan strictly BEFORE the
- *  first unconfirmed character (`confirmedOffset`). */
+/** Opaque resume token. Produced by one `computeFreezeBoundary` call and
+ *  passed back on the next APPEND-ONLY call; the only supported operations
+ *  are storing it and passing it back. The field set is an implementation
+ *  detail of the scanner and changes between minor versions — the brand key
+ *  (a structural string literal, safe across dual d.ts entries) is all that
+ *  ships in the public type. */
 export interface FreezeScanCheckpoint {
+  readonly '~freezeScanCheckpoint'?: never;
+}
+
+/** Mutable resume state — the real shape behind `FreezeScanCheckpoint`.
+ *  Intra-package only (the scanner and its tests); not reachable from the
+ *  public entry, so the shape stays out of `dist/index.d.ts`. All fields
+ *  describe the scan strictly BEFORE the first unconfirmed character
+ *  (`confirmedOffset`). */
+export interface FreezeScanCheckpointInternal extends FreezeScanCheckpoint {
   defListEnabled: boolean;
   /** Grammar-profile switches baked at creation — a checkpoint is only
    *  resumable under the exact profile that built it. */
@@ -431,10 +444,10 @@ export interface FreezeScanCheckpoint {
   /** Opening dollar-run length while inMath — the close run must match it. */
   mathFenceLen: number;
   /** Indent (0-3 spaces) of the line that opened the current fence/math
-   *  block. Not a blocker input — read by `phantomSuffixCloser` to emit a
-   *  closer at the SAME indent, which closes the block whether it sits at
-   *  top level (≤3 spaces are allowed there) or inside a list item whose
-   *  content indent the opener line already satisfies. */
+   *  block. Not a blocker input — read by `pendingFenceCloser`: only a
+   *  column-0 opener is provably top-level, any other indent suppresses
+   *  the emitted closer (v2.4.0 review R1: an indented opener may live in
+   *  a list item the closer would mis-close). */
   openIndent: number;
   blankRun: number;
   lastBlankStart: number;
@@ -773,7 +786,11 @@ function maskIntraLineCodeSpans(text: string, carryOpen: boolean): { masked: str
   return { masked: out, unpaired: false };
 }
 
-function freshCheckpoint(defListEnabled: boolean, mathFlow: boolean, referenceTaint: boolean): FreezeScanCheckpoint {
+function freshCheckpoint(
+  defListEnabled: boolean,
+  mathFlow: boolean,
+  referenceTaint: boolean
+): FreezeScanCheckpointInternal {
   return {
     defListEnabled,
     mathFlow,
@@ -965,16 +982,17 @@ export function computeFreezeBoundary(
 ): FreezeScanResult {
   const mathFlow = options.mathFlow ?? true;
   const referenceTaint = options.referenceTaint ?? true;
+  const prev = resume as FreezeScanCheckpointInternal | null | undefined;
   // A checkpoint encodes profile-dependent state (math phase, ref taint
   // tables) — resuming under a DIFFERENT profile would mix grammars, so
   // every switch participates in the invalidation check.
   const cp =
-    resume &&
-    resume.defListEnabled === options.defListEnabled &&
-    resume.mathFlow === mathFlow &&
-    resume.referenceTaint === referenceTaint &&
-    resume.confirmedOffset <= text.length
-      ? resume
+    prev &&
+    prev.defListEnabled === options.defListEnabled &&
+    prev.mathFlow === mathFlow &&
+    prev.referenceTaint === referenceTaint &&
+    prev.confirmedOffset <= text.length
+      ? prev
       : freshCheckpoint(options.defListEnabled, mathFlow, referenceTaint);
 
   // ── advance the checkpoint over newly-CONFIRMED lines ──
@@ -1068,6 +1086,24 @@ export function computeFreezeBoundary(
 }
 
 /**
+ * The closing line that would end the fence / flow-math block still open at
+ * the checkpoint, or `''` when nothing provably closable is open. The whole
+ * decision is scanner-domain, so it lives here rather than in the consumer:
+ * a poisoned fence/math phase (blocker 7) means the "open" flags cannot be
+ * trusted and a wrong closer would OPEN a block, and only a column-0 opener
+ * is provably top-level (`openIndent` docs). `phantomSuffixCloser` prepends
+ * its own newline handling; the returned text is the bare closer run.
+ */
+export function pendingFenceCloser(checkpoint: FreezeScanCheckpoint): string {
+  const cp = checkpoint as FreezeScanCheckpointInternal;
+  if (cp.phasePoisonedAt !== Infinity) return '';
+  if (cp.openIndent !== 0) return '';
+  if (cp.inFence) return cp.fenceChar.repeat(cp.fenceLen);
+  if (cp.inMath) return '$'.repeat(cp.mathFenceLen);
+  return '';
+}
+
+/**
  * Blocker-6 residue: the bytes of a line that are neither tags nor comment
  * tokens/content — floating raw text — computed with the SAME comment state
  * machine as the balance scan (`commentOpenAtStart` carried in from the
@@ -1119,7 +1155,7 @@ function floatingResidue(text: string, commentOpenAtStart: boolean): string {
 }
 
 /** Bake one confirmed line into the checkpoint. */
-function processConfirmedLine(cp: FreezeScanCheckpoint, ln: LineRec, text: string): void {
+function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, text: string): void {
   // Blocker-4 eager settle: this line is the "next confirmed line" of the
   // newest candidate. The verdict uses the RAW line exactly like the old
   // lines-array lookback did (fence/math state deliberately not consulted).

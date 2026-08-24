@@ -30,7 +30,7 @@
  * a whole 784-test suite passed with the construct's state handling broken.
  */
 import { describe, expect, test } from 'vitest';
-import { computeFreezeBoundary } from './computeFreezeBoundary';
+import { computeFreezeBoundary, type FreezeScanCheckpointInternal } from './computeFreezeBoundary';
 import { CATALOG } from './testPluginCatalog';
 import { assertStreamEquivalence } from './spliceArbiterHarness';
 import { scheduleSnapshots } from './fuzzGenerators';
@@ -89,9 +89,9 @@ const SCHEDULES = [
 /** All three production lineages of the scanner. `collectDefLabels` states
  *  in its own doc comment that the soak battery does not cover its switch
  *  combination, and `remarkInjectPhantomDefs` runs a third, mixed profile
- *  (mathFlow ON, referenceTaint OFF) while reading checkpoint fields
- *  directly rather than the boundary — so the poison is asserted on every
- *  one of them, not just the engine default. */
+ *  (mathFlow ON, referenceTaint OFF) while reading the checkpoint (via
+ *  `pendingFenceCloser`) rather than the boundary — so the poison is
+ *  asserted on every one of them, not just the engine default. */
 const LINEAGES: Array<[string, Parameters<typeof computeFreezeBoundary>[1]]> = [
   ['engine (advanceIncrementalParse)', { defListEnabled: true }],
   ['scanner (collectDefLabels)', { defListEnabled: false, mathFlow: false, referenceTaint: false }],
@@ -108,14 +108,18 @@ describe('document-structure poison', () => {
   test.each(LINEAGES)('the poison holds on every lineage — %s', (_label, options) => {
     for (const [name, doc] of RETROACTIVE) {
       const { boundary: b, checkpoint } = computeFreezeBoundary(doc, options);
-      expect({ name, boundary: b, poisoned: checkpoint.phasePoisonedAt }).toEqual({
+      // The public checkpoint type is opaque; tests may look behind the brand.
+      expect({ name, boundary: b, poisoned: (checkpoint as FreezeScanCheckpointInternal).phasePoisonedAt }).toEqual({
         name,
         boundary: 0,
         poisoned: 0,
       });
     }
     for (const [name, doc] of SAFE) {
-      expect({ name, poisoned: computeFreezeBoundary(doc, options).checkpoint.phasePoisonedAt }).toEqual({
+      expect({
+        name,
+        poisoned: (computeFreezeBoundary(doc, options).checkpoint as FreezeScanCheckpointInternal).phasePoisonedAt,
+      }).toEqual({
         name,
         poisoned: Infinity,
       });

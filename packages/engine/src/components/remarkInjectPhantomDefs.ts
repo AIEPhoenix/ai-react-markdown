@@ -4,7 +4,7 @@
  * @module components/remarkInjectPhantomDefs
  */
 
-import { computeFreezeBoundary } from './incrementalParse/computeFreezeBoundary';
+import { computeFreezeBoundary, pendingFenceCloser } from './incrementalParse/computeFreezeBoundary';
 
 export const SENTINEL_LINK_URL = '__aimd_sentinel_link__';
 export const SENTINEL_FN_CONTENT = '__aimd_sentinel_fn__';
@@ -85,11 +85,9 @@ export function phantomSuffixCloser(content: string): string {
   // will, so the state that matters is the one AFTER that line.
   const confirmed = endsWithNewline ? content : content + '\n';
   const { checkpoint } = computeFreezeBoundary(confirmed, { defListEnabled: false, referenceTaint: false });
-  if (checkpoint.phasePoisonedAt !== Infinity) return '';
-  // Only a column-0 opener is provably top-level (see the doc comment).
-  if (checkpoint.openIndent !== 0) return '';
-  const nl = endsWithNewline ? '' : '\n';
-  if (checkpoint.inFence) return `${nl}${checkpoint.fenceChar.repeat(checkpoint.fenceLen)}`;
-  if (checkpoint.inMath) return `${nl}${'$'.repeat(checkpoint.mathFenceLen)}`;
-  return '';
+  // Phase trust and the column-0-only indent rule are the scanner's calls;
+  // `pendingFenceCloser` owns them (the checkpoint shape is opaque here).
+  const closer = pendingFenceCloser(checkpoint);
+  if (closer === '') return '';
+  return endsWithNewline ? closer : `\n${closer}`;
 }

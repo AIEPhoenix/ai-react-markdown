@@ -8,7 +8,11 @@
 
 import { describe, expect, test } from 'vitest';
 
-import { computeFreezeBoundary as scanFreezeBoundary, type FreezeBoundaryOptions } from './computeFreezeBoundary';
+import {
+  computeFreezeBoundary as scanFreezeBoundary,
+  type FreezeBoundaryOptions,
+  type FreezeScanCheckpointInternal,
+} from './computeFreezeBoundary';
 
 /** Most cases only assert the boundary; the footnote bit has its own tests. */
 const computeFreezeBoundary = (text: string, options: FreezeBoundaryOptions): number =>
@@ -948,8 +952,10 @@ describe('computeFreezeBoundary — scanner profile (mathFlow/referenceTaint off
     // reuse engine-profile state (math phase / taint tables differ).
     const rescanned = scanFreezeBoundary(text, SCANNER, engine.checkpoint);
     expect(rescanned.checkpoint).not.toBe(engine.checkpoint);
-    expect(rescanned.checkpoint.mathFlow).toBe(false);
-    expect(rescanned.checkpoint.referenceTaint).toBe(false);
+    // The public type is opaque; tests may look behind the brand.
+    const cp = rescanned.checkpoint as FreezeScanCheckpointInternal;
+    expect(cp.mathFlow).toBe(false);
+    expect(cp.referenceTaint).toBe(false);
   });
 
   test('scanner profile keeps every non-math blocker intact', () => {
