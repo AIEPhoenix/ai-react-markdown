@@ -1014,7 +1014,11 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
    *  the tail). Depth is approximated by open svg/math, kept honest by
    *  `popForeignRoots` — without the pop this stayed true for the rest of
    *  the run and reported foreign rules inside plain HTML. */
-  const inForeignContent = (): boolean => FOREIGN_ROOT_NAMES.some((name) => (cp.tagBalance.get(name) ?? 0) > 0);
+  // T3.3 direction contract: every `tagBalance` read goes through a wrapper
+  // whose NAME carries the safe direction of doubt. This one may OVER-claim
+  // (saying "foreign" when parse5 left it keeps self-closing tags counted —
+  // over-blocking); the table one below must UNDER-claim.
+  const possiblyInsideForeign = (): boolean => FOREIGN_ROOT_NAMES.some((name) => (cp.tagBalance.get(name) ?? 0) > 0);
   /** A self-closing tag parse5 really closes on the spot: the foreign roots
    *  themselves (`<svg/>`) and tags inside foreign content — EXCEPT the HTML
    *  breakout names (`<svg><div/>`: parse5 pops the svg and opens a real
@@ -1022,7 +1026,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
    *  desc / MathML text elements: HTML rules again) — oracle 5th pass. */
   const honoursSelfClosing = (tag: string): boolean => {
     if (tag === 'svg' || tag === 'math') return true;
-    if (!inForeignContent() || HTML_BREAKOUT_TAGS.has(tag)) return false;
+    if (!possiblyInsideForeign() || HTML_BREAKOUT_TAGS.has(tag)) return false;
     for (const ip of HTML_INTEGRATION_POINTS) if ((cp.tagBalance.get(ip) ?? 0) > 0) return false;
     return true;
   };
@@ -1031,7 +1035,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
    *  element in the DATA state — no RCDATA switch; oracle review of the r2
    *  batch.) */
   const htmlRulesApply = (): boolean => {
-    if (!inForeignContent()) return true;
+    if (!possiblyInsideForeign()) return true;
     for (const ip of HTML_INTEGRATION_POINTS) if ((cp.tagBalance.get(ip) ?? 0) > 0) return true;
     return false;
   };
@@ -1187,7 +1191,12 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
    *  over-blocking behaviour in place (2026-08-20 B1). Every call site sits
    *  BEFORE this tag's own `applyTag`, so a `<table><td>` on one line has
    *  the table counted by the time the part is judged. */
-  const strayTablePart = (tag: string): boolean => TABLE_PART_NAMES.has(tag) && (cp.tagBalance.get('table') ?? 0) === 0;
+  // UNDER-claiming by contract: this wrapper suppresses a poison, so doubt
+  // must resolve to "not inside a table" (poison fires). The bag can only
+  // over-count opens, and an over-counted `table` here would suppress a
+  // poison wrongly — which is why the read is fenced into a named wrapper.
+  const definitelyInsideTable = (): boolean => (cp.tagBalance.get('table') ?? 0) > 0;
+  const strayTablePart = (tag: string): boolean => TABLE_PART_NAMES.has(tag) && !definitelyInsideTable();
 
   // A type 2-5 raw construct (comment/PI/decl/CDATA) open at the START of
   // this line makes the whole line html-block content — the construct's
