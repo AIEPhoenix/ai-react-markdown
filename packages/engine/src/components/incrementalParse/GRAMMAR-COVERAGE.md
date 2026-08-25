@@ -196,7 +196,22 @@ terminator, the divergence poisons have already fired before the gate is
 consulted. Boundary movements: 8 increases (3 documents ×lineages), each
 verified by the engine probe battery; no decreases.
 
-### P4 status (the MdBlock union)
+### P4 status — COMPLETE (the last separation landed)
+
+The P4b-completion sequence closed the stage (seven commits, each gated):
+P5Tok gained parse5's own comment state and the bogus branch was de-fused
+(the first-`>` divergence is now a RELATION between the two grammars'
+fields, pinned by the `--!>` test); MdBlock holds all seven html types
+(6/7 by today's predicates, type 7 deliberately approximate);
+`htmlFlowReal` is deleted — its four consumers read the member, each with
+its direction argued at the site; `mayBeRawToMicromark` SURVIVES BY
+DESIGN as the one deliberate (M)-side conservative flag covering the cut
+type-7 exactness (its keep-argument sits where the composite is built,
+and the nonType6QuotedGt corpus family stands guard over the hole). The
+def gate migrated with its real safety argument (`defLineStart`'s
+prevLineWasText half) written down and flip-pinned.
+
+### P4 status (original note, superseded)
 
 Slices 1-2 landed (fence/math, then html types 1-5 after the phantom-opener
 gate made the flags a partition): eleven of the thirteen (M)-side fields
