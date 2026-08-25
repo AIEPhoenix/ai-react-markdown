@@ -10,6 +10,9 @@
 import { describe, expect, test } from 'vitest';
 
 import { computeFreezeBoundary } from './computeFreezeBoundary';
+import { CATALOG } from './testPluginCatalog';
+import { assertStreamEquivalence } from './spliceArbiterHarness';
+import { scheduleSnapshots } from './fuzzGenerators';
 
 const boundary = (doc: string) => computeFreezeBoundary(doc, { defListEnabled: false }).boundary;
 
@@ -34,6 +37,21 @@ describe('P5Tok partition + pendingTag overlay (B2 co-existence shapes)', () => 
   test('the --!> split poisons the relation; neither field releases the other', () => {
     expect(boundary('<!--x--!>\n<details>\n-->\n\ntail para\n\nend\n')).toBe(0);
     expect(boundary('<!--\na--!>b\n\ntail para\n\nend\n')).toBe(0);
+  });
+
+  /** P4b-completion commit 6: a type-1 line inside an open type 2-5 block
+   *  no longer opens a phantom type-1 (the member is html{3-5} and the
+   *  gate reads it, not the deleted run flag). The construct's own
+   *  divergence rules still decide the outcome — the `<script>` line's
+   *  stray `>` inside a `<?`/`<![CDATA[` block poisons, and the whole
+   *  class streams like a full parse. */
+  test('no phantom type-1 inside an open 2-5 construct', () => {
+    const piDoc = '<?a\n<script>\nx\n</script>\n?>\n\ntail\n\nend\n';
+    expect(boundary(piDoc)).toBe(0);
+    assertStreamEquivalence('c6-pi', scheduleSnapshots(piDoc, [4, 4, 4, 4, 4, 4, 4, 4]), CATALOG[0]);
+    const cdataDoc = '<![CDATA[\n<pre>\n]]>\n\ntail\n\nend\n';
+    expect(boundary(cdataDoc)).toBe(0);
+    assertStreamEquivalence('c6-cdata', scheduleSnapshots(cdataDoc, [1, 1, 1, 1, 1, 1, 1, 1]), CATALOG[0]);
   });
 
   test('F10 still fires for the script kind (M1)', () => {

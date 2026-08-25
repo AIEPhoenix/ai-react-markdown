@@ -377,7 +377,7 @@ const mdHtml25 = (b: MdBlock): boolean => b.kind === 'html' && b.type >= 2 && b.
  *  design was frozen: the within-tag attribute position co-exists with any
  *  of these (`<iframe>\n</iframe a="`), so it is the separate `pendingTag`
  *  overlay, NOT a member. `openedInline` is captured AT OPEN (the old
- *  `rawTextInline` latch — `htmlFlowReal` is reset before the poison that
+ *  `rawTextInline` latch — the run state is reset before the poison that
  *  reads it, so a live read would lose the poison). Members are REPLACED,
  *  never mutated: checkpoints are shared mutable state, and a module-level
  *  token constant would alias across mounted documents. */
@@ -550,17 +550,6 @@ export interface FreezeScanCheckpointInternal extends FreezeScanCheckpoint {
      *  `  </div\n</div>`, still garbage). Unknowable here → poison. */
     indent: number;
   } | null;
-  /** The html-flow run since the last blank REALLY started as a micromark
-   *  html block (type 6 / type 1 / a paragraph-not-interrupting type 7) —
-   *  as opposed to `mayBeRawToMicromark`, which any `<tag` / `</tag` line
-   *  start sets (over-approximation, fine for its over-blocking uses). Only
-   *  in a real run are the bytes raw to parse5 across line endings; the
-   *  cross-line-tag garbage model (`pendingTag`, pended closes) is
-   *  gated on it — in a paragraph starting `</i` the next line's `<div>` /
-   *  `<!--` are REAL blocks (oracle re-check of 2.4.4: gating on
-   *  mayBeRawToMicromark swallowed them — a new under-block). Sticky to the
-   *  blank; a type 6/1 start on a later line of a non-real run promotes it. */
-  htmlFlowReal: boolean;
   /** The open-element stack, in order. `tagBalance` and `openTotal` are
    *  derived views kept in step with it, but the STACK is the truth: an end
    *  tag's effect depends on what sits BETWEEN it and its match, which a
@@ -763,7 +752,6 @@ function freshCheckpoint(
     pendingTruncatedTags: [],
     pendingTruncatedCloses: [],
     pendingTag: null,
-    htmlFlowReal: false,
   };
 }
 
@@ -1307,7 +1295,6 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     // (2026-08-20 soak leg 2, third shape).
     if (!mdHtml(cp.mdBlock, 1)) {
       cp.mayBeRawToMicromark = false;
-      cp.htmlFlowReal = false;
       // A RAWTEXT/RCDATA element still open ACROSS this blank has just had
       // its micromark block end under it: a type-6 run ends at the blank,
       // while parse5's raw-text state runs on to the literal end tag. From
@@ -1383,20 +1370,24 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   // over-block), which is correct whichever construct micromark chooses.
   const tagStart = ln.indent <= 3 ? /^<\/?([A-Za-z][A-Za-z0-9-]*)/.exec(mdTrimStart(ln.text)) : null;
   if (tagStart) {
-    // Gate on `htmlFlowReal`, not on "did the run start here": the latter
+    // Gate on the MEMBER, never on "did the run start here" — the latter
     // reads `mayBeRawToMicromark`, which ANY `<tag` line start sets as an
-    // over-approximation — `<embed` (not a type-6 name, not a complete
-    // type-7 line) is a PARAGRAPH to micromark, yet it opened the run and so
-    // hid the real type-1 block that followed it. What actually matters is
-    // whether a real html block is already open: type 1 may interrupt a
-    // paragraph, but a `<script>` nested inside an open type-6 block does
-    // not start one. Read before the promotion below, which is this line's
-    // own (2026-08-21 scaled soak, shard 0).
-    const noRealBlockOpen = !cp.htmlFlowReal;
+    // over-approximation: `<embed` (not a type-6 name, not a complete
+    // type-7 line) is a PARAGRAPH to micromark, yet it opened the run and
+    // so hid the real type-1 block that followed it (2026-08-21 scaled
+    // soak, shard 0). What matters is whether a real html block is already
+    // open: type 1 may interrupt a paragraph, but a `<script>` nested
+    // inside an open type-6 block does not start one. The member answers
+    // MORE truly than the run flag it replaced (P4b-completion commit 6)
+    // in one place — a type-1 line inside an open type 2-5 block
+    // (`<?a\n<script>`): the flag was false there and a phantom type-1
+    // opened inside the construct's content; the member is html{3-5} and
+    // correctly refuses. Movements measured and pinned with this commit.
+    const noRealBlockOpen = cp.mdBlock.kind !== 'html';
     cp.mayBeRawToMicromark = true;
     if (noRealBlockOpen && TYPE1_START_RE.test(mdTrimStart(ln.text))) cp.mdBlock = { kind: 'html', type: 1 };
     if (!TYPE6_NAMES.has(tagStart[1].toLowerCase())) cp.hazardVerdict = true;
-    if (!cp.htmlFlowReal) {
+    if (cp.mdBlock.kind !== 'html') {
       const t = mdTrimStart(ln.text);
       const t6 = TYPE6_START_RE.exec(t);
       const t7 = TYPE7_LINE_RE.exec(t);
@@ -1408,10 +1399,8 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
         // names (those are type 1 as start tags, paragraph as end tags).
         (t7 !== null && !cp.prevLineWasText && !TYPE1_NAMES.has(t7Name(t).toLowerCase()))
       ) {
-        cp.htmlFlowReal = true;
-        // Shadow member for the 6/7 run (type 1 wrote html{1} above; the
-        // in-comment promotion artifact keeps the member it found). The
-        // run flags stay the consumers' truth until each migrates.
+        // The 6/7 member (type 1 wrote html{1} above; inside this branch
+        // the member is provably 'none', the guard is shape only).
         if (cp.mdBlock.kind === 'none') cp.mdBlock = { kind: 'html', type: realT6 ? 6 : 7 };
       }
     }
@@ -2000,7 +1989,6 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   if (mdHtml(cp.mdBlock, 1) && TYPE1_CLOSE_RE.test(ln.text)) {
     cp.mdBlock = { kind: 'none' };
     cp.mayBeRawToMicromark = false;
-    cp.htmlFlowReal = false;
   }
 
   cp.blankRun = 0;
