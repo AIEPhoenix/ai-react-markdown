@@ -67,6 +67,19 @@ describe('P5Tok partition + pendingTag overlay (B2 co-existence shapes)', () => 
     expect(boundary('see [a] cited\n\n[a]: /u\n\ntail\n\nend\n')).toBe(30);
   });
 
+  /** Fresh-seed soak regression (seed 20280501, shrunk): `</script/>` is
+   *  NOT CommonMark's literal type-1 closer, so the md block runs to EOF
+   *  and html{1} must block every candidate — while parse5's raw text DID
+   *  close there, leaving the comment machinery live for the stray `-->`
+   *  below. The unguarded union clear at that site released html{1}; the
+   *  guarded close keeps a stray closer the no-op it always was. */
+  test('a stray --> never releases another construct\u2019s member', () => {
+    const doc =
+      '<script>\nx\n</script/>\n\n<div>\nd\n</div>\n\n<!-->\n<details>\n-->\ninner prose\n</details>\n\nfoo line\n\u3000\n\u3000\nbar joins the paragraph\n\nprose with [a] used\n\n[a]: https://example.com/a\n\n[a a]: /u(x\n';
+    expect(boundary(doc)).toBe(0);
+    assertStreamEquivalence('stray-closer', scheduleSnapshots(doc + 'x', [4, 4, 1, 4, 4, 4, 4, 4]), CATALOG[0]);
+  });
+
   test('F10 still fires for the script kind (M1)', () => {
     // <script> nested in a type-6 run, then a blank: the raw-text state
     // runs on while micromark's block ends — document-wide poison.

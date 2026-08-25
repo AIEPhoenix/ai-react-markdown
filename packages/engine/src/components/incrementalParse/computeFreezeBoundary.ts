@@ -1716,7 +1716,11 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
           // comment open and skipped the real `<details>`), `<!--!>` /
           // `<!---!>` carry a `--!>` (parse5-only closer → poison).
           if (next.startsWith('>') || next === '->') {
-            cp.mdBlock = { kind: 'none' };
+            // Close ONLY the comment member: with the union, an unguarded
+            // clear here nukes whatever else holds the member — measured
+            // regression: a stray closer while a type-1 block held html{1}
+            // released every later candidate (soak leg 2, seed 20280501).
+            if (mdHtml(cp.mdBlock, 2)) cp.mdBlock = { kind: 'none' };
             if (cp.p5Tok.kind === 'comment') cp.p5Tok = { kind: 'data' };
           } else if (next === '!>' || next === '-!') {
             // parse5-only closer inside the token: parse5 leaves the
@@ -1742,7 +1746,12 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
         continue;
       }
       if (m[0] === '-->') {
-        cp.mdBlock = { kind: 'none' };
+        // A STRAY `-->` (no comment open) is text to both grammars: the
+        // old per-field `commentOpen = false` was a no-op there, and the
+        // union must keep it one — an unguarded member clear released a
+        // type-1 block's html{1} (soak leg 2, seed 20280501, `</script/>`
+        // false closer upstream; regression pinned).
+        if (mdHtml(cp.mdBlock, 2)) cp.mdBlock = { kind: 'none' };
         if (cp.p5Tok.kind === 'comment') cp.p5Tok = { kind: 'data' };
         continue;
       }
