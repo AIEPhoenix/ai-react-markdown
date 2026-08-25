@@ -348,6 +348,18 @@ interface Candidate {
   defListSettled: boolean | null;
 }
 
+/** micromark's open VERBATIM flow construct at a line boundary (two-model
+ *  P4a, first slice): fenced code and `$$` flow math — the members whose
+ *  interiors are candidate-free and whose close is a marker line. The
+ *  html-block types join this union in the next slice. `indent` is the
+ *  opener line's indent (0-3): only a column-0 opener is provably
+ *  top-level, so `pendingFenceCloser` suppresses the closer otherwise
+ *  (v2.4.0 review R1). Members are REPLACED, never mutated (see P5Tok). */
+type MdBlock =
+  | { kind: 'none' }
+  | { kind: 'fence'; char: string; len: number; indent: number }
+  | { kind: 'math'; len: number; indent: number };
+
 /** parse5 tokenizer macro-state at a LINE BOUNDARY (two-model P3a, T3.1).
  *  A PARTITION of {data, rawText, script, bogus} — measured before the
  *  design was frozen: the within-tag attribute position co-exists with any
@@ -417,18 +429,8 @@ export interface FreezeScanCheckpointInternal extends FreezeScanCheckpoint {
    *  letter — eaten up to the next `>`; micromark has no such construct),
    *  raw-text content, script data with its escape flag. */
   p5Tok: P5Tok;
-  inFence: boolean;
-  fenceChar: string;
-  fenceLen: number;
-  inMath: boolean;
-  /** Opening dollar-run length while inMath — the close run must match it. */
-  mathFenceLen: number;
-  /** Indent (0-3 spaces) of the line that opened the current fence/math
-   *  block. Not a blocker input — read by `pendingFenceCloser`: only a
-   *  column-0 opener is provably top-level, any other indent suppresses
-   *  the emitted closer (v2.4.0 review R1: an indented opener may live in
-   *  a list item the closer would mis-close). */
-  openIndent: number;
+  /** micromark's open verbatim flow construct (see `MdBlock`). */
+  mdBlock: MdBlock;
   blankRun: number;
   lastBlankStart: number;
   /** Rolling blocker-3 verdict ("nearest decisive block start so far"). */
@@ -736,12 +738,7 @@ function freshCheckpoint(
     openStack: [],
     declOpen: false,
     cdataOpen: false,
-    inFence: false,
-    fenceChar: '',
-    fenceLen: 0,
-    inMath: false,
-    mathFenceLen: 0,
-    openIndent: 0,
+    mdBlock: { kind: 'none' },
     blankRun: 0,
     lastBlankStart: -1,
     hazardVerdict: false,
@@ -885,9 +882,8 @@ export function computeFreezeBoundary(
 export function pendingFenceCloser(checkpoint: FreezeScanCheckpoint): string {
   const cp = checkpoint as FreezeScanCheckpointInternal;
   if (cp.phasePoisonedAt !== Infinity) return '';
-  if (cp.openIndent !== 0) return '';
-  if (cp.inFence) return cp.fenceChar.repeat(cp.fenceLen);
-  if (cp.inMath) return '$'.repeat(cp.mathFenceLen);
+  if (cp.mdBlock.kind === 'fence' && cp.mdBlock.indent === 0) return cp.mdBlock.char.repeat(cp.mdBlock.len);
+  if (cp.mdBlock.kind === 'math' && cp.mdBlock.indent === 0) return '$'.repeat(cp.mdBlock.len);
   return '';
 }
 
@@ -1138,17 +1134,15 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   const rawOpenAtLineStart = cp.commentOpen || cp.piOpen || cp.declOpen || cp.cdataOpen || cp.p5Tok.kind === 'bogus';
 
   // --- fence state (interiors are candidate-free; paragraph resets) ---
-  if (cp.inFence) {
+  if (cp.mdBlock.kind === 'fence') {
     const close = FENCE_RE.exec(ln.text);
     if (
       close &&
-      close[1][0] === cp.fenceChar &&
-      close[1].length >= cp.fenceLen &&
+      close[1][0] === cp.mdBlock.char &&
+      close[1].length >= cp.mdBlock.len &&
       isMdBlank(ln.text.slice(close[0].length))
     ) {
-      cp.inFence = false;
-      cp.fenceChar = '';
-      cp.fenceLen = 0;
+      cp.mdBlock = { kind: 'none' };
     }
     cp.blankRun = 0;
     cp.paragraphHasUnpairedRun = false;
@@ -1158,7 +1152,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     cp.prevLineWasValidDef = false;
     return;
   }
-  if (!cp.inMath && !rawOpenAtLineStart) {
+  if (cp.mdBlock.kind !== 'math' && !rawOpenAtLineStart) {
     const open = FENCE_RE.exec(ln.text);
     // A backtick fence's info string may not contain a backtick —
     // ```a``` b is a PARAGRAPH with a code span, not a fence open (A5).
@@ -1176,10 +1170,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
         const verdict = classifyBlockStart(ln.text, ln.indent, cp.defListEnabled);
         if (verdict !== null) cp.hazardVerdict = verdict;
       }
-      cp.inFence = true;
-      cp.fenceChar = open[1][0];
-      cp.fenceLen = open[1].length;
-      cp.openIndent = ln.indent;
+      cp.mdBlock = { kind: 'fence', char: open[1][0], len: open[1].length, indent: ln.indent };
       cp.blankRun = 0;
       cp.paragraphHasUnpairedRun = false;
       cp.openBracket = null;
@@ -1193,11 +1184,10 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   // --- $$ flow-math state (fence-like: no candidates, close at line start;
   // the closing run must be at least as long as the opening one, with
   // nothing but whitespace after) ---
-  if (cp.inMath) {
+  if (cp.mdBlock.kind === 'math') {
     const close = MATH_RUN_RE.exec(ln.text);
-    if (close && close[1].length >= cp.mathFenceLen && isMdBlank(ln.text.slice(close[0].length))) {
-      cp.inMath = false;
-      cp.mathFenceLen = 0;
+    if (close && close[1].length >= cp.mdBlock.len && isMdBlank(ln.text.slice(close[0].length))) {
+      cp.mdBlock = { kind: 'none' };
     }
     cp.blankRun = 0;
     cp.paragraphHasUnpairedRun = false;
@@ -1232,9 +1222,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
           const verdict = classifyBlockStart(ln.text, ln.indent, cp.defListEnabled);
           if (verdict !== null) cp.hazardVerdict = verdict;
         }
-        cp.inMath = true;
-        cp.mathFenceLen = mathRun[1].length;
-        cp.openIndent = ln.indent;
+        cp.mdBlock = { kind: 'math', len: mathRun[1].length, indent: ln.indent };
         cp.blankRun = 0;
         cp.paragraphHasUnpairedRun = false;
         cp.openBracket = null;
