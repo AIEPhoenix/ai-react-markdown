@@ -62,7 +62,7 @@
  *    rest of that line as raw content too (`<!-- c --> tail`) — same seam.
  * 7. **Phase poison** (`phasePoisonedAt`) — points where this line-level
  *    model may have DIVERGED from micromark and provably cannot resync:
- *    a fence/math open suppressed by `mayBeRawToMicromark` (only certainly
+ *    a fence/math open suppressed inside an html-flow run (only certainly
  *    swallowed at top level — in a container it really opens and the
  *    open/close phase inverts permanently), and a paragraph-inline `<!--`
  *    that fails to close by end of line (literal text to micromark, but
@@ -281,7 +281,8 @@ const TYPE1_CLOSE_RE = /<\/(?:script|pre|style|textarea)>/i;
  *  value (`<a href=>`) invalidates the tag, and `/` self-closing must sit
  *  directly before the `>` — every shape measured against micromark before
  *  the approximate `[^>]*` test this replaces was retired (it both missed
- *  the quoted-`>` class, which `mayBeRawToMicromark` existed to cover, and
+ *  the quoted-`>` class, which the retired `mayBeRawToMicromark` flag
+ *  existed to cover, and
  *  over-accepted attribute garbage on non-type-6 names).
  *
  *  Closing tags take NO attributes (`</span a="b">` is a paragraph, and
@@ -364,7 +365,8 @@ const completeOpenTagRest = (t: string, from: number): number => {
  *  - a CLOSING tag takes no attributes but its name is unrestricted:
  *    `</style>` alone on a line IS type 7 (the earlier "paragraph as end
  *    tags" note in Table A was wrong, and harmless only while
- *    `mayBeRawToMicromark` blanket-covered every `<`-starting line).
+ *    the retired `mayBeRawToMicromark` flag blanket-covered every
+ *    `<`-starting line).
  *  A lone `\r` is a LINE ENDING to micromark, not tag whitespace — the
  *  classification runs on the segment before it (the rest of the physical
  *  line is the block's first content either way). */
@@ -479,7 +481,8 @@ type MdBlock =
    *  (type 1: the literal closer line; 2-5: their terminators); types 6/7
    *  end at the blank. Type 7 is entered by the EXACT §4.6 test
    *  (`isType7Line`) since the exact-type-7 stage — the attribute-quote
-   *  hole the approximate test had (and `mayBeRawToMicromark` covered) is
+   *  hole the approximate test had (and the retired `mayBeRawToMicromark`
+   *  flag covered) is
    *  closed, which is what let the remaining run-flag consumers migrate
    *  to the member. */
   | { kind: 'html'; type: 1 | 2 | 3 | 4 | 5 | 6 | 7 };
@@ -614,23 +617,8 @@ export interface FreezeScanCheckpointInternal extends FreezeScanCheckpoint {
    *   frozen prefix contributed can still be EXTENDED by later bytes
    *   (parse5's insertText appends to an existing trailing text node). */
   p5SealPending: boolean;
-  /** A line since the last blank started with `<` at block indent — an html
-   *  FLOW block is (approximately) running, and it only ends at a blank
-   *  line. micromark does no inline parsing there: backtick runs are
-   *  literal text, so code-span masking would hide REAL tags from the
-   *  balance scan (under-block — fuzz counterexample: `</details>` followed
-   *  by an unblanked `` `<div>` `` line). While set, masking is skipped —
-   *  which can only over-block (safe direction). */
-  /* ^ Renamed from `htmlFlowSinceBlank` (P4b-completion, commit 3): this
-   *   is a DELIBERATE (M)-side conservative flag, not a proxy awaiting an
-   *   exact answer. It over-fires on purpose — `mdBlock`'s type-7 member
-   *   is entered by the approximate TYPE7_LINE_RE (exact §4.6 type 7 is
-   *   cut), so a `<span title="a>b">` line is a type-7 block the member
-   *   never sees, and this flag is what keeps its consumers safe there.
-   *   It dies only if exact type 7 ever ships. */
-  mayBeRawToMicromark: boolean;
-  /** Offset of the first fence/math OPEN suppressed by `mayBeRawToMicromark`
-   *  (Infinity = none). Whether the run really swallowed that line depends
+  /** Offset of the first fence/math OPEN suppressed inside an html-flow
+   *  run — the member gate since Migration B row 6 (Infinity = none). Whether the run really swallowed that line depends
    *  on container context the line scan cannot see (`<embed` inside a list
    *  item is a lazy paragraph line, and the glued `$$` a REAL math open —
    *  seed-20260757 under-block: the tracker's fence phase INVERTS from that
@@ -896,7 +884,6 @@ function freshCheckpoint(
     prevLineHadPipe: false,
     paragraphHasUnpairedRun: false,
     openBracket: null,
-    mayBeRawToMicromark: false,
     p5SealPending: false,
     phasePoisonedAt: Infinity,
     pendingTruncatedTags: [],
@@ -1292,7 +1279,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   // this line makes the whole line html-block content — the construct's
   // block ends WITH the line carrying its terminator, so even that line's
   // remainder is raw text. Gates fence/math opens, masking, and def
-  // registration below, alongside the tag-block flag (mayBeRawToMicromark).
+  // registration below, alongside the html-block member.
   const commentOpenAtLineStart = commentEitherOpen(cp.mdBlock, cp.p5Tok);
   const rawOpenAtLineStart = mdHtml25(cp.mdBlock) || cp.p5Tok.kind === 'comment' || cp.p5Tok.kind === 'bogus';
 
@@ -1472,7 +1459,6 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     // FENCE to the scanner — a candidate landed inside the html block
     // (2026-08-20 soak leg 2, third shape).
     if (!mdHtml(cp.mdBlock, 1)) {
-      cp.mayBeRawToMicromark = false;
       // A RAWTEXT/RCDATA element still open ACROSS this blank has just had
       // its micromark block end under it: a type-6 run ends at the blank,
       // while parse5's raw-text state runs on to the literal end tag. From
@@ -1550,9 +1536,9 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   // over-block), which is correct whichever construct micromark chooses.
   const tagStart = ln.indent <= 3 ? /^<\/?([A-Za-z][A-Za-z0-9-]*)/.exec(mdTrimStart(ln.text)) : null;
   if (tagStart) {
-    // Gate on the MEMBER, never on "did the run start here" — the latter
-    // reads `mayBeRawToMicromark`, which ANY `<tag` line start sets as an
-    // over-approximation: `<embed` (not a type-6 name, not a complete
+    // Gate on the MEMBER, never on "did the run start here" — the retired
+    // run flag was set by ANY `<tag` line start, an over-approximation:
+    // `<embed` (not a type-6 name, not a complete
     // type-7 line) is a PARAGRAPH to micromark, yet it opened the run and
     // so hid the real type-1 block that followed it (2026-08-21 scaled
     // soak, shard 0). What matters is whether a real html block is already
@@ -1564,7 +1550,6 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     // opened inside the construct's content; the member is html{3-5} and
     // correctly refuses. Movements measured and pinned with this commit.
     const noRealBlockOpen = cp.mdBlock.kind !== 'html';
-    cp.mayBeRawToMicromark = true;
     if (noRealBlockOpen && TYPE1_START_RE.test(mdTrimStart(ln.text))) cp.mdBlock = { kind: 'html', type: 1 };
     if (!TYPE6_NAMES.has(tagStart[1].toLowerCase())) cp.hazardVerdict = true;
     if (cp.mdBlock.kind !== 'html') {
@@ -1599,15 +1584,10 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       }
     }
   }
-  // Migration B rows 4/6/7 + the truncated-open and seam-set sites KEEP
-  // the conservative flag, deliberately: their exact-by-member answers
-  // NARROW into the TYPE7_LINE_RE attribute hole (`<span title="a>b">`
-  // opens a type-7 block the member never sees — span is not a type-6
-  // name), and the review measured four boundary rises there, one of them
-  // deleting the fence/math phasePoisonedAt backstop. These consumers
-  // migrate only if exact type 7 ever ships; the nonType6QuotedGt corpus
-  // family stands guard over the hole either way.
-  const inRawText = cp.mayBeRawToMicromark || rawOpenAtLineStart;
+  // Migration B is COMPLETE: exact type 7 shipped (classifier + interrupt
+  // commits), rows 4/6/7 plus the truncated-open and seam-set sites read
+  // the member, and `mayBeRawToMicromark` is deleted. The nonType6QuotedGt
+  // corpus family keeps standing guard over the once-was-a-hole class.
   // A type 2-5 html block (`<!--` / `<?` / `<!X` / `<![CDATA[`) STARTING on
   // this line at block indent. Not sticky (V9 — the block ends with its
   // terminator's line), and not `inRawText` unless the construct stays
@@ -2243,7 +2223,6 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   // line has been scanned as raw flow. The next line starts fresh.
   if (mdHtml(cp.mdBlock, 1) && TYPE1_CLOSE_RE.test(ln.text)) {
     cp.mdBlock = { kind: 'none' };
-    cp.mayBeRawToMicromark = false;
   }
 
   cp.blankRun = 0;

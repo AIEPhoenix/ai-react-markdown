@@ -641,13 +641,13 @@ const rawHtmlArb = fc.oneof(
   // (3 → 4 when the foreign-content/insertion-mode/script-escape families
   // took the pool from 38 to 42).
   { weight: 4, arbitrary: crossLineQuoteBogusArb },
-  // Type-7's `[^>]*` attribute hole, OPENED by a NON-type-6 name (span /
-  // img / noscript are not in htmlBlockNames): a quoted `>` on the very
-  // line that starts the run. Every earlier quoted-`>` fixture ran inside
-  // an already-open `<div>` run, so the class where ONLY
-  // `mayBeRawToMicromark` protects (the type-7 member never fires — the
-  // regex stops at the quoted `>`) was corpus-invisible; the P4b-completion
-  // review measured four boundary rises there under a naive migration.
+  // The once-was-a-hole class: a quoted `>` on the very line that opens a
+  // run under a NON-type-6 name (span / img / noscript are not in
+  // htmlBlockNames). Under the approximate classifier only the retired
+  // `mayBeRawToMicromark` flag protected it (the old regex stopped at the
+  // quoted `>`; the P4b-completion review measured four boundary rises
+  // under a naive migration). Exact type 7 classifies these lines by the
+  // member — this family keeps standing guard over exactly that claim.
   { weight: 2, arbitrary: nonType6QuotedGtArb },
   { weight: 2, arbitrary: multiLineDeclArb },
   { weight: 2, arbitrary: multiLineCdataArb },
