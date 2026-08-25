@@ -1318,10 +1318,17 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     // ```a``` b is a PARAGRAPH with a code span, not a fence open (A5).
     const bogusInfo =
       open !== null && open[1][0] === '`' && ln.text.slice(ln.text.indexOf(open[1]) + open[1].length).includes('`');
-    if (open && !bogusInfo && cp.mayBeRawToMicromark) {
-      // Suppressed open — whether the html-flow run really swallows this
-      // line is container-dependent (see phasePoisonedAt). Poison the phase
-      // and fall through so the line stays tag-scanned as raw text.
+    if (open && !bogusInfo && cp.mdBlock.kind === 'html') {
+      // Suppressed open (Migration B row 6, exact type 7): the gate is the
+      // MEMBER — an html block open from previous lines owns this ``` line
+      // as raw text. The retired proxy also suppressed after `<embed x`
+      // paragraph openers, where the fence is REAL (fence interrupts a
+      // paragraph) and suppression was the seed-20260757 phase-corruption
+      // shape. The phasePoisonedAt backstop STAYS: the member itself is
+      // container-blind (a run inside a list item can end at a de-indent
+      // this line model cannot see), so whether the run really swallows
+      // this line is still container-dependent. Poison the phase and fall
+      // through so the line stays tag-scanned as raw text.
       cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
     } else if (open && !bogusInfo) {
       // The open line is a block start for blocker 3 (a column-0 fence
@@ -1361,8 +1368,8 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     cp.prevLineHadPipe = false;
     return;
   }
-  // Fence/math OPENS are gated on !mayBeRawToMicromark (matching the fence
-  // branch above): inside an html flow run a ``` or $$ line is raw text —
+  // Fence/math OPENS are gated on the html-block MEMBER (matching the
+  // fence branch above): inside an html flow run a ``` or $$ line is raw text —
   // entering fence state there would skip tag extraction on lines that
   // rehype-raw parses as REAL markup (fuzz counterexample: a fence glued
   // to `</details>` hiding a quoted `<div>`). Falling through to the
@@ -1379,7 +1386,8 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     // contain `$`): `$$x$$` is inline math, `$$x$` a plain paragraph —
     // both self-contained lines, no state either way.
     if (!rest.includes('$')) {
-      if (cp.mayBeRawToMicromark) {
+      if (cp.mdBlock.kind === 'html') {
+        // Row 6, math half — same member gate, same kept backstop.
         cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
       } else {
         if (isBlockStart) {

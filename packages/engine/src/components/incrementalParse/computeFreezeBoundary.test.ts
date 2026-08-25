@@ -681,21 +681,23 @@ describe('computeFreezeBoundary — inline code-span masking (safe direction)', 
 });
 
 describe('computeFreezeBoundary — suppressed fence/math opens poison the phase (blocker 7)', () => {
-  // A fence/math open glued under an html-flow run is suppressed (the run
-  // may swallow it) — but whether it REALLY does is container-dependent:
-  // `<embed` inside a list item is a lazy paragraph line and the glued `$$`
-  // a REAL math open (seed-20260757 under-block: the tracker's phase
-  // inverted from that line on, and a boundary landed inside open math).
-  // The suppression point poisons all LATER candidates, sticky.
+  // A fence/math open glued under a REAL html-flow run (the member) is
+  // suppressed — the run owns the line as raw text — and the suppression
+  // point poisons all LATER candidates, sticky, because the member is
+  // container-blind. After a PARAGRAPH `<embed`-style opener the fence and
+  // math opens are REAL (both interrupt a paragraph — measured against
+  // remark-parse/remark-math while flipping these pins for Migration B
+  // row 6): seed-20260757's under-block was precisely the old code
+  // SUPPRESSING that real open and inverting the phase.
 
-  test('glued $$ after an ambiguous tag run caps the boundary at the pre-run candidate', () => {
+  test('glued $$ after a paragraph tag-opener is a REAL math open (row 6 flip)', () => {
     const text = 'x\n\n<embed\n  src="x"\n/>\n$$\ne = mc^2\n\n$$\n\ntail prose\n\nmore prose\n';
-    expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('<embed'));
+    expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('more prose'));
   });
 
-  test('glued ``` fence poisons identically (same inversion mechanism)', () => {
+  test('glued ``` after a paragraph tag-opener is a REAL fence open (row 6 flip)', () => {
     const text = 'x\n\n<embed\n  src="x"\n/>\n```\ncode\n```\n\ntail prose\n\nmore prose\n';
-    expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('<embed'));
+    expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('more prose'));
   });
 
   test('control: blank-separated math with an internal blank line tracks and releases', () => {
@@ -736,15 +738,18 @@ describe('computeFreezeBoundary — suppressed fence/math opens poison the phase
     expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('more prose'));
   });
 
-  test('candidates BEFORE the poison point survive across appends (monotone)', () => {
+  test('the real-math-open reading stays monotone across appends', () => {
+    // With the open REAL (row 6 flip) there is no poison ceiling any more;
+    // what must still hold is append-monotonicity — no earlier boundary
+    // may retreat as the math block streams in and closes.
     const text = 'x\n\n<embed\n  src="x"\n/>\n$$\ne = mc^2\n\n$$\n\ntail prose\n\nmore prose\n';
     let prev = 0;
     for (let i = 1; i <= text.length; i++) {
       const b = computeFreezeBoundary(text.slice(0, i), OFF);
       expect(b, `regression at length ${i}`).toBeGreaterThanOrEqual(prev);
-      expect(b, `poison ceiling at length ${i}`).toBeLessThanOrEqual(text.indexOf('<embed'));
       prev = b;
     }
+    expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('more prose'));
   });
 });
 
