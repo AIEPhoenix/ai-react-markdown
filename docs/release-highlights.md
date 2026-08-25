@@ -6,6 +6,28 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 ---
 
+## 2.7.x — Two grammars, two models
+
+### 2.7.0 — The freeze scanner is split along the seam every bug lived on
+
+Eighteen commits, each gated by the 2.6.0 instruments (boundary diff at every step, conformance oracles at every stage, an adversarial oracle review before each design landed). The refactor the instruments were built for: the scanner's single line model — one set of fields serving both micromark and parse5, the root cause named by every deviation-ledger row — becomes two per-grammar models with the blockers as relations between them.
+
+**Reference resolution moves out** (`referenceTaint.ts`): blocker 5's definition/reference grammar and per-line collection leave `processConfirmedLine` as a pure move — strict zero delta across all 6060 pinned boundaries, the first real code change judged by the harness instead of by argument.
+
+**(P) becomes `P5Tok`** — a partition of parse5's tokenizer macro-states ({data, comment, rawText, script, bogus}), with the within-tag attribute position as a separate overlay because it measurably co-exists with any of them. Three review blockers reshaped this on the way in, each verified before adoption: the raw-text state is a MASK, not a blocker (while set, nothing reaches the balance — so a state the model believes in but parse5 is not in makes candidates MORE likely to survive); the tag position is not a tokenizer state; the inline latch must be captured at open. Where the old model would have held two facts at once, the migration poisons the line instead of choosing silently.
+
+**The foreign-content subsystem collapses to two directions.** The six-symbol exact model (breakout list, integration points, the pop) existed to say precisely when HTML rules resume inside `<svg>`/`<math>` — and being exact there was the F1/F2/F5 family. Now: a self-closing tag is honoured only for the foreign roots themselves, and a raw-text element start near foreign content POISONS — the review measured that either exact answer was a shipped bug in one direction (its blocker: an over-claimed tokenizer switch RAISED the boundary 0→36 on `<svg><title><div></title></svg>`, because the un-switched `<div>` on the open stack was the only protection). Cost quantified: 30 boundary decreases, all on the 12 corpus documents carrying self-closed svg children.
+
+**(M) becomes `MdBlock`** — one union for micromark's open flow construct (fence, math, html types 1–7), where eleven fields stood. The type-7 member is entered by the deliberately approximate `TYPE7_LINE_RE` (exact §4.6 type 7 stays cut), and one run flag survives BY DESIGN: `mayBeRawToMicromark`, the conservative cover for that approximation's attribute hole — the review measured four boundary rises from migrating its consumers naively, one of which deleted a phase-poison backstop, and a new corpus family (`nonType6QuotedGt`) now stands guard over exactly that hole. Along the way the phantom raw-construct openers died (`<!--\n<?x` used to hold two blocks open at once; both grammars call those bytes text) — 8 boundary increases, each run through the engine probe battery.
+
+**parse5's comment state gets its own field.** `--!>` closes a comment for parse5 and not for CommonMark; that divergence is now a RELATION between `p5Tok` and `mdBlock` — poisoned where it opens, pinned by test, with neither field able to release a block while the other grammar is still inside.
+
+**One retirement attempted, measured, and reverted in one sitting** — recorded as prominently as the things that shipped: tracking the script double-escape ladder to let the boundary recover after the divergence window is sound at the scanner layer, but micromark cuts TWO raw blocks where parse5 builds ONE element across them, and the splice's seam synthesis double-counts a separator on the far side. The streamed counterexample is pinned in the test file; the remaining blocker-7 poisons stay until the splice models raw-block-crossing elements. What shipped instead is the safe sliver: `-->` exactly exits the escaped state.
+
+**And the release soak earned its keep one more time.** The first four-leg run on the merged result found a regression the per-commit gates were structurally blind to: a stray `-->` — text to both grammars, and a no-op under the old per-field `commentOpen = false` — hit an UNGUARDED member clear in the new union and released a type-1 block's `html{1}` (the `</script/>` upstream is not CommonMark's literal closer, so that block must run to EOF and keep blocking). Boundary 170 where the pre-fold scanner held 0; a one-character append rewrote the frozen region. Both comment close sites now clear only their own member, every other clear site audited branch-guarded, the shrunk document pinned with stream equivalence — and the division of labour held exactly as documented: the pinned diff corpus and 958 unit tests never saw the shape; only fresh seeds did.
+
+Verification: preflight at 1590 tests; conformance oracles zero-defect at every stage; the boundary diff's four planted mutations still caught; four-leg fresh-seed soak ALL CLEAN on the merged result including the fix — with the census leg now hash-scattered (a ×1.5 wall-clock spread between shards, measured r=0.980 against predicted per-shard cost, dropped to 1.004).
+
 ## 2.6.x — Instruments before surgery
 
 ### 2.6.0 — The freeze scanner gets conformance oracles, a pinned diff corpus, and an opaque checkpoint
