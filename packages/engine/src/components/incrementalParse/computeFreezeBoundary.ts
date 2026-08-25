@@ -1616,7 +1616,18 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
 
   // Same-line code-span masking for HTML/ref/footnote extraction. A null
   // mask means "unsafe to mask here" — scan the raw text (over-blocking).
-  const { masked, unpaired } = inRawText
+  // Migration B row 4 (exact type 7): masking is valid exactly where
+  // micromark parses INLINE content, and that is now the member's answer —
+  // an open html block (any type, the pre-scan classified THIS line
+  // already), a 2-5 construct open at line start or STARTING here
+  // (`rawFlowStart` — the flag never covered those, `<?` fails its regex),
+  // or parse5-side raw content. The proxy this replaces also suppressed
+  // masking on every line after a `<embed x`-style PARAGRAPH opener until
+  // the next blank — lines micromark measurably parses inline, where a
+  // backticked tag IS a code span parse5 never sees (the boundary rises
+  // there are this stage's payoff, verified by engine probe and pinned).
+  const maskingSuppressed = htmlOwnedLine || inRawTextTok(cp.p5Tok);
+  const { masked, unpaired } = maskingSuppressed
     ? { masked: null, unpaired: false }
     : maskIntraLineCodeSpans(ln.text, cp.paragraphHasUnpairedRun);
   if (unpaired) cp.paragraphHasUnpairedRun = true;
