@@ -328,7 +328,18 @@ is refuse-or-absorb, never an under-block:
 `formElement` remains the standing latent divergence (design §2.1): raw
 layer fires, sanitize masks the element, the grouping echo keeps the final
 layer firing; the scanner never grants the boundary (openStack keeps the
-implicitly-closed form counted). Pinned as an oracle self-test.
+implicitly-closed form counted). Pinned as an oracle self-test — and since
+2026-08-25 the two facts that keep it latent are DESIGNED guards with
+tripwires (`formElementLatent.test.ts`), no longer accidents:
+
+1. the end-tag walk removes only the matched element (no implied end
+   tags), so an implicitly-closed `<form>` stays counted and blocks every
+   later candidate — modelling implied end tags must ship an explicit
+   formElement guard with it;
+2. `form` is absent from the default sanitize `tagNames` (the named schema
+   entry per the masking-exemption rule). A caller-supplied schema that
+   allows `form` sits outside the default contract, like every ground-fact
+   change above.
 
 ### T1.4 sweep result (2026-08-24)
 

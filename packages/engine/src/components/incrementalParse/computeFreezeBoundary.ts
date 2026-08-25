@@ -1090,6 +1090,13 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       // first would under-count the second — measured, it re-opened four
       // fixtures as fresh under-blocks. Leaving them counted over-blocks,
       // which is the side this scanner is allowed to be wrong on.
+      //
+      // LOAD-BEARING beyond the counts: the formElement latent divergence
+      // (design §2.1 — parse5's form pointer survives an IMPLICIT close and
+      // eats a later <form>) is guarded exactly by this rule keeping the
+      // implicitly-closed form on `openStack`. Modelling implied end tags
+      // here needs an explicit formElement guard shipped WITH it —
+      // `formElementLatent.test.ts` is the tripwire.
       cp.openStack.splice(idx, 1);
       const count = cp.tagBalance.get(tag) ?? 0;
       if (count > 0) {
