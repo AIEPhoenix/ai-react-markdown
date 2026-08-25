@@ -1042,9 +1042,13 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
         if (cp.p5Tok.kind !== 'data') cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
         // openedInline: paragraph context, i.e. micromark html-TEXT rather
         // than an html block — the regime where a lifted element rewrites
-        // its paragraph. Captured HERE: `htmlFlowReal` is reset before the
-        // blank-line poison that reads this, so a live read loses it.
-        const openedInline = !cp.htmlFlowReal;
+        // its paragraph. Captured HERE (latched: the run state is reset
+        // before the blank-line poison that reads this). Migration A row
+        // 1: the member answers "block context" — NARROWER than the old
+        // flag by the in-comment promotion artifact, and inert there: a
+        // paragraph-inline 3-5 opener poisons document-wide, and tags
+        // inside a comment never reach applyTag at all.
+        const openedInline = cp.mdBlock.kind !== 'html';
         cp.p5Tok =
           tag === 'script'
             ? { kind: 'script', escaped: false, openedInline }
@@ -1536,7 +1540,14 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     // real html-flow run); in a paragraph `<!` / `</` are literal text that
     // never reaches the tokenizer. `<!` + letter is the declaration above
     // (same "until `>`" shape); `<!--` / `<![CDATA[` are their own constructs.
-    const bm = cp.htmlFlowReal ? scanText.slice(pos).search(/<!(?!--|[A-Za-z]|\[CDATA\[)|<\/(?![A-Za-z])/) : -1;
+    // Migration A row 2 (P4b-completion): the question is "are these bytes
+    // raw to parse5", and the exact answer is "an md html block is open" —
+    // provably equal to the old run-flag read HERE: types 1/2 broke out of
+    // the loop above, 3-5 were consumed by their own branches, and the
+    // in-comment promotion artifact cannot reach this line (the comment
+    // union breaks first). Types 6/7 are the member since commit 2.
+    const bm =
+      cp.mdBlock.kind === 'html' ? scanText.slice(pos).search(/<!(?!--|[A-Za-z]|\[CDATA\[)|<\/(?![A-Za-z])/) : -1;
     const bogus = bm === -1 ? -1 : pos + bm;
     const starts = [pi, cd, decl, bogus].filter((x) => x !== -1);
     if (starts.length === 0) break;
@@ -1742,7 +1753,13 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       const tag = m[2].toLowerCase();
       if (strayTablePart(tag)) cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start + m.index);
       let attrs = m[3] ?? '';
-      if (cp.htmlFlowReal && (!inRawTextTok(cp.p5Tok) || (closing && tag === rawTextElement(cp.p5Tok)))) {
+      // Migration A row 3: "may this tag continue across the line ending"
+      // is a raw-stream question — an open md html block answers it. The
+      // broadening over the old flag is types 3-5 interiors, and THAT is
+      // safe only because a paragraph-inline 3-5 opener already poisons
+      // document-wide (the F9 rule) — named dependency, do not remove one
+      // without the other.
+      if (cp.mdBlock.kind === 'html' && (!inRawTextTok(cp.p5Tok) || (closing && tag === rawTextElement(cp.p5Tok)))) {
         // The regex ends the tag at the first `>`, but in a real html-flow
         // run parse5 ends it at the first `>` OUTSIDE a quoted attribute
         // value (`</div a=">` eats the rest of the line and beyond — a
@@ -1774,7 +1791,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       // literal text and parse5 never sees a close (oracle review of the r2
       // batch, pre-existing: `p <div> x </div a="b"> y` froze past the open
       // div). In a real html-flow run parse5 accepts end-tag attributes.
-      if (closing && !cp.htmlFlowReal && !/^\s*$/.test(attrs)) {
+      if (closing && cp.mdBlock.kind !== 'html' && !/^\s*$/.test(attrs)) {
         // The match ran to the first `>`, swallowing whatever sat in the
         // "attributes". micromark does not: it backtracks the invalid
         // closing tag to literal text and re-scans from inside it, so
@@ -1878,13 +1895,13 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
           // for sure (a real html-flow run); in paragraph context `compare
           // a<td b` may be prose — poison waits for the `>` that confirms the
           // pending open (r2 P3), otherwise the blank line reverts it.
-          if (strayTablePart(tag) && cp.htmlFlowReal) {
+          if (strayTablePart(tag) && cp.mdBlock.kind === 'html') {
             cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start + lastLt);
           }
           // In a REAL html-flow run parse5 stays inside this tag across the
           // line ending — open, close or void alike (`<br` + `</div>` on the
           // next line: the `</div>` is garbage). See `pendingTag`.
-          if (cp.htmlFlowReal) {
+          if (cp.mdBlock.kind === 'html') {
             // Where parse5 stands after this line's attribute bytes + the
             // line ending (m2[3] holds them; no `>` in there by construction).
             const attrs = { state: 'outside' as TagAttrState };
@@ -1899,7 +1916,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
             // run — pend it; in paragraph context a block-indent `>` is a
             // blockquote (the 4+-space continuation shape is not modelled:
             // over-block), so it is treated as prose: nothing.
-            if (!VOID_TAGS.has(tag) && cp.htmlFlowReal) cp.pendingTruncatedCloses.push(tag);
+            if (!VOID_TAGS.has(tag) && cp.mdBlock.kind === 'html') cp.pendingTruncatedCloses.push(tag);
           } else if (!VOID_TAGS.has(tag)) {
             applyTag(tag, closing);
             // Only a PARAGRAPH-line truncation can turn out to be prose. In an
