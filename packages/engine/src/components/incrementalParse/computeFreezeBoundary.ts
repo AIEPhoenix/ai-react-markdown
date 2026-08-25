@@ -1105,11 +1105,16 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   // comment node whose seam-pinning power is unverified. (Lines INSIDE the
   // run keep the flag; the run's own blank keeps it so every candidate in
   // the trailing blank run stays rejected.)
+  // Migration B row 7, the CLEAR half (exact type 7): "starts OUTSIDE any
+  // html-flow run" is the MEMBER's answer at line start — the retired
+  // proxy also held the seam through `<embed x`-style paragraph lines,
+  // which emit their paragraph node and pin the seam like any other
+  // content line.
   if (
     cp.p5SealPending &&
     !ln.blank &&
-    !cp.mayBeRawToMicromark &&
-    !(mdHtml25(cp.mdBlock) || cp.p5Tok.kind === 'comment' || cp.p5Tok.kind === 'bogus')
+    cp.mdBlock.kind !== 'html' &&
+    !(cp.p5Tok.kind === 'comment' || cp.p5Tok.kind === 'bogus')
   ) {
     const defShapedLine = DEF_RE.test(ln.text) || FOOTNOTE_DEF_RE.test(ln.text);
     const commentOnly =
