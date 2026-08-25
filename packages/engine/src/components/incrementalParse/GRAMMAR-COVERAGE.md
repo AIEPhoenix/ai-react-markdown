@@ -196,6 +196,25 @@ terminator, the divergence poisons have already fired before the gate is
 consulted. Boundary movements: 8 increases (3 documents ×lineages), each
 verified by the engine probe battery; no decreases.
 
+### P4 status (the MdBlock union)
+
+Slices 1-2 landed (fence/math, then html types 1-5 after the phantom-opener
+gate made the flags a partition): eleven of the thirteen (M)-side fields
+are one union. The two RUN flags stay, deliberately: `htmlFlowReal` and
+`htmlFlowSinceBlank` are not one-construct state but PROXIES, and their
+~20 consumers ask different questions (parse5-rawness for the bogus-opener
+gate, cross-line tag garbage, truncation pending, paragraph-vs-block
+context for `openedInline`, masking, definitions, the seam). Folding them
+into the union member would silently change several of those answers at
+once — the exact mistake the plan's own P4b section forbids ("one sentence
+covering five different questions"). So the run flags move OUT of P4a and
+into the per-consumer stage, which now covers both. One entanglement to
+carry into that work, measured while folding types 2-5: a type 2-5 opener
+INSIDE a type 6/7 run takes the member (the comment state is doing
+PARSE5-side duty there — a parse5 comment crosses the blank the md block
+ends at), so `mdBlock` is not yet a pure (M) field; the per-consumer stage
+inherits that note.
+
 ## Deviation ledger
 
 Entries are kept after they are fixed, because the reasoning that once
