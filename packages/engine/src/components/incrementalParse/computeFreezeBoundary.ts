@@ -272,16 +272,132 @@ const TYPE1_START_RE = /^<(script|pre|style|textarea)(?:[ \t\r]|>|$)/i;
 /** Type 1's end condition is a literal substring anywhere on the line —
  *  no attributes, no whitespace before `>` (CommonMark 4.6). */
 const TYPE1_CLOSE_RE = /<\/(?:script|pre|style|textarea)>/i;
-/** Type-7 start (approximate, no quoted-`>` support): the whole line is
- *  one complete OPEN tag (attributes allowed) or CLOSING tag (attributes are
- *  NOT part of a closing tag in CommonMark — `</span a="b">` is a paragraph,
- *  and treating it as html flow made the scanner apply a close parse5 never
- *  sees: `<span>\n\n</span a="b">\n\ntail` froze past a still-open span
- *  (oracle re-check of the r2 batch). Type 6 is unaffected — its names are
+/** Type-7 start, EXACT (§4.6 condition 7 + the §2.2 tag grammar): the whole
+ *  line is one complete OPEN tag or one complete CLOSING tag, followed by
+ *  whitespace only. Attribute values follow the spec grammar — a QUOTED
+ *  value may contain `>` (`<span title="a>b">` alone on a line IS a type-7
+ *  block), an unquoted value may not (`<span title=a>b>` is a paragraph),
+ *  an attribute name is `[A-Za-z_:][A-Za-z0-9:._-]*`, an empty unquoted
+ *  value (`<a href=>`) invalidates the tag, and `/` self-closing must sit
+ *  directly before the `>` — every shape measured against micromark before
+ *  the approximate `[^>]*` test this replaces was retired (it both missed
+ *  the quoted-`>` class, which `mayBeRawToMicromark` existed to cover, and
+ *  over-accepted attribute garbage on non-type-6 names).
+ *
+ *  Closing tags take NO attributes (`</span a="b">` is a paragraph, and
+ *  treating it as html flow made the scanner apply a close parse5 never
+ *  sees: `<span>\n\n</span a="b">\n\ntail` froze past a still-open span —
+ *  oracle re-check of the r2 batch. Type 6 is unaffected — its names are
  *  recognized on `</name` + whitespace regardless of what follows.) */
-const TYPE7_LINE_RE = /^(?:<[A-Za-z][A-Za-z0-9-]*(?:[ \t\r][^>]*|\/)?>|<\/[A-Za-z][A-Za-z0-9-]*[ \t\r]*>)[ \t\r]*$/;
-/** The tag name of a TYPE7_LINE_RE match (the line starts `<` or `</`). */
-const t7Name = (line: string): string => /^<\/?([A-Za-z][A-Za-z0-9-]*)/.exec(line)![1];
+const isSpaceTab = (c: number): boolean => c === 32 || c === 9;
+const isAsciiAlpha = (c: number): boolean => (c >= 65 && c <= 90) || (c >= 97 && c <= 122);
+const isAlnum = (c: number): boolean => isAsciiAlpha(c) || (c >= 48 && c <= 57);
+/** completeAttributeName continuation set: alphanumeric, `-` `.` `:` `_`. */
+const isAttrNameRest = (c: number): boolean => isAlnum(c) || c === 45 || c === 46 || c === 58 || c === 95;
+/** completeAttributeValueUnquoted EXIT set (the value may not contain
+ *  these; note `=` exits into completeAttributeNameAfter, which happily
+ *  consumes another `=` — so `<foo a=b=c>` IS a complete tag to micromark,
+ *  looser than the spec's written grammar, measured and matched here). */
+const isUnquotedExit = (c: number): boolean =>
+  Number.isNaN(c) || c === 34 || c === 39 || c === 47 || c === 60 || c === 61 || c === 62 || c === 96 || isSpaceTab(c);
+
+/** The attribute area + `>` of a complete OPEN tag, transcribed state for
+ *  state from micromark's html-flow complete path (nameBefore / name /
+ *  nameAfter / valueBefore / valueQuoted(+After) / valueUnquoted / end).
+ *  Returns the index just past the closing `>`, or -1 where micromark
+ *  reaches `nok`. */
+const completeOpenTagRest = (t: string, from: number): number => {
+  let i = from;
+  for (;;) {
+    // completeAttributeNameBefore
+    const c = t.charCodeAt(i);
+    if (c === 47 /* / */) {
+      i += 1;
+      break; // → completeEnd
+    }
+    if (isSpaceTab(c)) {
+      i += 1;
+      continue;
+    }
+    if (!(c === 58 || c === 95 || isAsciiAlpha(c))) break; // → completeEnd
+    i += 1; // completeAttributeName
+    while (isAttrNameRest(t.charCodeAt(i))) i += 1;
+    // completeAttributeNameAfter — also re-entered after an unquoted value,
+    // which is what makes `=` chains legal.
+    for (;;) {
+      while (isSpaceTab(t.charCodeAt(i))) i += 1;
+      if (t.charCodeAt(i) !== 61 /* = */) break; // → completeAttributeNameBefore
+      i += 1; // completeAttributeValueBefore
+      while (isSpaceTab(t.charCodeAt(i))) i += 1;
+      const v = t.charCodeAt(i);
+      if (Number.isNaN(v) || v === 60 || v === 61 || v === 62 || v === 96) return -1;
+      if (v === 34 || v === 39) {
+        // completeAttributeValueQuoted: anything but the marker or EOL.
+        i += 1;
+        while (t.charCodeAt(i) !== v) {
+          if (i >= t.length) return -1;
+          i += 1;
+        }
+        i += 1;
+        // completeAttributeValueQuotedAfter: `/`, `>` or whitespace only.
+        const a = t.charCodeAt(i);
+        if (!(a === 47 || a === 62 || isSpaceTab(a))) return -1;
+        break; // → completeAttributeNameBefore
+      }
+      // completeAttributeValueUnquoted (possibly empty: `<a b=/>` is
+      // complete — the `/` exits straight through nameAfter to the end).
+      while (!isUnquotedExit(t.charCodeAt(i))) i += 1;
+      // → completeAttributeNameAfter(code) — loop.
+    }
+  }
+  // completeEnd
+  return t.charCodeAt(i) === 62 /* > */ ? i + 1 : -1;
+};
+
+/** Whether a line (leading indent stripped) meets §4.6 condition 7 — one
+ *  complete open or closing tag, whitespace only after — EXACTLY as
+ *  micromark decides it, including its tagName dispatch:
+ *  - a type-6 NAME never reaches condition 7 (`<div a="b>">` is type 6,
+ *    `</div>` too — realT6 at the call site agrees);
+ *  - an OPEN raw-text name is type 1 — UNLESS the name is followed by `/`
+ *    (`<style/>` is a complete type-7 tag, measured);
+ *  - a CLOSING tag takes no attributes but its name is unrestricted:
+ *    `</style>` alone on a line IS type 7 (the earlier "paragraph as end
+ *    tags" note in Table A was wrong, and harmless only while
+ *    `mayBeRawToMicromark` blanket-covered every `<`-starting line).
+ *  A lone `\r` is a LINE ENDING to micromark, not tag whitespace — the
+ *  classification runs on the segment before it (the rest of the physical
+ *  line is the block's first content either way). */
+export const isType7Line = (line: string): boolean => {
+  const cr = line.indexOf('\r');
+  const t = cr === -1 ? line : line.slice(0, cr);
+  if (t.charCodeAt(0) !== 60 /* < */) return false;
+  let i = 1;
+  const closing = t.charCodeAt(i) === 47;
+  if (closing) i += 1;
+  if (!isAsciiAlpha(t.charCodeAt(i))) return false;
+  const nameStart = i;
+  i += 1;
+  while (isAlnum(t.charCodeAt(i)) || t.charCodeAt(i) === 45) i += 1;
+  const c = t.charCodeAt(i); // NaN at end of line
+  // tagName exit set (EOL / `/` / `>` / whitespace); anything else is nok.
+  if (!(Number.isNaN(c) || c === 47 || c === 62 || isSpaceTab(c))) return false;
+  const name = t.slice(nameStart, i).toLowerCase();
+  if (!closing && c !== 47 && TYPE1_NAMES.has(name)) return false; // type 1
+  if (TYPE6_NAMES.has(name)) return false; // type 6 (or its basicSelfClosing)
+  if (closing) {
+    // completeClosingTagAfter: whitespace, then completeEnd's `>`.
+    while (isSpaceTab(t.charCodeAt(i))) i += 1;
+    if (t.charCodeAt(i) !== 62) return false;
+    i += 1;
+  } else {
+    i = completeOpenTagRest(t, i);
+    if (i === -1) return false;
+  }
+  // completeAfter: whitespace only to the end of (micromark's) line.
+  while (isSpaceTab(t.charCodeAt(i))) i += 1;
+  return i >= t.length;
+};
 
 export interface FreezeBoundaryOptions {
   /** Whether remark-definition-list is in the active plugin chain (the
@@ -361,11 +477,11 @@ type MdBlock =
   | { kind: 'math'; len: number; indent: number }
   /** A CommonMark html block. Types 1-5 end by their own condition
    *  (type 1: the literal closer line; 2-5: their terminators); types 6/7
-   *  end at the blank. Type 7 is entered by the APPROXIMATE
-   *  `TYPE7_LINE_RE` on purpose — exact §4.6 type 7 is cut from the plan,
-   *  and an exact test here would raise the boundary, which the stage
-   *  acceptances forbid; the run flags stay as deliberate conservative
-   *  cover until their consumers migrate one by one. */
+   *  end at the blank. Type 7 is entered by the EXACT §4.6 test
+   *  (`isType7Line`) since the exact-type-7 stage — the attribute-quote
+   *  hole the approximate test had (and `mayBeRawToMicromark` covered) is
+   *  closed, which is what let the remaining run-flag consumers migrate
+   *  to the member. */
   | { kind: 'html'; type: 1 | 2 | 3 | 4 | 5 | 6 | 7 };
 
 const mdHtml = (b: MdBlock, type: 1 | 2 | 3 | 4 | 5): boolean => b.kind === 'html' && b.type === type;
@@ -1397,14 +1513,14 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     if (cp.mdBlock.kind !== 'html') {
       const t = mdTrimStart(ln.text);
       const t6 = TYPE6_START_RE.exec(t);
-      const t7 = TYPE7_LINE_RE.exec(t);
       const realT6 = t6 !== null && TYPE6_NAMES.has(t6[1].toLowerCase());
       if (
         realT6 ||
         TYPE1_START_RE.test(t) ||
-        // Type 7 cannot interrupt a paragraph, and excludes the raw-text
-        // names (those are type 1 as start tags, paragraph as end tags).
-        (t7 !== null && !cp.prevLineWasText && !TYPE1_NAMES.has(t7Name(t).toLowerCase()))
+        // Type 7 cannot interrupt a paragraph. The classifier is exact
+        // (isType7Line) — including closing raw-text names (`</style>`
+        // alone is type 7, measured) and quoted-`>` attribute values.
+        (!cp.prevLineWasText && isType7Line(t))
       ) {
         // The 6/7 member (type 1 wrote html{1} above; inside this branch
         // the member is provably 'none', the guard is shape only).
