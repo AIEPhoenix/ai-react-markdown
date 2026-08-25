@@ -54,6 +54,19 @@ describe('P5Tok partition + pendingTag overlay (B2 co-existence shapes)', () => 
     assertStreamEquivalence('c6-cdata', scheduleSnapshots(cdataDoc, [1, 1, 1, 1, 1, 1, 1, 1]), CATALOG[0]);
   });
 
+  /** Migration B row 5's would-fail-if-flipped pin: a def-shaped line
+   *  glued under a closed 2-5 block, or on a type-7-hole run line, is a
+   *  paragraph CONTINUATION to micromark — its `[a]` ref must stay live
+   *  (unregistered def ⇒ taint keeps the boundary at 0). A REAL def after
+   *  a blank registers and the boundary passes the ref. If either 0 turns
+   *  positive, someone loosened `defLineStart` or the def gate — the two
+   *  halves of one safety argument. */
+  test('glued def lines stay unregistered; real defs register', () => {
+    expect(boundary('see [a] cited\n\n<!-- x -->\n[a]: /u\n\ntail\n\nend\n')).toBe(0);
+    expect(boundary('see [a] cited\n\n<span title="a>b">\n[a]: /u\n\ntail\n\nend\n')).toBe(0);
+    expect(boundary('see [a] cited\n\n[a]: /u\n\ntail\n\nend\n')).toBe(30);
+  });
+
   test('F10 still fires for the script kind (M1)', () => {
     // <script> nested in a type-6 run, then a blank: the raw-text state
     // runs on while micromark's block ends — document-wide poison.

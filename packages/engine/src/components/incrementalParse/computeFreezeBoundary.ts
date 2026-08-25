@@ -1405,6 +1405,14 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       }
     }
   }
+  // Migration B rows 4/6/7 + the truncated-open and seam-set sites KEEP
+  // the conservative flag, deliberately: their exact-by-member answers
+  // NARROW into the TYPE7_LINE_RE attribute hole (`<span title="a>b">`
+  // opens a type-7 block the member never sees — span is not a type-6
+  // name), and the review measured four boundary rises there, one of them
+  // deleting the fence/math phasePoisonedAt backstop. These consumers
+  // migrate only if exact type 7 ever ships; the nonType6QuotedGt corpus
+  // family stands guard over the hole either way.
   const inRawText = cp.mayBeRawToMicromark || rawOpenAtLineStart;
   // A type 2-5 html block (`<!--` / `<?` / `<!X` / `<![CDATA[`) STARTING on
   // this line at block indent. Not sticky (V9 — the block ends with its
@@ -1427,7 +1435,18 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
 
   // Blocker 5 (reference taint) — moved to referenceTaint.ts as a pure
   // move (two-model plan P2); the module doc carries the rationale.
-  const { validLinkDef } = collectRefLine(cp, ln.start, ln.end, scanText, inRawText, isBlockStart);
+  // Migration B row 5 (P4b-completion): the def gate goes EXACT — "is a
+  // def-shaped line raw to micromark" is answered by the member (an open
+  // md html block) plus the parse5-side masks. The narrowing over the old
+  // proxy is safe for a reason that must stay written down: the second
+  // gate inside collectRefLine is `defLineStart`, and `prevLineWasText`
+  // is set at the end of EVERY non-blank line — so on every narrowed
+  // shape (a type-7-hole run line, a def line glued under a closed 2-5
+  // block) the def is a paragraph-continuation line and stays
+  // unregistered. Loosen `defLineStart` and this migration's safety
+  // argument goes with it.
+  const defRawToMicromark = cp.mdBlock.kind === 'html' || rawOpenAtLineStart || inRawTextTok(cp.p5Tok);
+  const { validLinkDef } = collectRefLine(cp, ln.start, ln.end, scanText, defRawToMicromark, isBlockStart);
 
   // Blocker 1: raw-block (types 3–5) state machine, then tag balance.
   // `rawSpans` records the byte ranges this line contributes to raw
