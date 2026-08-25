@@ -178,15 +178,19 @@ No mechanism needed; each row cites the rule that forbids the crossing.
 Batch 1 (F6, the double-escape poison): the script kind carries the full
 escape ladder (`double` implies `escaped`; `</script>` while double steps
 back to escaped with the element OPEN and counted; `-->` exits both
-levels — parse5 tokenizer, verified in source). The first landing was
-reverted on a measured counterexample — the element CROSSES micromark
-blocks and swallows their wrap separator (extra root `"\n"`, frame 20 of
-the soak leg-1 doc, reproduced red before the fix) — and the second
-landing ships the capability the revert was blocked on: the splice
-refuses prefixes whose html blocks leave a raw-text region open at their
-own end (`rawTextRegionCrossesOut` in `spliceParse.ts`). The system
-contract is scanner boundary PLUS splice guards; those frames take the
-full path while rendering-layer caching recovers.
+levels — parse5 tokenizer, verified in source). Recovery is
+SINGLE-LINE-ONLY, and the release soak decided that: a multi-line tangle
+necessarily CROSSES micromark blocks (the type-1 block ends at the first
+literal closer line, the element survives it), the element swallows the
+later blocks and their wrap separators as its own text, and sanitize
+stripping it merges the survivors backward past earlier boundaries — the
+F9/F11 erasure class, so the surviving close poisons DOCUMENT-WIDE
+(direction-battery seeds 20282605/10/11: boundary 56 with the frozen
+region's children changing under a one-character append). A tangle that
+resolves on its opening line is one block and one element and recovers.
+`rawTextRegionCrossesOut` in `spliceParse.ts` stays as defense in depth
+on the splice path (it reproduced the first landing's frame-20 extra
+`"\n"` red before it existed).
 
 Batches 2+3 (`--!>`; the `<?`/`<![CDATA[` first-`>` disagreements): both
 went WINDOW-EXACT instead of poisoned. parse5 leaves the construct early

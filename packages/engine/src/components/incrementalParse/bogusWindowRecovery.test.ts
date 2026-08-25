@@ -51,6 +51,25 @@ describe('PI/CDATA first-`>` window recovery (P3b batch 3)', () => {
     expect(boundary(doc)).toBeGreaterThan(0);
   });
 
+  test('a 2-5 opener inside a 6/7 run does not steal the member (soak 20282500)', () => {
+    // `</t>` opens a type-7 run with NO blank in sight — the whole
+    // document below is that run's content to micromark. The CDATA
+    // opener used to overwrite the member and close it at `]]>`, so the
+    // `$$` after was mistaken for a real math open and the phantom
+    // closer broke output-neutrality (fuzz shard 0 of the release gate;
+    // masked by the run flag until its deletion). The member now keeps
+    // the run; only the p5 bogus overlay opens inside it.
+    const doc =
+      '</t>\ntext after a stray end tag\r\n<![CDATA[\n<details>\n]]> trailing prose\n$$\ne = mc^2\n\n$$\n\n> a quoted line\n';
+    for (const sizes of [
+      [4, 4, 15, 4, 17, 4, 1, 4],
+      [4, 4, 4, 4, 4, 4, 4, 4],
+      [1, 4, 4, 4],
+    ]) {
+      assertStreamEquivalence('member-steal', scheduleSnapshots(doc, sizes), CATALOG[0]);
+    }
+  }, 120_000);
+
   test('every window shape streams like a full parse', () => {
     const SHAPES = [
       'x\n\n<?x >?>\n\ny\n\nzzz\n',

@@ -41,16 +41,22 @@ import { scheduleSnapshots } from './fuzzGenerators';
 const TAIL = '\n\npara one\n\npara two\n\npara three\n';
 const boundary = (text: string) => computeFreezeBoundary(text, { defListEnabled: false }).boundary;
 
-/** Double escape, RETIRED poison (P3b batch 1): the ladder is tracked
- *  exactly — while double, `</script>` steps back to escaped and the
- *  element stays open AND COUNTED, so candidates release only once the
- *  real closer arrives. The frozen prefix then contains an element that
- *  crossed micromark blocks; the splice refuses those prefixes
- *  (`rawTextRegionCrossesOut`) and the equivalence battery below proves
- *  every frame equals the full parse either way. */
-const RECOVERING = [
+/** Double escape (P3b batch 1, final shape after the 20282500-series
+ *  soak): the ladder is tracked exactly — while double, `</script>`
+ *  steps back to escaped and the element stays open AND COUNTED. A
+ *  tangle that RESOLVES ON ITS OPENING LINE recovers (one md block, one
+ *  parse5 element — no divergence survives the line). */
+const RECOVERING = ['<script><!--<script></script></script>'];
+/** A MULTI-LINE tangle cannot recover: micromark's type-1 block ends at
+ *  the first literal closer line while parse5's element survives it, so
+ *  the element swallows later md blocks AND their wrap separators as its
+ *  own text — and sanitize stripping it merges the survivors BACKWARD
+ *  past any earlier boundary (the F9/F11 erasure class). The
+ *  direction-battery counterexamples (seeds 20282605/10/11) froze at 56
+ *  and a one-character append changed the frozen region's children —
+ *  document-wide poison at the surviving close, like every erasure. */
+const ERASURE_POISONED = [
   '<script>\n<!--<script>\n</script>\n</script>',
-  '<script><!--<script></script></script>',
   '<script>\n<!--<script>\n</script>\n<div>d</div>\n</script>',
   '<script>\n<!-- a comment\n<script>\n</script>\n</script>',
 ];
@@ -71,9 +77,15 @@ const SAFE = [
 ];
 
 describe('script data escape states', () => {
-  test('double escape RECOVERS once the element truly closes', () => {
+  test('a single-line tangle recovers', () => {
     for (const shape of RECOVERING) {
       expect({ shape, past: boundary(`${shape}${TAIL}`) > 0 }).toEqual({ shape, past: true });
+    }
+  });
+
+  test('a multi-line tangle is the erasure class: document-wide poison', () => {
+    for (const shape of ERASURE_POISONED) {
+      expect({ shape, boundary: boundary(`${shape}${TAIL}`) }).toEqual({ shape, boundary: 0 });
     }
   });
 
@@ -90,7 +102,7 @@ describe('script data escape states', () => {
   });
 
   test('every shape streams like a full parse', () => {
-    for (const shape of [...RECOVERING, ...STILL_OPEN, ...SAFE]) {
+    for (const shape of [...RECOVERING, ...ERASURE_POISONED, ...STILL_OPEN, ...SAFE]) {
       assertStreamEquivalence(shape, scheduleSnapshots(`${shape}${TAIL}`, [4, 4, 4, 4, 4, 4, 4, 4]), CATALOG[0]);
     }
   }, 60_000);
@@ -120,18 +132,17 @@ describe('script data escape states', () => {
     assertStreamEquivalence('lifted escape', scheduleSnapshots(doc, [4, 4, 4, 4, 4, 4, 4, 4]), CATALOG[0]);
   });
 
-  /** P3b batch 1, SECOND landing (2026-08-25): the first landing was
-   *  reverted the same day on a measured counterexample — the divergence
-   *  window makes micromark cut TWO raw blocks where parse5 builds ONE
-   *  element across them, the separator between the blocks becomes
-   *  element text (stripped with the script), and the splice's seam
-   *  synthesis double-counted a separator (streamed at 4-byte chunks:
-   *  the soak leg-1 document above, boundary 60, frame 20, an extra
-   *  root "\n" — reproduced EXACTLY before the guard landed). The
-   *  splice now refuses prefixes whose html blocks leave a raw-text
-   *  region open at their own end (`rawTextRegionCrossesOut`), which is
-   *  the capability the revert was blocked on; the scanner's ladder and
-   *  recovery are unchanged from the first landing. */
+  /** P3b batch 1, the full history (three landings' worth of evidence):
+   *  the FIRST landing was reverted on the splice-side counterexample
+   *  (the crossing element swallows the inter-block separator; frame 20
+   *  carried an extra root "\n" — reproduced red, then fixed by
+   *  `rawTextRegionCrossesOut`). The SECOND landing's release soak then
+   *  found the scanner-side hole (seeds 20282605/10/11): even with the
+   *  splice refusing, the BOUNDARY itself was unsafe — the stripped
+   *  crossing element is an erasure whose merge reaches backward, so
+   *  multi-line tangles now poison document-wide at the surviving close
+   *  and only single-line tangles recover. The splice guard stays as
+   *  defense in depth. */
   test('the escape state resets with the element', () => {
     const doc = `<script><!--x--></script>\n\nmid para\n\n<script>\n<script>\n</script>${TAIL}`;
     expect(boundary(doc) > 0).toBe(true);

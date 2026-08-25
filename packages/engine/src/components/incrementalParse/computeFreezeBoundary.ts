@@ -1812,9 +1812,17 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       pos = bogus + 2;
     } else if (first === cd) {
       rawSpans.push([cd, cd + 9]);
-      cp.mdBlock = { kind: 'html', type: 5 };
-      // The p5 half: `<![CDATA[` in fragment html is a bogus comment to
-      // the first `>` (rev2 #4, measured) — batch 3 tracks it honestly.
+      // Claim the member only OUTSIDE a 6/7 run — inside one, micromark
+      // opens nothing (the run owns every byte to the blank) and the old
+      // unconditional write LOST the run's identity: `</t>` opened a
+      // type-7 run, `<![CDATA[…]]>` overwrote the member and closed it at
+      // `]]>`, and the `$$` after was mistaken for a REAL math open — the
+      // phantom closer then broke output-neutrality (soak seed 20282500,
+      // fuzz shard 0; latent behind the run flag until its deletion).
+      // Same rule as `<!--` since P4b commit 1: the parse5 half lives on
+      // the overlay regardless (`<![CDATA[` in fragment html is a bogus
+      // comment to the first `>` — rev2 #4, measured).
+      if (cp.mdBlock.kind === 'none') cp.mdBlock = { kind: 'html', type: 5 };
       if (cp.p5Tok.kind === 'data') cp.p5Tok = { kind: 'bogus' };
       if (!isMdBlank(scanText.slice(0, cd)) || ln.indent > 3) inlineRawOpenerIdx = cd;
       pos = cd + 9;
@@ -1833,7 +1841,8 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
         continue;
       }
       rawSpans.push([pi, pi + 2]);
-      cp.mdBlock = { kind: 'html', type: 3 };
+      // Member only outside a 6/7 run (see the CDATA branch).
+      if (cp.mdBlock.kind === 'none') cp.mdBlock = { kind: 'html', type: 3 };
       if (cp.p5Tok.kind === 'data') cp.p5Tok = { kind: 'bogus' };
       if (!isMdBlank(scanText.slice(0, pi)) || ln.indent > 3) inlineRawOpenerIdx = pi;
       pos = pi + 2;
@@ -1853,7 +1862,8 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       // `    <!DOCTYPE html>` block. Backticked mentions are masked out
       // before this scan and never reach here at all.
       if (ln.indent <= 3 && /^doctype/i.test(scanText.slice(decl + 2))) cp.phasePoisonedAt = 0;
-      cp.mdBlock = { kind: 'html', type: 4 };
+      // Member only outside a 6/7 run (see the CDATA branch).
+      if (cp.mdBlock.kind === 'none') cp.mdBlock = { kind: 'html', type: 4 };
       // md type 4 and the p5 bogus comment share their first-`>` end, so
       // no window can open — the pairing is still tracked for honesty.
       if (cp.p5Tok.kind === 'data') cp.p5Tok = { kind: 'bogus' };
@@ -2301,6 +2311,18 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   // line has been scanned as raw flow. The next line starts fresh.
   if (mdHtml(cp.mdBlock, 1) && TYPE1_CLOSE_RE.test(ln.text)) {
     cp.mdBlock = { kind: 'none' };
+    // The type-1 block ends here for micromark — if parse5's raw-text
+    // element SURVIVES this close (the double-escape held it open), the
+    // element will swallow later md blocks and their wrap separators as
+    // its own text, and sanitize stripping it then merges the survivors
+    // BACKWARD past any earlier boundary (the F9/F11 erasure class — the
+    // 20282605/10/11 direction-battery counterexamples: `<script>\n
+    // <!--<script>\n</script>\n<div>d</div>\n</script>` froze at 56 and
+    // a one-character append changed the frozen region's children).
+    // Document-wide poison, the erasure standard; a tangle that resolves
+    // on ONE line never reaches this branch with the element open, so
+    // the single-line recovery (and the `-->` exact exit) survive.
+    if (inRawTextTok(cp.p5Tok)) cp.phasePoisonedAt = 0;
   }
 
   cp.blankRun = 0;
