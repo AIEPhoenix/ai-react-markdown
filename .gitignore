@@ -14,3 +14,4 @@ storybook-static/
 # clone running the same tooling would otherwise see them in `git status`.
 **/.claude/scheduled_tasks.lock
 **/.impeccable/
+.soak-logs/
