@@ -62,7 +62,7 @@
  *    rest of that line as raw content too (`<!-- c --> tail`) — same seam.
  * 7. **Phase poison** (`phasePoisonedAt`) — points where this line-level
  *    model may have DIVERGED from micromark and provably cannot resync:
- *    a fence/math open suppressed by `htmlFlowSinceBlank` (only certainly
+ *    a fence/math open suppressed by `mayBeRawToMicromark` (only certainly
  *    swallowed at top level — in a container it really opens and the
  *    open/close phase inverts permanently), and a paragraph-inline `<!--`
  *    that fails to close by end of line (literal text to micromark, but
@@ -489,8 +489,15 @@ export interface FreezeScanCheckpointInternal extends FreezeScanCheckpoint {
    *  balance scan (under-block — fuzz counterexample: `</details>` followed
    *  by an unblanked `` `<div>` `` line). While set, masking is skipped —
    *  which can only over-block (safe direction). */
-  htmlFlowSinceBlank: boolean;
-  /** Offset of the first fence/math OPEN suppressed by `htmlFlowSinceBlank`
+  /* ^ Renamed from `htmlFlowSinceBlank` (P4b-completion, commit 3): this
+   *   is a DELIBERATE (M)-side conservative flag, not a proxy awaiting an
+   *   exact answer. It over-fires on purpose — `mdBlock`'s type-7 member
+   *   is entered by the approximate TYPE7_LINE_RE (exact §4.6 type 7 is
+   *   cut), so a `<span title="a>b">` line is a type-7 block the member
+   *   never sees, and this flag is what keeps its consumers safe there.
+   *   It dies only if exact type 7 ever ships. */
+  mayBeRawToMicromark: boolean;
+  /** Offset of the first fence/math OPEN suppressed by `mayBeRawToMicromark`
    *  (Infinity = none). Whether the run really swallowed that line depends
    *  on container context the line scan cannot see (`<embed` inside a list
    *  item is a lazy paragraph line, and the glued `$$` a REAL math open —
@@ -545,13 +552,13 @@ export interface FreezeScanCheckpointInternal extends FreezeScanCheckpoint {
   } | null;
   /** The html-flow run since the last blank REALLY started as a micromark
    *  html block (type 6 / type 1 / a paragraph-not-interrupting type 7) —
-   *  as opposed to `htmlFlowSinceBlank`, which any `<tag` / `</tag` line
+   *  as opposed to `mayBeRawToMicromark`, which any `<tag` / `</tag` line
    *  start sets (over-approximation, fine for its over-blocking uses). Only
    *  in a real run are the bytes raw to parse5 across line endings; the
    *  cross-line-tag garbage model (`pendingTag`, pended closes) is
    *  gated on it — in a paragraph starting `</i` the next line's `<div>` /
    *  `<!--` are REAL blocks (oracle re-check of 2.4.4: gating on
-   *  htmlFlowSinceBlank swallowed them — a new under-block). Sticky to the
+   *  mayBeRawToMicromark swallowed them — a new under-block). Sticky to the
    *  blank; a type 6/1 start on a later line of a non-real run promotes it. */
   htmlFlowReal: boolean;
   /** The open-element stack, in order. `tagBalance` and `openTotal` are
@@ -750,7 +757,7 @@ function freshCheckpoint(
     prevLineWasValidDef: false,
     paragraphHasUnpairedRun: false,
     openBracket: null,
-    htmlFlowSinceBlank: false,
+    mayBeRawToMicromark: false,
     p5SealPending: false,
     phasePoisonedAt: Infinity,
     pendingTruncatedTags: [],
@@ -963,7 +970,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   if (
     cp.p5SealPending &&
     !ln.blank &&
-    !cp.htmlFlowSinceBlank &&
+    !cp.mayBeRawToMicromark &&
     !(mdHtml25(cp.mdBlock) || cp.p5Tok.kind === 'comment' || cp.p5Tok.kind === 'bogus')
   ) {
     const defShapedLine = DEF_RE.test(ln.text) || FOOTNOTE_DEF_RE.test(ln.text);
@@ -1131,7 +1138,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   // this line makes the whole line html-block content — the construct's
   // block ends WITH the line carrying its terminator, so even that line's
   // remainder is raw text. Gates fence/math opens, masking, and def
-  // registration below, alongside the tag-block flag (htmlFlowSinceBlank).
+  // registration below, alongside the tag-block flag (mayBeRawToMicromark).
   const commentOpenAtLineStart = commentEitherOpen(cp.mdBlock, cp.p5Tok);
   const rawOpenAtLineStart = mdHtml25(cp.mdBlock) || cp.p5Tok.kind === 'comment' || cp.p5Tok.kind === 'bogus';
 
@@ -1160,7 +1167,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     // ```a``` b is a PARAGRAPH with a code span, not a fence open (A5).
     const bogusInfo =
       open !== null && open[1][0] === '`' && ln.text.slice(ln.text.indexOf(open[1]) + open[1].length).includes('`');
-    if (open && !bogusInfo && cp.htmlFlowSinceBlank) {
+    if (open && !bogusInfo && cp.mayBeRawToMicromark) {
       // Suppressed open — whether the html-flow run really swallows this
       // line is container-dependent (see phasePoisonedAt). Poison the phase
       // and fall through so the line stays tag-scanned as raw text.
@@ -1199,7 +1206,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     cp.prevLineWasValidDef = false;
     return;
   }
-  // Fence/math OPENS are gated on !htmlFlowSinceBlank (matching the fence
+  // Fence/math OPENS are gated on !mayBeRawToMicromark (matching the fence
   // branch above): inside an html flow run a ``` or $$ line is raw text —
   // entering fence state there would skip tag extraction on lines that
   // rehype-raw parses as REAL markup (fuzz counterexample: a fence glued
@@ -1217,7 +1224,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     // contain `$`): `$$x$$` is inline math, `$$x$` a plain paragraph —
     // both self-contained lines, no state either way.
     if (!rest.includes('$')) {
-      if (cp.htmlFlowSinceBlank) {
+      if (cp.mayBeRawToMicromark) {
         cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
       } else {
         if (isBlockStart) {
@@ -1295,7 +1302,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     // FENCE to the scanner — a candidate landed inside the html block
     // (2026-08-20 soak leg 2, third shape).
     if (!mdHtml(cp.mdBlock, 1)) {
-      cp.htmlFlowSinceBlank = false;
+      cp.mayBeRawToMicromark = false;
       cp.htmlFlowReal = false;
       // A RAWTEXT/RCDATA element still open ACROSS this blank has just had
       // its micromark block end under it: a type-6 run ends at the blank,
@@ -1373,7 +1380,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   const tagStart = ln.indent <= 3 ? /^<\/?([A-Za-z][A-Za-z0-9-]*)/.exec(mdTrimStart(ln.text)) : null;
   if (tagStart) {
     // Gate on `htmlFlowReal`, not on "did the run start here": the latter
-    // reads `htmlFlowSinceBlank`, which ANY `<tag` line start sets as an
+    // reads `mayBeRawToMicromark`, which ANY `<tag` line start sets as an
     // over-approximation — `<embed` (not a type-6 name, not a complete
     // type-7 line) is a PARAGRAPH to micromark, yet it opened the run and so
     // hid the real type-1 block that followed it. What actually matters is
@@ -1382,7 +1389,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     // not start one. Read before the promotion below, which is this line's
     // own (2026-08-21 scaled soak, shard 0).
     const noRealBlockOpen = !cp.htmlFlowReal;
-    cp.htmlFlowSinceBlank = true;
+    cp.mayBeRawToMicromark = true;
     if (noRealBlockOpen && TYPE1_START_RE.test(mdTrimStart(ln.text))) cp.mdBlock = { kind: 'html', type: 1 };
     if (!TYPE6_NAMES.has(tagStart[1].toLowerCase())) cp.hazardVerdict = true;
     if (!cp.htmlFlowReal) {
@@ -1405,7 +1412,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       }
     }
   }
-  const inRawText = cp.htmlFlowSinceBlank || rawOpenAtLineStart;
+  const inRawText = cp.mayBeRawToMicromark || rawOpenAtLineStart;
   // A type 2-5 html block (`<!--` / `<?` / `<!X` / `<![CDATA[`) STARTING on
   // this line at block indent. Not sticky (V9 — the block ends with its
   // terminator's line), and not `inRawText` unless the construct stays
@@ -1801,7 +1808,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     // No `!inRawText` gate here, and the poison is document-wide — two
     // upgrades over the original, both bought by counterexamples:
     //
-    //  - `inRawText` reads `htmlFlowSinceBlank`, which ANY `<letter` line
+    //  - `inRawText` reads `mayBeRawToMicromark`, which ANY `<letter` line
     //    start sets. `<b>x</b> <!-- trailing…` is a PARAGRAPH (`b` is not a
     //    type-6 name), yet the `<b` start suppressed this poison entirely
     //    and the document froze at 173 of 200 (2026-08-24 scaled soak,
@@ -1975,7 +1982,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   // line has been scanned as raw flow. The next line starts fresh.
   if (mdHtml(cp.mdBlock, 1) && TYPE1_CLOSE_RE.test(ln.text)) {
     cp.mdBlock = { kind: 'none' };
-    cp.htmlFlowSinceBlank = false;
+    cp.mayBeRawToMicromark = false;
     cp.htmlFlowReal = false;
   }
 
