@@ -265,6 +265,11 @@ const RAW_TEXT_ELEMENTS = new Set([
   // (oracle review of the r2 batch; regression caught before release).
   'plaintext',
 ]);
+/** Bytes parse5's DATA state acts on: `<` + letter / `!` / `/` / `?`.
+ *  Everything else (a lone `<`, `< b`) is character data. Used by the
+ *  `--!>` divergence-window check: a window containing none of these is
+ *  text to BOTH grammars and may converge. */
+const P5_MARKUP_RE = /<[!/?A-Za-z]/;
 /** Type-6 start: `<`/`</` + name + (whitespace | `>` | `/>` | EOL). */
 const TYPE6_START_RE = /^<\/?([A-Za-z][A-Za-z0-9-]*)(?:[ \t\r]|\/?>|$)/;
 /** Type-1 start: an OPEN tag of a raw-text name + (whitespace | `>` | EOL). */
@@ -1294,6 +1299,23 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   // remainder is raw text. Gates fence/math opens, masking, and def
   // registration below, alongside the html-block member.
   const commentOpenAtLineStart = commentEitherOpen(cp.mdBlock, cp.p5Tok);
+  // The two halves separately, for consumers that need the INTERSECTION
+  // (floatingResidue) rather than the union — captured at line start like
+  // the union itself.
+  const bothCommentsOpenAtLineStart = mdHtml(cp.mdBlock, 2) && cp.p5Tok.kind === 'comment';
+  // P3b batches 2/3, the divergence WINDOWS: micromark still inside its
+  // comment (type 2) or PI/CDATA (type 3/5) block, parse5 already out
+  // (`--!>` closed the comment; the construct's first `>` closed the
+  // bogus comment). Window bytes are construct interior to one grammar
+  // and live input to the other — safe exactly while parse5 reads them
+  // as TEXT. The first line carrying a byte parse5 would act on poisons
+  // the phase (sticky, over-block).
+  const inDivergenceWindow =
+    (mdHtml(cp.mdBlock, 2) && cp.p5Tok.kind !== 'comment') ||
+    ((mdHtml(cp.mdBlock, 3) || mdHtml(cp.mdBlock, 5)) && cp.p5Tok.kind !== 'bogus');
+  if (inDivergenceWindow && P5_MARKUP_RE.test(ln.text)) {
+    cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
+  }
   const rawOpenAtLineStart = mdHtml25(cp.mdBlock) || cp.p5Tok.kind === 'comment' || cp.p5Tok.kind === 'bogus';
 
   // --- fence state (interiors are candidate-free; paragraph resets) ---
@@ -1435,11 +1457,18 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
     }
     cp.pendingTag = null;
-    // Same for a bogus comment left open: the block ended, the tokenizer
-    // has not — poison and reset.
+    // Same for a bogus comment left open WITHOUT its md construct: the
+    // block ended, the tokenizer has not — poison and reset. When an md
+    // type 2-5 block is still open the two grammars CROSS the blank
+    // together (`<?a\n\n?>` is one block and one bogus comment — batch 3
+    // pairs the states, so the aligned crossing must not poison).
     if (cp.p5Tok.kind === 'bogus') {
-      cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
-      cp.p5Tok = { kind: 'data' };
+      if (mdHtml25(cp.mdBlock)) {
+        // aligned — both grammars still inside; state survives the blank.
+      } else {
+        cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
+        cp.p5Tok = { kind: 'data' };
+      }
     }
     // Types 6/7 end AT this blank — the member clears before the candidate
     // is judged, exactly when the block ends. (Type 1 survives the blank;
@@ -1679,30 +1708,39 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
    *  block-interrupting next line retracts to literal text. */
   let inlineRawOpenerIdx = -1;
   while (pos < scanText.length) {
-    if (mdHtml(cp.mdBlock, 3)) {
-      const c = scanText.indexOf('?>', pos);
-      const gt = scanText.indexOf('>', pos);
-      if (gt !== -1 && (c === -1 || gt !== c + 1)) poisonRawDivergence();
-      if (c === -1) {
-        rawSpans.push([pos, scanText.length]);
-        break;
+    if (mdHtml(cp.mdBlock, 3) || mdHtml(cp.mdBlock, 5)) {
+      // P3b batch 3: micromark's type 3/5 block runs to `?>` / `]]>`;
+      // parse5's BOGUS COMMENT (the p5 half of these constructs, tracked
+      // on `p5Tok` since this batch) ends at the FIRST `>`. When the two
+      // disagree, the window between parse5's `>` and micromark's
+      // terminator is construct interior to one grammar and live input to
+      // the other — poisoned ONLY if it can hold bytes parse5 acts on
+      // (P5_MARKUP_RE), same rule as the `--!>` window. In window mode
+      // (p5 already out) the bytes are parse5 TEXT: no rawSpans, so the
+      // blocker-6 residue sees the remnant they become.
+      const isPi = mdHtml(cp.mdBlock, 3);
+      const term = isPi ? '?>' : ']]>';
+      const c = scanText.indexOf(term, pos);
+      const mdEnd = c === -1 ? scanText.length : c + term.length;
+      if (cp.p5Tok.kind === 'bogus') {
+        const gt = scanText.indexOf('>', pos);
+        if (gt !== -1 && (c === -1 || gt !== c + term.length - 1)) {
+          // parse5 closes here; the window to micromark's terminator (or
+          // EOL — later window lines are checked at line start).
+          cp.p5Tok = { kind: 'data' };
+          rawSpans.push([pos, gt + 1]);
+          if (P5_MARKUP_RE.test(scanText.slice(gt + 1, c === -1 ? scanText.length : c))) {
+            poisonRawDivergence();
+          }
+        } else {
+          rawSpans.push([pos, mdEnd]);
+          if (c !== -1) cp.p5Tok = { kind: 'data' };
+        }
       }
-      rawSpans.push([pos, c + 2]);
+      // (p5 out already: window-mode bytes stay unmasked on purpose.)
+      if (c === -1) break;
       cp.mdBlock = { kind: 'none' };
-      pos = c + 2;
-      continue;
-    }
-    if (mdHtml(cp.mdBlock, 5)) {
-      const c = scanText.indexOf(']]>', pos);
-      const gt = scanText.indexOf('>', pos);
-      if (gt !== -1 && (c === -1 || gt !== c + 2)) poisonRawDivergence();
-      if (c === -1) {
-        rawSpans.push([pos, scanText.length]);
-        break;
-      }
-      rawSpans.push([pos, c + 3]);
-      cp.mdBlock = { kind: 'none' };
-      pos = c + 3;
+      pos = mdEnd;
       continue;
     }
     // The two first-`>` machines are de-fused (P4b-completion commit 1):
@@ -1775,6 +1813,9 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     } else if (first === cd) {
       rawSpans.push([cd, cd + 9]);
       cp.mdBlock = { kind: 'html', type: 5 };
+      // The p5 half: `<![CDATA[` in fragment html is a bogus comment to
+      // the first `>` (rev2 #4, measured) — batch 3 tracks it honestly.
+      if (cp.p5Tok.kind === 'data') cp.p5Tok = { kind: 'bogus' };
       if (!isMdBlank(scanText.slice(0, cd)) || ln.indent > 3) inlineRawOpenerIdx = cd;
       pos = cd + 9;
     } else if (first === pi) {
@@ -1793,6 +1834,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       }
       rawSpans.push([pi, pi + 2]);
       cp.mdBlock = { kind: 'html', type: 3 };
+      if (cp.p5Tok.kind === 'data') cp.p5Tok = { kind: 'bogus' };
       if (!isMdBlank(scanText.slice(0, pi)) || ln.indent > 3) inlineRawOpenerIdx = pi;
       pos = pi + 2;
     } else {
@@ -1812,6 +1854,9 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       // before this scan and never reach here at all.
       if (ln.indent <= 3 && /^doctype/i.test(scanText.slice(decl + 2))) cp.phasePoisonedAt = 0;
       cp.mdBlock = { kind: 'html', type: 4 };
+      // md type 4 and the p5 bogus comment share their first-`>` end, so
+      // no window can open — the pairing is still tracked for honesty.
+      if (cp.p5Tok.kind === 'data') cp.p5Tok = { kind: 'bogus' };
       if (!isMdBlank(scanText.slice(0, decl)) || ln.indent > 3) inlineRawOpenerIdx = decl;
       pos = decl + 2;
     }
@@ -1925,9 +1970,16 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
             if (cp.p5Tok.kind === 'comment') cp.p5Tok = { kind: 'data' };
           } else if (next === '!>' || next === '-!') {
             // parse5-only closer inside the token: parse5 leaves the
-            // comment, micromark does not — the relation poison.
+            // comment, micromark does not. P3b batch 2: the divergence
+            // WINDOW (from here to micromark's `-->`) is markup to parse5
+            // and comment content to micromark — poison only if markup
+            // bytes can appear in it on this line; later window lines are
+            // checked at line start. A markup-free window is text to both
+            // grammars and converges at `-->`.
             if (cp.p5Tok.kind === 'comment') cp.p5Tok = { kind: 'data' };
-            poisonRawDivergence();
+            if (mdHtml(cp.mdBlock, 2) && P5_MARKUP_RE.test(tagText.slice(m.index + m[0].length))) {
+              poisonRawDivergence();
+            }
           }
           continue;
         }
@@ -1959,10 +2011,22 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       if (m[0] === '--!>') {
         // parse5 accepts `--!>` as a comment closer; CommonMark does not
         // (`<!--x--!>\n<details>\n-->` is one html block to micromark
-        // whose `<details>` is a REAL open element to parse5). Same
-        // two-grammar split as the raw-construct divergence above → poison
-        // from this line, keep the micromark model (comment stays open).
-        if (commentEitherOpen(cp.mdBlock, cp.p5Tok)) poisonRawDivergence();
+        // whose `<details>` is a REAL open element to parse5). P3b
+        // batch 2 retires the unconditional poison: parse5's comment
+        // CLOSES here, micromark's block runs on to `-->`, and the
+        // window between them diverges only if it holds bytes parse5
+        // would act on — `P5_MARKUP_RE` on the line remainder here, and
+        // per line at the line-start check while the relation stays
+        // split (md html{2} open, p5 out of comment). A markup-free
+        // window is parse5 TEXT inside micromark's block: the grammars
+        // converge at `-->` and the block's output is a text remnant the
+        // blocker-6 seam machinery owns (floatingResidue runs on the
+        // INTERSECTION of the two comment states for exactly this).
+        // A p5-ONLY comment closing here (inside a type 6/7 run) never
+        // diverged from micromark at all — no poison either.
+        if (mdHtml(cp.mdBlock, 2) && P5_MARKUP_RE.test(tagText.slice(m.index + m[0].length))) {
+          poisonRawDivergence();
+        }
         if (cp.p5Tok.kind === 'comment') cp.p5Tok = { kind: 'data' };
         continue;
       }
@@ -2209,7 +2273,13 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     // (`<!--…-->`, `<!--…$`) got the overlap case wrong: it erased the
     // `<!-->` before the "cut at `-->`" step could see it, hiding the real
     // remnant after it (adversarial review of 5074c4b, blocker-6 seam).
-    if (floatingResidue(masked, commentOpenAtLineStart).length > 0) {
+    // Comment state for the residue = the INTERSECTION of the two
+    // grammars' comment states (P3b batch 2 / oracle rev2 #5): bytes are
+    // construct interior only if BOTH grammars are inside a comment. In
+    // the `--!>` window (md open, p5 closed) the bytes are parse5 TEXT —
+    // real remnant with a tail-dependent seam; a p5-only comment inside a
+    // type 6/7 run over-flags, which is the safe direction.
+    if (floatingResidue(masked, bothCommentsOpenAtLineStart).length > 0) {
       cp.p5SealPending = true;
     }
   }

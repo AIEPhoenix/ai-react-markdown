@@ -1,0 +1,76 @@
+/**
+ * P3b batch 3 — the PI/CDATA first-`>` windows, exact instead of poisoned,
+ * and the p5 BOGUS overlay honestly paired with md types 3/4/5.
+ *
+ * parse5 reads `<?`, `<![CDATA[` and `<!X` all as bogus comments to the
+ * FIRST `>` (rev2 #4, measured); micromark's blocks run to `?>` / `]]>` /
+ * `>`. Type 4 shares its end with the bogus comment — no window. Types
+ * 3/5 open a window from parse5's `>` to micromark's terminator: markup
+ * bytes there poison (P5_MARKUP_RE, the batch-2 rule); a markup-free
+ * window is parse5 TEXT that converges at the terminator, its remnant
+ * owned by the blocker-6 seam. An md 2-5 block still open at a BLANK
+ * carries its aligned bogus state across (one block, one bogus comment —
+ * the unpaired-bogus poison fires only without the md construct).
+ */
+import { describe, expect, test } from 'vitest';
+import { computeFreezeBoundary } from './computeFreezeBoundary';
+import { CATALOG } from './testPluginCatalog';
+import { assertStreamEquivalence } from './spliceArbiterHarness';
+import { scheduleSnapshots } from './fuzzGenerators';
+
+const boundary = (doc: string) => computeFreezeBoundary(doc, { defListEnabled: false }).boundary;
+/** CDATA shapes carry `[`…`]` pairs in their own delimiters, which the
+ *  (deliberately conservative) ref extraction reads as an unresolved
+ *  reference — pre-existing taint behaviour, orthogonal to the window
+ *  logic under test, so the CDATA pins run taint-off (the scanner/phantom
+ *  production profiles). */
+const boundaryNoTaint = (doc: string) =>
+  computeFreezeBoundary(doc, { defListEnabled: false, referenceTaint: false }).boundary;
+
+describe('PI/CDATA first-`>` window recovery (P3b batch 3)', () => {
+  test('markup-free windows converge at the terminator and freezing resumes', () => {
+    const inline = 'x\n\n<?x >?>\n\ny\n\nzzz\n';
+    expect(boundary(inline)).toBe(inline.indexOf('zzz'));
+    expect(boundary('<?a > plain ?>\n\ntail one\n\ntail two\n\nend\n')).toBeGreaterThan(0);
+    expect(boundaryNoTaint('<![CDATA[a> data ]]>\n\ntail one\n\nend\n')).toBeGreaterThan(0);
+    // window spanning lines, still markup-free
+    expect(boundary('<?a >\nplain window line\n?>\n\ntail\n\nend\n')).toBeGreaterThan(0);
+  });
+
+  test('markup in the window still poisons (flip pins)', () => {
+    expect(boundary('<?x >\n<details>\n?>\n\nx\n\ny\n')).toBe(0);
+    expect(boundary('<?x ><i>b</i>?>\n\ntail\n\nend\n')).toBe(0);
+    expect(boundary('<![CDATA[x>\n<details>\n]]>\n\nx\n\ny\n')).toBe(0);
+    expect(boundaryNoTaint('<![CDATA[x> <em>e</em> ]]>\n\ntail\n\nend\n')).toBe(0);
+  });
+
+  test('an aligned bogus state survives the blank with its md block', () => {
+    // `<?a\n\n?>` is ONE type-3 block to micromark and ONE bogus comment
+    // to parse5 — the blank must not fire the unpaired-bogus poison.
+    const doc = '<?a\n\ncontent\n\n?> done\n\ntail one\n\ntail two\n\nend\n';
+    expect(boundary(doc)).toBeGreaterThan(0);
+  });
+
+  test('every window shape streams like a full parse', () => {
+    const SHAPES = [
+      'x\n\n<?x >?>\n\ny\n\nzzz\n',
+      '<?a > plain ?>\n\ntail one\n\ntail two\n\nend\n',
+      '<![CDATA[a> data ]]>\n\ntail one\n\nend\n',
+      '<?a >\nplain window line\n?>\n\ntail\n\nend\n',
+      '<?x >\n<details>\n?>\n\nx\n\ny\n',
+      '<![CDATA[x>\n<details>\n]]>\n\nx\n\ny\n',
+      '<?a\n\ncontent\n\n?> done\n\ntail\n\nend\n',
+      '<![CDATA[\n\nd]]> after\n\ntail\n\nend\n',
+      '<?a > w\n?> <div>x</div>\n\ntail\n\nend\n',
+    ];
+    for (const doc of SHAPES) {
+      for (const sizes of [
+        [4, 4, 4, 4, 4, 4, 4, 4],
+        [1, 4, 4, 4, 4, 4, 4, 4],
+        [64, 8, 8, 8],
+      ]) {
+        assertStreamEquivalence(JSON.stringify(doc.slice(0, 18)), scheduleSnapshots(doc, sizes), CATALOG[0]);
+      }
+    }
+  }, 240_000);
+});

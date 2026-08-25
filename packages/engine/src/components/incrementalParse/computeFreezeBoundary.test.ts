@@ -796,19 +796,26 @@ describe('computeFreezeBoundary — overlapping terminators & parse5 divergence 
     expect(computeFreezeBoundary('a <?> b\n\n?>\n\ny\n\nzzz', OFF)).toBe(0);
   });
 
-  test('parse5 closes a comment at --!>; CommonMark does not — poison from that line', () => {
+  test('parse5 closes a comment at --!>; the window poisons only when it holds markup', () => {
+    // P3b batch 2: `<details>` in the window is a REAL parse5 element
+    // inside micromark's comment content — irreconcilable, poisoned.
     expect(computeFreezeBoundary('<!--x--!>\n<details>\n-->\n\nx\n\ny\n', OFF)).toBe(0);
-    // Candidates BEFORE the divergent line survive (sticky over-block from it).
+    // A markup-free window is parse5 TEXT inside micromark's block: the
+    // grammars converge at `-->` and freezing resumes (the retired
+    // unconditional poison capped this at the opener).
     const t = 'x\n\n<!--x--!>\n-->\n\ny\n\nzzz';
-    expect(computeFreezeBoundary(t, OFF)).toBe(t.indexOf('<!--x'));
+    expect(computeFreezeBoundary(t, OFF)).toBe(t.indexOf('zzz'));
   });
 
-  test('a PI / CDATA whose first `>` precedes its CommonMark terminator poisons', () => {
+  test('a PI / CDATA first-`>` window poisons only when it holds markup (batch 3)', () => {
     expect(computeFreezeBoundary('<?x >\n<details>\n?>\n\nx\n\ny\n', OFF)).toBe(0);
     expect(computeFreezeBoundary('a <?x > <details>\n\n?>\n\nx\n\ny\n', OFF)).toBe(0);
     expect(computeFreezeBoundary('<![CDATA[x>\n<details>\n]]>\n\nx\n\ny\n', OFF)).toBe(0);
+    // A markup-free window is parse5 TEXT inside micromark's block — the
+    // grammars converge at the terminator and freezing resumes (the
+    // retired unconditional poison capped this at the opener).
     const t = 'x\n\n<?x >?>\n\ny\n\nzzz';
-    expect(computeFreezeBoundary(t, OFF)).toBe(t.indexOf('<?x'));
+    expect(computeFreezeBoundary(t, OFF)).toBe(t.indexOf('zzz'));
     // Control: a PI whose only `>` is the terminator's stays exact (A6).
     const ok = '<?instr x ?>\n\ny\n\nzzz';
     expect(computeFreezeBoundary(ok, OFF)).toBe(ok.indexOf('zzz'));
