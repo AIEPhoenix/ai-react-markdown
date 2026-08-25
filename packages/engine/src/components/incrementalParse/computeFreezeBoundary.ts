@@ -578,6 +578,22 @@ export interface FreezeScanCheckpointInternal extends FreezeScanCheckpoint {
   prevLineWasText: boolean;
   /** Previous confirmed line registered a VALID definition (def chains). */
   prevLineWasValidDef: boolean;
+  /** micromark's "content construct open" after the previous confirmed
+   *  line — the EXACT interrupt input for §4.6 condition 7. micromark
+   *  refuses type 7 while its CONTENT construct (paragraph or definition
+   *  chain, including container-held paragraphs) is open; `prevLineWasText`
+   *  ("any non-blank line") over-claims that, refusing after headings,
+   *  thematic breaks, raw-construct terminator lines and fence closes —
+   *  all measured as type-7-OPENING to micromark. The decision table at
+   *  the end of the plain path derives this per line class; the one class
+   *  a line model cannot settle (a pipe line: GFM table row, after which
+   *  type 7 OPENS, vs pipe-bearing paragraph, after which it cannot) is
+   *  poisoned at the refused tag line instead — see `prevLineHadPipe`. */
+  prevLineOpenContent: boolean;
+  /** The previous confirmed plain line contained a `|` — the marker for
+   *  the table-vs-paragraph ambiguity above. Consumed only by the type-7
+   *  residual poison. */
+  prevLineHadPipe: boolean;
   /** An earlier line of the current paragraph left an unpaired backtick
    *  run — masking is disabled until the paragraph ends (safety gate). */
   /** A `[` left unclosed at the end of a paragraph line (code spans
@@ -692,6 +708,22 @@ const VOID_TAGS = new Set([
 
 /** CommonMark list markers at block indent (bullet or ordered), incl. bare `-`. */
 const LIST_MARKER_RE = /^ {0,3}(?:[-*+]|\d{1,9}[.)])(?:[ \t]|$)/;
+/** Line classes for the content-tracking decision table (the type-7
+ *  interrupt input). All run on the TRIMMED line (indent ≤ 3 — the ≥ 4
+ *  case is decided before them). Measured against micromark 2026-08-25:
+ *  type 7 OPENS after each class below, and after html-block lines and
+ *  fence/math lines; it stays REFUSED after paragraph, definition,
+ *  footnote-definition, list-item-with-content and blockquote lines. */
+const ATX_HEADING_RE = /^#{1,6}(?:[ \t]|$)/;
+const THEMATIC_BREAK_RE = /^(?:(?:-[ \t]*){3,}|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,})$/;
+/** A BARE list marker (`-` / `*` / `+` / `1.` alone): opens an EMPTY item
+ *  and closes any content — micromark opens type 7 on the next line. */
+const BARE_MARKER_RE = /^(?:[-*+]|\d{1,9}[.)])[ \t]*$/;
+/** Setext-underline shapes not already claimed above: `=+`, and `--`
+ *  (a lone `-` is BARE_MARKER, three+ are THEMATIC — same false answer).
+ *  These CONSUME an open paragraph into a heading (content closes); with
+ *  no paragraph open they ARE a paragraph (content opens). */
+const SETEXT_LEFTOVER_RE = /^(?:=+|--)[ \t]*$/;
 /** Definition-list description marker (micromark-extension-definition-list). */
 const DEF_LIST_DD_RE = /^ {0,3}:[ \t]/;
 const FENCE_RE = /^ {0,3}(`{3,}|~{3,})/;
@@ -860,6 +892,8 @@ function freshCheckpoint(
     prevLineBlank: true, // doc start counts as a block start
     prevLineWasText: false,
     prevLineWasValidDef: false,
+    prevLineOpenContent: false,
+    prevLineHadPipe: false,
     paragraphHasUnpairedRun: false,
     openBracket: null,
     mayBeRawToMicromark: false,
@@ -1274,6 +1308,8 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     cp.prevLineBlank = false;
     cp.prevLineWasText = false;
     cp.prevLineWasValidDef = false;
+    cp.prevLineOpenContent = false;
+    cp.prevLineHadPipe = false;
     return;
   }
   if (cp.mdBlock.kind !== 'math' && !rawOpenAtLineStart) {
@@ -1301,6 +1337,8 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       cp.prevLineBlank = false;
       cp.prevLineWasText = false;
       cp.prevLineWasValidDef = false;
+      cp.prevLineOpenContent = false;
+      cp.prevLineHadPipe = false;
       return;
     }
   }
@@ -1319,6 +1357,8 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     cp.prevLineBlank = false;
     cp.prevLineWasText = false;
     cp.prevLineWasValidDef = false;
+    cp.prevLineOpenContent = false;
+    cp.prevLineHadPipe = false;
     return;
   }
   // Fence/math OPENS are gated on !mayBeRawToMicromark (matching the fence
@@ -1353,6 +1393,8 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
         cp.prevLineBlank = false;
         cp.prevLineWasText = false;
         cp.prevLineWasValidDef = false;
+        cp.prevLineOpenContent = false;
+        cp.prevLineHadPipe = false;
         return;
       }
     }
@@ -1441,6 +1483,8 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     cp.prevLineBlank = true;
     cp.prevLineWasText = false;
     cp.prevLineWasValidDef = false;
+    cp.prevLineOpenContent = false;
+    cp.prevLineHadPipe = false;
     return;
   }
 
@@ -1517,14 +1561,28 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       if (
         realT6 ||
         TYPE1_START_RE.test(t) ||
-        // Type 7 cannot interrupt a paragraph. The classifier is exact
-        // (isType7Line) — including closing raw-text names (`</style>`
-        // alone is type 7, measured) and quoted-`>` attribute values.
-        (!cp.prevLineWasText && isType7Line(t))
+        // Type 7 cannot interrupt CONTENT (micromark's paragraph/definition
+        // construct — `prevLineOpenContent`, the exact interrupt input; the
+        // old `prevLineWasText` gate refused after headings, terminator
+        // lines and fence closes, where micromark measurably opens). The
+        // classifier itself is exact too (isType7Line) — including closing
+        // raw-text names (`</style>` alone is type 7, measured) and
+        // quoted-`>` attribute values.
+        (!cp.prevLineOpenContent && isType7Line(t))
       ) {
         // The 6/7 member (type 1 wrote html{1} above; inside this branch
         // the member is provably 'none', the guard is shape only).
         if (cp.mdBlock.kind === 'none') cp.mdBlock = { kind: 'html', type: realT6 ? 6 : 7 };
+      } else if (cp.prevLineOpenContent && cp.prevLineHadPipe && isType7Line(t)) {
+        // The one interrupt class a line model cannot settle: after a GFM
+        // TABLE row type 7 opens (a table is not content), after a
+        // pipe-bearing PARAGRAPH line it cannot — and table-ness was
+        // decided lines ago by a header/delimiter pair this scanner does
+        // not model. Whichever way micromark went, the two readings give
+        // this line to different grammars (html-block raw vs paragraph
+        // inline), so the phase is poisoned from here — sticky over-block,
+        // the same treatment as every other undecidable divergence.
+        cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
       }
     }
   }
@@ -1547,6 +1605,14 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   // direction-battery counterexample surfaced by the overlapping-
   // terminator generator family, 2026-08). Feeds the blocker-6 check only.
   const rawFlowStart = ln.indent <= 3 && /^<(?:!--|\?|![A-Za-z]|!\[CDATA\[)/.test(mdTrimStart(ln.text));
+  // Whether this line's bytes belong to an html block / raw construct in
+  // either grammar — captured HERE (after the tag-start pre-scan classified
+  // the line, before the raw-construct machine may close a 2-5 member
+  // mid-line) for the content-tracking table at the end of the plain path:
+  // html-block lines close micromark's content construct (type 7 opens
+  // after a terminator line, measured), and a mid-line INLINE opener does
+  // not make the line any less a paragraph.
+  const htmlOwnedLine = cp.mdBlock.kind === 'html' || rawOpenAtLineStart || rawFlowStart;
 
   // Same-line code-span masking for HTML/ref/footnote extraction. A null
   // mask means "unsafe to mask here" — scan the raw text (over-blocking).
@@ -2145,6 +2211,41 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   cp.blankRun = 0;
   cp.prevLineBlank = false;
   cp.prevLineWasText = true;
+  // ── content tracking: the decision table for `prevLineOpenContent` ──
+  // Derives micromark's "content construct open" per line class, measured
+  // 2026-08-25 (see the field doc). The DIRECTION stakes: claiming "open"
+  // where micromark closed under-claims the html{7} member (the class the
+  // run flag used to blanket — masking/bogus-tracking then miss real raw
+  // bytes, blocked only by a DECAYING hazard verdict); claiming "closed"
+  // where micromark kept content open over-claims the member and can
+  // shadow a REAL type-1 open behind a phantom type-7 run. Neither side is
+  // conservative, which is why the table is exact per class and the one
+  // undecidable class (pipe lines) is poisoned at the consuming gate.
+  {
+    const tt = mdTrimStart(ln.text);
+    let openContent: boolean;
+    if (htmlOwnedLine) {
+      // html-block content in either grammar — closes/never opens content.
+      openContent = false;
+    } else if (ln.indent >= 4) {
+      // A ≥4-indent line is a LAZY CONTINUATION when content is open
+      // (stays open) and INDENTED CODE when it is not (stays closed).
+      openContent = cp.prevLineOpenContent;
+    } else if (ATX_HEADING_RE.test(tt) || THEMATIC_BREAK_RE.test(tt) || BARE_MARKER_RE.test(tt)) {
+      openContent = false;
+    } else if (SETEXT_LEFTOVER_RE.test(tt)) {
+      // `=+` / `--`: a setext underline when a paragraph is open (content
+      // CONSUMED into a heading), a paragraph of its own when not.
+      openContent = !cp.prevLineOpenContent;
+    } else {
+      // Paragraph, definition, footnote definition, list item content,
+      // blockquote line — all leave content open for interrupt purposes
+      // (each measured as type-7-REFUSING).
+      openContent = true;
+    }
+    cp.prevLineOpenContent = openContent;
+    cp.prevLineHadPipe = ln.text.includes('|');
+  }
   // Def CHAINS (A2) are a link-definition affordance: one def line can be
   // followed directly by another. A FOOTNOTE def does NOT chain — its
   // unindented next line lazily continues the footnote BODY, so a

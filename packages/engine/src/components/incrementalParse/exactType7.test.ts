@@ -34,9 +34,7 @@ import { isType7Line } from './computeFreezeBoundary';
  *  The suffix line forces the block to have content after it so a lazy
  *  paragraph continuation cannot masquerade as agreement. */
 function micromarkSaysHtml(line: string): boolean {
-  const tree = unified()
-    .use(remarkParse)
-    .parse(`${line}\n\nafter\n`);
+  const tree = unified().use(remarkParse).parse(`${line}\n\nafter\n`);
   const first = (tree as { children: Array<{ type: string }> }).children[0];
   return first !== undefined && first.type === 'html';
 }
