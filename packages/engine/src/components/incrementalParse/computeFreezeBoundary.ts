@@ -454,7 +454,11 @@ export interface FreezeScanCheckpointInternal extends FreezeScanCheckpoint {
    *  yet. Persists across blank lines (every candidate emitted while set
    *  has the remnant as its last frozen child); cleared by the next
    *  non-blank line that starts OUTSIDE an html-flow run. */
-  htmlSeamPending: boolean;
+  /* ^ P-seal, explicitly (two-model T3.2): of the four (P) conditions this
+   *   is the genuinely retroactive one — the last root-level node the
+   *   frozen prefix contributed can still be EXTENDED by later bytes
+   *   (parse5's insertText appends to an existing trailing text node). */
+  p5SealPending: boolean;
   /** A line since the last blank started with `<` at block indent — an html
    *  FLOW block is (approximately) running, and it only ends at a blank
    *  line. micromark does no inline parsing there: backtick runs are
@@ -747,7 +751,7 @@ function freshCheckpoint(
     paragraphHasUnpairedRun: false,
     openBracket: null,
     htmlFlowSinceBlank: false,
-    htmlSeamPending: false,
+    p5SealPending: false,
     phasePoisonedAt: Infinity,
     pendingTruncatedTags: [],
     pendingTruncatedCloses: [],
@@ -959,7 +963,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   // run keep the flag; the run's own blank keeps it so every candidate in
   // the trailing blank run stays rejected.)
   if (
-    cp.htmlSeamPending &&
+    cp.p5SealPending &&
     !ln.blank &&
     !cp.htmlFlowSinceBlank &&
     !(cp.commentOpen || cp.piOpen || cp.declOpen || cp.cdataOpen || cp.p5Tok.kind === 'bogus')
@@ -971,7 +975,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
         .replace(/<!--[\s\S]*$/, ' ')
         .replace(/[ \t\r]/g, '') === '';
     if (!defShapedLine && !commentOnly) {
-      cp.htmlSeamPending = false;
+      cp.p5SealPending = false;
     }
   }
   /** Post-collapse (T3.4) this deliberately OVER-claims: parse5 pops the
@@ -1118,6 +1122,11 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   // over-count opens, and an over-counted `table` here would suppress a
   // poison wrongly — which is why the read is fenced into a named wrapper.
   const definitelyInsideTable = (): boolean => (cp.tagBalance.get('table') ?? 0) > 0;
+  // P-tree, explicitly (two-model T3.2): a stray table part leaves parse5's
+  // template insertion-mode stack at a table mode — a Parser field a fresh
+  // parser does not share, permanently. The line model cannot watch that
+  // stack, so the P-tree dimension is expressed as this poison rather than
+  // as a checkpoint field: sticky, document-shaping, and cheap to test.
   const strayTablePart = (tag: string): boolean => TABLE_PART_NAMES.has(tag) && !definitelyInsideTable();
 
   // A type 2-5 raw construct (comment/PI/decl/CDATA) open at the START of
@@ -1284,7 +1293,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
         (cp.p5Tok.kind as P5Tok['kind']) !== 'bogus' &&
         !cp.type1FlowOpen,
       hazard: cp.hazardVerdict,
-      seamRisk: cp.htmlSeamPending,
+      seamRisk: cp.p5SealPending,
       defListSettled: null,
     });
     cp.paragraphHasUnpairedRun = false;
@@ -1902,7 +1911,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     // `<!-->` before the "cut at `-->`" step could see it, hiding the real
     // remnant after it (adversarial review of 5074c4b, blocker-6 seam).
     if (floatingResidue(masked, commentOpenAtLineStart).length > 0) {
-      cp.htmlSeamPending = true;
+      cp.p5SealPending = true;
     }
   }
 
