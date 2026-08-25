@@ -504,10 +504,19 @@ type P5Tok =
   | { kind: 'data' }
   /** RAWTEXT / RCDATA content: everything is text until `</element`. */
   | { kind: 'rawText'; element: string; openedInline: boolean }
-  /** SCRIPT_DATA, with the `<!--` escape flag. Double-escape is NOT
-   *  modelled — a nested `<script` poisons instead (blocker 7 / F6); its
-   *  retirement belongs to stage P3b. */
-  | { kind: 'script'; escaped: boolean; openedInline: boolean }
+  /** SCRIPT_DATA with the full escape ladder (P3b batch 1, the F6
+   *  retirement): `escaped` = a `<!--` ran without its `-->`; `double` = a
+   *  nested `<script` start tag arrived while escaped (implies `escaped`).
+   *  While `double`, a `</script>` steps back to escaped and the ELEMENT
+   *  STAYS OPEN (and stays counted on `openStack`); `-->` exits BOTH
+   *  levels (double-escaped dash-dash on `>` goes straight to
+   *  SCRIPT_DATA — parse5 tokenizer, verified in source). The old
+   *  double-entry POISON is retired: the tangle sits identically in the
+   *  prefix of every future parse, so candidates may release once the
+   *  element truly closes — the splice side refuses these prefixes
+   *  separately (rawTextRegionCrossesOut), because the element CROSSES
+   *  micromark blocks and swallows their wrap separator. */
+  | { kind: 'script'; escaped: boolean; double: boolean; openedInline: boolean }
   /** COMMENT state: `<!--` seen, closes at `-->` — or at `--!>`, which
    *  micromark does NOT accept; that split is why this is a separate
    *  field from `mdBlock` html{2} (P4b-completion, commit 1). Until the
@@ -1147,20 +1156,24 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   const applyTag = (tag: string, closing: boolean): void => {
     // Inside a raw-text element only its own end tag is markup.
     if (inRawTextTok(cp.p5Tok)) {
-      // "Script data double escaped": inside an escaped `<script>` a nested
-      // `<script` start tag makes parse5 stop honouring `</script>` — the
-      // first one only steps back to escaped, and the element runs on.
-      // CommonMark has no such notion: a type-1 block ends at the first line
-      // holding the literal closer. So the two grammars disagree about which
-      // BYTES are raw, and no amount of extra modelling reconciles them —
-      // the scanner would have to pick one and be wrong under the other.
-      // That is exactly blocker 7's case, so it poisons (2026-08-21 soak
-      // leg 1, seven of twelve shards; `<script>\n<!--<script>\n</script>\n
-      // </script>` followed by a `$$` block).
+      // "Script data double escaped" (F6, retired poison → exact ladder):
+      // inside an escaped `<script>` a nested `<script` start tag makes
+      // parse5 stop honouring `</script>` — the first one only steps back
+      // to escaped, and the element runs on. CommonMark ends its type-1
+      // block at the first literal closer line regardless, so the two
+      // grammars diverge about which BYTES are raw for the length of the
+      // window — during it the element stays counted (no release), and
+      // the frozen-prefix consequences are the splice guard's job.
       if (cp.p5Tok.kind === 'script' && cp.p5Tok.escaped && !closing && tag === 'script') {
-        cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
+        cp.p5Tok = { ...cp.p5Tok, double: true };
       }
       if (!(closing && tag === rawTextElement(cp.p5Tok))) return;
+      if (cp.p5Tok.kind === 'script' && cp.p5Tok.double) {
+        // `</script>` while double-escaped: back to escaped, element open,
+        // stack untouched — the early return skips the pop below.
+        cp.p5Tok = { ...cp.p5Tok, double: false };
+        return;
+      }
       cp.p5Tok = { kind: 'data' };
     } else {
       if (!closing && RAW_TEXT_ELEMENTS.has(tag) && foreignRawTextSwitchUnknowable()) {
@@ -1181,7 +1194,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
         const openedInline = cp.mdBlock.kind !== 'html';
         cp.p5Tok =
           tag === 'script'
-            ? { kind: 'script', escaped: false, openedInline }
+            ? { kind: 'script', escaped: false, double: false, openedInline }
             : { kind: 'rawText', element: tag, openedInline };
         // PLAINTEXT never ends (`</plaintext>` is text too): nothing after
         // it can be modelled — poison from here on.
@@ -1885,15 +1898,12 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
         // `applyTag`.
         if (cp.p5Tok.kind === 'script') {
           if (m[0] === '<!--') cp.p5Tok = { ...cp.p5Tok, escaped: true };
-          // `-->` leaves the escaped state (the dash-dash state switches to
-          // "script data" on `>`, HTML §13.2.5.24) — exact, and SAFE to be
-          // exact about: a `<script` in PLAIN script data is text to
-          // parse5 (no double escape), the element still ends at the first
-          // literal closer, and micromark agrees — no divergence window
-          // opens. The sticky-escaped bias this replaces poisoned
-          // `<script><!--x--> <script>` shapes for nothing. `--!>` stays
-          // escaped (`!` falls to anything-else in the dash-dash state).
-          if (m[0] === '-->') cp.p5Tok = { ...cp.p5Tok, escaped: false };
+          // `-->` leaves the escape ladder ENTIRELY: the single- and
+          // double-escaped dash-dash states both switch to "script data"
+          // on `>` (HTML §13.2.5.24/§13.2.5.30, verified in parse5's
+          // tokenizer). `--!>` stays escaped (`!` falls to anything-else
+          // in the dash-dash states).
+          if (m[0] === '-->') cp.p5Tok = { ...cp.p5Tok, escaped: false, double: false };
         }
         continue;
       }

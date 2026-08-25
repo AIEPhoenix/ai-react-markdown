@@ -41,14 +41,21 @@ import { scheduleSnapshots } from './fuzzGenerators';
 const TAIL = '\n\npara one\n\npara two\n\npara three\n';
 const boundary = (text: string) => computeFreezeBoundary(text, { defListEnabled: false }).boundary;
 
-/** Double escaped: the grammars disagree, so freezing must stop. */
-const POISONING = [
+/** Double escape, RETIRED poison (P3b batch 1): the ladder is tracked
+ *  exactly — while double, `</script>` steps back to escaped and the
+ *  element stays open AND COUNTED, so candidates release only once the
+ *  real closer arrives. The frozen prefix then contains an element that
+ *  crossed micromark blocks; the splice refuses those prefixes
+ *  (`rawTextRegionCrossesOut`) and the equivalence battery below proves
+ *  every frame equals the full parse either way. */
+const RECOVERING = [
   '<script>\n<!--<script>\n</script>\n</script>',
-  '<script>\n<!--<script>\n</script>',
   '<script><!--<script></script></script>',
   '<script>\n<!--<script>\n</script>\n<div>d</div>\n</script>',
   '<script>\n<!-- a comment\n<script>\n</script>\n</script>',
 ];
+/** The element never truly closes — the balance holds the boundary at 0. */
+const STILL_OPEN = ['<script>\n<!--<script>\n</script>'];
 
 /** Escaped but never double escaped — both grammars still end the block at
  *  the literal closer, so these must keep freezing normally. */
@@ -64,8 +71,14 @@ const SAFE = [
 ];
 
 describe('script data escape states', () => {
-  test('double escape poisons the document', () => {
-    for (const shape of POISONING) {
+  test('double escape RECOVERS once the element truly closes', () => {
+    for (const shape of RECOVERING) {
+      expect({ shape, past: boundary(`${shape}${TAIL}`) > 0 }).toEqual({ shape, past: true });
+    }
+  });
+
+  test('while the element stays open the boundary holds at 0', () => {
+    for (const shape of STILL_OPEN) {
       expect({ shape, boundary: boundary(`${shape}${TAIL}`) }).toEqual({ shape, boundary: 0 });
     }
   });
@@ -77,7 +90,7 @@ describe('script data escape states', () => {
   });
 
   test('every shape streams like a full parse', () => {
-    for (const shape of [...POISONING, ...SAFE]) {
+    for (const shape of [...RECOVERING, ...STILL_OPEN, ...SAFE]) {
       assertStreamEquivalence(shape, scheduleSnapshots(`${shape}${TAIL}`, [4, 4, 4, 4, 4, 4, 4, 4]), CATALOG[0]);
     }
   }, 60_000);
@@ -107,18 +120,18 @@ describe('script data escape states', () => {
     assertStreamEquivalence('lifted escape', scheduleSnapshots(doc, [4, 4, 4, 4, 4, 4, 4, 4]), CATALOG[0]);
   });
 
-  /** P3b batch 1 (the FULL retirement — track the double-escape ladder and
-   *  let the boundary recover once parse5's real closer arrives) was
-   *  implemented, measured, and REVERTED on 2026-08-25: the recovery is
-   *  sound at the scanner layer (the tangle sits identically in the prefix
-   *  of every future parse), but the divergence window makes micromark cut
-   *  TWO raw blocks where parse5 builds ONE element across them — the
-   *  separator between the blocks becomes element text and is stripped
-   *  with the script — and the splice's seam synthesis double-counts a
-   *  separator on the far side. Counterexample (streamed at 4-byte
-   *  chunks): the soak leg-1 document above, boundary 60, frame 20 — the
-   *  spliced hast carried an extra root "\n". Until the splice models
-   *  raw-block-crossing elements, the double-entry poison STAYS. */
+  /** P3b batch 1, SECOND landing (2026-08-25): the first landing was
+   *  reverted the same day on a measured counterexample — the divergence
+   *  window makes micromark cut TWO raw blocks where parse5 builds ONE
+   *  element across them, the separator between the blocks becomes
+   *  element text (stripped with the script), and the splice's seam
+   *  synthesis double-counted a separator (streamed at 4-byte chunks:
+   *  the soak leg-1 document above, boundary 60, frame 20, an extra
+   *  root "\n" — reproduced EXACTLY before the guard landed). The
+   *  splice now refuses prefixes whose html blocks leave a raw-text
+   *  region open at their own end (`rawTextRegionCrossesOut`), which is
+   *  the capability the revert was blocked on; the scanner's ladder and
+   *  recovery are unchanged from the first landing. */
   test('the escape state resets with the element', () => {
     const doc = `<script><!--x--></script>\n\nmid para\n\n<script>\n<script>\n</script>${TAIL}`;
     expect(boundary(doc) > 0).toBe(true);

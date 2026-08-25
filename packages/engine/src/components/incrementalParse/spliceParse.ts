@@ -504,6 +504,59 @@ function headRoutedCaptureUnclosed(values: readonly string[]): boolean {
 /** The two END tags HTML synthesizes (`<br>` / empty `<p>`) instead of dropping. */
 const STRAY_SYNTHESIZED_END_TAG_RE = /<\/(?:br|p)\b/i;
 
+/** parse5 raw-text elements (RAWTEXT / RCDATA / script data / plaintext),
+ *  matching the scanner's RAW_TEXT_ELEMENTS (`noscript` excluded —
+ *  scriptingEnabled: false). */
+const RAW_TEXT_OPEN_RE = /<(script|style|textarea|title|xmp|iframe|noembed|noframes|plaintext)(?=[\s/>])/gi;
+
+/**
+ * Does any frozen html block leave a parse5 raw-text REGION open at its own
+ * end? Then the element crosses OUT of its micromark block — the wrap
+ * separator between that block and the next becomes element text (stripped
+ * with a `<script>`, swallowed into content otherwise), and the
+ * separator-credit model below double-counts the gap (P3b batch 1's
+ * measured counterexample: the F6 recovery granted boundary 60 on the
+ * double-escape document and the spliced frame carried an extra root
+ * `"\n"`). The scanner deliberately RELEASES such prefixes once the
+ * element truly closes (the retired poison); the splice refuses them
+ * instead — the system contract is scanner boundary PLUS splice guards.
+ *
+ * Script regions honour the escape ladder the way the scanner does: a
+ * `<!--` with no `-->` before the apparent `</script>` keeps the region
+ * open past it (double-escape may be live — over-refuses the harmless
+ * single-escaped case where no nested `<script` follows, knowingly).
+ * Openers inside comments or quoted attribute values over-match — every
+ * false positive only refuses a splice (full-parse fallback).
+ */
+function rawTextRegionCrossesOut(values: Iterable<string>): boolean {
+  for (const value of values) {
+    let pos = 0;
+    for (;;) {
+      RAW_TEXT_OPEN_RE.lastIndex = pos;
+      const open = RAW_TEXT_OPEN_RE.exec(value);
+      if (open === null) break;
+      const name = open[1].toLowerCase();
+      const bodyStart = open.index + open[0].length;
+      const closeRe = new RegExp(`</${name}(?=[\\s/>])`, 'ig');
+      closeRe.lastIndex = bodyStart;
+      let close = closeRe.exec(value);
+      if (name === 'script') {
+        // Skip closers still inside a live escape: `<!--` before the
+        // closer with no `-->` between them.
+        while (close !== null) {
+          const body = value.slice(bodyStart, close.index);
+          const lastOpen = body.lastIndexOf('<!--');
+          if (lastOpen === -1 || body.indexOf('-->', lastOpen + 4) !== -1) break;
+          close = closeRe.exec(value);
+        }
+      }
+      if (close === null) return true;
+      pos = close.index + close[0].length;
+    }
+  }
+  return false;
+}
+
 export function spliceTrees(input: SpliceInput): { mdast: MdastRoot; hast: HastRoot } | null {
   const { prevMdast, prevHast, tailMdast, tailHast, content, boundary, injectionPrefix, injectedSegments } = input;
 
@@ -651,7 +704,9 @@ export function spliceTrees(input: SpliceInput): { mdast: MdastRoot; hast: HastR
   //   while the full parse — already in body — synthesizes / foster-parents
   //   them. Any such tag inside the tail's LEADING run of html blocks
   //   (comments / PIs / declarations do not switch the mode) → bail.
-  if (hasStrayTablePart(prefixMdast.flatMap((c) => (c.type === 'html' ? [c.value] : [])))) return null;
+  const prefixHtmlValues = prefixMdast.flatMap((c) => (c.type === 'html' ? [c.value] : []));
+  if (hasStrayTablePart(prefixHtmlValues)) return null;
+  if (rawTextRegionCrossesOut(prefixHtmlValues)) return null;
   const leadingHtml: string[] = [];
   for (const child of tailMdastChildren) {
     if (isWrapInvisible(child)) continue;
