@@ -180,6 +180,22 @@ with this note as the evidence. What shipped instead is batch 1': the
 exact `-->` escape exit, which opens no divergence window and retires the
 sticky-escaped over-poison.
 
+### Phantom-construct openers (retired with P4a slice 2's gate)
+
+The raw-construct loop used to match `<?` / `<![CDATA[` / `<!X` / bogus
+openers even while an outer text-consuming construct (an open comment
+block, a type-1 block, parse5 raw text) owned the bytes — measured:
+`<!--\n<?x` held `commentOpen` AND `piOpen` at once. The phantom state was
+blocking-only, but its first-`>` divergence poison guarded a divergence
+that does not exist between the REAL grammars (both call those bytes
+text), and it poisoned three pinned-corpus documents to 0. The gate
+removes the openers there — exact for BOTH grammars: micromark gives every
+line up to a block's end line to the block; parse5's comment/raw-text
+content runs to its own terminator, and where the two disagree about the
+terminator, the divergence poisons have already fired before the gate is
+consulted. Boundary movements: 8 increases (3 documents ×lineages), each
+verified by the engine probe battery; no decreases.
+
 ## Deviation ledger
 
 Entries are kept after they are fixed, because the reasoning that once

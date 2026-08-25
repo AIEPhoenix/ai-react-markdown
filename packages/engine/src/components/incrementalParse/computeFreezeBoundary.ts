@@ -1489,6 +1489,16 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       pos = c + 1;
       continue;
     }
+    // Openers below are TEXT to BOTH grammars while an outer text-consuming
+    // construct is open — micromark: a comment/type-1 block owns every line
+    // up to and including its end line; parse5: comment / raw-text content
+    // runs to its own terminator, and where the two disagree about the
+    // terminator the divergence poisons have already fired. The old code
+    // let them open PHANTOM constructs inside those regions (measured:
+    // `<!--\n<?x` held commentOpen AND piOpen at once — blocking-only
+    // artifacts, but artifacts a single MdBlock cannot and should not
+    // represent).
+    if (commentOpenAtLineStart || inRawTextTok(cp.p5Tok) || cp.type1FlowOpen) break;
     const pi = scanText.indexOf('<?', pos);
     const cd = scanText.indexOf('<![CDATA[', pos);
     // `<!` + letter = declaration; `<!--` (third char '-') and
