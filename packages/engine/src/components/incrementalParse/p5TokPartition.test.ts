@@ -26,6 +26,16 @@ describe('P5Tok partition + pendingTag overlay (B2 co-existence shapes)', () => 
     });
   }
 
+  /** P4b-completion commit 1's relation invariant: at `--!>` parse5 leaves
+   *  the comment while micromark stays inside it. The divergence poisons on
+   *  the RELATION; the parse5 field going back to data must never release
+   *  the micromark block — the boundary stays 0 no matter how much clean
+   *  prose follows. */
+  test('the --!> split poisons the relation; neither field releases the other', () => {
+    expect(boundary('<!--x--!>\n<details>\n-->\n\ntail para\n\nend\n')).toBe(0);
+    expect(boundary('<!--\na--!>b\n\ntail para\n\nend\n')).toBe(0);
+  });
+
   test('F10 still fires for the script kind (M1)', () => {
     // <script> nested in a type-6 run, then a blank: the raw-text state
     // runs on while micromark's block ends — document-wide poison.

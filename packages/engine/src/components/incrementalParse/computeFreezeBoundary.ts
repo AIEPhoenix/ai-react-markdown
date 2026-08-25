@@ -386,8 +386,21 @@ type P5Tok =
    *  modelled — a nested `<script` poisons instead (blocker 7 / F6); its
    *  retirement belongs to stage P3b. */
   | { kind: 'script'; escaped: boolean; openedInline: boolean }
+  /** COMMENT state: `<!--` seen, closes at `-->` — or at `--!>`, which
+   *  micromark does NOT accept; that split is why this is a separate
+   *  field from `mdBlock` html{2} (P4b-completion, commit 1). Until the
+   *  divergence actually opens, the two agree everywhere; where it opens,
+   *  the relation poison has already fired. */
+  | { kind: 'comment' }
   /** Bogus comment: eaten to the next `>`. */
   | { kind: 'bogus' };
+
+/** "Comment content" for the tag walk's markup decision — the union of the
+ *  two grammars' comment states, so bytes are skipped as comment interior
+ *  if EITHER grammar is still inside one (the divergence between them is
+ *  poisoned at the point it opens; neither field alone may release the
+ *  other's block). */
+const commentEitherOpen = (md: MdBlock, p5: P5Tok): boolean => mdHtml(md, 2) || p5.kind === 'comment';
 
 /** The raw-text MASK predicate: while it holds, `applyTag` admits only the
  *  element's own end tag, so nothing reaches the balance — a raw-text state
@@ -1452,15 +1465,30 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       pos = c + 3;
       continue;
     }
-    if (mdHtml(cp.mdBlock, 4) || cp.p5Tok.kind === 'bogus') {
+    // The two first-`>` machines are de-fused (P4b-completion commit 1):
+    // md type 4 is micromark's declaration block, `bogus` is parse5's
+    // bogus comment. Their terminators coincide today, but they are
+    // different grammars' states and each branch closes only its own.
+    if (mdHtml(cp.mdBlock, 4)) {
       const c = scanText.indexOf('>', pos);
       if (c === -1) {
         rawSpans.push([pos, scanText.length]);
         break;
       }
       rawSpans.push([pos, c + 1]);
-      if (mdHtml(cp.mdBlock, 4)) cp.mdBlock = { kind: 'none' };
+      cp.mdBlock = { kind: 'none' };
       if (cp.p5Tok.kind === 'bogus') cp.p5Tok = { kind: 'data' };
+      pos = c + 1;
+      continue;
+    }
+    if (cp.p5Tok.kind === 'bogus') {
+      const c = scanText.indexOf('>', pos);
+      if (c === -1) {
+        rawSpans.push([pos, scanText.length]);
+        break;
+      }
+      rawSpans.push([pos, c + 1]);
+      cp.p5Tok = { kind: 'data' };
       pos = c + 1;
       continue;
     }
@@ -1637,15 +1665,22 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       }
       if (m[0] === '<!--') {
         const next = tagText.slice(m.index + 4, m.index + 6);
-        if (mdHtml(cp.mdBlock, 2)) {
+        if (commentEitherOpen(cp.mdBlock, cp.p5Tok)) {
           // Inside an OPEN comment `<!--` is content — but the regex
           // consumed its `--`, which may be the start of the closer:
           // `<!-->` / `<!--->` carry a `-->` (closes for both grammars;
           // soak seed 20260759: `<!--\n\n<!-->\n<details>` left the
           // comment open and skipped the real `<details>`), `<!--!>` /
           // `<!---!>` carry a `--!>` (parse5-only closer → poison).
-          if (next.startsWith('>') || next === '->') cp.mdBlock = { kind: 'none' };
-          else if (next === '!>' || next === '-!') poisonRawDivergence();
+          if (next.startsWith('>') || next === '->') {
+            cp.mdBlock = { kind: 'none' };
+            if (cp.p5Tok.kind === 'comment') cp.p5Tok = { kind: 'data' };
+          } else if (next === '!>' || next === '-!') {
+            // parse5-only closer inside the token: parse5 leaves the
+            // comment, micromark does not — the relation poison.
+            if (cp.p5Tok.kind === 'comment') cp.p5Tok = { kind: 'data' };
+            poisonRawDivergence();
+          }
           continue;
         }
         if (next.startsWith('>') || next === '->') {
@@ -1655,11 +1690,13 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
           continue;
         }
         cp.mdBlock = { kind: 'html', type: 2 };
+        if (cp.p5Tok.kind === 'data') cp.p5Tok = { kind: 'comment' };
         lastCommentOpenerIdx = m.index;
         continue;
       }
       if (m[0] === '-->') {
         cp.mdBlock = { kind: 'none' };
+        if (cp.p5Tok.kind === 'comment') cp.p5Tok = { kind: 'data' };
         continue;
       }
       if (m[0] === '--!>') {
@@ -1669,9 +1706,10 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
         // two-grammar split as the raw-construct divergence above → poison
         // from this line, keep the micromark model (comment stays open).
         if (mdHtml(cp.mdBlock, 2)) poisonRawDivergence();
+        if (cp.p5Tok.kind === 'comment') cp.p5Tok = { kind: 'data' };
         continue;
       }
-      if (mdHtml(cp.mdBlock, 2)) continue;
+      if (commentEitherOpen(cp.mdBlock, cp.p5Tok)) continue;
       const closing = m[1] === '/';
       const tag = m[2].toLowerCase();
       if (strayTablePart(tag)) cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start + m.index);
