@@ -645,6 +645,10 @@ const nonType6QuotedGtArb = fc.oneof(
     'para\n</style> paragraph continuation `<b>`',
     '<foo a=>\n`<i>` inline code\n$$\ne=mc^2\n$$',
     '| a | b |\n| - | - |\n<x-y/>\nrow follower',
+    // The pipe-LESS continuation row (soak 20283008): a table continues
+    // through any non-structural line, so the tag line sits after the
+    // TABLE (type 7 opens) while the content model reads a paragraph.
+    '| a | b |\n| - | - |\n| 1 | 2 |\nrow continuation prose\n<x-y/>\nfollower',
     'a | pipe paragraph\n<x-y/>\nfollower'
   )
 );

@@ -83,6 +83,18 @@ describe('type-7 interrupt: prevLineOpenContent vs micromark', () => {
     }
   });
 
+  test('a refused tag line after a pipe-less table CONTINUATION row poisons too (soak 20283008)', () => {
+    // A GFM table is continued by any non-blank non-structural line:
+    // `see prose` after `| 1 | 2 |` is a ROW, so micromark's table runs
+    // to the tag line and type 7 OPENS there — while the content model
+    // reads `see prose` as an open paragraph and refuses. The sticky
+    // tableMaybeOpen marker keeps the residual poison armed across the
+    // pipe-less row; the exact soak counterexample streams clean.
+    const doc =
+      '| a | b |\n| - | - |\n| 1 | 2 |\rsee [a] maybe, or [a][a] even ![a]\r<noscript title="a>b">\n$$\ne=mc^2\n$$\n\n> a quoted line\n\nend\n';
+    expect(computeFreezeBoundary(doc, { defListEnabled: false }).boundary).toBe(0);
+  });
+
   test('a refused tag line after a pipe line poisons the phase (sticky over-block)', () => {
     // `| a | b |` may be a table row (type 7 would open) or a paragraph
     // line (it cannot) — undecidable here, so the tag line poisons: no

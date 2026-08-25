@@ -607,10 +607,19 @@ export interface FreezeScanCheckpointInternal extends FreezeScanCheckpoint {
    *  type 7 OPENS, vs pipe-bearing paragraph, after which it cannot) is
    *  poisoned at the refused tag line instead — see `prevLineHadPipe`. */
   prevLineOpenContent: boolean;
-  /** The previous confirmed plain line contained a `|` — the marker for
-   *  the table-vs-paragraph ambiguity above. Consumed only by the type-7
-   *  residual poison. */
-  prevLineHadPipe: boolean;
+  /** A GFM table MAY be open: a pipe line was seen and every line since
+   *  has been table-continuable. A table, once its header/delimiter pair
+   *  formed, is continued by ANY non-blank line that is not another
+   *  block-level structure — `| 1 | 2 |` then `see [a] prose` is TWO
+   *  table rows to micromark, not a table and a paragraph (soak seed
+   *  20283008: a tag line after such a pipe-less continuation row was
+   *  refused as "after content" while micromark, whose table had just
+   *  been broken by the html block, OPENED type 7 — the phantom closer
+   *  then chased a math block that never existed). Sticky across
+   *  content-class lines, cleared by every openContent=false class and
+   *  at the usual reset points. Consumed only by the type-7 residual
+   *  poison — over-claiming it only widens the poison (safe). */
+  tableMaybeOpen: boolean;
   /** An earlier line of the current paragraph left an unpaired backtick
    *  run — masking is disabled until the paragraph ends (safety gate). */
   /** A `[` left unclosed at the end of a paragraph line (code spans
@@ -895,7 +904,7 @@ function freshCheckpoint(
     prevLineWasText: false,
     prevLineWasValidDef: false,
     prevLineOpenContent: false,
-    prevLineHadPipe: false,
+    tableMaybeOpen: false,
     paragraphHasUnpairedRun: false,
     openBracket: null,
     p5SealPending: false,
@@ -1336,7 +1345,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     cp.prevLineWasText = false;
     cp.prevLineWasValidDef = false;
     cp.prevLineOpenContent = false;
-    cp.prevLineHadPipe = false;
+    cp.tableMaybeOpen = false;
     return;
   }
   if (cp.mdBlock.kind !== 'math' && !rawOpenAtLineStart) {
@@ -1372,7 +1381,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       cp.prevLineWasText = false;
       cp.prevLineWasValidDef = false;
       cp.prevLineOpenContent = false;
-      cp.prevLineHadPipe = false;
+      cp.tableMaybeOpen = false;
       return;
     }
   }
@@ -1392,7 +1401,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     cp.prevLineWasText = false;
     cp.prevLineWasValidDef = false;
     cp.prevLineOpenContent = false;
-    cp.prevLineHadPipe = false;
+    cp.tableMaybeOpen = false;
     return;
   }
   // Fence/math OPENS are gated on the html-block MEMBER (matching the
@@ -1429,7 +1438,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
         cp.prevLineWasText = false;
         cp.prevLineWasValidDef = false;
         cp.prevLineOpenContent = false;
-        cp.prevLineHadPipe = false;
+        cp.tableMaybeOpen = false;
         return;
       }
     }
@@ -1525,7 +1534,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     cp.prevLineWasText = false;
     cp.prevLineWasValidDef = false;
     cp.prevLineOpenContent = false;
-    cp.prevLineHadPipe = false;
+    cp.tableMaybeOpen = false;
     return;
   }
 
@@ -1611,15 +1620,18 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
         // The 6/7 member (type 1 wrote html{1} above; inside this branch
         // the member is provably 'none', the guard is shape only).
         if (cp.mdBlock.kind === 'none') cp.mdBlock = { kind: 'html', type: realT6 ? 6 : 7 };
-      } else if (cp.prevLineOpenContent && cp.prevLineHadPipe && isType7Line(t)) {
+      } else if (cp.prevLineOpenContent && cp.tableMaybeOpen && isType7Line(t)) {
         // The one interrupt class a line model cannot settle: after a GFM
         // TABLE row type 7 opens (a table is not content), after a
         // pipe-bearing PARAGRAPH line it cannot — and table-ness was
         // decided lines ago by a header/delimiter pair this scanner does
-        // not model. Whichever way micromark went, the two readings give
-        // this line to different grammars (html-block raw vs paragraph
-        // inline), so the phase is poisoned from here — sticky over-block,
-        // the same treatment as every other undecidable divergence.
+        // not model. The marker is STICKY (`tableMaybeOpen`), because a
+        // table is continued by any non-blank non-structural line — the
+        // pipe-less row `see prose` after `| 1 | 2 |` is still a row
+        // (soak seed 20283008). Whichever way micromark went, the two
+        // readings give this line to different grammars, so the phase is
+        // poisoned from here — sticky over-block, the same treatment as
+        // every other undecidable divergence.
         cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
       }
     }
@@ -2361,7 +2373,10 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       openContent = true;
     }
     cp.prevLineOpenContent = openContent;
-    cp.prevLineHadPipe = ln.text.includes('|');
+    // Table tracking (see the field doc): a pipe line arms it; any
+    // content-class line carries it; every block-structure line (the
+    // openContent=false classes) breaks the table and disarms it.
+    cp.tableMaybeOpen = ln.text.includes('|') || (cp.tableMaybeOpen && openContent);
   }
   // Def CHAINS (A2) are a link-definition affordance: one def line can be
   // followed directly by another. A FOOTNOTE def does NOT chain — its
