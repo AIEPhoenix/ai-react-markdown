@@ -2159,7 +2159,14 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
             // rather than reverting a real tag (R2(a)).
             const rawLastLt = ln.text.lastIndexOf('<');
             const rawTruncated = rawLastLt !== -1 && !ln.text.includes('>', rawLastLt);
-            if (!closing && !inRawText && rawTruncated) cp.pendingTruncatedTags.push(tag);
+            // Migration B, truncated-open revertibility (exact type 7):
+            // "paragraph-line truncation" is the member's complement. The
+            // retired proxy kept `<embed x`-style PARAGRAPH truncations
+            // counted forever; they are prose candidates like any other
+            // paragraph truncation and revert at the blank.
+            if (!closing && !(htmlOwnedLine || inRawTextTok(cp.p5Tok)) && rawTruncated) {
+              cp.pendingTruncatedTags.push(tag);
+            }
           }
         }
       }
@@ -2187,7 +2194,14 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   // phantom is reverted at the blank line, nobody re-runs it (v2.4.0
   // review R2(b)). Treating them as closed here only over-flags.
   const effectiveOpen = cp.openTotal - cp.pendingTruncatedTags.length;
-  if ((inRawText || rawFlowStart) && effectiveOpen <= 0) {
+  // Migration B row 7, the SET half (exact type 7): floating raw remnant
+  // arises from RAW bytes — html-block content in either grammar
+  // (`htmlOwnedLine` covers the member, line-start 2-5 state and
+  // `rawFlowStart`; the p5 raw-text kinds ride along for completeness).
+  // A `<embed x`-style paragraph line's text becomes a position-stable
+  // paragraph node, never seam-owned remnant — the retired proxy set the
+  // flag there anyway.
+  if ((htmlOwnedLine || inRawTextTok(cp.p5Tok)) && effectiveOpen <= 0) {
     // Raw-construct bytes are DELETED (not blanked) here: the residue is
     // judged on `length`, not `trim()` — whitespace-only floating text
     // (`<!-- c --> </s>` leaves ` `) is seam-dependent too (v2.4.0 review
