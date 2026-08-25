@@ -185,10 +185,14 @@ describe('phantomSuffixCloser (core-render-01: suffix swallowed by an open fence
     }
   });
 
-  test('a fence line glued to an html-flow run poisons the phase → no closer (status quo, never a wrong one)', () => {
-    // `<embed` is an ambiguous starter: whether the ``` line is raw text or
-    // a real fence is container-dependent, so the scanner refuses to guess.
-    expect(phantomSuffixCloser('<embed\n```js\ncode')).toBe('');
+  test('a fence after a paragraph tag-opener is REAL and gets its closer (exact type 7 flip)', () => {
+    // `<embed` fails condition 7 (not a type-6 name, not a complete tag)
+    // and is a PARAGRAPH — the glued ``` really opens a fence (a fence
+    // interrupts a paragraph; measured with the row-6 migration), so the
+    // phantom suffix must close it before appending the defs.
+    expect(phantomSuffixCloser('<embed\n```js\ncode')).toBe('\n```');
+    // Inside a REAL html run the fence line stays raw text: no closer.
+    expect(phantomSuffixCloser('<div>\n```js\ncode')).toBe('');
   });
 
   test('CRLF content ends with a newline → closer without a leading newline', () => {
