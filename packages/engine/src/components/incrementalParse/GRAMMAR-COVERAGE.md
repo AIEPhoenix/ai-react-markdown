@@ -163,6 +163,23 @@ No mechanism needed; each row cites the rule that forbids the crossing.
 | HTML block types 6–7             | their END condition IS the blank line (§4.6)                                                                                                                                                                                                           |
 | Every inline construct           | emphasis, code spans, autolinks, strikethrough, `==mark==`, inline `$` math all live inside one paragraph, which the blank ends. Cross-LINE code spans inside a paragraph are the masking rule's job (module doc) — intra-paragraph, never cross-blank |
 
+## P3b status (poison retirements)
+
+Batch 1 (F6, the double-escape poison) was implemented in full — the
+script-data escape ladder with recovery once parse5's real closer arrives —
+and REVERTED the same day on a measured counterexample: the divergence
+window makes micromark cut TWO raw blocks where parse5 builds ONE element
+across them; the inter-block separator becomes element text (stripped with
+the script), and the splice's seam synthesis double-counts a separator on
+the far side (extra root `"\n"`, streamed repro pinned in
+`scriptDataEscape.test.ts`). The retirement is BLOCKED on the splice
+modelling raw-block-crossing elements, not on the scanner — and the same
+misalignment class covers the other two planned retirements (`--!>`, the
+`<?`/`<![CDATA[` first-`>` disagreements), so P3b as designed is deferred
+with this note as the evidence. What shipped instead is batch 1': the
+exact `-->` escape exit, which opens no divergence window and retires the
+sticky-escaped over-poison.
+
 ## Deviation ledger
 
 Entries are kept after they are fixed, because the reasoning that once

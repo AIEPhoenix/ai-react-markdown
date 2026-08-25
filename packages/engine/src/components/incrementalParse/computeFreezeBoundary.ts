@@ -1648,7 +1648,18 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
         // A `<!--` inside `<script>` puts parse5 in "script data escaped",
         // which is where the two grammars stop agreeing — see the poison in
         // `applyTag`.
-        if (cp.p5Tok.kind === 'script' && m[0] === '<!--') cp.p5Tok = { ...cp.p5Tok, escaped: true };
+        if (cp.p5Tok.kind === 'script') {
+          if (m[0] === '<!--') cp.p5Tok = { ...cp.p5Tok, escaped: true };
+          // `-->` leaves the escaped state (the dash-dash state switches to
+          // "script data" on `>`, HTML §13.2.5.24) — exact, and SAFE to be
+          // exact about: a `<script` in PLAIN script data is text to
+          // parse5 (no double escape), the element still ends at the first
+          // literal closer, and micromark agrees — no divergence window
+          // opens. The sticky-escaped bias this replaces poisoned
+          // `<script><!--x--> <script>` shapes for nothing. `--!>` stays
+          // escaped (`!` falls to anything-else in the dash-dash state).
+          if (m[0] === '-->') cp.p5Tok = { ...cp.p5Tok, escaped: false };
+        }
         continue;
       }
       if (m[0] === '<!--') {

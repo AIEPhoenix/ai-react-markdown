@@ -95,8 +95,30 @@ describe('script data escape states', () => {
     }
   }, 30_000);
 
-  /** The state is per-element: a closed `<script>` must not leave the next
-   *  one escaped. */
+  /** P3b batch 1': `-->` LEAVES the escaped state (exact per HTML
+   *  §13.2.5.24). Being exact here opens no divergence window — a
+   *  `<script` in PLAIN script data is text to parse5 and the element
+   *  still ends at the first literal closer, where micromark agrees — so
+   *  the sticky-escaped bias this replaced poisoned these shapes for
+   *  nothing. */
+  test('a closed comment lifts the escape: a later nested <script> is inert', () => {
+    const doc = `<script>\n<!--x-->\n<script>\n</script>${TAIL}`;
+    expect(boundary(doc)).toBeGreaterThan(0);
+    assertStreamEquivalence('lifted escape', scheduleSnapshots(doc, [4, 4, 4, 4, 4, 4, 4, 4]), CATALOG[0]);
+  });
+
+  /** P3b batch 1 (the FULL retirement — track the double-escape ladder and
+   *  let the boundary recover once parse5's real closer arrives) was
+   *  implemented, measured, and REVERTED on 2026-08-25: the recovery is
+   *  sound at the scanner layer (the tangle sits identically in the prefix
+   *  of every future parse), but the divergence window makes micromark cut
+   *  TWO raw blocks where parse5 builds ONE element across them — the
+   *  separator between the blocks becomes element text and is stripped
+   *  with the script — and the splice's seam synthesis double-counts a
+   *  separator on the far side. Counterexample (streamed at 4-byte
+   *  chunks): the soak leg-1 document above, boundary 60, frame 20 — the
+   *  spliced hast carried an extra root "\n". Until the splice models
+   *  raw-block-crossing elements, the double-entry poison STAYS. */
   test('the escape state resets with the element', () => {
     const doc = `<script><!--x--></script>\n\nmid para\n\n<script>\n<script>\n</script>${TAIL}`;
     expect(boundary(doc) > 0).toBe(true);
