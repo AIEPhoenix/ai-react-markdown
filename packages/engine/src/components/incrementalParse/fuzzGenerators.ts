@@ -617,6 +617,22 @@ const rawPhaseSplitArb = fc.oneof(
   }
 );
 
+/** See the pool comment: line-initial non-type-6 name with a quoted `>`,
+ *  alone on its line, opening the run — paired with the follower shapes
+ *  whose consumers the run flag guards (a fence, a backtick-span line, a
+ *  truncated tag, a container form). */
+const nonType6QuotedGtArb = fc.oneof(
+  fc.constantFrom(
+    '<span title="a>b">\n`<div>`\n</span>',
+    '<img title="a>b">\n```\nx\n```',
+    '<img title="a>b">\n<span',
+    '<noscript title="a>b">\n$$\ne=mc^2\n$$',
+    '- item\n  <img title="a>b">\n  ```\n  x\n  ```',
+    '<span title="a>b" class="c">x</span>\nplain follower line'
+  ),
+  fc.constantFrom('<img title="a>b">\n[a]: /u', '<span title="a>b">\n<!-- c -->')
+);
+
 const rawHtmlArb = fc.oneof(
   { weight: 2, arbitrary: treeQuirkArb },
   { weight: 2, arbitrary: crossLineTagGarbageArb },
@@ -625,6 +641,14 @@ const rawHtmlArb = fc.oneof(
   // (3 → 4 when the foreign-content/insertion-mode/script-escape families
   // took the pool from 38 to 42).
   { weight: 4, arbitrary: crossLineQuoteBogusArb },
+  // Type-7's `[^>]*` attribute hole, OPENED by a NON-type-6 name (span /
+  // img / noscript are not in htmlBlockNames): a quoted `>` on the very
+  // line that starts the run. Every earlier quoted-`>` fixture ran inside
+  // an already-open `<div>` run, so the class where ONLY
+  // `mayBeRawToMicromark` protects (the type-7 member never fires — the
+  // regex stops at the quoted `>`) was corpus-invisible; the P4b-completion
+  // review measured four boundary rises there under a naive migration.
+  { weight: 2, arbitrary: nonType6QuotedGtArb },
   { weight: 2, arbitrary: multiLineDeclArb },
   { weight: 2, arbitrary: multiLineCdataArb },
   { weight: 2, arbitrary: documentStructureArb },
@@ -867,6 +891,7 @@ export const COVERAGE_MARKERS: Record<string, RegExp> = {
   danglingQuote: /<(?:hr title|span class|b title)="\n/,
   bogusComment: /<div>\n(?:<!|<!-|<\/|<\/\/)\n<\/div>|<! x > /,
   quotedGtOnTagLine: /<\/div a=">|a="x><\/div>"|title="a>b"|<noscript> y <b>/,
+  nonType6QuotedGt: /<(?:span|img|noscript) title="a>b"/,
   closeWithAttrsInParagraph: /<\/(?:div a="b"|title a|span class="c")> y|\n<\/(?:span a="b"|b a)>/,
   rawTextElement: /<(?:title|iframe|noframes|xmp)>/,
   inlineRawTextSpan: /(?:^|[a-z ])<(?:title|iframe|noframes)>\n|<\/(?:title|iframe) a>/m,
