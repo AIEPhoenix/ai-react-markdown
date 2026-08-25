@@ -359,15 +359,18 @@ type MdBlock =
   | { kind: 'none' }
   | { kind: 'fence'; char: string; len: number; indent: number }
   | { kind: 'math'; len: number; indent: number }
-  /** A CommonMark html block, types 1-5 — the ones with their own end
-   *  condition (type 1: the literal closer line; 2-5: their terminators).
-   *  Types 6/7 end at a blank and still live on the run flags
-   *  (`htmlFlowSinceBlank`/`htmlFlowReal`) until the next P4a slice. */
-  | { kind: 'html'; type: 1 | 2 | 3 | 4 | 5 };
+  /** A CommonMark html block. Types 1-5 end by their own condition
+   *  (type 1: the literal closer line; 2-5: their terminators); types 6/7
+   *  end at the blank. Type 7 is entered by the APPROXIMATE
+   *  `TYPE7_LINE_RE` on purpose — exact §4.6 type 7 is cut from the plan,
+   *  and an exact test here would raise the boundary, which the stage
+   *  acceptances forbid; the run flags stay as deliberate conservative
+   *  cover until their consumers migrate one by one. */
+  | { kind: 'html'; type: 1 | 2 | 3 | 4 | 5 | 6 | 7 };
 
 const mdHtml = (b: MdBlock, type: 1 | 2 | 3 | 4 | 5): boolean => b.kind === 'html' && b.type === type;
 /** Types 2-5 open: the interiors both grammars agree are raw content. */
-const mdHtml25 = (b: MdBlock): boolean => b.kind === 'html' && b.type >= 2;
+const mdHtml25 = (b: MdBlock): boolean => b.kind === 'html' && b.type >= 2 && b.type <= 5;
 
 /** parse5 tokenizer macro-state at a LINE BOUNDARY (two-model P3a, T3.1).
  *  A PARTITION of {data, rawText, script, bogus} — measured before the
@@ -957,7 +960,12 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   // comment node whose seam-pinning power is unverified. (Lines INSIDE the
   // run keep the flag; the run's own blank keeps it so every candidate in
   // the trailing blank run stays rejected.)
-  if (cp.p5SealPending && !ln.blank && !cp.htmlFlowSinceBlank && !(mdHtml25(cp.mdBlock) || cp.p5Tok.kind === 'bogus')) {
+  if (
+    cp.p5SealPending &&
+    !ln.blank &&
+    !cp.htmlFlowSinceBlank &&
+    !(mdHtml25(cp.mdBlock) || cp.p5Tok.kind === 'comment' || cp.p5Tok.kind === 'bogus')
+  ) {
     const defShapedLine = DEF_RE.test(ln.text) || FOOTNOTE_DEF_RE.test(ln.text);
     const commentOnly =
       ln.text
@@ -1124,8 +1132,8 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   // block ends WITH the line carrying its terminator, so even that line's
   // remainder is raw text. Gates fence/math opens, masking, and def
   // registration below, alongside the tag-block flag (htmlFlowSinceBlank).
-  const commentOpenAtLineStart = mdHtml(cp.mdBlock, 2);
-  const rawOpenAtLineStart = mdHtml25(cp.mdBlock) || cp.p5Tok.kind === 'bogus';
+  const commentOpenAtLineStart = commentEitherOpen(cp.mdBlock, cp.p5Tok);
+  const rawOpenAtLineStart = mdHtml25(cp.mdBlock) || cp.p5Tok.kind === 'comment' || cp.p5Tok.kind === 'bogus';
 
   // --- fence state (interiors are candidate-free; paragraph resets) ---
   if (cp.mdBlock.kind === 'fence') {
@@ -1256,6 +1264,10 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
       cp.p5Tok = { kind: 'data' };
     }
+    // Types 6/7 end AT this blank — the member clears before the candidate
+    // is judged, exactly when the block ends. (Type 1 survives the blank;
+    // 2-5 run to their terminators.)
+    if (cp.mdBlock.kind === 'html' && cp.mdBlock.type >= 6) cp.mdBlock = { kind: 'none' };
     cp.blankRun += 1;
     cp.lastBlankStart = ln.start;
     cp.candidates.push({
@@ -1377,14 +1389,19 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       const t = mdTrimStart(ln.text);
       const t6 = TYPE6_START_RE.exec(t);
       const t7 = TYPE7_LINE_RE.exec(t);
+      const realT6 = t6 !== null && TYPE6_NAMES.has(t6[1].toLowerCase());
       if (
-        (t6 !== null && TYPE6_NAMES.has(t6[1].toLowerCase())) ||
+        realT6 ||
         TYPE1_START_RE.test(t) ||
         // Type 7 cannot interrupt a paragraph, and excludes the raw-text
         // names (those are type 1 as start tags, paragraph as end tags).
         (t7 !== null && !cp.prevLineWasText && !TYPE1_NAMES.has(t7Name(t).toLowerCase()))
       ) {
         cp.htmlFlowReal = true;
+        // Shadow member for the 6/7 run (type 1 wrote html{1} above; the
+        // in-comment promotion artifact keeps the member it found). The
+        // run flags stay the consumers' truth until each migrates.
+        if (cp.mdBlock.kind === 'none') cp.mdBlock = { kind: 'html', type: realT6 ? 6 : 7 };
       }
     }
   }
@@ -1689,7 +1706,11 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
           // where the leftover `>` / `->` matches nothing.
           continue;
         }
-        cp.mdBlock = { kind: 'html', type: 2 };
+        // Inside an open type 6/7 block a `<!--` line is that block's
+        // CONTENT — the member keeps the run's identity; parse5's comment
+        // half lives on `p5Tok` (commit 1), and every comment read below
+        // goes through the union.
+        if (cp.mdBlock.kind === 'none') cp.mdBlock = { kind: 'html', type: 2 };
         if (cp.p5Tok.kind === 'data') cp.p5Tok = { kind: 'comment' };
         lastCommentOpenerIdx = m.index;
         continue;
@@ -1705,7 +1726,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
         // whose `<details>` is a REAL open element to parse5). Same
         // two-grammar split as the raw-construct divergence above → poison
         // from this line, keep the micromark model (comment stays open).
-        if (mdHtml(cp.mdBlock, 2)) poisonRawDivergence();
+        if (commentEitherOpen(cp.mdBlock, cp.p5Tok)) poisonRawDivergence();
         if (cp.p5Tok.kind === 'comment') cp.p5Tok = { kind: 'data' };
         continue;
       }
@@ -1790,7 +1811,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     //    merges the text on either side — the merge reaches backward past
     //    the boundary, so an opener-offset poison has the same hole F9 had
     //    for `<?`/`<!`+letter. Same rule, same document-wide poison.
-    if (mdHtml(cp.mdBlock, 2) && lastCommentOpenerIdx !== -1) {
+    if (commentEitherOpen(cp.mdBlock, cp.p5Tok) && lastCommentOpenerIdx !== -1) {
       if (!isMdBlank(tagText.slice(0, lastCommentOpenerIdx)) || ln.indent > 3) {
         cp.phasePoisonedAt = 0;
       }
@@ -1809,7 +1830,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
         if (mr[0] === '<!--' || mr[0] === '-->' || mr[0] === '--!>') continue;
         const startMasked = masked[mr.index] !== ln.text[mr.index];
         const wholeVisible = masked.slice(mr.index, mr.index + mr[0].length) === mr[0];
-        if (startMasked || wholeVisible || inRaw(mr.index) || mdHtml(cp.mdBlock, 2)) continue;
+        if (startMasked || wholeVisible || inRaw(mr.index) || commentEitherOpen(cp.mdBlock, cp.p5Tok)) continue;
         const closing = mr[1] === '/';
         const tag = mr[2].toLowerCase();
         if (strayTablePart(tag)) cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start + mr.index);
@@ -1834,7 +1855,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       cp.pendingTruncatedTags = [];
     }
     // Line-truncated tag start — anchor on the LAST `<` of the line.
-    if (!mdHtml(cp.mdBlock, 2) && !tagHandledAsTruncated) {
+    if (!commentEitherOpen(cp.mdBlock, cp.p5Tok) && !tagHandledAsTruncated) {
       let lastLt = -1;
       TAG_START_LT_RE.lastIndex = 0;
       for (let ms = TAG_START_LT_RE.exec(tagText); ms !== null; ms = TAG_START_LT_RE.exec(tagText)) {
