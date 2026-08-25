@@ -358,7 +358,16 @@ interface Candidate {
 type MdBlock =
   | { kind: 'none' }
   | { kind: 'fence'; char: string; len: number; indent: number }
-  | { kind: 'math'; len: number; indent: number };
+  | { kind: 'math'; len: number; indent: number }
+  /** A CommonMark html block, types 1-5 — the ones with their own end
+   *  condition (type 1: the literal closer line; 2-5: their terminators).
+   *  Types 6/7 end at a blank and still live on the run flags
+   *  (`htmlFlowSinceBlank`/`htmlFlowReal`) until the next P4a slice. */
+  | { kind: 'html'; type: 1 | 2 | 3 | 4 | 5 };
+
+const mdHtml = (b: MdBlock, type: 1 | 2 | 3 | 4 | 5): boolean => b.kind === 'html' && b.type === type;
+/** Types 2-5 open: the interiors both grammars agree are raw content. */
+const mdHtml25 = (b: MdBlock): boolean => b.kind === 'html' && b.type >= 2;
 
 /** parse5 tokenizer macro-state at a LINE BOUNDARY (two-model P3a, T3.1).
  *  A PARTITION of {data, rawText, script, bogus} — measured before the
@@ -420,10 +429,6 @@ export interface FreezeScanCheckpointInternal extends FreezeScanCheckpoint {
   unresolvedRefs: UnresolvedRef[];
   tagBalance: Map<string, number>;
   openTotal: number;
-  commentOpen: boolean;
-  piOpen: boolean;
-  declOpen: boolean;
-  cdataOpen: boolean;
   /** parse5's tokenizer macro-state (see `P5Tok`). Bogus comment (`<!` not
    *  followed by `--` / letter / `[CDATA[`, or `</` not followed by a
    *  letter — eaten up to the next `>`; micromark has no such construct),
@@ -533,20 +538,6 @@ export interface FreezeScanCheckpointInternal extends FreezeScanCheckpoint {
    *  htmlFlowSinceBlank swallowed them — a new under-block). Sticky to the
    *  blank; a type 6/1 start on a later line of a non-real run promotes it. */
   htmlFlowReal: boolean;
-  /** The run since the last blank was OPENED by a CommonMark type-1 block
-   *  (`<script` / `<pre` / `<style` / `<textarea`). Type 1 is the one block
-   *  that ends at its CLOSER line rather than at a blank, so `htmlFlowReal`
-   *  being "sticky to the blank" over-ran it: the line after `</script>` is
-   *  a fresh PARAGRAPH to micromark, but the scanner still treated it as
-   *  raw html flow — and in a real run end tags may carry attributes, so a
-   *  `</div a="b">` there was counted as a REAL close. `p <div> x </div
-   *  a="b"> y` after a `</script>` line therefore froze past an element the
-   *  actual parse leaves OPEN, nesting the whole rest of the document
-   *  inside it (2026-08-20 soak leg 2; identical for pre/style/textarea,
-   *  and correct as-is for a type-6 run, which really does reach the blank).
-   *  Only set when the type-1 opener is the line that STARTED the run — a
-   *  `<script>` nested inside an open type-6 block must not end it. */
-  type1FlowOpen: boolean;
   /** The open-element stack, in order. `tagBalance` and `openTotal` are
    *  derived views kept in step with it, but the STACK is the truth: an end
    *  tag's effect depends on what sits BETWEEN it and its match, which a
@@ -732,12 +723,8 @@ function freshCheckpoint(
     unresolvedRefs: [],
     tagBalance: new Map(),
     openTotal: 0,
-    commentOpen: false,
-    piOpen: false,
     p5Tok: { kind: 'data' },
     openStack: [],
-    declOpen: false,
-    cdataOpen: false,
     mdBlock: { kind: 'none' },
     blankRun: 0,
     lastBlankStart: -1,
@@ -754,7 +741,6 @@ function freshCheckpoint(
     pendingTruncatedCloses: [],
     pendingTag: null,
     htmlFlowReal: false,
-    type1FlowOpen: false,
   };
 }
 
@@ -958,12 +944,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   // comment node whose seam-pinning power is unverified. (Lines INSIDE the
   // run keep the flag; the run's own blank keeps it so every candidate in
   // the trailing blank run stays rejected.)
-  if (
-    cp.p5SealPending &&
-    !ln.blank &&
-    !cp.htmlFlowSinceBlank &&
-    !(cp.commentOpen || cp.piOpen || cp.declOpen || cp.cdataOpen || cp.p5Tok.kind === 'bogus')
-  ) {
+  if (cp.p5SealPending && !ln.blank && !cp.htmlFlowSinceBlank && !(mdHtml25(cp.mdBlock) || cp.p5Tok.kind === 'bogus')) {
     const defShapedLine = DEF_RE.test(ln.text) || FOOTNOTE_DEF_RE.test(ln.text);
     const commentOnly =
       ln.text
@@ -1130,8 +1111,8 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   // block ends WITH the line carrying its terminator, so even that line's
   // remainder is raw text. Gates fence/math opens, masking, and def
   // registration below, alongside the tag-block flag (htmlFlowSinceBlank).
-  const commentOpenAtLineStart = cp.commentOpen;
-  const rawOpenAtLineStart = cp.commentOpen || cp.piOpen || cp.declOpen || cp.cdataOpen || cp.p5Tok.kind === 'bogus';
+  const commentOpenAtLineStart = mdHtml(cp.mdBlock, 2);
+  const rawOpenAtLineStart = mdHtml25(cp.mdBlock) || cp.p5Tok.kind === 'bogus';
 
   // --- fence state (interiors are candidate-free; paragraph resets) ---
   if (cp.mdBlock.kind === 'fence') {
@@ -1267,19 +1248,13 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     cp.candidates.push({
       offset: Math.min(ln.end + 1, text.length),
       blankRun: cp.blankRun,
-      // `type1FlowOpen`: an unterminated type-1 block swallows this blank
-      // and everything after it as RAW content, so nothing here is a block
-      // boundary at all. Its tags are invisible to the balance scan
-      // (the raw-text mask suppresses them), which is exactly why `openTotal`
-      // reads 0 and the candidate looked safe.
-      htmlBalanced:
-        cp.openTotal === 0 &&
-        !cp.commentOpen &&
-        !cp.piOpen &&
-        !cp.declOpen &&
-        !cp.cdataOpen &&
-        (cp.p5Tok.kind as P5Tok['kind']) !== 'bogus' &&
-        !cp.type1FlowOpen,
+      // The html member covers types 1-5 in one check: an unterminated
+      // type-1 block swallows this blank and everything after it as RAW
+      // content (its tags are invisible to the balance scan — the raw-text
+      // mask suppresses them — which is exactly why `openTotal` reads 0
+      // and the candidate looked safe), and the 2-5 interiors are the
+      // same construct to both grammars.
+      htmlBalanced: cp.openTotal === 0 && cp.mdBlock.kind !== 'html' && (cp.p5Tok.kind as P5Tok['kind']) !== 'bogus',
       hazard: cp.hazardVerdict,
       seamRisk: cp.p5SealPending,
       defListSettled: null,
@@ -1294,7 +1269,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     // so the ``` lines after the blank are raw text to micromark and a real
     // FENCE to the scanner — a candidate landed inside the html block
     // (2026-08-20 soak leg 2, third shape).
-    if (!cp.type1FlowOpen) {
+    if (!mdHtml(cp.mdBlock, 1)) {
       cp.htmlFlowSinceBlank = false;
       cp.htmlFlowReal = false;
       // A RAWTEXT/RCDATA element still open ACROSS this blank has just had
@@ -1383,7 +1358,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     // own (2026-08-21 scaled soak, shard 0).
     const noRealBlockOpen = !cp.htmlFlowReal;
     cp.htmlFlowSinceBlank = true;
-    if (noRealBlockOpen && TYPE1_START_RE.test(mdTrimStart(ln.text))) cp.type1FlowOpen = true;
+    if (noRealBlockOpen && TYPE1_START_RE.test(mdTrimStart(ln.text))) cp.mdBlock = { kind: 'html', type: 1 };
     if (!TYPE6_NAMES.has(tagStart[1].toLowerCase())) cp.hazardVerdict = true;
     if (!cp.htmlFlowReal) {
       const t = mdTrimStart(ln.text);
@@ -1451,7 +1426,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
    *  block-interrupting next line retracts to literal text. */
   let inlineRawOpenerIdx = -1;
   while (pos < scanText.length) {
-    if (cp.piOpen) {
+    if (mdHtml(cp.mdBlock, 3)) {
       const c = scanText.indexOf('?>', pos);
       const gt = scanText.indexOf('>', pos);
       if (gt !== -1 && (c === -1 || gt !== c + 1)) poisonRawDivergence();
@@ -1460,11 +1435,11 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
         break;
       }
       rawSpans.push([pos, c + 2]);
-      cp.piOpen = false;
+      cp.mdBlock = { kind: 'none' };
       pos = c + 2;
       continue;
     }
-    if (cp.cdataOpen) {
+    if (mdHtml(cp.mdBlock, 5)) {
       const c = scanText.indexOf(']]>', pos);
       const gt = scanText.indexOf('>', pos);
       if (gt !== -1 && (c === -1 || gt !== c + 2)) poisonRawDivergence();
@@ -1473,18 +1448,18 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
         break;
       }
       rawSpans.push([pos, c + 3]);
-      cp.cdataOpen = false;
+      cp.mdBlock = { kind: 'none' };
       pos = c + 3;
       continue;
     }
-    if (cp.declOpen || cp.p5Tok.kind === 'bogus') {
+    if (mdHtml(cp.mdBlock, 4) || cp.p5Tok.kind === 'bogus') {
       const c = scanText.indexOf('>', pos);
       if (c === -1) {
         rawSpans.push([pos, scanText.length]);
         break;
       }
       rawSpans.push([pos, c + 1]);
-      cp.declOpen = false;
+      if (mdHtml(cp.mdBlock, 4)) cp.mdBlock = { kind: 'none' };
       if (cp.p5Tok.kind === 'bogus') cp.p5Tok = { kind: 'data' };
       pos = c + 1;
       continue;
@@ -1498,7 +1473,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     // `<!--\n<?x` held commentOpen AND piOpen at once — blocking-only
     // artifacts, but artifacts a single MdBlock cannot and should not
     // represent).
-    if (commentOpenAtLineStart || inRawTextTok(cp.p5Tok) || cp.type1FlowOpen) break;
+    if (commentOpenAtLineStart || inRawTextTok(cp.p5Tok) || mdHtml(cp.mdBlock, 1)) break;
     const pi = scanText.indexOf('<?', pos);
     const cd = scanText.indexOf('<![CDATA[', pos);
     // `<!` + letter = declaration; `<!--` (third char '-') and
@@ -1524,7 +1499,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       pos = bogus + 2;
     } else if (first === cd) {
       rawSpans.push([cd, cd + 9]);
-      cp.cdataOpen = true;
+      cp.mdBlock = { kind: 'html', type: 5 };
       if (!isMdBlank(scanText.slice(0, cd)) || ln.indent > 3) inlineRawOpenerIdx = cd;
       pos = cd + 9;
     } else if (first === pi) {
@@ -1542,7 +1517,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
         continue;
       }
       rawSpans.push([pi, pi + 2]);
-      cp.piOpen = true;
+      cp.mdBlock = { kind: 'html', type: 3 };
       if (!isMdBlank(scanText.slice(0, pi)) || ln.indent > 3) inlineRawOpenerIdx = pi;
       pos = pi + 2;
     } else {
@@ -1561,7 +1536,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       // `    <!DOCTYPE html>` block. Backticked mentions are masked out
       // before this scan and never reach here at all.
       if (ln.indent <= 3 && /^doctype/i.test(scanText.slice(decl + 2))) cp.phasePoisonedAt = 0;
-      cp.declOpen = true;
+      cp.mdBlock = { kind: 'html', type: 4 };
       if (!isMdBlank(scanText.slice(0, decl)) || ln.indent > 3) inlineRawOpenerIdx = decl;
       pos = decl + 2;
     }
@@ -1588,7 +1563,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   // (`<!--` has the same erasure shape but its own earlier machinery has kept
   // every measured variant safe — its poison is not widened here, and the
   // corpus carries the shapes that would catch it if that ever stops.)
-  if (inlineRawOpenerIdx !== -1 && (cp.piOpen || cp.declOpen || cp.cdataOpen)) {
+  if (inlineRawOpenerIdx !== -1 && cp.mdBlock.kind === 'html' && cp.mdBlock.type >= 3) {
     cp.phasePoisonedAt = 0;
   }
   // Raw-construct bytes are data, not markup — mask them (offset-preserving)
@@ -1662,14 +1637,14 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       }
       if (m[0] === '<!--') {
         const next = tagText.slice(m.index + 4, m.index + 6);
-        if (cp.commentOpen) {
+        if (mdHtml(cp.mdBlock, 2)) {
           // Inside an OPEN comment `<!--` is content — but the regex
           // consumed its `--`, which may be the start of the closer:
           // `<!-->` / `<!--->` carry a `-->` (closes for both grammars;
           // soak seed 20260759: `<!--\n\n<!-->\n<details>` left the
           // comment open and skipped the real `<details>`), `<!--!>` /
           // `<!---!>` carry a `--!>` (parse5-only closer → poison).
-          if (next.startsWith('>') || next === '->') cp.commentOpen = false;
+          if (next.startsWith('>') || next === '->') cp.mdBlock = { kind: 'none' };
           else if (next === '!>' || next === '-!') poisonRawDivergence();
           continue;
         }
@@ -1679,12 +1654,12 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
           // where the leftover `>` / `->` matches nothing.
           continue;
         }
-        cp.commentOpen = true;
+        cp.mdBlock = { kind: 'html', type: 2 };
         lastCommentOpenerIdx = m.index;
         continue;
       }
       if (m[0] === '-->') {
-        cp.commentOpen = false;
+        cp.mdBlock = { kind: 'none' };
         continue;
       }
       if (m[0] === '--!>') {
@@ -1693,10 +1668,10 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
         // whose `<details>` is a REAL open element to parse5). Same
         // two-grammar split as the raw-construct divergence above → poison
         // from this line, keep the micromark model (comment stays open).
-        if (cp.commentOpen) poisonRawDivergence();
+        if (mdHtml(cp.mdBlock, 2)) poisonRawDivergence();
         continue;
       }
-      if (cp.commentOpen) continue;
+      if (mdHtml(cp.mdBlock, 2)) continue;
       const closing = m[1] === '/';
       const tag = m[2].toLowerCase();
       if (strayTablePart(tag)) cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start + m.index);
@@ -1777,7 +1752,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     //    merges the text on either side — the merge reaches backward past
     //    the boundary, so an opener-offset poison has the same hole F9 had
     //    for `<?`/`<!`+letter. Same rule, same document-wide poison.
-    if (cp.commentOpen && lastCommentOpenerIdx !== -1) {
+    if (mdHtml(cp.mdBlock, 2) && lastCommentOpenerIdx !== -1) {
       if (!isMdBlank(tagText.slice(0, lastCommentOpenerIdx)) || ln.indent > 3) {
         cp.phasePoisonedAt = 0;
       }
@@ -1796,7 +1771,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
         if (mr[0] === '<!--' || mr[0] === '-->' || mr[0] === '--!>') continue;
         const startMasked = masked[mr.index] !== ln.text[mr.index];
         const wholeVisible = masked.slice(mr.index, mr.index + mr[0].length) === mr[0];
-        if (startMasked || wholeVisible || inRaw(mr.index) || cp.commentOpen) continue;
+        if (startMasked || wholeVisible || inRaw(mr.index) || mdHtml(cp.mdBlock, 2)) continue;
         const closing = mr[1] === '/';
         const tag = mr[2].toLowerCase();
         if (strayTablePart(tag)) cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start + mr.index);
@@ -1821,7 +1796,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       cp.pendingTruncatedTags = [];
     }
     // Line-truncated tag start — anchor on the LAST `<` of the line.
-    if (!cp.commentOpen && !tagHandledAsTruncated) {
+    if (!mdHtml(cp.mdBlock, 2) && !tagHandledAsTruncated) {
       let lastLt = -1;
       TAG_START_LT_RE.lastIndex = 0;
       for (let ms = TAG_START_LT_RE.exec(tagText); ms !== null; ms = TAG_START_LT_RE.exec(tagText)) {
@@ -1939,8 +1914,8 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   // CommonMark type-1 end condition: the line CONTAINS the closer string,
   // and that line still belongs to the block — so this runs last, after the
   // line has been scanned as raw flow. The next line starts fresh.
-  if (cp.type1FlowOpen && TYPE1_CLOSE_RE.test(ln.text)) {
-    cp.type1FlowOpen = false;
+  if (mdHtml(cp.mdBlock, 1) && TYPE1_CLOSE_RE.test(ln.text)) {
+    cp.mdBlock = { kind: 'none' };
     cp.htmlFlowSinceBlank = false;
     cp.htmlFlowReal = false;
   }
