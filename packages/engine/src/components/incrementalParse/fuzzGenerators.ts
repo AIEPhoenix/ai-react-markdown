@@ -630,7 +630,23 @@ const nonType6QuotedGtArb = fc.oneof(
     '- item\n  <img title="a>b">\n  ```\n  x\n  ```',
     '<span title="a>b" class="c">x</span>\nplain follower line'
   ),
-  fc.constantFrom('<img title="a>b">\n[a]: /u', '<span title="a>b">\n<!-- c -->')
+  fc.constantFrom('<img title="a>b">\n[a]: /u', '<span title="a>b">\n<!-- c -->'),
+  // Exact-type-7 interrupt contexts: the SAME complete tag line is a real
+  // type-7 block after a heading / break / terminator line and a paragraph
+  // continuation after content — plus the classifier's other exact edges
+  // (closing raw-text names ARE type 7; attribute garbage on a non-type-6
+  // name is a paragraph; a pipe line before a tag line poisons).
+  fc.constantFrom(
+    '# h\n<span title="a>b">\n`<div>`\n</span>',
+    'para line\n<span title="a>b">\n`<i>` stays inline\n</span>',
+    '---\n<x-y>\n`<div>`\n</x-y>',
+    '<!-- c -->\n<em>\n</em>\n`<b>` follower',
+    '</style>\n`<div>` raw here',
+    'para\n</style> paragraph continuation `<b>`',
+    '<foo a=>\n`<i>` inline code\n$$\ne=mc^2\n$$',
+    '| a | b |\n| - | - |\n<x-y/>\nrow follower',
+    'a | pipe paragraph\n<x-y/>\nfollower'
+  )
 );
 
 const rawHtmlArb = fc.oneof(

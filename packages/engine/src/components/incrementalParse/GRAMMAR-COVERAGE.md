@@ -37,24 +37,34 @@ to be re-derived rather than assumed to hold.
 Start conditions are checked at block indent (≤ 3 spaces). "Interrupts" is
 whether the type may begin on a paragraph continuation line.
 
-| Type | Start                                                                                  | End                                                                                                               | Interrupts a paragraph | Scanner                                                                                                                                                                                               | Corpus marker                                      |
-| ---- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| 1    | `<script` / `<pre` / `<style` / `<textarea` + whitespace, `>` or EOL                   | line containing the literal `</script>` / `</pre>` / `</style>` / `</textarea>`; **a blank line does NOT end it** | yes                    | `TYPE1_NAMES`, `TYPE1_START_RE`, `mdBlock` html{1}, `TYPE1_CLOSE_RE` — both halves were wrong until v2.5.3                                                                                            | `rawTextBlock`, `type1Boundary`                    |
-| 2    | `<!--`                                                                                 | line containing `-->`                                                                                             | yes                    | `mdBlock` html{2} (+ `p5Tok` comment — parse5's half, split since P4b-completion)                                                                                                                     | `unclosedRawOpener`, `overlappingTerminator`       |
-| 3    | `<?`                                                                                   | line containing `?>`                                                                                              | yes                    | `mdBlock` html{3}                                                                                                                                                                                     | `selfContainedCdataPi`, `overlappingTerminator`    |
-| 4    | `<!` + ASCII letter                                                                    | line containing `>`                                                                                               | yes                    | `mdBlock` html{4}                                                                                                                                                                                     | `multiLineDecl`                                    |
-| 5    | `<![CDATA[`                                                                            | line containing `]]>`                                                                                             | yes                    | `mdBlock` html{5}                                                                                                                                                                                     | `multiLineCdata`, `selfContainedCdataPi`           |
-| 6    | `<` or `</` + a name from `htmlBlockNames` (62 entries) + whitespace, `>`, `/>` or EOL | blank line                                                                                                        | yes                    | `TYPE6_NAMES` + `TYPE6_START_RE` → `mdBlock` html{6}                                                                                                                                                  | `unclosedRawOpener` and most raw-HTML families     |
-| 7    | a complete open or closing tag alone on its line                                       | blank line                                                                                                        | **no**                 | `TYPE7_LINE_RE` + `prevLineWasText`, type-1 names excluded. Exact classification would need attribute-quote parsing, so **ambiguous starters poison `hazardVerdict` instead** — deliberate over-block | `closeWithAttrsInParagraph`, `crossLineTagGarbage` |
+| Type | Start                                                                                  | End                                                                                                               | Interrupts a paragraph | Scanner                                                                                                                                                                                                                                      | Corpus marker                                                          |
+| ---- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| 1    | `<script` / `<pre` / `<style` / `<textarea` + whitespace, `>` or EOL                   | line containing the literal `</script>` / `</pre>` / `</style>` / `</textarea>`; **a blank line does NOT end it** | yes                    | `TYPE1_NAMES`, `TYPE1_START_RE`, `mdBlock` html{1}, `TYPE1_CLOSE_RE` — both halves were wrong until v2.5.3                                                                                                                                   | `rawTextBlock`, `type1Boundary`                                        |
+| 2    | `<!--`                                                                                 | line containing `-->`                                                                                             | yes                    | `mdBlock` html{2} (+ `p5Tok` comment — parse5's half, split since P4b-completion)                                                                                                                                                            | `unclosedRawOpener`, `overlappingTerminator`                           |
+| 3    | `<?`                                                                                   | line containing `?>`                                                                                              | yes                    | `mdBlock` html{3}                                                                                                                                                                                                                            | `selfContainedCdataPi`, `overlappingTerminator`                        |
+| 4    | `<!` + ASCII letter                                                                    | line containing `>`                                                                                               | yes                    | `mdBlock` html{4}                                                                                                                                                                                                                            | `multiLineDecl`                                                        |
+| 5    | `<![CDATA[`                                                                            | line containing `]]>`                                                                                             | yes                    | `mdBlock` html{5}                                                                                                                                                                                                                            | `multiLineCdata`, `selfContainedCdataPi`                               |
+| 6    | `<` or `</` + a name from `htmlBlockNames` (62 entries) + whitespace, `>`, `/>` or EOL | blank line                                                                                                        | yes                    | `TYPE6_NAMES` + `TYPE6_START_RE` → `mdBlock` html{6}                                                                                                                                                                                         | `unclosedRawOpener` and most raw-HTML families                         |
+| 7    | a complete open or closing tag alone on its line                                       | blank line                                                                                                        | **no**                 | **EXACT** since the exact-type-7 stage: `isType7Line` (micromark's complete-tag automaton, transcribed) + `prevLineOpenContent` (the exact interrupt input). The one undecidable interrupt class — pipe lines — poisons the refused tag line | `closeWithAttrsInParagraph`, `crossLineTagGarbage`, `nonType6QuotedGt` |
 
 Notes the scanner depends on:
 
 - For types 1–5 the terminator's line is part of the block, including the
   bytes AFTER the terminator. Blocker 6 (raw-remnant seam) exists for this.
-- Type 7's "cannot interrupt a paragraph" is why `prevLineWasText` is read.
+- Type 7's "cannot interrupt a paragraph" is really "cannot interrupt
+  CONTENT" — micromark's paragraph/definition construct, including
+  container-held paragraphs. `prevLineOpenContent` derives it exactly per
+  line class (measured: type 7 OPENS after headings, thematic breaks,
+  setext underlines, table rows, indented code, fence closes, terminator
+  lines and bare list markers; it stays REFUSED after paragraph,
+  definition, footnote-definition, item-content and blockquote lines).
   A closing tag with attributes (`</div a="b">`) is not a valid tag, so it
   is neither type 6 nor type 7 — plain paragraph text. That was one of the
-  four v2.5.3 families.
+  four v2.5.3 families. A closing tag whose NAME is a raw-text name IS
+  type 7 (`</style>` alone on a line — the earlier "paragraph as end tags"
+  note here was wrong, and harmless only while the retired run flag
+  blanket-covered every `<`-starting line), and so is an open raw-text
+  name with the self-closing slash straight after it (`<style/>`).
 
 ## Table B — parse5 tokenizer states that swallow markup
 
@@ -210,6 +220,33 @@ type-7 exactness (its keep-argument sits where the composite is built,
 and the nonType6QuotedGt corpus family stands guard over the hole). The
 def gate migrated with its real safety argument (`defLineStart`'s
 prevLineWasText half) written down and flip-pinned.
+
+### Exact type 7 — SHIPPED (2026-08-25, the deferred cut closes)
+
+The §8 cut is implemented as its own stage, nine commits, each gated:
+
+1. `isType7Line` transcribes micromark's complete-tag automaton state for
+   state (quoted values contain `>`; unquoted values chain `=`, looser
+   than the spec's written grammar; `<a b=/>` is complete; the tagName
+   dispatch's raw-name/block-name exits) — conformance-pinned against the
+   LIVE remark-parse in `exactType7.test.ts`, so a micromark upgrade
+   fails the pin instead of drifting.
+2. `prevLineOpenContent` replaces the `prevLineWasText` proxy as the
+   interrupt input (the proxy refused after headings/terminators/fence
+   closes where micromark measurably opens). 29-class battery in
+   `type7Interrupt.test.ts`. Pipe lines are the one undecidable class —
+   a refused tag line after one poisons the phase, sticky.
+3. Migration B rows 4/6/7 + truncated-open + seam-set migrate to the
+   member (one consumer per commit, movements attributed per sample with
+   the engine-probe battery: benign-201 +94 = masking row 4, hazard-518
+   +107 = truncated-open); `mayBeRawToMicromark` is DELETED.
+4. The ambiguous-starter hazard poison retires with the ambiguity: 69
+   pinned entries rise across 34 docs — the stage's freeze-rate payoff —
+   602 engine probes, zero defects.
+
+Load-bearing correction recorded in Table A's notes: closing raw-text
+names ARE type 7. `nonType6QuotedGt` now generates interrupt-context
+shapes and guards the member-exactness claim.
 
 ### P4 status (original note, superseded)
 
