@@ -625,9 +625,9 @@ export interface FreezeScanCheckpointInternal extends FreezeScanCheckpoint {
    *  line on, every later close reads as an open, and the corruption never
    *  resyncs). Candidates past this offset are rejected outright — sticky,
    *  pure over-block; candidates before it are untouched (the ambiguous
-   *  region then re-parses inside the tail). The rolling hazard poison for
-   *  ambiguous tag names stays, but it decays at the next decisive block
-   *  start — this field is the phase-corruption backstop that does not. */
+   *  region then re-parses inside the tail). This field is the sticky
+   *  phase-corruption backstop (the old rolling hazard poison for
+   *  "ambiguous tag names" retired with exact type 7). */
   phasePoisonedAt: number;
   /** Tag names of line-truncated opens (`<div` at EOL) counted into
    *  tagBalance but not yet confirmed by a later `>` — reverted at the next
@@ -1526,14 +1526,13 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   // them sticky suppressed a REAL `$$` open right after `-->` and let a
   // candidate split the math block (fuzz counterexample).
   //
-  // Tag names OUTSIDE the type-6 list are AMBIGUOUS: `<embed` (truncated,
-  // name not in the list) fails type 7's lone-complete-tag condition and
-  // is really a PARAGRAPH — where a glued `$$` is a REAL math open that
-  // interrupts it. Suppressing that open put a candidate inside the math
-  // (fuzz counterexample). Classifying type 7 exactly means parsing
-  // attribute quoting, so ambiguous starters POISON the hazard verdict
-  // instead: candidates near the run are rejected outright (pure
-  // over-block), which is correct whichever construct micromark chooses.
+  // Tag names OUTSIDE the type-6 list used to poison the rolling hazard
+  // verdict ("ambiguous starters") because classifying type 7 needed
+  // attribute-quote parsing. Type 7 IS exact now — the line either opens a
+  // block (the member) or is a paragraph, both micromark's own answer — so
+  // the blanket hazard is retired with the ambiguity (exact-type-7 stage;
+  // the one undecidable interrupt class, pipe lines, has its own sticky
+  // poison at the refused tag line).
   const tagStart = ln.indent <= 3 ? /^<\/?([A-Za-z][A-Za-z0-9-]*)/.exec(mdTrimStart(ln.text)) : null;
   if (tagStart) {
     // Gate on the MEMBER, never on "did the run start here" — the retired
@@ -1551,7 +1550,6 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     // correctly refuses. Movements measured and pinned with this commit.
     const noRealBlockOpen = cp.mdBlock.kind !== 'html';
     if (noRealBlockOpen && TYPE1_START_RE.test(mdTrimStart(ln.text))) cp.mdBlock = { kind: 'html', type: 1 };
-    if (!TYPE6_NAMES.has(tagStart[1].toLowerCase())) cp.hazardVerdict = true;
     if (cp.mdBlock.kind !== 'html') {
       const t = mdTrimStart(ln.text);
       const t6 = TYPE6_START_RE.exec(t);
