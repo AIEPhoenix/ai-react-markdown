@@ -14,9 +14,11 @@ allowBuilds:
   '@parcel/watcher': false
   esbuild: false
 
-# Our own fork chain (see the 2.5.5 release notes): freshly published
-# versions must be installable the day they are cut, so the cooldown is
-# waived for exactly the pinned-floor versions.
+# Our own fork chain (see the 2.5.5 release notes). ANTICIPATORY config: no
+# `minimumReleaseAge` is set anywhere, so this exclude list is currently a
+# no-op — it exists so that if a cooldown is ever enabled, freshly published
+# fork versions stay installable the day they are cut. (The active cooldown
+# is Dependabot's, a separate mechanism.)
 minimumReleaseAgeExclude:
   - '@ai-markdown/hast-util-from-parse5@8.0.5'
   - '@ai-markdown/hast-util-raw@9.1.3'

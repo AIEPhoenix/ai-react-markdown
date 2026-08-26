@@ -54,7 +54,7 @@
     "./package.json": "./package.json"
   },
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsup",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsup && node scripts/assert-dist-clean.mjs",
     "test": "vitest --run",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },

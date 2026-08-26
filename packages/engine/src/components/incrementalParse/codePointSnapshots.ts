@@ -1,5 +1,6 @@
 /**
- * TEST/STORY helper (not exported from the package barrel): prefix
+ * TEST/STORY helper (exported from the package barrel for the Storybook
+ * streams): prefix
  * snapshots sliced at CODE-POINT granularity, so a frame boundary never
  * splits a surrogate pair. Every streaming verifier in the repo — the
  * splice-equivalence arbiter, the prefixFreeze experiment harness, and the
