@@ -482,17 +482,28 @@ type MdBlock =
   | { kind: 'none' }
   | { kind: 'fence'; char: string; len: number; indent: number }
   | { kind: 'math'; len: number; indent: number }
-  /** A CommonMark html block. Types 1-5 end by their own condition
-   *  (type 1: the literal closer line; 2-5: their terminators); types 6/7
-   *  end at the blank. Type 7 is entered by the EXACT §4.6 test
-   *  (`isType7Line`) since the exact-type-7 stage — the attribute-quote
-   *  hole the approximate test had (and the retired `mayBeRawToMicromark`
-   *  flag covered) is
+  /** Type 1, the one html block whose four names do NOT share a parse5
+   *  answer: `script`/`style`/`textarea` are raw-text elements, `pre` is
+   *  not (it is absent from `RAW_TEXT_ELEMENTS`, and parse5 tokenizes its
+   *  content in the DATA state). `raw` carries that fact ON the member,
+   *  taken from the name at the claim site — the consumer that needs it
+   *  asks about PARSE5's grammar, not micromark's, and inferring it from
+   *  `p5Tok` there would read a field the same line sets one phase later. */
+  | { kind: 'html'; type: 1; raw: boolean }
+  /** The rest of the CommonMark html blocks. Types 2-5 end by their own
+   *  terminators; types 6/7 end at the blank. Type 7 is entered by the
+   *  EXACT §4.6 test (`isType7Line`) since the exact-type-7 stage — the
+   *  attribute-quote hole the approximate test had (and the retired
+   *  `mayBeRawToMicromark` flag covered) is
    *  closed, which is what let the remaining run-flag consumers migrate
    *  to the member. */
-  | { kind: 'html'; type: 1 | 2 | 3 | 4 | 5 | 6 | 7 };
+  | { kind: 'html'; type: 2 | 3 | 4 | 5 | 6 | 7 };
 
 const mdHtml = (b: MdBlock, type: 1 | 2 | 3 | 4 | 5): boolean => b.kind === 'html' && b.type === type;
+/** A type-1 block whose element is RAW TEXT to parse5 too — the state in
+ *  which both grammars agree every byte up to the closer is content. The
+ *  `pre` half of type 1 is deliberately excluded (F13). */
+const mdType1RawText = (b: MdBlock): boolean => b.kind === 'html' && b.type === 1 && b.raw;
 /** Types 2-5 open: the interiors both grammars agree are raw content. */
 const mdHtml25 = (b: MdBlock): boolean => b.kind === 'html' && b.type >= 2 && b.type <= 5;
 
@@ -1600,7 +1611,10 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     // opened inside the construct's content; the member is html{3-5} and
     // correctly refuses. Movements measured and pinned with this commit.
     const noRealBlockOpen = cp.mdBlock.kind !== 'html';
-    if (noRealBlockOpen && TYPE1_START_RE.test(mdTrimStart(ln.text))) cp.mdBlock = { kind: 'html', type: 1 };
+    const t1 = noRealBlockOpen ? TYPE1_START_RE.exec(mdTrimStart(ln.text)) : null;
+    // `raw` is the parse5 half of the same line: three of the four type-1
+    // names are raw-text elements, `pre` is not.
+    if (t1) cp.mdBlock = { kind: 'html', type: 1, raw: RAW_TEXT_ELEMENTS.has(t1[1].toLowerCase()) };
     if (cp.mdBlock.kind !== 'html') {
       const t = mdTrimStart(ln.text);
       const t6 = TYPE6_START_RE.exec(t);
@@ -1784,14 +1798,22 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     }
     // Openers below are TEXT to BOTH grammars while an outer text-consuming
     // construct is open — micromark: a comment/type-1 block owns every line
-    // up to and including its end line; parse5: comment / raw-text content
+    // up to and including its end line; parse5: comment / RAW-TEXT content
     // runs to its own terminator, and where the two disagree about the
     // terminator the divergence poisons have already fired. The old code
     // let them open PHANTOM constructs inside those regions (measured:
     // `<!--\n<?x` held commentOpen AND piOpen at once — blocking-only
     // artifacts, but artifacts a single MdBlock cannot and should not
     // represent).
-    if (commentOpenAtLineStart || inRawTextTok(cp.p5Tok) || mdHtml(cp.mdBlock, 1)) break;
+    //
+    // The type-1 term asks the PARSE5 half (`mdType1RawText`), not "is a
+    // type-1 block open": `pre` is a type-1 name that parse5 tokenizes in
+    // the DATA state, so `<?x` inside `<pre>` really opens a bogus comment
+    // that eats the `>` of the `</pre>` line and leaves the element open
+    // (F13 — 20 divergent frames on `<pre>\n<?x\n</pre>` + tail; before the
+    // gate existed the phantom opener's own first-`>` poison covered it by
+    // accident, and the gate removed both).
+    if (commentOpenAtLineStart || inRawTextTok(cp.p5Tok) || mdType1RawText(cp.mdBlock)) break;
     const pi = scanText.indexOf('<?', pos);
     const cd = scanText.indexOf('<![CDATA[', pos);
     // `<!` + letter = declaration; `<!--` (third char '-') and
