@@ -357,13 +357,13 @@ sweep that finds nothing at all.**
 Built 2026-08-24. Three instruments plus a pinned diff corpus; none touch
 production code.
 
-| Instrument           | File                                                                                    | Verdict authority                                                                                                                                                                                                  |
-| -------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Engine probe         | `conformanceOracles.ts` `engineProbe`                                                   | **Authoritative.** Streams `doc` then `doc + probe` through the real engine and deep-equals frame 2 against a fresh full parse, positions included, never gated on `usedIncremental`. A mismatch is a defect.      |
-| (M) span oracle      | `conformanceOracles.ts` `mSpanDisagreement`                                             | Attribution. Covering-span sets at every frozen-region line start; in sweeps SNAPSHOT-anchored — `parse(doc)` vs `parse(doc+probe)` — per the bad-oracle finding below. Spans, not types.                          |
-| (P) identity oracles | `conformanceOracles.ts` `rawLayerIdentityDisagreement` / `pipelineIdentityDisagreement` | Design instruments, prefix-anchored — home ground is HAND fixtures (formElement, F10). Sweeps run them only behind `ORACLE_RAW=1`: at scanner-granted boundaries the prefix anchoring overclaims, see below.       |
-| Boundary diff        | `boundaryDiff.test.ts` + `boundaryBaseline.json`                                        | Regression net (§2.3). Per-sample boundaries over the pinned corpus × three lineages (engine/scanner/phantom); increases FAIL until the baseline is regenerated with a ledger entry; decreases report a histogram. |
-| Pinned corpus        | `pinnedCorpus.ts`                                                                       | 17 frozen fixture docs + 3 purpose-built REF_RESOLUTION docs + 2000 pinned-seed fuzz samples, fingerprinted against corpus drift.                                                                                  |
+| Instrument           | File                                                                                    | Verdict authority                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| -------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Engine probe         | `conformanceOracles.ts` `engineProbe`                                                   | **Authoritative.** Streams `doc` then `doc + probe` through the real engine and deep-equals frame 2 against a fresh full parse, positions included, never gated on `usedIncremental`. A mismatch is a defect.                                                                                                                                                                                                                                               |
+| (M) span oracle      | `conformanceOracles.ts` `mSpanDisagreement`                                             | Attribution. Covering-span sets at every frozen-region line start; in sweeps SNAPSHOT-anchored — `parse(doc)` vs `parse(doc+probe)` — per the bad-oracle finding below. Spans, not types.                                                                                                                                                                                                                                                                   |
+| (P) identity oracles | `conformanceOracles.ts` `rawLayerIdentityDisagreement` / `pipelineIdentityDisagreement` | Design instruments, prefix-anchored — home ground is HAND fixtures (formElement, F10). Sweeps run them only behind `ORACLE_RAW=1`: at scanner-granted boundaries the prefix anchoring overclaims, see below.                                                                                                                                                                                                                                                |
+| Boundary diff        | `boundaryDiff.test.ts` + `boundaryBaseline.json`                                        | Regression net (§2.3). Per-sample observables over the pinned corpus × three lineages; `e`/`s` record the boundary, `p` records `pendingFenceCloser` length (the only thing the phantom consumer reads). Increases FAIL until the baseline is regenerated with a ledger entry; decreases report a histogram. Since 2026-08-26 a corpus-composition change NARROWS the net to the byte-unchanged samples instead of disabling it — see the regen rule below. |
+| Pinned corpus        | `pinnedCorpus.ts`                                                                       | 17 frozen fixture docs + 3 purpose-built REF_RESOLUTION docs + 2000 pinned-seed fuzz samples, fingerprinted against corpus drift.                                                                                                                                                                                                                                                                                                                           |
 
 **Corpus-regen rule (learned the hard way at v2.8.0):** any edit to
 `fuzzGenerators.ts` or `pinnedCorpus.ts` shifts the pinned-seed sample
@@ -377,6 +377,15 @@ hazard-23:s 0→241, hazard-998 0→77) are corpus-composition changes from
 that generator edit — new/shifted samples, not scanner movement. The node
 pin in CI stays as determinism insurance (node 24 genuinely drifts the
 fast-check stream), but node bumps within 22.x are not a regen trigger.
+
+**The fingerprint is a regen TRIGGER, not an escape hatch (v-4, hardened
+2026-08-26).** It used to be asserted before the increases check, so any
+generator edit tripped regeneration and the red line was never evaluated —
+`f93148d` absorbed 645 unattributed increases through that hole. The
+baseline now stores a per-sample content hash beside the global
+fingerprint: on a composition change the byte-unchanged subset is still
+diffed and still fails on increases, and only genuinely new or changed
+samples are exempt. Mutation-checked both ways (see the table below).
 
 **One measured architecture fact** (it reshaped T1.2): the system's safety
 contract is scanner boundary PLUS the splice-side guards. The bare node-list
@@ -394,6 +403,8 @@ that silently skipped it would mask F8. Hence the authority split above.
 | drop `c.hazard` from candidate acceptance | diff FAILS (increases)                                                                                                   |
 | drop the `<template>` erasure poison      | diff FAILS (increases)                                                                                                   |
 | drop the link-def registration ((R) path) | 15 samples move down (REF_RESOLUTION ×2 + 13 fuzz), reported in the decrease histogram — conservative direction, visible |
+| add a throwaway generator entry           | composition change reported, and 3153 of 6060 entries STILL netted (2026-08-26)                                          |
+| that generator entry + `blankRun += 2`    | fails on INCREASES, not on the fingerprint — the v-4 escape hatch is closed (2026-08-26)                                 |
 
 The fixture library contains ZERO link reference definitions (measured
 while validating the fourth mutation) — freezing past a resolved link ref
