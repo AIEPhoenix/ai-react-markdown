@@ -2489,7 +2489,13 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     // Table tracking (see the field doc): a pipe line arms it; any
     // content-class line carries it; every block-structure line (the
     // openContent=false classes) breaks the table and disarms it.
-    cp.tableMaybeOpen = ln.text.includes('|') || (cp.tableMaybeOpen && openContent);
+    // The arming half asks whether this line could be a table ROW at all —
+    // a `|` inside an html comment or any other html-owned line is not a
+    // cell separator, and arming from one poisoned documents holding no
+    // table (2026-08-26 review min-2). Over-claiming the marker only
+    // widens the poison, so the narrowing is the precision half: it RAISES
+    // boundaries, attributed per sample in the commit that landed it.
+    cp.tableMaybeOpen = (!htmlOwnedLine && ln.text.includes('|')) || (cp.tableMaybeOpen && openContent);
     // Container tracking, the same sticky shape: a container-marker line
     // arms it, any content-class line carries it (a lazy continuation and
     // an indented item line are both content), every block-structure line
