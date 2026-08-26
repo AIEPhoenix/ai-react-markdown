@@ -11,9 +11,15 @@
  *
  * Baseline lifecycle:
  *   BOUNDARY_BASELINE_WRITE=1 vitest --run boundaryDiff  → rewrite the file
- * The stored fingerprint covers the full corpus (ids, bytes, configs); a
- * mismatch means the fuzz slice drifted (fast-check upgrade) and the
- * baseline must be REGENERATED, never interpreted.
+ * The stored fingerprint covers the full corpus (ids, bytes, configs). A
+ * mismatch means the corpus itself changed, and the baseline must be
+ * REGENERATED, never interpreted. RULE: any edit to fuzzGenerators.ts or
+ * pinnedCorpus.ts shifts the pinned-seed sample stream deterministically —
+ * on ANY node version — so it must regenerate boundaryBaseline.json in the
+ * SAME commit, with the resulting increases attributed in that commit's
+ * message. (The v2.8.0 release run failed exactly here: 35f7593 grew a
+ * generator without regenerating; the drift was misread as node V8
+ * behaviour. A fast-check upgrade is the other trigger.)
  *
  * This tool is a REGRESSION net: a clean diff is never a safety argument
  * (only fresh-seed soak is), and it was not trusted until it had failed on

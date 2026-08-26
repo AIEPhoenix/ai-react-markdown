@@ -363,7 +363,20 @@ production code.
 | (M) span oracle      | `conformanceOracles.ts` `mSpanDisagreement`                                             | Attribution. Covering-span sets at every frozen-region line start; in sweeps SNAPSHOT-anchored — `parse(doc)` vs `parse(doc+probe)` — per the bad-oracle finding below. Spans, not types.                          |
 | (P) identity oracles | `conformanceOracles.ts` `rawLayerIdentityDisagreement` / `pipelineIdentityDisagreement` | Design instruments, prefix-anchored — home ground is HAND fixtures (formElement, F10). Sweeps run them only behind `ORACLE_RAW=1`: at scanner-granted boundaries the prefix anchoring overclaims, see below.       |
 | Boundary diff        | `boundaryDiff.test.ts` + `boundaryBaseline.json`                                        | Regression net (§2.3). Per-sample boundaries over the pinned corpus × three lineages (engine/scanner/phantom); increases FAIL until the baseline is regenerated with a ledger entry; decreases report a histogram. |
-| Pinned corpus        | `pinnedCorpus.ts`                                                                       | 17 frozen fixture docs + 3 purpose-built REF_RESOLUTION docs + 2000 pinned-seed fuzz samples, fingerprinted against fast-check drift.                                                                              |
+| Pinned corpus        | `pinnedCorpus.ts`                                                                       | 17 frozen fixture docs + 3 purpose-built REF_RESOLUTION docs + 2000 pinned-seed fuzz samples, fingerprinted against corpus drift.                                                                                  |
+
+**Corpus-regen rule (learned the hard way at v2.8.0):** any edit to
+`fuzzGenerators.ts` or `pinnedCorpus.ts` shifts the pinned-seed sample
+stream deterministically — on ANY node version — so it must regenerate
+`boundaryBaseline.json` in the SAME commit, increases attributed in the
+commit message. The v2.8.0 release run failed on exactly this: 35f7593
+grew `interruptContextArb` without regenerating; the resulting fingerprint
+drift was misattributed to a node 22.23.1→22.23.2 V8 change, and the 12
+sample increases absorbed by the post-release regen (db9f091, e.g.
+hazard-23:s 0→241, hazard-998 0→77) are corpus-composition changes from
+that generator edit — new/shifted samples, not scanner movement. The node
+pin in CI stays as determinism insurance (node 24 genuinely drifts the
+fast-check stream), but node bumps within 22.x are not a regen trigger.
 
 **One measured architecture fact** (it reshaped T1.2): the system's safety
 contract is scanner boundary PLUS the splice-side guards. The bare node-list

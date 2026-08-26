@@ -23,11 +23,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Pinned to the EXACT patch: the pinned fuzz corpus (boundaryDiff /
-        # oracle baselines) is sensitive to V8 behaviour — 22.23.1 → 22.23.2
-        # drifted the corpus fingerprint and failed the v2.8.0 release run.
-        # Bumping node means regenerating boundaryBaseline.json on the SAME
-        # version, locally, in the same commit.
+        # Pinned to the EXACT patch as determinism insurance. NOTE the v2.8.0
+        # release failure this pin was written for was NOT node drift: measured
+        # on a single node (22.23.1), the corpus fingerprint flips 1cf2847b ↔
+        # e0f0d77a with the fuzzGenerators.ts edit in 35f7593 alone. The real
+        # rule lives in boundaryDiff.test.ts: any change to fuzzGenerators.ts
+        # or pinnedCorpus.ts must regenerate boundaryBaseline.json in the SAME
+        # commit. (node 24 does drift the fast-check stream — keep the pin.)
         node: ['22.23.2']
         task:
           - lint
