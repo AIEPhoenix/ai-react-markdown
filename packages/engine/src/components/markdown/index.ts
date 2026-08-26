@@ -7,7 +7,8 @@
  * @module components/markdown
  */
 
-export { createFile, createProcessor } from './processor';
+// createFile stays internal to the pipeline (2.8.1 surface trim).
+export { createProcessor } from './processor';
 export { parseStage, transformStage, type ParsedMarkdown } from './stages';
 export { buildTransform, type TransformContext } from './transform';
 export { defaultUrlTransform } from './urlTransform';

@@ -42,14 +42,19 @@ export * from './plugins/defs';
 export * from './plugins/catalog';
 
 // ── M1: zero-dependency leaves ───────────────────────────────────────────
-export * from './components/hastPredicates';
+// Named (not star): isWhitespaceText is internal-only (2.8.1 surface trim).
+export { isFootnoteSection, lastMeaningfulIdx } from './components/hastPredicates';
 export * from './components/normalizeId';
 export * from './components/shortenDocumentId';
 export * from './components/devStageTimings';
-export * from './components/sanitizeSchema';
+// Named (not star): mergeClassNameAllowlist is internal-only (2.8.1 surface
+// trim) — consumers extend via extendSanitizeSchema below.
+export { sanitizeSchema } from './components/sanitizeSchema';
 export * from './components/extendSanitizeSchema';
 export * from './components/smoothStream/controller';
 export * from './preprocessors/defs';
 export { default as preprocessAIMDContent } from './preprocessors';
-export * from './preprocessors/latex';
+// Named (not star): splitByProtectedRegions is an internal segmentation
+// helper (2.8.1 surface trim).
+export { preprocessLaTeX, createIncrementalLatexPreprocessor } from './preprocessors/latex';
 export * from './preprocessors/remend';
