@@ -631,6 +631,20 @@ export interface FreezeScanCheckpointInternal extends FreezeScanCheckpoint {
    *  at the usual reset points. Consumed only by the type-7 residual
    *  poison — over-claiming it only widens the poison (safe). */
   tableMaybeOpen: boolean;
+  /** A CONTAINER may be open: a blockquote / list-item / footnote-def
+   *  marker line was seen and every line since has been container-
+   *  continuable. micromark's `tagName` carries a `!self.parser.lazy`
+   *  exception the content model has no input for — a type-7-shaped line
+   *  that LAZILY continues an open container opens a container-held html
+   *  block (`> quoted` then `<x-y/>`), and a container whose last line was
+   *  not a paragraph CLOSES instead, leaving the same line to open a
+   *  top-level multi-line block (`> # h` then `<x-y/>`). Both readings say
+   *  "opens" where `prevLineOpenContent` says "refused", and which one
+   *  holds depends on container state a line model does not track (16 of
+   *  21 container prefixes diverged, none poisoned — 2026-08-26 review).
+   *  Sticky and reset exactly like `tableMaybeOpen`, and consumed by the
+   *  same residual poison: over-claiming it only widens the poison. */
+  containerMaybeOpen: boolean;
   /** An earlier line of the current paragraph left an unpaired backtick
    *  run — masking is disabled until the paragraph ends (safety gate). */
   /** A `[` left unclosed at the end of a paragraph line (code spans
@@ -730,6 +744,15 @@ const VOID_TAGS = new Set([
 
 /** CommonMark list markers at block indent (bullet or ordered), incl. bare `-`. */
 const LIST_MARKER_RE = /^ {0,3}(?:[-*+]|\d{1,9}[.)])(?:[ \t]|$)/;
+/** A line that OPENS a container holding content: a blockquote marker (a
+ *  bare `>` counts — the quote is open either way) or a list marker WITH
+ *  content on the same line. A BARE marker is excluded on purpose: an
+ *  empty item holds no paragraph, so the next line at block indent is
+ *  neither its content nor a lazy continuation, and the interrupt answer
+ *  there is decided (the battery measures it as OPENING). Footnote
+ *  definitions and def-list descriptions arm through their own regexes at
+ *  the call site. Arms `containerMaybeOpen`. */
+const CONTAINER_MARKER_RE = /^ {0,3}(?:>|(?:[-*+]|\d{1,9}[.)])[ \t]+\S)/;
 /** Line classes for the content-tracking decision table (the type-7
  *  interrupt input). All run on the TRIMMED line (indent ≤ 3 — the ≥ 4
  *  case is decided before them). Measured against micromark 2026-08-25:
@@ -916,6 +939,7 @@ function freshCheckpoint(
     prevLineWasValidDef: false,
     prevLineOpenContent: false,
     tableMaybeOpen: false,
+    containerMaybeOpen: false,
     paragraphHasUnpairedRun: false,
     openBracket: null,
     p5SealPending: false,
@@ -1357,6 +1381,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     cp.prevLineWasValidDef = false;
     cp.prevLineOpenContent = false;
     cp.tableMaybeOpen = false;
+    cp.containerMaybeOpen = false;
     return;
   }
   if (cp.mdBlock.kind !== 'math' && !rawOpenAtLineStart) {
@@ -1393,6 +1418,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       cp.prevLineWasValidDef = false;
       cp.prevLineOpenContent = false;
       cp.tableMaybeOpen = false;
+      cp.containerMaybeOpen = false;
       return;
     }
   }
@@ -1413,6 +1439,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     cp.prevLineWasValidDef = false;
     cp.prevLineOpenContent = false;
     cp.tableMaybeOpen = false;
+    cp.containerMaybeOpen = false;
     return;
   }
   // Fence/math OPENS are gated on the html-block MEMBER (matching the
@@ -1450,6 +1477,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
         cp.prevLineWasValidDef = false;
         cp.prevLineOpenContent = false;
         cp.tableMaybeOpen = false;
+        cp.containerMaybeOpen = false;
         return;
       }
     }
@@ -1546,6 +1574,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     cp.prevLineWasValidDef = false;
     cp.prevLineOpenContent = false;
     cp.tableMaybeOpen = false;
+    cp.containerMaybeOpen = false;
     return;
   }
 
@@ -1619,9 +1648,15 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       const t = mdTrimStart(ln.text);
       const t6 = TYPE6_START_RE.exec(t);
       const realT6 = t6 !== null && TYPE6_NAMES.has(t6[1].toLowerCase());
+      const t1Line = TYPE1_START_RE.test(t);
+      // The interrupt-SENSITIVE class: a line whose only reading as an html
+      // block is condition 7. Types 1 and 6 may interrupt a paragraph, so
+      // their answer never depends on what came before, and neither
+      // undecidable-interrupt poison below applies to them.
+      const type7Shaped = !realT6 && !t1Line && isType7Line(t);
       if (
         realT6 ||
-        TYPE1_START_RE.test(t) ||
+        t1Line ||
         // Type 7 cannot interrupt CONTENT (micromark's paragraph/definition
         // construct — `prevLineOpenContent`, the exact interrupt input; the
         // old `prevLineWasText` gate refused after headings, terminator
@@ -1629,12 +1664,12 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
         // classifier itself is exact too (isType7Line) — including closing
         // raw-text names (`</style>` alone is type 7, measured) and
         // quoted-`>` attribute values.
-        (!cp.prevLineOpenContent && isType7Line(t))
+        (!cp.prevLineOpenContent && type7Shaped)
       ) {
         // The 6/7 member (type 1 wrote html{1} above; inside this branch
         // the member is provably 'none', the guard is shape only).
         if (cp.mdBlock.kind === 'none') cp.mdBlock = { kind: 'html', type: realT6 ? 6 : 7 };
-      } else if (cp.prevLineOpenContent && cp.tableMaybeOpen && isType7Line(t)) {
+      } else if (cp.prevLineOpenContent && cp.tableMaybeOpen && type7Shaped) {
         // The one interrupt class a line model cannot settle: after a GFM
         // TABLE row type 7 opens (a table is not content), after a
         // pipe-bearing PARAGRAPH line it cannot — and table-ness was
@@ -1646,6 +1681,22 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
         // readings give this line to different grammars, so the phase is
         // poisoned from here — sticky over-block, the same treatment as
         // every other undecidable divergence.
+        cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
+      }
+      // The SECOND undecidable interrupt class, same shape as the pipe one
+      // and outside the if/else because it applies to the claim as well as
+      // to the refusal. micromark's `tagName` refuses type 7 on
+      // `self.interrupt && !self.parser.lazy[line]` — the lazy half is an
+      // input the content model does not have. While a container may be
+      // open this line is either its LAZY continuation (micromark opens a
+      // container-held block) or the line after the container closed
+      // (micromark opens a TOP-LEVEL multi-line block); the content model
+      // reads the container line as open content and refuses. Both
+      // readings give the line to a different grammar than the scanner's,
+      // so poison rather than answer — sticky over-block, and the marker
+      // disarms at the blank, where the container provably ended and the
+      // plain verdict is right again.
+      if (type7Shaped && cp.containerMaybeOpen) {
         cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
       }
     }
@@ -2399,6 +2450,17 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     // content-class line carries it; every block-structure line (the
     // openContent=false classes) breaks the table and disarms it.
     cp.tableMaybeOpen = ln.text.includes('|') || (cp.tableMaybeOpen && openContent);
+    // Container tracking, the same sticky shape: a container-marker line
+    // arms it, any content-class line carries it (a lazy continuation and
+    // an indented item line are both content), every block-structure line
+    // breaks the container and disarms it. Both halves take `openContent`,
+    // because the marker shapes overlap the structure ones — `- - -` is a
+    // thematic break, not a list item, and the table above is what says so.
+    const containerMarker =
+      CONTAINER_MARKER_RE.test(ln.text) ||
+      FOOTNOTE_DEF_RE.test(ln.text) ||
+      (cp.defListEnabled && DEF_LIST_DD_RE.test(ln.text));
+    cp.containerMaybeOpen = openContent && (containerMarker || cp.containerMaybeOpen);
   }
   // Def CHAINS (A2) are a link-definition affordance: one def line can be
   // followed directly by another. A FOOTNOTE def does NOT chain — its
