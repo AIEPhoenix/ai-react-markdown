@@ -2457,12 +2457,28 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       // A ≥4-indent line is a LAZY CONTINUATION when content is open
       // (stays open) and INDENTED CODE when it is not (stays closed).
       openContent = cp.prevLineOpenContent;
-    } else if (ATX_HEADING_RE.test(tt) || THEMATIC_BREAK_RE.test(tt) || BARE_MARKER_RE.test(tt)) {
+    } else if (ATX_HEADING_RE.test(tt) || THEMATIC_BREAK_RE.test(tt)) {
       openContent = false;
+    } else if (BARE_MARKER_RE.test(tt)) {
+      // An EMPTY list item cannot interrupt a paragraph (CommonMark §5.2),
+      // so while content is open micromark reads the marker line as a LAZY
+      // CONTINUATION and content stays open — a blanket `false` here
+      // OVER-claimed. It agreed for a lone `-` by accident: that is also a
+      // valid setext underline, which closes content under both readings,
+      // and the accident is now written down rather than relied on. At a
+      // block start `prevLineOpenContent` is false anyway, which is what
+      // the single-line battery rows pin.
+      openContent = tt[0] === '-' ? false : cp.prevLineOpenContent;
     } else if (SETEXT_LEFTOVER_RE.test(tt)) {
       // `=+` / `--`: a setext underline when a paragraph is open (content
-      // CONSUMED into a heading), a paragraph of its own when not.
-      openContent = !cp.prevLineOpenContent;
+      // CONSUMED into a heading), a paragraph of its own when not — EXCEPT
+      // inside a table, where the same bytes are just another ROW and the
+      // table (with the content it holds) runs on. Flipping to false there
+      // disarmed `tableMaybeOpen`, the next content line lost the marker,
+      // and a later refused tag line went unpoisoned (2026-08-26 review
+      // M3(a): a `<br/>` line after a `--` row froze 89 of 93 bytes while
+      // micromark held a real html block inside the frozen region).
+      openContent = cp.tableMaybeOpen && cp.prevLineOpenContent ? true : !cp.prevLineOpenContent;
     } else {
       // Paragraph, definition, footnote definition, list item content,
       // blockquote line — all leave content open for interrupt purposes
