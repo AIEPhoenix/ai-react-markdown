@@ -143,7 +143,7 @@ describe('oracle sweep — pinned realistic corpus', () => {
       const unclassified = unclassifiedRawFirings(findings);
       expect(
         unclassified,
-        `${doc.id} [${config.label}] raw-layer firing outside the E1-E6 allowlist — classify it in ` +
+        `${doc.id} [${config.label}] raw-layer firing outside the E1-E7 allowlist — classify it in ` +
           `GRAMMAR-COVERAGE's ledger and name it in classifyRawFamily before allowing it back:\n${unclassified.join('\n')}`
       ).toEqual([]);
       expect(defects, `${doc.id} [${config.label}] ${formatFindings(defects)}`).toEqual([]);
@@ -217,7 +217,7 @@ describe('oracle sweep — fuzz corpus (env-scaled)', () => {
       // fails the sweep instead of adding a line to the info log.
       expect(
         unclassifiedRaw,
-        `raw-layer firings outside the E1-E6 allowlist (${unclassifiedRaw.length}) — classify each in ` +
+        `raw-layer firings outside the E1-E7 allowlist (${unclassifiedRaw.length}) — classify each in ` +
           `GRAMMAR-COVERAGE's ledger and name it in classifyRawFamily:\n${unclassifiedRaw.slice(0, 12).join('\n')}`
       ).toEqual([]);
       // Anti-vacuity floor, over NON-EMPTY tails only. The old form counted

@@ -343,7 +343,13 @@ function flattenRefNormalized(nodes: NodeLike[], out: string[]): string[] {
  * not the same claim as tight.
  */
 export type RawFamily =
-  'E1-tablePart' | 'E2-gfmTable' | 'E3-refResolution' | 'E4-grouping' | 'E5-strayEndTag' | 'E6-defVsParagraph';
+  | 'E1-tablePart'
+  | 'E2-gfmTable'
+  | 'E3-refResolution'
+  | 'E4-grouping'
+  | 'E5-strayEndTag'
+  | 'E6-defVsParagraph'
+  | 'E7-rawTextRunOn';
 
 /**
  * The shape families (E1/E5/E6) are HEAD-ANCHORED: the insertion-mode
@@ -395,6 +401,106 @@ const STRAY_END_TAG_HEAD_RE = /^[ \t]*<\/[A-Za-z][A-Za-z0-9-]*\s*>/;
 const DEF_LINE_HEAD_RE = /^ {0,3}\[(?:[^[\]\\]|\\.)+\]:/;
 
 /**
+ * Interior forms of the shape families, classified by the DIVERGENCE
+ * CONTENT rather than by where a pattern sits in the tail text.
+ *
+ * Head-anchoring (2026-08-26) was right about the amnesty and wrong about
+ * the coverage: the same three mechanisms fire from tail-INTERIOR
+ * positions, which the head predicates stopped matching. Leg 5's first
+ * soak (ORACLE_RAW=1, ORACLE_RUNS=4000 x 12 fresh seeds) failed 9 of 12
+ * shards on 120 firings — every one a known mechanism, every engine probe
+ * clean. The fix is not to loosen the text predicates back out; it is to
+ * ask what actually DIFFERS between the two trees.
+ *
+ * Every tag below earned its place with a measured firing. A tag with no
+ * firing stays OUT, so a future soak that hits `<caption>` or `<title>`
+ * fails loud and gets it added with its evidence — that lifecycle is the
+ * point, and the sets are deliberately smaller than the HTML categories
+ * they are drawn from.
+ */
+
+/** Foster-parented table structure. Evidence (seed 20289300+i, local
+ *  replay): `table`/`thead`/`tr`/`td` shard 0 hazard#3465; `tbody` shard 7
+ *  hazard#32 and shard 11; `col` shard 2 hazard#825. NOT caption /
+ *  colgroup / tfoot / th — never observed. */
+const E1_TABLE_TAGS = new Set(['table', 'tbody', 'thead', 'tr', 'td', 'col']);
+
+/** Elements parse5 SYNTHESIZES from a stray closer. Evidence: `br` shard 0
+ *  hazard#1114, shard 3 hazard#627, shard 7; `p` shard 8 hazard#3042.
+ *  These are exactly the two names `STRAY_SYNTHESIZED_END_TAG_RE` in
+ *  spliceParse.ts matches, which is not a coincidence — same mechanism,
+ *  read from the other end. */
+const E5_SYNTH_TAGS = new Set(['br', 'p']);
+
+/** Raw-text elements observed running on. Evidence: `script` shard 1
+ *  benign#1039 and shard 9; `textarea` shard 6 hazard#151/#1434, shard 8,
+ *  shard 9 hazard#44, shard 11 hazard#71. NOT style / title / xmp /
+ *  iframe / noembed / noframes / plaintext — all in the HTML raw-text
+ *  category, none measured, so none admitted. Keeping `title` out also
+ *  keeps the F8 smuggle shape failing. */
+const E7_RAW_TEXT_TAGS = new Set(['script', 'textarea']);
+
+/** Whitespace-stripped text at every depth, JOINED — grouping-blind, for
+ *  the same reason `flattenRefNormalized` joins. */
+function joinedText(nodes: NodeLike[], out: string[] = []): string[] {
+  for (const node of nodes) {
+    if (node.type === 'text') {
+      const v = (node.value ?? '').replace(/\s+/g, '');
+      if (v !== '') out.push(v);
+    }
+    joinedText(node.children ?? [], out);
+  }
+  return out;
+}
+
+/** Element tag names whose COUNT differs between the two sides, any depth.
+ *  An empty set means the two trees hold the same elements and differ only
+ *  in text or grouping (which E4/E3 already own). */
+function divergentTags(actual: NodeLike[], expected: NodeLike[]): Set<string> {
+  const counts = new Map<string, number>();
+  const walk = (nodes: NodeLike[], sign: number): void => {
+    for (const node of nodes) {
+      if (node.type === 'element') {
+        const tag = node.tagName ?? '';
+        counts.set(tag, (counts.get(tag) ?? 0) + sign);
+      }
+      walk(node.children ?? [], sign);
+    }
+  };
+  walk(actual, 1);
+  walk(expected, -1);
+  return new Set([...counts.entries()].filter(([, n]) => n !== 0).map(([t]) => t));
+}
+
+/**
+ * Does the FIRST divergence sit inside a raw-text element that both sides
+ * agree on? Descends through element pairs that match by tag, so the
+ * answer is "the two parses disagree about how much this `<script>` /
+ * `<textarea>` swallowed", not "a script appears somewhere".
+ *
+ * Mechanism: micromark ends a type-1 block on the `</name` SUBSTRING,
+ * while parse5's raw text needs the appropriate end tag in full — so
+ * `</scripty>` closes the block for one grammar and not the other, and the
+ * tail-alone parse re-opens the element and swallows a different amount.
+ * The scanner-side counterpart is F10. Keying on the first divergence is
+ * deliberate: a run-on absorbs everything after it, so trailing
+ * differences are its consequence, not separate findings.
+ */
+function rawTextRunOn(actual: NodeLike[], expected: NodeLike[], inRawText = false): boolean {
+  const max = Math.max(actual.length, expected.length);
+  for (let i = 0; i < max; i++) {
+    const a = actual[i];
+    const b = expected[i];
+    if (isEqual(a, b)) continue;
+    if (a?.type === 'element' && b?.type === 'element' && a.tagName === b.tagName) {
+      return rawTextRunOn(a.children ?? [], b.children ?? [], inRawText || E7_RAW_TEXT_TAGS.has(a.tagName ?? ''));
+    }
+    return inRawText;
+  }
+  return inRawText;
+}
+
+/**
  * Order matters and is not arbitrary. The VALUE-CONSERVING families
  * (E2/E4/E3) are decided by the two trees — same bytes, same characters —
  * so they cannot be a text-pattern mislabel, and they go first. Running
@@ -434,13 +540,33 @@ function classifyRawFamily(
   if (flattenRefNormalized(actual, []).join('') === flattenRefNormalized(expected, []).join('')) {
     return 'E3-refResolution';
   }
-  // ── refuse-direction, head-anchored AND only if the tail really was
-  //    refused ──
+  // ── E7: a raw-text element swallowing differently. NOT refuse-direction
+  //    — its claim is about content, like E3/E4, so the `spliced` conjunct
+  //    does not apply (and must not: 15 of shard 6's textarea firings are
+  //    on tails the engine DID splice, correctly). ──
+  if (rawTextRunOn(actual, expected)) return 'E7-rawTextRunOn';
+
+  // ── refuse-direction families. Head-anchored fast path first — it is
+  //    correct wherever it matches — then the value-based interior form.
+  //    Both require the tail to have ACTUALLY been refused. ──
   if (spliced) return null;
   const head = stripLeadingBlanks(tail);
   if (probeId === 'tablePart' || TABLE_PART_HEAD_RE.test(head)) return 'E1-tablePart';
   if (STRAY_END_TAG_HEAD_RE.test(head)) return 'E5-strayEndTag';
   if (DEF_LINE_HEAD_RE.test(head)) return 'E6-defVsParagraph';
+
+  // Interior forms: the mechanism fires from inside the tail, where no
+  // head predicate can see it. Admitted only when the divergence is
+  // ENTIRELY a set of known element kinds appearing or disappearing and
+  // the text is conserved — a real defect moves characters, not just
+  // wrappers.
+  if (joinedText(actual).join('') === joinedText(expected).join('')) {
+    const tags = divergentTags(actual, expected);
+    if (tags.size > 0) {
+      if ([...tags].every((t) => E1_TABLE_TAGS.has(t))) return 'E1-tablePart';
+      if ([...tags].every((t) => E5_SYNTH_TAGS.has(t))) return 'E5-strayEndTag';
+    }
+  }
   return null;
 }
 

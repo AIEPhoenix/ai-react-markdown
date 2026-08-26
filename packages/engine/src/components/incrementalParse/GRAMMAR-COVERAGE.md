@@ -500,19 +500,70 @@ problem, not a coverage gap):
 | E5     |    200 |    26 |
 | E6     |      0 |    30 |
 
-| #   | Family                                                                                                                                                                                                                                                                                                             | Mechanism that owns it                                                                                                                                                                                                            | Direction                                                 |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| E1  | An HTML table part AT THE HEAD of the tail: the tail-alone fragment parse dispatches it from "in template", the full parse from "in body" (the F8 shape)                                                                                                                                                           | `TABLE_PART_TAG_RE` in `spliceParse.ts`                                                                                                                                                                                           | tail refused → full path (asserted, not assumed)          |
-| E2  | GFM-table internal whitespace is foster-parented to the root and merges with the seam separator (grouping only, values conserved)                                                                                                                                                                                  | blocker-6 seam handling / splice seam synthesis                                                                                                                                                                                   | seam-absorbed                                             |
-| E3  | Reference resolution split across the boundary: tail-alone parse sees orphan footnote/link/image refs, full parse resolves them against a prefix definition — same characters, different ref markup                                                                                                                | phantom injection replay (`remarkInjectPhantomDefs`)                                                                                                                                                                              | production machinery, pinned by `assertStreamEquivalence` |
-| E4  | Same bytes, different node GROUPING: adjacent root text nodes fuse on the full side but not on the concatenated one, and the hoisted footnote section's separator merges into an element a probe left open                                                                                                         | hast text merging / furniture                                                                                                                                                                                                     | grouping only, values conserved                           |
-| E5  | A stray END tag AT THE HEAD of the tail. E1's insertion-mode asymmetry with a non-table name — `</p>` synthesizes an empty `<p>` at "in body" and nothing at "in template"; `</br>` becomes a `<br>` START tag                                                                                                     | `STRAY_SYNTHESIZED_END_TAG_RE` in `spliceParse.ts`, at its seam-child and first-visible-node sites, exercised by spliceEquivalence / spliceExhaustive — NOT `spliceStructuralBail.test.ts`, which carries no stray-end-tag sample | tail refused → full path (asserted, not assumed)          |
-| E6  | A definition line AT THE HEAD of the tail is a DEFINITION (no output) in one parse and paragraph text (whose inline content becomes nodes) in the other. Mirrors the engine's own `DEF_RE`, which the earlier approximation did not: it accepted `[]:` and `[a[b]:`, neither of which is a definition to micromark | prefix-anchoring overclaim; netted by (M) + the engine probe                                                                                                                                                                      | one side carries the def's inline content                 |
+| #   | Family                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Mechanism that owns it                                                                                                                                                                                                            | Direction                                                        |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| E1  | An HTML table part AT THE HEAD of the tail: the tail-alone fragment parse dispatches it from "in template", the full parse from "in body" (the F8 shape)                                                                                                                                                                                                                                                                                                        | `TABLE_PART_TAG_RE` in `spliceParse.ts`                                                                                                                                                                                           | tail refused → full path (asserted, not assumed)                 |
+| E2  | GFM-table internal whitespace is foster-parented to the root and merges with the seam separator (grouping only, values conserved)                                                                                                                                                                                                                                                                                                                               | blocker-6 seam handling / splice seam synthesis                                                                                                                                                                                   | seam-absorbed                                                    |
+| E3  | Reference resolution split across the boundary: tail-alone parse sees orphan footnote/link/image refs, full parse resolves them against a prefix definition — same characters, different ref markup                                                                                                                                                                                                                                                             | phantom injection replay (`remarkInjectPhantomDefs`)                                                                                                                                                                              | production machinery, pinned by `assertStreamEquivalence`        |
+| E4  | Same bytes, different node GROUPING: adjacent root text nodes fuse on the full side but not on the concatenated one, and the hoisted footnote section's separator merges into an element a probe left open                                                                                                                                                                                                                                                      | hast text merging / furniture                                                                                                                                                                                                     | grouping only, values conserved                                  |
+| E5  | A stray END tag AT THE HEAD of the tail. E1's insertion-mode asymmetry with a non-table name — `</p>` synthesizes an empty `<p>` at "in body" and nothing at "in template"; `</br>` becomes a `<br>` START tag                                                                                                                                                                                                                                                  | `STRAY_SYNTHESIZED_END_TAG_RE` in `spliceParse.ts`, at its seam-child and first-visible-node sites, exercised by spliceEquivalence / spliceExhaustive — NOT `spliceStructuralBail.test.ts`, which carries no stray-end-tag sample | tail refused → full path (asserted, not assumed)                 |
+| E6  | A definition line AT THE HEAD of the tail is a DEFINITION (no output) in one parse and paragraph text (whose inline content becomes nodes) in the other. Mirrors the engine's own `DEF_RE`, which the earlier approximation did not: it accepted `[]:` and `[a[b]:`, neither of which is a definition to micromark                                                                                                                                              | prefix-anchoring overclaim; netted by (M) + the engine probe                                                                                                                                                                      | one side carries the def's inline content                        |
+| E7  | A raw-text element ran on: micromark ends a type-1 block on the `</name` SUBSTRING while parse5 needs the appropriate end tag in full, so `</scripty>` closes for one grammar and not the other and the tail-alone parse re-opens the element and swallows a different amount. Keyed on the FIRST divergence sitting inside a `<script>` / `<textarea>` both sides agree on — a run-on absorbs everything after it, so trailing differences are its consequence | the raw-text state machine itself; scanner-side counterpart is the F10 family                                                                                                                                                     | one side's element swallowed more; engine probe clean throughout |
 
 E4-E6 were named while enforcing the list; E4 also absorbed the
 `htmlKeepOpen` bucket, which the recursive `stripFurniture` fix
 (footnote sections are hoisted INTO an element the probe left open, so a
 root-level-only strip removed them from one side) only half explained.
+
+**Interior forms (2026-08-26, after leg 5's first soak).** Head-anchoring
+was right about the amnesty and wrong about the coverage: the same
+mechanisms fire from tail-INTERIOR positions, which a head predicate
+cannot see. Leg 5 at `ORACLE_RUNS=4000` x 12 fresh seeds failed 9 of 12
+shards on 120 firings — every one a known mechanism, every engine probe
+clean. E1 and E5 therefore have VALUE-based interior forms beside their
+head-anchored fast paths, admitted only when the divergence is entirely a
+set of known element kinds appearing or disappearing AND the text is
+conserved, because a real defect moves characters, not just wrappers. The
+tag sets are minimal and evidence-backed — a tag is admitted only because
+a measured firing needed it, so a future soak that hits `<caption>` or
+`<title>` fails loud and gets it added with its evidence. That lifecycle
+is the point; per-tag evidence sits at each set in `conformanceOracles.ts`.
+After the change, 6 of the 9 failing shards go green and the three clean
+shards stay clean.
+
+E7 is not refuse-direction — its claim is about content, like E3/E4 — so
+the `spliced` conjunct deliberately does NOT apply to it. It cannot: 15 of
+shard 6's `<textarea>` firings sit on tails the engine spliced, correctly.
+
+**Known residue, engine-clean, NOT covered (open).** Three shards still
+gate-fail: 32 firings, every one with a clean engine probe. Each is a
+COMPOSITE of two already-named mechanisms at interior positions, which no
+single-family rule names:
+
+- shard 2 (13): a `<col>` divergence at the tail head cascades, so the
+  probe's own tail lands as text on one side and as a parsed definition /
+  footnote def / defList claim on the other — E1 x E6;
+- shard 3 (10): `[注一]: <u "title"` is a definition on one side and
+  paragraph text on the other (an extra `<u>`), crossed with a footnote
+  reference that resolved on one side only — E3 x E6;
+- shard 7 (9): that E6 shape alone (`<u>` appears, text conserved), and
+  table parts crossed with a resolved reference — E1 x E3.
+
+They resist the interior rule for a structural reason, not a coding one.
+The interior rule requires text CONSERVED, and every composite with E3 or
+E6 moves characters. E6's element is arbitrary markup — whatever the def
+line happened to contain — so unlike E1's table parts and E5's two
+synthesized names it cannot be enumerated by tag at all. Widening the text
+predicates back out would restore precisely the amnesty this work removed:
+the old whole-remainder predicates matched 84.3% of hazard probe
+positions, where the classifier now exempts 10.8% of them.
+
+The root cause is worth naming. The raw identity is still PREFIX-anchored.
+The (M) oracle had exactly this bug and was re-anchored to the snapshot on
+2026-08-24 — the load-bearing bad-oracle finding recorded above. E6 exists
+only because of prefix anchoring and E3 largely does too, so re-anchoring
+the raw instrument the same way would dissolve this residue at its source
+instead of exempting it family by family. Flagged, not done.
 
 The exemptions apply to the (P) instrument ONLY. The authoritative engine
 probe runs on every probe in both modes and is never exempt.
@@ -595,10 +646,21 @@ that blocker can un-safe them silently.
 
 Ordered by how much they would change the picture.
 
-1. **The adoption agency algorithm.** Currently unreachable because
+1. **The seal-release predicate is an enumeration, and enumerations of
+   this kind keep failing.** Blocker 6's release side may only let a line
+   pin the seam if that line emits a top-level hast node, and today it
+   decides that by listing the classes that do not: definition lines and
+   now their continuations (F15), footnote-definition lines, comment-only
+   lines, whole-line closing tags (M6). That list has been wrong three
+   times. The closing design is a DERIVED release — ask whether the line
+   actually contributed a positioned root node — which needs a parse the
+   scanner does not have, so it is a core-upgrade candidate under the
+   owner's "new state describes the domain, not the last failure" rule
+   rather than a fourth entry in the list.
+2. **The adoption agency algorithm.** Currently unreachable because
    unbalanced formatting elements block on tag balance — that is an
    accident of another blocker, not a decision, and it is untested as such.
-2. **Lineage coverage — measured, not assumed.** There are three production
+3. **Lineage coverage — measured, not assumed.** There are three production
    call sites, and the picture is better than the folklore:
 
    | Lineage                          | Profile                                                                        | Covered by                                                                                                                        |
@@ -610,7 +672,7 @@ Ordered by how much they would change the picture.
    What remains open is depth, not existence: the scanner lineage runs at
    the suite default (100 samples) unless a soak leg scales it.
 
-3. **Corpus weights are a shared budget.** The coverage meters demand every
+4. **Corpus weights are a shared budget.** The coverage meters demand every
    family be sampled `RUNS/60` times, and that floor does not scale with the
    number of families — so adding one dilutes all the others. Growing the
    raw-HTML pool from 38 to 49 weights took the failure rate across twelve
