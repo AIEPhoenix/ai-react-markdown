@@ -665,6 +665,17 @@ export interface FreezeScanCheckpointInternal extends FreezeScanCheckpoint {
    *   frozen prefix contributed can still be EXTENDED by later bytes
    *   (parse5's insertText appends to an existing trailing text node). */
   p5SealPending: boolean;
+  /** A definition may still be OPEN: a def-shaped line was seen and no
+   *  blank has ended it yet. A definition spans up to three lines (label,
+   *  destination, title) and its title may wrap inside its quotes, and
+   *  every line after the first emits NO hast node — so none of them can
+   *  pin the blocker-6 seam, exactly like the def line itself. The seal
+   *  release tested the line's own SHAPE, which caught only the first
+   *  (soak 20289117, seed shard 17: `[b]: /b "t` + `w"` released the seam
+   *  and the frozen remnant node went position-less to positioned under a
+   *  `-->` future). Cleared at the blank, where a definition provably
+   *  ends; read only by the seal release, where holding it over-blocks. */
+  defBlockMaybeOpen: boolean;
   /** Offset of the first fence/math OPEN suppressed inside an html-flow
    *  run — the member gate since Migration B row 6 (Infinity = none). Whether the run really swallowed that line depends
    *  on container context the line scan cannot see (`<embed` inside a list
@@ -947,6 +958,7 @@ function freshCheckpoint(
     paragraphHasUnpairedRun: false,
     openBracket: null,
     p5SealPending: false,
+    defBlockMaybeOpen: false,
     phasePoisonedAt: Infinity,
     pendingTruncatedTags: [],
     pendingTruncatedCloses: [],
@@ -1165,7 +1177,11 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     cp.mdBlock.kind !== 'html' &&
     !(cp.p5Tok.kind === 'comment' || cp.p5Tok.kind === 'bogus')
   ) {
-    const defShapedLine = DEF_RE.test(ln.text) || FOOTNOTE_DEF_RE.test(ln.text);
+    // The def clause is the LINE's own shape plus the sticky block flag: a
+    // definition's destination and title lines are def CONTINUATIONS that
+    // emit no node either, and a shape test cannot see them (see
+    // `defBlockMaybeOpen`).
+    const defShapedLine = DEF_RE.test(ln.text) || FOOTNOTE_DEF_RE.test(ln.text) || cp.defBlockMaybeOpen;
     const commentOnly =
       ln.text
         .replace(/<!--[\s\S]*?-->/g, ' ')
@@ -1596,6 +1612,9 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     cp.prevLineBlank = true;
     cp.prevLineWasText = false;
     cp.prevLineWasValidDef = false;
+    // A definition cannot span a blank line — this is where one provably
+    // ends, and the next content line pins the seam again.
+    cp.defBlockMaybeOpen = false;
     cp.prevLineOpenContent = false;
     cp.tableMaybeOpen = false;
     cp.containerMaybeOpen = false;
@@ -2531,4 +2550,9 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   // would be a ghost def (fuzz counterexample). Refs on that line stay
   // extracted (footnote bodies parse inline content).
   cp.prevLineWasValidDef = validLinkDef;
+  // Sticky to the next blank: from a def-shaped line on, every line may be
+  // that definition's destination or (wrapped) title, none of which emits a
+  // node the blocker-6 seam can hang on. Carrying it across ordinary
+  // paragraph lines too only delays the release to the blank — over-block.
+  cp.defBlockMaybeOpen = cp.defBlockMaybeOpen || DEF_RE.test(ln.text) || FOOTNOTE_DEF_RE.test(ln.text);
 }

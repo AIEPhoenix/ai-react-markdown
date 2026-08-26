@@ -500,6 +500,36 @@ describe('computeFreezeBoundary — raw-remnant seam (blocker 6)', () => {
     expect(computeFreezeBoundary(text, OFF)).toBe(0);
   });
 
+  describe('a definition CONTINUATION line does not release the seam (soak 20289117)', () => {
+    // The def clause was a per-LINE shape test, so it caught the line a
+    // definition STARTS on and nothing else. A definition can span three
+    // lines (label, destination, title) and its title can wrap inside its
+    // quotes — and every continuation line emits NO hast node, so it
+    // cannot pin the seam either. The g7pt direction leg found it with a
+    // wrapped title: the frozen remnant node went position-less to
+    // positioned (3 → 4 children) when `-->` completed a trailing comment.
+    // Live since the seam check was written; the marker is sticky to the
+    // next blank, which is where a definition provably ends.
+    test('a wrapped title line (the shrunk soak counterexample)', () => {
+      expect(computeFreezeBoundary('</details>\nr\n\n[b]: /b\n[b]: /b "t\nw"\n\n<!--', OFF)).toBe(0);
+    });
+
+    test('a title on its own line', () => {
+      expect(computeFreezeBoundary('</details>\nr\n\n[a]: /u\n"t"\n\n<!--', OFF)).toBe(0);
+    });
+
+    test('a blank ends the definition and the next content line releases', () => {
+      const text = '</details>\nr\n\n[a]: /u\n\nreal paragraph\n\ntail\n';
+      // `lastIndexOf`: `</details>` contains "tail" at index 4.
+      expect(computeFreezeBoundary(text, OFF)).toBe(text.lastIndexOf('tail'));
+    });
+
+    test('a content line with no definition above it still releases', () => {
+      const text = '</details>\nr\n\nreal paragraph\n\n<!--';
+      expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('<!--'));
+    });
+  });
+
   test('a line that is ONLY a closing tag does not release the seam (2026-08-26 review M6)', () => {
     // The release predicate meant "not blank, outside a run, not def-shaped,
     // not comment-only" — which is true of exactly the stray end-tag lines
