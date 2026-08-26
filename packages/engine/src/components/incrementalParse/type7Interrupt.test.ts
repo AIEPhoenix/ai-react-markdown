@@ -252,3 +252,114 @@ describe('type-7 interrupt: prevLineOpenContent vs micromark', () => {
     expect(computeFreezeBoundary(doc, OPTS).boundary).toBeGreaterThan(0);
   });
 });
+
+/**
+ * The single-line battery above cannot see a composition error by
+ * construction: every class is measured from a block start, where the
+ * table's answer happens to be right. Two of its rows were wrong one line
+ * deeper (2026-08-26 review M3/M7).
+ */
+describe('type-7 interrupt: two-line compositions', () => {
+  /** An EMPTY list item cannot interrupt a paragraph, so with content open
+   *  micromark reads a bare marker as a LAZY CONTINUATION. The blanket
+   *  `openContent = false` was an OVER-claim there — and it agreed for `-`
+   *  only by accident, a lone `-` being a valid setext underline too. */
+  test('a bare marker after an open paragraph does not open type 7', () => {
+    for (const marker of ['*', '+', '1.', '2.', '1)', '*\t']) {
+      const prefix = `opening paragraph\n${marker}\n`;
+      expect({ marker, opens: scannerAt(prefix).opens }).toEqual({ marker, opens: micromarkOpensType7(prefix) });
+    }
+  });
+
+  test('a lone dash keeps its answer (setext underline in both readings)', () => {
+    for (const marker of ['-', '-  ']) {
+      const prefix = `opening paragraph\n${marker}\n`;
+      expect({ marker, opens: scannerAt(prefix).opens }).toEqual({ marker, opens: micromarkOpensType7(prefix) });
+    }
+  });
+
+  /** The sign flip: `SETEXT_LEFTOVER` computes `!prevLineOpenContent`, so a
+   *  wrong `false` above became a wrong `true` here — an UNDER-claim, the
+   *  unsafe direction. With the marker line fixed the chain resolves: the
+   *  marker keeps content open, the `--` is then a REAL setext underline
+   *  that closes it, and the tag line claims the member. */
+  test('marker then setext underline resolves end to end', () => {
+    for (const [marker, underline] of [
+      ['1.', '--'],
+      ['1.', '==='],
+      ['*', '--'],
+      ['+', '==='],
+    ]) {
+      const prefix = `opening paragraph\n${marker}\n${underline}\n`;
+      expect({ marker, underline, opens: scannerAt(prefix).opens }).toEqual({
+        marker,
+        underline,
+        opens: micromarkOpensType7(prefix),
+      });
+    }
+  });
+
+  /** A `--` / `===` line INSIDE a table is another table ROW — the table
+   *  stays open and content with it. Flipping `openContent` false there
+   *  DISARMED `tableMaybeOpen`, the next content line lost the marker, and
+   *  a later refused tag line went unpoisoned. */
+  test('a setext-shaped line inside a table does not disarm the table marker', () => {
+    const doc =
+      '| a | b |\n| - | - |\n| 1 | 2 |\nsee prose\n--\nmore prose\n<br/>\n`<div>`\n\npara one\n\npara two\n\nend\n';
+    expect(computeFreezeBoundary(doc, OPTS).boundary).toBe(0);
+  });
+
+  /**
+   * The differential net: every head × every line class, judged by the
+   * live parser. A case is safe when the scanner AGREES with micromark or
+   * POISONS — poison is the expected pass for the undecidable classes.
+   */
+  const HEADS: Array<[string, string]> = [
+    ['block start', ''],
+    ['open paragraph', 'opening paragraph\n'],
+    ['gfm table', '| a | b |\n| - | - |\n| 1 | 2 |\n'],
+  ];
+  const CLASSES: Array<[string, string]> = [
+    ['nothing', ''],
+    ['paragraph', 'plain prose\n'],
+    ['atx heading', '# h\n'],
+    ['thematic break', '---\n'],
+    ['spaced thematic break', '- - -\n'],
+    ['bare dash', '-\n'],
+    ['bare star', '*\n'],
+    ['bare plus', '+\n'],
+    ['bare ordered dot', '1.\n'],
+    ['bare ordered paren', '1)\n'],
+    ['bare star with tab', '*\t\n'],
+    ['setext equals', '===\n'],
+    ['setext dashes', '--\n'],
+    ['definition', '[a]: /u\n'],
+    ['titled definition', '[a]: /u "t"\n'],
+    ['footnote definition', '[^a]: body\n'],
+    ['blockquote', '> q\n'],
+    ['list item', '- item\n'],
+    ['indented code', '    code\n'],
+    ['fence', '```\nx\n```\n'],
+    ['math fence', '$$\nx\n$$\n'],
+    ['comment terminator', '<!-- c -->\n'],
+    ['type-6 run', '<div>\nc\n'],
+    ['type-1 close', '<script>s</script>\n'],
+    ['pipe row', '| p | q |\n'],
+  ];
+
+  test('every head x class composition either agrees or poisons', () => {
+    const unsafe: string[] = [];
+    for (const [headName, head] of HEADS) {
+      for (const [className, cls] of CLASSES) {
+        const prefix = `${head}${cls}`;
+        const scanner = scannerAt(prefix);
+        if (scanner.poisoned) continue;
+        const truth = micromarkOpensType7(prefix);
+        if (scanner.opens !== truth) {
+          unsafe.push(`${headName} + ${className}: micromark=${truth} scanner=${scanner.opens}`);
+        }
+      }
+    }
+    expect(unsafe).toEqual([]);
+  });
+});
