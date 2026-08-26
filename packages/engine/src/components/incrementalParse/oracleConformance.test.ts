@@ -111,7 +111,20 @@ describe('oracle self-tests (must fire / must stay quiet)', () => {
 
 // ORACLE_RAW=1 adds the prefix-anchored ideal-identity instruments to the
 // sweeps (exploratory; they overclaim at evidence-dependent boundaries).
-const ORACLE_OPTS = { idealIdentity: testEnv('ORACLE_RAW') === '1' };
+const RAW_MODE = testEnv('ORACLE_RAW') === '1';
+const ORACLE_OPTS = { idealIdentity: RAW_MODE };
+
+/**
+ * The exemption allowlist (GRAMMAR-COVERAGE's classification ledger). Under
+ * ORACLE_RAW=1 a raw-layer firing that matches NO family is a FAILURE, not
+ * an info line: until 2026-08-26 the raw mode could not fail at all, so it
+ * gated nothing and a new divergence family would have arrived as one more
+ * line in a log nobody diffs.
+ */
+const unclassifiedRawFirings = (findings: Array<{ probeId: string; detail: string; rawFamily?: unknown }>): string[] =>
+  findings
+    .filter((f) => f.detail.startsWith('P-raw') && (f.rawFamily ?? null) === null)
+    .map((f) => `probe=${f.probeId} ${f.detail.slice(0, 400)}`);
 
 const formatFindings = (findings: unknown): string => JSON.stringify(findings, null, 1)?.slice(0, 4000) ?? '';
 
@@ -127,6 +140,12 @@ describe('oracle sweep — pinned realistic corpus', () => {
       for (const f of findings.filter((f) => f.severity === 'info')) {
         infoLog.push(`${doc.id} [${config.label}] probe=${f.probeId} ${f.detail.slice(0, 160)}`);
       }
+      const unclassified = unclassifiedRawFirings(findings);
+      expect(
+        unclassified,
+        `${doc.id} [${config.label}] raw-layer firing outside the E1-E6 allowlist — classify it in ` +
+          `GRAMMAR-COVERAGE's ledger and name it in classifyRawFamily before allowing it back:\n${unclassified.join('\n')}`
+      ).toEqual([]);
       expect(defects, `${doc.id} [${config.label}] ${formatFindings(defects)}`).toEqual([]);
       // The sweep must exercise the incremental path, not just prove the
       // fallback correct — and the counter must be the NON-EMPTY-tail one,
@@ -157,6 +176,7 @@ describe('oracle sweep — fuzz corpus (env-scaled)', () => {
       const docs = fc.sample(arb, { seed: seed + seedOffset, numRuns: runs });
       const stats: OracleSweepStats = { probesRun: 0, spliceableProbes: 0, incrementalProbes: 0 };
       const failures: string[] = [];
+      const unclassifiedRaw: string[] = [];
       const infoBuckets = new Map<string, number>();
       const infoExamples = new Map<string, string[]>();
       docs.forEach((d, i) => {
@@ -167,7 +187,7 @@ describe('oracle sweep — fuzz corpus (env-scaled)', () => {
           // question is "which exemption family", not "which sample" — but
           // keep two samples per bucket so a NEW family is classifiable
           // from the log without a re-run.
-          const bucket = `${f.detail.split(':')[0]}/${f.probeId}`;
+          const bucket = `${f.detail.split(':')[0]}/${f.probeId}${f.rawFamily ? `/${f.rawFamily}` : ''}`;
           infoBuckets.set(bucket, (infoBuckets.get(bucket) ?? 0) + 1);
           const ex = infoExamples.get(bucket) ?? [];
           if (ex.length < 2) {
@@ -181,6 +201,9 @@ describe('oracle sweep — fuzz corpus (env-scaled)', () => {
             `#${i} [${config.label}] doc=${JSON.stringify(d.doc).slice(0, 200)} ${formatFindings(defects).slice(0, 600)}`
           );
         }
+        for (const u of unclassifiedRawFirings(findings)) {
+          unclassifiedRaw.push(`#${i} [${config.label}] doc=${JSON.stringify(d.doc).slice(0, 200)} ${u}`);
+        }
       });
       const buckets = [...infoBuckets.entries()].sort((a, b) => b[1] - a[1]);
       console.log(
@@ -190,6 +213,13 @@ describe('oracle sweep — fuzz corpus (env-scaled)', () => {
             .join('\n')
       );
       expect(failures, failures.join('\n---\n').slice(0, 6000)).toEqual([]);
+      // Under ORACLE_RAW=1 the allowlist is a GATE: an unclassified family
+      // fails the sweep instead of adding a line to the info log.
+      expect(
+        unclassifiedRaw,
+        `raw-layer firings outside the E1-E6 allowlist (${unclassifiedRaw.length}) — classify each in ` +
+          `GRAMMAR-COVERAGE's ledger and name it in classifyRawFamily:\n${unclassifiedRaw.slice(0, 12).join('\n')}`
+      ).toEqual([]);
       // Anti-vacuity floor, over NON-EMPTY tails only. The old form counted
       // every probe and so could not fall below 4/doc even with the splice
       // torn out — an identical-content frame is a memo hit that reports

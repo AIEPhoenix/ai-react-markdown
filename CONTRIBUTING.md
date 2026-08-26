@@ -63,9 +63,12 @@ CI runs lint + format:check + typecheck + test + build on every PR.
 # Fast feedback: the splice fuzz suite on its own
 pnpm --filter @ai-react-markdown/engine fuzz:splice
 
-# Release gate: the three-leg soak (fuzz + direction battery + bounded-exhaustive
-# census). Long-running — keep the machine awake or macOS will suspend it.
-cd packages/engine && caffeinate -dims ./scripts/run-soak.sh
+# Release gate: the five-leg soak (fuzz + direction battery + def-label scanner
+# + bounded-exhaustive census + P1 conformance under ORACLE_RAW=1). The seed base
+# is REQUIRED and must be fresh — an old seed re-walks a space that already
+# passed. The script re-execs itself under `caffeinate`; note that caffeinate
+# does not survive a lid close.
+./scripts/soak/fiveleg.sh <fresh-seed-base> [label]
 ```
 
 A green soak is a **release** gate, not a per-PR one; CI does not run it. If your PR changes engine behavior, say in the description whether you ran it and what the result was.

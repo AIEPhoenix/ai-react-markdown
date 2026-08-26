@@ -1,5 +1,5 @@
 #!/bin/zsh
-# The four-leg fresh-seed soak — the repo's release safety gate for the
+# The five-leg fresh-seed soak — the repo's release safety gate for the
 # freeze scanner (verification protocol §2.2). The boundary-diff harness
 # and the unit suite are REGRESSION nets; only this run is a safety
 # argument, and it has proven the distinction twice: v2.5.5's F11/F12 and
@@ -7,16 +7,28 @@
 # here, by seeds nothing had ever run.
 #
 # Usage:
-#   scripts/soak/fourleg.sh <seed-base> [label]
+#   scripts/soak/fiveleg.sh <seed-base> [label]
 #
 #   seed-base   REQUIRED, and must be fresh — re-running old seeds re-walks
 #               the same space and proves nothing new. Legs use seed-base,
-#               +100, +200 (the census leg is exhaustive; no seed).
+#               +100, +200, +300 (the census leg is exhaustive; no seed).
 #   label       log prefix, default "soak".
+#
+# Leg 5 is the P1 conformance sweep under ORACLE_RAW=1, added 2026-08-26.
+# It is the only leg that gates the (P) identity instruments: raw mode used
+# to be a log-only mode nobody ran in CI, and ORACLE_RUNS=800 was typed by
+# hand at release time — exactly the ad-hoc pattern the soak script exists
+# to end. A raw-mode firing outside the E1-E6 exemption allowlist FAILS it.
 #
 # Env overrides (defaults = the standard gate; the scaled release gate used
 # FUZZ1=33334 FUZZ2=50000 for 400k/600k legs):
-#   SHARDS (12)  FUZZ1 (12500)  FUZZ2 (30000)  FUZZ3 (8000)
+#   SHARDS (12)  FUZZ1 (12500)  FUZZ2 (30000)  FUZZ3 (8000)  ORACLE (800)
+#
+# ORACLE default 800 = the level the v2.8.0 release run used by hand, and
+# the allowlist is verified clean to 4000 per shard (2026-08-26). Scaling
+# leg 5 up is a CLASSIFICATION exercise, not a pass/fail one: a wider slice
+# reaches divergence families the corpus has not sampled before, and each
+# one has to be named in `classifyRawFamily` before it can pass.
 #
 # Logs land in .soak-logs/<label>-*.log (gitignored). The script re-execs
 # itself under `caffeinate -dimsu`; note that caffeinate does NOT survive a
@@ -38,6 +50,7 @@ SHARDS=${SHARDS:-12}
 FUZZ1=${FUZZ1:-12500}
 FUZZ2=${FUZZ2:-30000}
 FUZZ3=${FUZZ3:-8000}
+ORACLE=${ORACLE:-800}
 CENSUS_STRIDE=${CENSUS_STRIDE:-1}
 
 ROOT=${0:a:h:h:h}
@@ -68,6 +81,8 @@ run_leg scanner src/components/collectDefLabels.fuzz.test.ts \
   'FUZZ_RUNS=$FUZZ3' 'FUZZ_SEED=$((SEED + 200 + i))'
 run_leg census src/components/incrementalParse/spliceExhaustive.test.ts \
   'EXHAUSTIVE_K=4 EXHAUSTIVE_STRIDE=$CENSUS_STRIDE' 'EXHAUSTIVE_SHARD=$i/$SHARDS'
+run_leg oracle src/components/incrementalParse/oracleConformance.test.ts \
+  'ORACLE_RAW=1 ORACLE_RUNS=$ORACLE' 'ORACLE_SEED=$((SEED + 300 + i))'
 
 if [ "$FAIL" -eq 0 ]; then echo "[$LABEL] ALL CLEAN"; else echo "[$LABEL] FAILURES — inspect $OUT/$LABEL-*.log"; fi
 for f in "$OUT"/$LABEL-*.log; do

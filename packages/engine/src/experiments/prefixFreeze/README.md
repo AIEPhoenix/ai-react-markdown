@@ -183,9 +183,12 @@ way — not by splitting one chain (samples are seed-sequential) but by
 running N independent seeds concurrently (base seed + i, TOTAL/N samples
 each; the historical record already mixes multi-seed and single-chain
 runs, so the sample budget, not one particular chain, is the protocol).
-`packages/core/scripts/run-soak.sh` (also `pnpm soak`, run it under
-`caffeinate`) encodes the full three-leg gate this way: ~15 min wall
-clock for the 50k+20k+K=4 budget instead of ~65 min single-core.
+`scripts/soak/fiveleg.sh` (also `pnpm soak`, which re-execs itself under
+`caffeinate`) encodes the full gate this way: ~15 min wall clock for the
+50k+20k+K=4 budget instead of ~65 min single-core. It has grown since:
+leg 3 (the def-label scanner lineage) landed 2026-08-21 and leg 5 (the P1
+conformance sweep under `ORACLE_RAW=1`) on 2026-08-26. The seed base is a
+required argument and must be fresh.
 
 Post-release finding (2026-07-31, fixed 2026-08-03): the direction
 battery — running against a fuzz-generator pool that had grown since the

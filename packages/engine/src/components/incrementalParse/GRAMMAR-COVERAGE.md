@@ -428,13 +428,37 @@ defects. Per T1.5's own rule: the oracle was wrong; fixed, and said so.
 
 Real divergence families the prefix-anchored instruments DID surface, kept
 as exemptions for `ORACLE_RAW=1` runs and hand analysis — every direction
-is refuse-or-absorb, never an under-block:
+is refuse-or-absorb, never an under-block.
 
-| #   | Family                                                                                                                                                           | Mechanism that owns it                               | Direction                                                 |
-| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | --------------------------------------------------------- |
-| E1  | Table-part tails (`<td>` probe): tail-alone fragment dispatch differs from in-context by construction (the F8 shape)                                             | splice-side stray-table-part bail                    | tail refused → full path                                  |
-| E2  | GFM-table internal whitespace is foster-parented to the root and merges with the seam separator (grouping only, values conserved)                                | blocker-6 seam handling / splice seam synthesis      | seam-absorbed                                             |
-| E3  | Footnote ref/def split across the boundary: tail-alone parse sees orphans, full parse resolves them — the raw() identity is stated WITHOUT the phantom mechanism | phantom injection replay (`remarkInjectPhantomDefs`) | production machinery, pinned by `assertStreamEquivalence` |
+**Since 2026-08-26 this table is ENFORCED, not documentation.**
+`classifyRawFamily` in `conformanceOracles.ts` encodes it, and a raw-mode
+firing that matches no family FAILS the sweep (soak leg 5). Before that,
+raw mode could not fail at all: the exemptions were prose, `ORACLE_RAW`
+was set nowhere in the repo, and a NEW divergence family would have
+arrived as one more line in a log nobody diffs.
+
+Each family is keyed on its MECHANISM, not on the probe that happened to
+expose it. Keying E1 on `probeId === 'tablePart'` was the first thing the
+enforcement caught: hazard doc #49 puts a `<col>` at the head of its own
+tail, and the resulting firings read as an unexplained whole-document
+family until the key moved to the content.
+
+| #   | Family                                                                                                                                                                                                                | Mechanism that owns it                                       | Direction                                                 |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------- |
+| E1  | An HTML table part at a flow position in the tail: the tail-alone fragment parse dispatches it from "in template", the full parse from "in body" (the F8 shape)                                                       | splice-side stray-table-part bail                            | tail refused → full path                                  |
+| E2  | GFM-table internal whitespace is foster-parented to the root and merges with the seam separator (grouping only, values conserved)                                                                                     | blocker-6 seam handling / splice seam synthesis              | seam-absorbed                                             |
+| E3  | Reference resolution split across the boundary: tail-alone parse sees orphan footnote/link/image refs, full parse resolves them against a prefix definition — same characters, different ref markup                   | phantom injection replay (`remarkInjectPhantomDefs`)         | production machinery, pinned by `assertStreamEquivalence` |
+| E4  | Same bytes, different node GROUPING: adjacent root text nodes fuse on the full side but not on the concatenated one, and the hoisted footnote section's separator merges into an element a probe left open            | hast text merging / furniture                                | grouping only, values conserved                           |
+| E5  | A stray END tag at a flow position in the tail. E1's insertion-mode asymmetry with a non-table name — `</p>` synthesizes an empty `<p>` at "in body" and nothing at "in template"; `</br>` becomes a `<br>` START tag | splice-side stray-tag bail (`spliceStructuralBail`)          | tail refused → full path                                  |
+| E6  | A definition-shaped line in the tail is a DEFINITION (no output) in one parse and paragraph text (whose inline content becomes nodes) in the other                                                                    | prefix-anchoring overclaim; netted by (M) + the engine probe | one side carries the def's inline content                 |
+
+E4-E6 were named while enforcing the list; E4 also absorbed the
+`htmlKeepOpen` bucket, which the recursive `stripFurniture` fix
+(footnote sections are hoisted INTO an element the probe left open, so a
+root-level-only strip removed them from one side) only half explained.
+
+The exemptions apply to the (P) instrument ONLY. The authoritative engine
+probe runs on every probe in both modes and is never exempt.
 
 `formElement` remains the standing latent divergence (design §2.1): raw
 layer fires, sanitize masks the element, the grouping echo keeps the final

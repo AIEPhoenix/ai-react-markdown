@@ -68,7 +68,7 @@
     "test": "vitest --run",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "fuzz:splice": "vitest --run src/components/incrementalParse/spliceFuzz.test.ts",
-    "soak": "./scripts/run-soak.sh"
+    "soak": "../../scripts/soak/fiveleg.sh"
   },
   "peerDependencies": {
     "katex": "^0.16.0 || ^0.17.0"

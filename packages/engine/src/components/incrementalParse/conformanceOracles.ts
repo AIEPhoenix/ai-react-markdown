@@ -93,6 +93,7 @@ interface PosPoint {
 interface NodeLike {
   type: string;
   value?: string;
+  tagName?: string;
   children?: NodeLike[];
   position?: { start: PosPoint; end: PosPoint };
   properties?: Record<string, unknown>;
@@ -174,17 +175,36 @@ function isFootnoteSection(node: NodeLike): boolean {
   return node.type === 'element' && node.properties !== undefined && 'dataFootnotes' in node.properties;
 }
 
+/** Is the footnote section anywhere below this node? Cheap enough to run
+ *  per root child, and the answer is almost always no. */
+function holdsFootnoteSection(node: NodeLike): boolean {
+  for (const child of node.children ?? []) {
+    if (isFootnoteSection(child) || holdsFootnoteSection(child)) return true;
+  }
+  return false;
+}
+
+/**
+ * Drop the hoisted GFM footnote section (and the separator text node
+ * remark-rehype put before it — furniture of the furniture) from a child
+ * list, at ANY depth.
+ *
+ * Depth matters: the section is hoisted to document END, so a probe tail
+ * that leaves an element OPEN makes rehype-raw reparent the section INSIDE
+ * that element. A root-level-only strip then removes it from one side of
+ * the identity and not the other, and the difference is reported as a
+ * P-raw firing that says nothing about the scanner (measured: the whole
+ * `htmlKeepOpen` bucket under ORACLE_RAW=1).
+ */
 function stripFurniture(children: NodeLike[]): NodeLike[] {
   const out: NodeLike[] = [];
   for (const child of children) {
     if (isFootnoteSection(child)) {
-      // The separator text node remark-rehype put BEFORE the section is
-      // furniture of the furniture — drop the pair, not just the section.
       const prev = out[out.length - 1];
       if (prev?.type === 'text' && /^\s*$/.test(prev.value ?? '')) out.pop();
       continue;
     }
-    out.push(child);
+    out.push(holdsFootnoteSection(child) ? { ...child, children: stripFurniture(child.children ?? []) } : child);
   }
   return out;
 }
@@ -226,12 +246,147 @@ function runToRawLayer(content: string, config: CatalogConfig): NodeLike {
   return transformStage(parsed) as unknown as NodeLike;
 }
 
+// ── raw-layer exemption families (the ORACLE_RAW allowlist) ─────────────
+
+/**
+ * Flatten a child list to the content it CARRIES, dropping every grouping
+ * and position decision: elements become `tag{props}` plus their flattened
+ * children, text becomes its whitespace-stripped value (empty entries are
+ * dropped). The pieces are compared JOINED, because node grouping is
+ * exactly what this must not see — one text node of `ab` and two of `a`,
+ * `b` are the same content. Equal flattenings mean the two sides carry the
+ * same bytes and differ only in how those bytes were grouped.
+ */
+function flattenContent(nodes: NodeLike[], out: string[]): string[] {
+  for (const node of nodes) {
+    if (node.type === 'text') {
+      const v = (node.value ?? '').replace(/\s+/g, '');
+      if (v !== '') out.push(`t:${v}`);
+      continue;
+    }
+    if (node.type === 'element') out.push(`e:${node.tagName ?? ''}${JSON.stringify(node.properties ?? {})}`);
+    else if (node.value !== undefined) out.push(`${node.type}:${node.value}`);
+    flattenContent(node.children ?? [], out);
+  }
+  return out;
+}
+
+/** The marker both sides of a RESOLVED reference collapse to. */
+const REF = '\u0001';
+
+/**
+ * Flatten to text with reference RESOLUTION normalized away, so the two
+ * sides of a definition that straddles the boundary compare equal:
+ *
+ * - a footnote superscript becomes `REF` and is not recursed into (the
+ *   full side numbers it `1`, the split side still spells the label);
+ * - `<a>` loses its element identity but keeps its link text (`[spec][]`
+ *   on the split side reduces to `spec` once the brackets go);
+ * - remaining text drops `[`/`]` and collapses any surviving `[^label]`.
+ *
+ * A pair that is equal under this is the (R) dimension and nothing else:
+ * same characters, different reference markup.
+ */
+function flattenRefNormalized(nodes: NodeLike[], out: string[]): string[] {
+  for (const node of nodes) {
+    if (node.type === 'text') {
+      const v = (node.value ?? '')
+        .replace(/\s+/g, '')
+        // An IMAGE reference renders as `<img>` with its label in an
+        // attribute, so the split side's `![label]` collapses to the same
+        // marker the element does.
+        .replace(/!\[[^\]\n]*\](?:\[[^\]\n]*\])?/g, REF)
+        .replace(/\[\^[^\]]*\]/g, REF)
+        // A FULL reference (`[text][label]`) renders only its text, so the
+        // label the split side still spells out has to go with the syntax.
+        .replace(/\]\[[^\]\n]*\]/g, ']')
+        .replace(/[[\]]/g, '');
+      if (v !== '') out.push(v);
+      continue;
+    }
+    if (node.type === 'element') {
+      const tag = node.tagName ?? '';
+      if (tag === 'sup' || tag === 'img') {
+        out.push(REF);
+        continue;
+      }
+      if (tag !== 'a') out.push(`<${tag}>`);
+    }
+    flattenRefNormalized(node.children ?? [], out);
+  }
+  return out;
+}
+
+/**
+ * The exemption families kept for `ORACLE_RAW=1` runs (GRAMMAR-COVERAGE's
+ * classification ledger). A raw-mode firing that matches NONE of these is
+ * a new family: the sweep fails, and it gets classified before it is
+ * allowed back in. Every direction here is refuse-or-absorb, never an
+ * under-block.
+ */
+export type RawFamily =
+  'E1-tablePart' | 'E2-gfmTable' | 'E3-refResolution' | 'E4-grouping' | 'E5-strayEndTag' | 'E6-defVsParagraph';
+
+/** An HTML table part at a FLOW position in the tail. The tail-alone
+ *  fragment parse dispatches it from "in template" — to "in table" / "in
+ *  row" / "in column group" — while the full parse had already popped to
+ *  "in body", so the two sides disagree by construction (the F8 shape). */
+const TABLE_PART_RE = /^[ \t]*<\/?(?:table|caption|colgroup|col|thead|tbody|tfoot|tr|td|th)\b/im;
+
+/** A stray end tag at a FLOW position in the tail. Same insertion-mode
+ *  asymmetry as E1 with a non-table name, and just as content-driven:
+ *  `</p>` at "in body" synthesizes an empty `<p>` while the tail-alone
+ *  parse starts "in template" and produces nothing (hazard #272), and
+ *  `</br>` is rewritten to a `<br>` START tag whose placement depends on
+ *  the same mode (hazard #401). The splice refuses these tails — that is
+ *  what `spliceStructuralBail` pins. The breadth is deliberate: this
+ *  exempts the (P) instrument only, never the authoritative engine probe,
+ *  which runs on every probe regardless. */
+const STRAY_END_TAG_RE = /^[ \t]*<\/[A-Za-z][A-Za-z0-9-]*\s*>/m;
+
+/** A link-definition-shaped line in the tail. Whether such a line IS a
+ *  definition (invisible in the output) or paragraph text (whose inline
+ *  content becomes real nodes) depends on what precedes it, so the two
+ *  sides differ by exactly the def's inline content — measured on hazard
+ *  #3807, where `[spec spec]: <u v> "title"` contributes a `<u>` element
+ *  on one side and nothing on the other. This is the prefix-anchoring
+ *  overclaim the raw mode is documented to have, in its (R)-adjacent
+ *  form; the boundary itself is netted by the snapshot-anchored (M)
+ *  oracle and by the authoritative engine probe. */
+const DEF_LINE_RE = /^ {0,3}\[[^\]\n]*\]:/m;
+
+function classifyRawFamily(probeId: string, tail: string, actual: NodeLike[], expected: NodeLike[]): RawFamily | null {
+  // E1 is keyed on the MECHANISM, not the probe: keying it on
+  // `probeId === 'tablePart'` alone missed every document whose own bytes
+  // put a stray table part at the head of the tail (hazard doc #49's
+  // `<col>`, 2026-08-26 review — it read as a whole-document family).
+  if (probeId === 'tablePart' || TABLE_PART_RE.test(tail)) return 'E1-tablePart';
+  if (probeId === 'gfmTable') return 'E2-gfmTable';
+  if (STRAY_END_TAG_RE.test(tail)) return 'E5-strayEndTag';
+  // E4: the same bytes, grouped into different nodes. Covers the seam
+  // separator merge (adjacent root text nodes fuse on the full side but
+  // not on the concatenated one) and the footnote section hoisted INTO an
+  // element the probe left open, whose separator merges into that
+  // element's text — both are furniture, values conserved.
+  if (flattenContent(actual, []).join('') === flattenContent(expected, []).join('')) return 'E4-grouping';
+  // E3: same characters, different reference markup — the tail-alone parse
+  // sees orphans where the full parse resolved them against a definition
+  // in the prefix. Owned by the phantom injection replay, which the raw()
+  // identity is deliberately stated without.
+  if (flattenRefNormalized(actual, []).join('') === flattenRefNormalized(expected, []).join('')) {
+    return 'E3-refResolution';
+  }
+  if (DEF_LINE_RE.test(tail)) return 'E6-defVsParagraph';
+  return null;
+}
+
 function identityDisagreement(
   layer: string,
   prefix: string,
   left: NodeLike,
   full: NodeLike,
-  right: NodeLike
+  right: NodeLike,
+  family?: { probeId: string; tail: string; value: RawFamily | null }
 ): string | null {
   // Count line ENDINGS the way micromark does (`\r\n`, `\n`, lone `\r`) —
   // the tail's line numbers shift by exactly this many.
@@ -248,6 +403,7 @@ function identityDisagreement(
   const actual = stripFurniture(full.children ?? []);
 
   if (isEqual(actual, expected)) return null;
+  if (family) family.value = classifyRawFamily(family.probeId, family.tail, actual, expected);
   const max = Math.max(actual.length, expected.length);
   for (let i = 0; i < max; i++) {
     if (!isEqual(actual[i], expected[i])) {
@@ -288,12 +444,17 @@ export function pipelineIdentityDisagreement(
  * `sanitizeSchema` is a public prop — so a green final-hast check alone
  * proves less than it appears to.
  */
-export function rawLayerIdentityDisagreement(prefix: string, tail: string, config: CatalogConfig): string | null {
+export function rawLayerIdentityDisagreement(
+  prefix: string,
+  tail: string,
+  config: CatalogConfig,
+  family?: { probeId: string; tail: string; value: RawFamily | null }
+): string | null {
   if (!/[\n\r]$/.test(prefix)) throw new Error('rawLayerIdentityDisagreement: prefix must end at a line ending');
   const left = runToRawLayer(prefix, config);
   const full = runToRawLayer(prefix + tail, config);
   const right = runToRawLayer(tail, config);
-  return identityDisagreement('P-raw', prefix, left, full, right);
+  return identityDisagreement('P-raw', prefix, left, full, right, family);
 }
 
 // ── probe battery ───────────────────────────────────────────────────────
@@ -389,6 +550,11 @@ export interface OracleFinding {
    *  sanitize-masked), never a pass/fail signal by itself. */
   severity: 'defect' | 'info';
   detail: string;
+  /** Raw-mode firings only: which allowlisted exemption family this
+   *  matched, or `null` for a family that has never been classified. The
+   *  ORACLE_RAW sweep fails on `null` — an unclassified firing is exactly
+   *  the thing the allowlist exists to surface. */
+  rawFamily?: RawFamily | null;
 }
 
 export interface OracleSweepStats {
@@ -463,13 +629,15 @@ export function oracleCheckDoc(
     // boundaries (see mSpanDisagreement's doc), so in sweeps it is opt-in
     // exploratory instrumentation, not a default signal.
     if (options?.idealIdentity) {
-      const r = rawLayerIdentityDisagreement(prefix, realTail + probe.tail, config);
+      const family = { probeId: probe.id, tail: realTail + probe.tail, value: null as RawFamily | null };
+      const r = rawLayerIdentityDisagreement(prefix, family.tail, config, family);
       if (r !== null) {
         findings.push({
           probeId: probe.id,
           boundary,
           severity: engine.disagreement === null ? 'info' : 'defect',
           detail: r,
+          rawFamily: family.value,
         });
       }
     }

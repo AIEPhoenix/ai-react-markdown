@@ -110,27 +110,50 @@ const EMPTY_SET: ReadonlySet<string> = new Set();
  *  phantom label sets (labels pre-normalized/uppercased, as PASS 0.5
  *  produces them), `preserveOrphan: true` (preserveForBodyHarvest is
  *  always true once a chunk holds a registry Symbol). The corresponding
- *  parse input is `content + buildPhantomSuffix(phantoms)`. */
+ *  parse input is `content + buildPhantomSuffix(phantoms)`.
+ *
+ *  `config` is optional only for the historical no-plugin cell. It was
+ *  HARD-CODED to that cell until 2026-08-26, while the sole production
+ *  caller (`MarkdownContent.tsx`'s `advanceIncrementalParse` branch) runs
+ *  the user's real plugin selection and `defListEnabled` alongside the
+ *  phantom suffix — so the production-reachable combination was never
+ *  driven (review M-xchunk). Pass a catalog config to cover it. */
 export function buildCrossChunkAdvanceOptions(
   phantomFootnoteLabels: ReadonlySet<string>,
-  phantomLinkLabels: ReadonlySet<string>
+  phantomLinkLabels: ReadonlySet<string>,
+  config?: CatalogConfig
 ): AdvanceOptions {
   const remarkRehypeOptions = {
     allowDangerousHtml: true,
     clobberPrefix: '',
-    handlers: buildCrossChunkHandlers(),
+    handlers: {
+      ...(config?.defList ? defListHastHandlers : {}),
+      ...buildCrossChunkHandlers(),
+    },
     phantomFootnoteLabels,
     phantomLinkLabels,
     preserveOrphan: true,
     documentId: TEST_DOCUMENT_ID,
   };
   return {
-    remarkPlugins: buildCoreRemarkPlugins([]),
+    remarkPlugins: buildCoreRemarkPlugins(config ? enginePluginsFor(config) : []),
     rehypePlugins: buildCoreRehypePlugins(sanitizeSchema, TEST_CLOBBER_PREFIX),
     remarkRehypeOptions: remarkRehypeOptions as never,
-    depsKey: ['cross-chunk'],
-    defListEnabled: false,
+    depsKey: ['cross-chunk', config?.label ?? 'no-plugins'],
+    defListEnabled: config?.defList ?? false,
   };
+}
+
+/** The sealed plugin selection a catalog config names, in the shipped
+ *  order — shared by both option builders so they cannot drift. */
+function enginePluginsFor(config: CatalogConfig) {
+  return [
+    ...(config.highlight ? [highlight] : []),
+    ...(config.defList ? [definitionList] : []),
+    ...(config.removeComments ? [removeComments] : []),
+    ...(config.smartypants ? [smartypants] : []),
+    ...(config.pangu ? [pangu] : []),
+  ];
 }
 
 export function buildAdvanceOptions(config: CatalogConfig): AdvanceOptions {
@@ -154,15 +177,8 @@ export function buildAdvanceOptions(config: CatalogConfig): AdvanceOptions {
   // The chains come from pluginChain.ts — the SAME builders MarkdownContent
   // calls, so the arbiter can never drift from the shipped order (the axes
   // here map onto the sealed plugin selection the production memos consume).
-  const enginePlugins = [
-    ...(config.highlight ? [highlight] : []),
-    ...(config.defList ? [definitionList] : []),
-    ...(config.removeComments ? [removeComments] : []),
-    ...(config.smartypants ? [smartypants] : []),
-    ...(config.pangu ? [pangu] : []),
-  ];
   const options: AdvanceOptions = {
-    remarkPlugins: buildCoreRemarkPlugins(enginePlugins),
+    remarkPlugins: buildCoreRemarkPlugins(enginePluginsFor(config)),
     rehypePlugins: buildCoreRehypePlugins(sanitizeSchema, TEST_CLOBBER_PREFIX),
     remarkRehypeOptions: remarkRehypeOptions as never,
     depsKey: [config.label],

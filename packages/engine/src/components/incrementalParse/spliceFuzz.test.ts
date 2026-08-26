@@ -49,6 +49,10 @@ const TIMEOUT_MS = Math.max(300_000, RUNS * 300);
 
 const FC_PARAMS = { numRuns: RUNS, seed: SEED } as const;
 
+/** The all-defaults-on config, the shape a standalone consumer actually
+ *  ships: highlight + def-list + the three display plugins. */
+const DEFAULTS_ALL_ON = CATALOG.find((c) => c.label === 'defaults-all-on')!;
+
 interface Totals {
   frames: number;
   incrementalFrames: number;
@@ -158,6 +162,17 @@ describe(`splice fuzz arbiter (runs=${RUNS} seed=${SEED})`, () => {
             buildCrossChunkAdvanceOptions(new Set(f.footnotes), new Set(f.links))
           );
           incremental += stats.incrementalFrames;
+          // The PRODUCTION-reachable cell (review M-xchunk): the sole
+          // production caller runs the user's plugin selection and
+          // defListEnabled ALONGSIDE the phantom suffix, while this
+          // property drove the no-plugin, defList-off cell only. def-list
+          // is the load-bearing axis — its `: desc` claim reaches BACKWARD
+          // across a blank, which is exactly what an injected suffix
+          // appends past.
+          const withPlugins = runCrossChunk('fuzz-cross-chunk-defaults', frames, (f) =>
+            buildCrossChunkAdvanceOptions(new Set(f.footnotes), new Set(f.links), DEFAULTS_ALL_ON)
+          );
+          incremental += withPlugins.incrementalFrames;
         }
       ),
       { ...FC_PARAMS, numRuns: Math.max(20, Math.floor(RUNS / 4)) }
