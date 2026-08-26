@@ -218,12 +218,16 @@ describe(`splice exhaustive sweep (K=${MAX_K}, alphabet=${TOKENS.length})`, () =
     // deliberately hazard-dense and most short sequences poison to boundary
     // 0, so engagement is an order of magnitude below the fuzz families:
     // measured 11198/400769 = 2.79% at the CI point (K=3, stride 3), and
-    // 2.5-2.9% across K=3 shards. 1% keeps a collapse (0%, mutation-checked)
-    // unmissable without sitting on the mean.
+    // 205/20529 = 1.00% at K=2, where the documents are too short to carry
+    // a candidate at all. The floor has to clear the SMALLEST configuration
+    // anyone runs, not the default — spliceFuzz's own floor comment records
+    // what a floor sitting on the mean costs. 0.5% keeps a collapse
+    // (0/20529, mutation-checked 2026-08-26 by returning null from
+    // `spliceTrees`) unmissable, with 2× margin at K=2 and 5.6× at K=3.
     expect(frames).toBeGreaterThan(0);
     expect(
       incrementalFrames / frames,
       `the census drove ${frames} frames and spliced ${incrementalFrames} — the path collapsed`
-    ).toBeGreaterThan(0.01);
+    ).toBeGreaterThan(0.005);
   });
 });
