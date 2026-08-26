@@ -98,4 +98,37 @@ describe('table-part poison fires only for STRAY parts', () => {
       }
     }
   });
+
+  /** The suppression reads `definitelyInsideTable()`, a wrapper documented as
+   *  UNDER-claiming — doubt must resolve to "not inside a table" so the
+   *  poison fires. It was implemented on the raw `tagBalance` bag, which
+   *  counts a PARAGRAPH-line truncated `<table` that parse5 discards: the
+   *  four-axis wrapper audit found it the only direction-carrying predicate
+   *  whose implementation contradicted its name (2026-08-26 review M5). */
+  describe('a phantom `<table` open must not suppress the poison', () => {
+    const TRUNCATED = 'compare a<table b\n<td>x</td>\n</table>\n\npara one\n\npara two\n\nend\n';
+
+    test('a truncated `<table` in prose leaves the stray part poisoned', () => {
+      expect(boundary(TRUNCATED)).toBe(0);
+    });
+
+    test('the same prose without the phantom is identical', () => {
+      // The control the reproducer is measured against: dropping `<table`
+      // from the paragraph must not change the verdict at all.
+      expect(boundary('compare a b\n<td>x</td>\n</table>\n\npara one\n\npara two\n\nend\n')).toBe(0);
+    });
+
+    test('a CONFIRMED `<table` still suppresses it', () => {
+      // The `>` arrives, the pending open is confirmed, and the part is
+      // genuinely inside a table again — the B1 behaviour is untouched.
+      const doc = 'compare a<table b>\n<td>x</td>\n</table>\n\npara one\n\npara two\n\nend\n';
+      expect(boundary(doc)).toBeGreaterThan(0);
+    });
+
+    test('the truncated shape streams like a full parse', () => {
+      assertStreamEquivalence('m5 truncated table', scheduleSnapshots(TRUNCATED, [1]), CATALOG[0], {
+        minIncrementalFrames: 0,
+      });
+    }, 30_000);
+  });
 });
