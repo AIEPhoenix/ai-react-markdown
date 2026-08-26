@@ -365,6 +365,7 @@ production code.
 
 | Instrument           | File                                                                                    | Verdict authority                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | -------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Multi-frame stack    | `spliceFuzz.test.ts` + `spliceEquivalence.test.ts`                                      | **The stack's multi-frame member.** Long append schedules over a chained state machine — the only instruments that reach splice-onto-a-spliced-tree at depth, resumed checkpoints, and the monotone boundary clamp. Measured 74% recall on a planted `noClamp` mutation where the sweep's two-frame probe reached almost none of it. The conformance sweep is NOT a substitute; its probe runs three frames, not a schedule.                                |
 | Engine probe         | `conformanceOracles.ts` `engineProbe`                                                   | **Authoritative.** Streams `doc` then `doc + probe` through the real engine and deep-equals frame 2 against a fresh full parse, positions included, never gated on `usedIncremental`. A mismatch is a defect.                                                                                                                                                                                                                                               |
 | (M) span oracle      | `conformanceOracles.ts` `mSpanDisagreement`                                             | Attribution. Covering-span sets at every frozen-region line start; in sweeps SNAPSHOT-anchored — `parse(doc)` vs `parse(doc+probe)` — per the bad-oracle finding below. Spans, not types.                                                                                                                                                                                                                                                                   |
 | (P) identity oracles | `conformanceOracles.ts` `rawLayerIdentityDisagreement` / `pipelineIdentityDisagreement` | Design instruments, prefix-anchored — home ground is HAND fixtures (formElement, F10). Sweeps run them only behind `ORACLE_RAW=1`: at scanner-granted boundaries the prefix anchoring overclaims, see below.                                                                                                                                                                                                                                                |
@@ -436,12 +437,81 @@ Real divergence families the prefix-anchored instruments DID surface, kept
 as exemptions for `ORACLE_RAW=1` runs and hand analysis — every direction
 is refuse-or-absorb, never an under-block.
 
-**Since 2026-08-26 this table is ENFORCED, not documentation.**
-`classifyRawFamily` in `conformanceOracles.ts` encodes it, and a raw-mode
-firing that matches no family FAILS the sweep (soak leg 5). Before that,
-raw mode could not fail at all: the exemptions were prose, `ORACLE_RAW`
-was set nowhere in the repo, and a NEW divergence family would have
-arrived as one more line in a log nobody diffs.
+**Superseded as a GATE (2026-08-26, second half of the day): this is now
+the classification ledger for the INFO path.** The table was briefly the
+enforcement mechanism — `classifyRawFamily` encoded it and an unmatched
+firing failed the sweep. It gates nothing now; `rawFamily` is consulted by
+zero assertions. What replaced it is below.
+
+### The raw-layer re-anchor (2026-08-26)
+
+The (P) raw identity was PREFIX-anchored: `raw(prefix) ++ raw(tail)`
+against `raw(prefix ++ tail)`. That is a strictly stronger claim than the
+scanner makes, and it is the same bug the (M) span oracle carried until it
+was re-anchored to the snapshot on 2026-08-24 — the load-bearing
+bad-oracle finding recorded above. Every one of E1-E7 is an artifact of
+concatenating two independent parses; none is a statement about the
+boundary.
+
+The gate is now `snapshotRawDisagreement`: append-stability of the FROZEN
+REGION at the raw layer, `raw(doc)` against `raw(doc + tail)`, over every
+positioned node ending at or before the boundary. No tail-alone parse
+exists in it, so it cannot produce those artifacts. Measured on the leg-5
+shard corpora: E1-E7 all go to **zero**, the exemption list stops being
+load-bearing, and the gate fires 0 times across ~346k probe positions
+while the prefix form fired ~6,000 per shard.
+
+**The tradeoff, recorded because the next person must find the decision
+and not just the win.** On a planted general over-block, scored only at
+positions where the engine probe demonstrably ships wrong output:
+
+| instrument | recall on real under-blocks | fire rate on engine-clean | enrichment |
+| ---------- | --------------------------: | ------------------------: | ---------: |
+| (M) span   |                       29.7% |                      7.5% |       4.0x |
+| P-prefix   |                   **99.1%** |                     50.8% |      1.95x |
+| P-snapshot |                   **31.5%** |                      2.0% |      15.8x |
+
+The snapshot form is BLINDER in raw recall — 31.5% against 99.1% — and
+that was accepted deliberately. The prefix form's recall is redundant with
+the engine probe, which is authoritative, always on, and had caught 100%
+of that population by construction; its 99.1% was bought at a 50.8%
+false-positive rate that made a 7-family allowlist mandatory, and that
+allowlist was refuted twice in one day. The prefix form is retained as
+info-only triage, where its recall still helps a human.
+
+**Qualifier on the 31.5%:** that number is population-specific — the
+population was selected by a two-frame engine probe, i.e. frame-2 defects.
+On MULTI-FRAME defects the snapshot form's recall is **0%**. The stack
+member that covers multi-frame state-carry faults is `spliceFuzz.test.ts`
+(measured 74% on a planted `noClamp` mutation) together with
+`spliceEquivalence.test.ts`; the sweep's engine probe was upgraded to
+three frames for the same reason (below). A reader must not take the
+snapshot gate as cover for that class.
+
+**This section records instrument RECALL, not a shipped defect.** The
+adversarial construction used a planted mutation (`noClamp`, the monotone
+boundary clamp deleted in memory). No live engine defect was found at any
+point in this work.
+
+**Scope limits of a position-keyed gate,** measured and accepted: 26.0% of
+provably-frozen nodes carry no position offsets and are invisible to it
+(the direction battery and the engine probe cover those regions), and
+`stripFurniture` exempts frozen footnote-DEFINITION content by
+construction. Two further gaps — duplicate node signatures, and an append
+that only ADDS a node below the boundary — are unreachable in this corpus
+and carry comments at the code rather than defensive machinery.
+
+**A vacuity failure worth keeping.** The first build of this instrument
+compared root children only. The boundary is a byte offset and raw-layer
+root children are far too coarse to bracket it, so it compared ZERO nodes
+at 439 of 797 probe positions — an instrument that mostly asserted
+nothing, and it would have reported a clean sweep. It was caught by
+measuring the instrument before trusting its verdict, and rebuilt at (M)'s
+depth (7-8 nodes per position). Its anti-vacuity floor then repeated the
+memo-hit bug the engagement floors had — empty tails compare `raw(doc)`
+with itself and delivered 99.7% of the floor's budget — and is now counted
+over non-empty tails only. Both failure modes are the same lesson twice:
+a gate that compares nothing passes everything.
 
 Each family is keyed on its MECHANISM, not on the probe that happened to
 expose it. Keying E1 on `probeId === 'tablePart'` was the first thing the
@@ -505,7 +575,7 @@ problem, not a coverage gap):
 | E1  | An HTML table part AT THE HEAD of the tail: the tail-alone fragment parse dispatches it from "in template", the full parse from "in body" (the F8 shape)                                                                                                                                                                                                                                                                                                        | `TABLE_PART_TAG_RE` in `spliceParse.ts`                                                                                                                                                                                           | tail refused → full path (asserted, not assumed)                 |
 | E2  | GFM-table internal whitespace is foster-parented to the root and merges with the seam separator (grouping only, values conserved)                                                                                                                                                                                                                                                                                                                               | blocker-6 seam handling / splice seam synthesis                                                                                                                                                                                   | seam-absorbed                                                    |
 | E3  | Reference resolution split across the boundary: tail-alone parse sees orphan footnote/link/image refs, full parse resolves them against a prefix definition — same characters, different ref markup                                                                                                                                                                                                                                                             | phantom injection replay (`remarkInjectPhantomDefs`)                                                                                                                                                                              | production machinery, pinned by `assertStreamEquivalence`        |
-| E4  | Same bytes, different node GROUPING: adjacent root text nodes fuse on the full side but not on the concatenated one, and the hoisted footnote section's separator merges into an element a probe left open                                                                                                                                                                                                                                                      | hast text merging / furniture                                                                                                                                                                                                     | grouping only, values conserved                                  |
+| E4  | Same bytes, same NESTING, different node grouping (the flattening carries depth since 2026-08-26 — without it a swallow flattened identically to siblings and this row's "values conserved" was false): adjacent root text nodes fuse on the full side but not on the concatenated one, and the hoisted footnote section's separator merges into an element a probe left open                                                                                   | hast text merging / furniture                                                                                                                                                                                                     | grouping only, values conserved                                  |
 | E5  | A stray END tag AT THE HEAD of the tail. E1's insertion-mode asymmetry with a non-table name — `</p>` synthesizes an empty `<p>` at "in body" and nothing at "in template"; `</br>` becomes a `<br>` START tag                                                                                                                                                                                                                                                  | `STRAY_SYNTHESIZED_END_TAG_RE` in `spliceParse.ts`, at its seam-child and first-visible-node sites, exercised by spliceEquivalence / spliceExhaustive — NOT `spliceStructuralBail.test.ts`, which carries no stray-end-tag sample | tail refused → full path (asserted, not assumed)                 |
 | E6  | A definition line AT THE HEAD of the tail is a DEFINITION (no output) in one parse and paragraph text (whose inline content becomes nodes) in the other. Mirrors the engine's own `DEF_RE`, which the earlier approximation did not: it accepted `[]:` and `[a[b]:`, neither of which is a definition to micromark                                                                                                                                              | prefix-anchoring overclaim; netted by (M) + the engine probe                                                                                                                                                                      | one side carries the def's inline content                        |
 | E7  | A raw-text element ran on: micromark ends a type-1 block on the `</name` SUBSTRING while parse5 needs the appropriate end tag in full, so `</scripty>` closes for one grammar and not the other and the tail-alone parse re-opens the element and swallows a different amount. Keyed on the FIRST divergence sitting inside a `<script>` / `<textarea>` both sides agree on — a run-on absorbs everything after it, so trailing differences are its consequence | the raw-text state machine itself; scanner-side counterpart is the F10 family                                                                                                                                                     | one side's element swallowed more; engine probe clean throughout |

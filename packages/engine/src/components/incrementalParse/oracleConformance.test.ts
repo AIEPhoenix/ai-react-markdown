@@ -115,16 +115,16 @@ const RAW_MODE = testEnv('ORACLE_RAW') === '1';
 const ORACLE_OPTS = { idealIdentity: RAW_MODE };
 
 /**
- * The exemption allowlist (GRAMMAR-COVERAGE's classification ledger). Under
- * ORACLE_RAW=1 a raw-layer firing that matches NO family is a FAILURE, not
- * an info line: until 2026-08-26 the raw mode could not fail at all, so it
- * gated nothing and a new divergence family would have arrived as one more
- * line in a log nobody diffs.
+ * The ORACLE_RAW gate is the SNAPSHOT-anchored raw identity: any firing
+ * fails. It needs no exemption list, because it has no tail-alone parse to
+ * produce artifacts about — which is why E1-E7 all measure zero under it.
+ *
+ * The prefix-anchored form stays as info-only triage beside it, with
+ * `classifyRawFamily` demoted from gate to classification aid. See the
+ * ledger for the recall/precision tradeoff that decided this.
  */
-const unclassifiedRawFirings = (findings: Array<{ probeId: string; detail: string; rawFamily?: unknown }>): string[] =>
-  findings
-    .filter((f) => f.detail.startsWith('P-raw') && (f.rawFamily ?? null) === null)
-    .map((f) => `probe=${f.probeId} ${f.detail.slice(0, 400)}`);
+const snapshotFirings = (findings: Array<{ probeId: string; detail: string }>): string[] =>
+  findings.filter((f) => f.detail.startsWith('P-snap')).map((f) => `probe=${f.probeId} ${f.detail.slice(0, 400)}`);
 
 const formatFindings = (findings: unknown): string => JSON.stringify(findings, null, 1)?.slice(0, 4000) ?? '';
 
@@ -134,22 +134,32 @@ describe('oracle sweep — pinned realistic corpus', () => {
   for (const doc of REALISTIC_DOCS) {
     test(`${doc.id}`, () => {
       const config = CATALOG[doc.configIndex % CATALOG.length];
-      const stats: OracleSweepStats = { probesRun: 0, spliceableProbes: 0, incrementalProbes: 0 };
+      const stats: OracleSweepStats = {
+        probesRun: 0,
+        spliceableProbes: 0,
+        incrementalProbes: 0,
+        snapshotNodesCompared: 0,
+        snapshotPositions: 0,
+      };
       const findings = oracleCheckDoc(doc.doc, config, stats, 0, ORACLE_OPTS);
       const defects = findings.filter((f) => f.severity === 'defect');
       for (const f of findings.filter((f) => f.severity === 'info')) {
         infoLog.push(`${doc.id} [${config.label}] probe=${f.probeId} ${f.detail.slice(0, 160)}`);
       }
-      const unclassified = unclassifiedRawFirings(findings);
+      const snapFirings = snapshotFirings(findings);
       expect(
-        unclassified,
-        `${doc.id} [${config.label}] raw-layer firing outside the E1-E7 allowlist — classify it in ` +
-          `GRAMMAR-COVERAGE's ledger and name it in classifyRawFamily before allowing it back:\n${unclassified.join('\n')}`
+        snapFirings,
+        `${doc.id} [${config.label}] the frozen region did not survive an append at the raw layer — ` +
+          `this is the scanner's own claim failing, not an instrument artifact:\n${snapFirings.join('\n')}`
       ).toEqual([]);
       expect(defects, `${doc.id} [${config.label}] ${formatFindings(defects)}`).toEqual([]);
       // The sweep must exercise the incremental path, not just prove the
       // fallback correct — and the counter must be the NON-EMPTY-tail one,
       // for the reason recorded on `OracleSweepStats.spliceableProbes`.
+      if (RAW_MODE) {
+        // The gate must have something to say about this document.
+        expect(stats.snapshotPositions, `${doc.id} snapshot gate compared no frozen node`).toBeGreaterThan(0);
+      }
       expect(stats.spliceableProbes).toBeGreaterThan(0);
       expect(
         stats.incrementalProbes,
@@ -174,9 +184,15 @@ describe('oracle sweep — fuzz corpus (env-scaled)', () => {
     // sweep as failed at soak scale.
     test(`${name} × ${runs}`, { timeout: Math.max(30_000, runs * 100) }, () => {
       const docs = fc.sample(arb, { seed: seed + seedOffset, numRuns: runs });
-      const stats: OracleSweepStats = { probesRun: 0, spliceableProbes: 0, incrementalProbes: 0 };
+      const stats: OracleSweepStats = {
+        probesRun: 0,
+        spliceableProbes: 0,
+        incrementalProbes: 0,
+        snapshotNodesCompared: 0,
+        snapshotPositions: 0,
+      };
       const failures: string[] = [];
-      const unclassifiedRaw: string[] = [];
+      const snapFirings: string[] = [];
       const infoBuckets = new Map<string, number>();
       const infoExamples = new Map<string, string[]>();
       docs.forEach((d, i) => {
@@ -201,25 +217,53 @@ describe('oracle sweep — fuzz corpus (env-scaled)', () => {
             `#${i} [${config.label}] doc=${JSON.stringify(d.doc).slice(0, 200)} ${formatFindings(defects).slice(0, 600)}`
           );
         }
-        for (const u of unclassifiedRawFirings(findings)) {
-          unclassifiedRaw.push(`#${i} [${config.label}] doc=${JSON.stringify(d.doc).slice(0, 200)} ${u}`);
+        for (const u of snapshotFirings(findings)) {
+          snapFirings.push(`#${i} [${config.label}] doc=${JSON.stringify(d.doc).slice(0, 200)} ${u}`);
         }
       });
       const buckets = [...infoBuckets.entries()].sort((a, b) => b[1] - a[1]);
       console.log(
-        `[oracle ${name}] probes=${stats.probesRun} spliceable=${stats.spliceableProbes} incremental=${stats.incrementalProbes} info=${buckets.reduce((a, [, n]) => a + n, 0)}\n` +
+        `[oracle ${name}] probes=${stats.probesRun} spliceable=${stats.spliceableProbes} incremental=${stats.incrementalProbes} ` +
+          `snapNodes=${stats.snapshotNodesCompared} snapPositions=${stats.snapshotPositions} info=${buckets.reduce((a, [, n]) => a + n, 0)}\n` +
           buckets
             .map(([k, n]) => `  ${k} ×${n}\n${(infoExamples.get(k) ?? []).map((e) => `    ${e}`).join('\n')}`)
             .join('\n')
       );
       expect(failures, failures.join('\n---\n').slice(0, 6000)).toEqual([]);
-      // Under ORACLE_RAW=1 the allowlist is a GATE: an unclassified family
-      // fails the sweep instead of adding a line to the info log.
+      // Under ORACLE_RAW=1 the SNAPSHOT form gates: every firing is the
+      // frozen region failing to survive an append, with no exemptions.
       expect(
-        unclassifiedRaw,
-        `raw-layer firings outside the E1-E7 allowlist (${unclassifiedRaw.length}) — classify each in ` +
-          `GRAMMAR-COVERAGE's ledger and name it in classifyRawFamily:\n${unclassifiedRaw.slice(0, 12).join('\n')}`
+        snapFirings,
+        `snapshot-anchored raw firings (${snapFirings.length}) — the frozen region changed under append:\n` +
+          `${snapFirings.slice(0, 12).join('\n')}`
       ).toEqual([]);
+      // Anti-vacuity floor for the GATE itself, same discipline as the
+      // engagement floors: a gate that compares nothing passes everything.
+      // The first prototype of this instrument compared root children only
+      // and so compared ZERO nodes at 439 of 797 probe positions — caught
+      // by measuring it, not by reasoning about it.
+      //
+      // The denominator is `spliceableProbes` — NON-EMPTY tails — not
+      // `probesRun`. An empty tail compares raw(doc) against itself, and
+      // counting those inflated this floor with positions that assert
+      // nothing: 12.4% of positions, delivering 99.7% of the budget, so a
+      // total gate collapse would have moved the ratio by 0.3%. Same
+      // memo-hit shape as the engagement floors, same fix.
+      //
+      // Landed measurements over non-empty tails: benign 21499 nodes /
+      // 2520 positions = 8.53 each, 100% of positions speaking; hazard
+      // 10378 / 2281 = 4.55, 95.5%. Floors at 1 node (4.6x margin on the
+      // tighter family) and half the positions (1.9x).
+      if (RAW_MODE) {
+        expect(
+          stats.snapshotNodesCompared / stats.spliceableProbes,
+          'the snapshot gate compared almost nothing'
+        ).toBeGreaterThan(1);
+        expect(
+          stats.snapshotPositions / stats.spliceableProbes,
+          'the snapshot gate was silent at most probe positions'
+        ).toBeGreaterThan(0.5);
+      }
       // Anti-vacuity floor, over NON-EMPTY tails only. The old form counted
       // every probe and so could not fall below 4/doc even with the splice
       // torn out — an identical-content frame is a memo hit that reports
