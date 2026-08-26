@@ -273,6 +273,14 @@ function flattenContent(nodes: NodeLike[], out: string[]): string[] {
 
 /** The marker both sides of a RESOLVED reference collapse to. */
 const REF = '\u0001';
+/** Element marker for the ref-normalized flattening. It must be
+ *  UNFORGEABLE by document content: spelling an element as `<div>` let a
+ *  literal `<div>` sitting in a raw-text element's text compare equal to a
+ *  real `<div>` element — which is exactly the F10 shape, and it
+ *  mislabelled as E3 until the reordering made it visible (2026-08-26).
+ *  Text pieces stay unprefixed so the comparison remains blind to node
+ *  grouping. */
+const EL = '\u0002';
 
 /**
  * Flatten to text with reference RESOLUTION normalized away, so the two
@@ -301,6 +309,10 @@ function flattenRefNormalized(nodes: NodeLike[], out: string[]): string[] {
         // label the split side still spells out has to go with the syntax.
         .replace(/\]\[[^\]\n]*\]/g, ']')
         .replace(/[[\]]/g, '');
+      // Bare, NOT prefixed: the pieces are compared joined precisely so
+      // that one text node of `ab` and two of `a`,`b` are the same
+      // content. A per-node prefix here would reintroduce the grouping
+      // sensitivity (measured: 253 E3 firings turn unclassified).
       if (v !== '') out.push(v);
       continue;
     }
@@ -310,7 +322,7 @@ function flattenRefNormalized(nodes: NodeLike[], out: string[]): string[] {
         out.push(REF);
         continue;
       }
-      if (tag !== 'a') out.push(`<${tag}>`);
+      if (tag !== 'a') out.push(`${EL}${tag}`);
     }
     flattenRefNormalized(node.children ?? [], out);
   }
@@ -322,47 +334,93 @@ function flattenRefNormalized(nodes: NodeLike[], out: string[]): string[] {
  * classification ledger). A raw-mode firing that matches NONE of these is
  * a new family: the sweep fails, and it gets classified before it is
  * allowed back in. Every direction here is refuse-or-absorb, never an
- * under-block.
+ * under-block — and for the refuse-direction families that is now
+ * measured per firing rather than asserted (see `spliced` below).
+ *
+ * Adversarial audit 2026-08-26: 0 engine divergences in ~50k probes /
+ * 6,880 streamed documents. The predicates were nonetheless too broad,
+ * and were head-anchored + refusal-gated as a result — benign today is
+ * not the same claim as tight.
  */
 export type RawFamily =
   'E1-tablePart' | 'E2-gfmTable' | 'E3-refResolution' | 'E4-grouping' | 'E5-strayEndTag' | 'E6-defVsParagraph';
 
-/** An HTML table part at a FLOW position in the tail. The tail-alone
- *  fragment parse dispatches it from "in template" — to "in table" / "in
- *  row" / "in column group" — while the full parse had already popped to
- *  "in body", so the two sides disagree by construction (the F8 shape). */
-const TABLE_PART_RE = /^[ \t]*<\/?(?:table|caption|colgroup|col|thead|tbody|tfoot|tr|td|th)\b/im;
+/**
+ * The shape families (E1/E5/E6) are HEAD-ANCHORED: the insertion-mode
+ * asymmetry they name lives at the point the tail is dispatched from, and
+ * nowhere else. Scanning the WHOLE remainder for the pattern was the
+ * original form and it was far too generous — an adversarial audit
+ * (2026-08-26) measured 81.8% of hazard-corpus probe positions already
+ * matching E5 or E6 somewhere in the remainder, so a brand-new divergence
+ * family would have been silently exempted roughly five times in six.
+ * Four named real families (formElement, F10, F11, F8) flipped from
+ * gate-fails to exempt by appending one irrelevant `</span>` or
+ * `[zz]: /q` line, and F6/F7/F13's idiomatic shapes — which end with a
+ * closer on its own line — needed no bait at all.
+ *
+ * Leading blank lines are stripped first: they are the seam, not content.
+ */
+const stripLeadingBlanks = (tail: string): string => tail.replace(/^(?:[ \t]*\r?\n)*/, '');
 
-/** A stray end tag at a FLOW position in the tail. Same insertion-mode
- *  asymmetry as E1 with a non-table name, and just as content-driven:
- *  `</p>` at "in body" synthesizes an empty `<p>` while the tail-alone
- *  parse starts "in template" and produces nothing (hazard #272), and
- *  `</br>` is rewritten to a `<br>` START tag whose placement depends on
- *  the same mode (hazard #401). The splice refuses these tails — that is
- *  what `spliceStructuralBail` pins. The breadth is deliberate: this
- *  exempts the (P) instrument only, never the authoritative engine probe,
- *  which runs on every probe regardless. */
-const STRAY_END_TAG_RE = /^[ \t]*<\/[A-Za-z][A-Za-z0-9-]*\s*>/m;
+/** An HTML table part AT THE HEAD of the tail. The tail-alone fragment
+ *  parse dispatches it from "in template" — to "in table" / "in row" / "in
+ *  column group" — while the full parse had already popped to "in body",
+ *  so the two sides disagree by construction (the F8 shape). */
+const TABLE_PART_HEAD_RE = /^[ \t]*<\/?(?:table|caption|colgroup|col|thead|tbody|tfoot|tr|td|th)\b/i;
 
-/** A link-definition-shaped line in the tail. Whether such a line IS a
- *  definition (invisible in the output) or paragraph text (whose inline
+/** A stray end tag AT THE HEAD of the tail. Same insertion-mode asymmetry
+ *  as E1 with a non-table name: `</p>` at "in body" synthesizes an empty
+ *  `<p>` while the tail-alone parse starts "in template" and produces
+ *  nothing (hazard #272), and `</br>` is rewritten to a `<br>` START tag
+ *  whose placement depends on the same mode (hazard #401).
+ *
+ *  Owned by `STRAY_SYNTHESIZED_END_TAG_RE` in `spliceParse.ts` (two sites:
+ *  the seam-child scan and the first-visible-node check), which refuses
+ *  exactly these tails — NOT by `spliceStructuralBail.test.ts`, which
+ *  carries no stray-end-tag sample. The refusal is asserted rather than
+ *  assumed: see `spliced` below. */
+const STRAY_END_TAG_HEAD_RE = /^[ \t]*<\/[A-Za-z][A-Za-z0-9-]*\s*>/;
+
+/** A link-definition line AT THE HEAD of the tail. Whether such a line IS
+ *  a definition (invisible in the output) or paragraph text (whose inline
  *  content becomes real nodes) depends on what precedes it, so the two
  *  sides differ by exactly the def's inline content — measured on hazard
  *  #3807, where `[spec spec]: <u v> "title"` contributes a `<u>` element
- *  on one side and nothing on the other. This is the prefix-anchoring
- *  overclaim the raw mode is documented to have, in its (R)-adjacent
- *  form; the boundary itself is netted by the snapshot-anchored (M)
- *  oracle and by the authoritative engine probe. */
-const DEF_LINE_RE = /^ {0,3}\[[^\]\n]*\]:/m;
+ *  on one side and nothing on the other.
+ *
+ *  Mirrors the ENGINE's own `DEF_RE` (referenceTaint.ts) rather than
+ *  approximating it: the looser form accepted `[]:` and `[a[b]:`, which
+ *  are not definitions to micromark, so the exemption covered shapes whose
+ *  premise was false. */
+const DEF_LINE_HEAD_RE = /^ {0,3}\[(?:[^[\]\\]|\\.)+\]:/;
 
-function classifyRawFamily(probeId: string, tail: string, actual: NodeLike[], expected: NodeLike[]): RawFamily | null {
-  // E1 is keyed on the MECHANISM, not the probe: keying it on
-  // `probeId === 'tablePart'` alone missed every document whose own bytes
-  // put a stray table part at the head of the tail (hazard doc #49's
-  // `<col>`, 2026-08-26 review — it read as a whole-document family).
-  if (probeId === 'tablePart' || TABLE_PART_RE.test(tail)) return 'E1-tablePart';
+/**
+ * Order matters and is not arbitrary. The VALUE-CONSERVING families
+ * (E2/E4/E3) are decided by the two trees — same bytes, same characters —
+ * so they cannot be a text-pattern mislabel, and they go first. Running
+ * E5 ahead of them was the second audit finding: 328 of 350 E5 assignments
+ * were really E3/E4, and E5's claimed "tail refused" direction was false
+ * for 166 of them.
+ *
+ * `spliced` is the refusal conjunct. E1/E5/E6 all claim the direction
+ * "tail refused → full path", and that claim is now MEASURED: if the
+ * engine spliced this very probe, the tail was not refused, so a raw-layer
+ * divergence on it is a new family by definition and the gate fires. This
+ * deliberately couples the (P) instrument to an observation of the shipped
+ * path — a change to the splice's bails now surfaces here as raw-gate
+ * failures instead of silently widening the amnesty. It introduces no
+ * parse5 field introspection: `usedIncremental` is an output of the engine
+ * under test, not a peek inside its parser.
+ */
+function classifyRawFamily(
+  probeId: string,
+  tail: string,
+  spliced: boolean,
+  actual: NodeLike[],
+  expected: NodeLike[]
+): RawFamily | null {
+  // ── value-conserving, decided by the trees ──
   if (probeId === 'gfmTable') return 'E2-gfmTable';
-  if (STRAY_END_TAG_RE.test(tail)) return 'E5-strayEndTag';
   // E4: the same bytes, grouped into different nodes. Covers the seam
   // separator merge (adjacent root text nodes fuse on the full side but
   // not on the concatenated one) and the footnote section hoisted INTO an
@@ -376,7 +434,13 @@ function classifyRawFamily(probeId: string, tail: string, actual: NodeLike[], ex
   if (flattenRefNormalized(actual, []).join('') === flattenRefNormalized(expected, []).join('')) {
     return 'E3-refResolution';
   }
-  if (DEF_LINE_RE.test(tail)) return 'E6-defVsParagraph';
+  // ── refuse-direction, head-anchored AND only if the tail really was
+  //    refused ──
+  if (spliced) return null;
+  const head = stripLeadingBlanks(tail);
+  if (probeId === 'tablePart' || TABLE_PART_HEAD_RE.test(head)) return 'E1-tablePart';
+  if (STRAY_END_TAG_HEAD_RE.test(head)) return 'E5-strayEndTag';
+  if (DEF_LINE_HEAD_RE.test(head)) return 'E6-defVsParagraph';
   return null;
 }
 
@@ -386,7 +450,7 @@ function identityDisagreement(
   left: NodeLike,
   full: NodeLike,
   right: NodeLike,
-  family?: { probeId: string; tail: string; value: RawFamily | null }
+  family?: { probeId: string; tail: string; spliced: boolean; value: RawFamily | null }
 ): string | null {
   // Count line ENDINGS the way micromark does (`\r\n`, `\n`, lone `\r`) —
   // the tail's line numbers shift by exactly this many.
@@ -403,7 +467,7 @@ function identityDisagreement(
   const actual = stripFurniture(full.children ?? []);
 
   if (isEqual(actual, expected)) return null;
-  if (family) family.value = classifyRawFamily(family.probeId, family.tail, actual, expected);
+  if (family) family.value = classifyRawFamily(family.probeId, family.tail, family.spliced, actual, expected);
   const max = Math.max(actual.length, expected.length);
   for (let i = 0; i < max; i++) {
     if (!isEqual(actual[i], expected[i])) {
@@ -448,7 +512,7 @@ export function rawLayerIdentityDisagreement(
   prefix: string,
   tail: string,
   config: CatalogConfig,
-  family?: { probeId: string; tail: string; value: RawFamily | null }
+  family?: { probeId: string; tail: string; spliced: boolean; value: RawFamily | null }
 ): string | null {
   if (!/[\n\r]$/.test(prefix)) throw new Error('rawLayerIdentityDisagreement: prefix must end at a line ending');
   const left = runToRawLayer(prefix, config);
@@ -629,7 +693,15 @@ export function oracleCheckDoc(
     // boundaries (see mSpanDisagreement's doc), so in sweeps it is opt-in
     // exploratory instrumentation, not a default signal.
     if (options?.idealIdentity) {
-      const family = { probeId: probe.id, tail: realTail + probe.tail, value: null as RawFamily | null };
+      const family = {
+        probeId: probe.id,
+        tail: realTail + probe.tail,
+        // The refusal conjunct: an EMPTY tail cannot be "refused" (the
+        // frame is identical content, a memo hit), so it never counts as
+        // spliced evidence either way.
+        spliced: engine.usedIncremental && probe.tail !== '',
+        value: null as RawFamily | null,
+      };
       const r = rawLayerIdentityDisagreement(prefix, family.tail, config, family);
       if (r !== null) {
         findings.push({
