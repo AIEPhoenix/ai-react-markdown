@@ -45,7 +45,8 @@ describe('masking follows the member (row 4)', () => {
       [4, 4, 4, 4, 4, 4, 4, 4],
       [1, 4, 4, 4, 4, 4, 4, 4],
     ]) {
-      assertStreamEquivalence('row4-flip', scheduleSnapshots(doc, sizes), CATALOG[0]);
+      // boundary 0 above: the div blocks every candidate, so nothing splices.
+      assertStreamEquivalence('row4-flip', scheduleSnapshots(doc, sizes), CATALOG[0], { minIncrementalFrames: 0 });
     }
   }, 30_000);
 
@@ -59,7 +60,10 @@ describe('masking follows the member (row 4)', () => {
       [4, 4, 4, 4, 4],
       [1, 4, 4, 4, 4],
     ]) {
-      assertStreamEquivalence('row4-pi', scheduleSnapshots(doc, sizes), CATALOG[0]);
+      // The doc's own boundary is 23/27, but every INTERMEDIATE frame sits
+      // inside the unterminated type-3 block at boundary 0, so these
+      // schedules never reach a spliceable frame.
+      assertStreamEquivalence('row4-pi', scheduleSnapshots(doc, sizes), CATALOG[0], { minIncrementalFrames: 0 });
     }
   }, 30_000);
 });

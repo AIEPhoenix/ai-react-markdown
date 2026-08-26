@@ -89,7 +89,11 @@ describe('table-part poison fires only for STRAY parts', () => {
   test.each([...WELL_FORMED, ...STRAY])('output stays equivalent — %s', (name, doc) => {
     for (const sizes of SCHEDULES) {
       for (const s of [sizes, [...sizes].reverse()]) {
-        const stats = assertStreamEquivalence(`b1-${name}`, scheduleSnapshots(doc, s), CATALOG[0]);
+        // STRAY shapes poison to boundary 0 by design; the engagement claim
+        // lives in 'well-formed tables actually run the incremental path'.
+        const stats = assertStreamEquivalence(`b1-${name}`, scheduleSnapshots(doc, s), CATALOG[0], {
+          minIncrementalFrames: 0,
+        });
         expect(stats.frames).toBeGreaterThan(0);
       }
     }

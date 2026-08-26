@@ -17,6 +17,7 @@
  */
 import { describe, expect, test } from 'vitest';
 import { CATALOG } from './testPluginCatalog';
+import { computeFreezeBoundary } from './computeFreezeBoundary';
 import { assertStreamEquivalence } from './spliceArbiterHarness';
 import { scheduleSnapshots } from './fuzzGenerators';
 
@@ -34,17 +35,32 @@ const SCHEDULES: number[][] = [
   [7, 3, 5, 2, 6, 4, 8, 1],
 ];
 
+const boundary = (doc: string) => computeFreezeBoundary(doc, { defListEnabled: false }).boundary;
+
 describe('splice seam: CDATA bogus-comment remnant stays equivalent', () => {
+  // The scope-honesty note above, made mechanical: both docs poison to
+  // boundary 0, so the schedules below never splice a frame. That is the
+  // live assertion — a positive boundary means the class is reachable
+  // again and these equivalence guards go back on duty.
+  test('both shapes poison — the remnant class is unreachable', () => {
+    expect(boundary(DOC_HEADED)).toBe(0);
+    expect(boundary(DOC_INLINE)).toBe(0);
+  });
+
   test.each(SCHEDULES.map((s, i) => [i, s] as const))('headed doc, schedule %#', (_i, sizes) => {
     for (const s of [sizes, [...sizes].reverse()]) {
-      const stats = assertStreamEquivalence('cdata-remnant-headed', scheduleSnapshots(DOC_HEADED, s), CATALOG[0]);
+      const stats = assertStreamEquivalence('cdata-remnant-headed', scheduleSnapshots(DOC_HEADED, s), CATALOG[0], {
+        minIncrementalFrames: 0,
+      });
       expect(stats.frames).toBeGreaterThan(0);
     }
   });
 
   test.each(SCHEDULES.map((s, i) => [i, s] as const))('inline doc, schedule %#', (_i, sizes) => {
     for (const s of [sizes, [...sizes].reverse()]) {
-      const stats = assertStreamEquivalence('cdata-remnant-inline', scheduleSnapshots(DOC_INLINE, s), CATALOG[0]);
+      const stats = assertStreamEquivalence('cdata-remnant-inline', scheduleSnapshots(DOC_INLINE, s), CATALOG[0], {
+        minIncrementalFrames: 0,
+      });
       expect(stats.frames).toBeGreaterThan(0);
     }
   });

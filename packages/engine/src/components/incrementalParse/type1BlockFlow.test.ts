@@ -145,9 +145,13 @@ describe('type-1 html block boundaries', () => {
     (name, doc) => {
       for (const sizes of SCHEDULES) {
         for (const s of [sizes, [...sizes].reverse()]) {
-          expect(assertStreamEquivalence(`t1-${name}`, scheduleSnapshots(doc, s), CATALOG[0]).frames).toBeGreaterThan(
-            0
-          );
+          // UNSAFE shapes poison to boundary 0 by design; the engagement
+          // claim for this file lives in 'the safe cases still run the
+          // incremental path' above.
+          expect(
+            assertStreamEquivalence(`t1-${name}`, scheduleSnapshots(doc, s), CATALOG[0], { minIncrementalFrames: 0 })
+              .frames
+          ).toBeGreaterThan(0);
         }
       }
     },
@@ -157,9 +161,10 @@ describe('type-1 html block boundaries', () => {
   test('every plugin configuration agrees', () => {
     for (const [name, doc] of [...UNSAFE, ...SAFE]) {
       for (const cfg of CATALOG) {
-        expect(assertStreamEquivalence(`t1-${name}`, scheduleSnapshots(doc, SCHEDULES[1]), cfg).frames).toBeGreaterThan(
-          0
-        );
+        expect(
+          assertStreamEquivalence(`t1-${name}`, scheduleSnapshots(doc, SCHEDULES[1]), cfg, { minIncrementalFrames: 0 })
+            .frames
+        ).toBeGreaterThan(0);
       }
     }
   }, 60_000);

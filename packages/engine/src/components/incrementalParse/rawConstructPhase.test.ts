@@ -103,7 +103,9 @@ describe('raw-construct phase splits', () => {
     'diverging shapes stream like a full parse — schedule %#',
     (...sizes) => {
       for (const [name, doc] of DIVERGING) {
-        assertStreamEquivalence(name, scheduleSnapshots(doc, sizes), CATALOG[0]);
+        // 'every diverging shape is poisoned to zero' above: no frame here
+        // can splice, and that is the assertion.
+        assertStreamEquivalence(name, scheduleSnapshots(doc, sizes), CATALOG[0], { minIncrementalFrames: 0 });
       }
     },
     60_000
@@ -113,18 +115,26 @@ describe('raw-construct phase splits', () => {
     'diverging shapes hold on every config — $label',
     (config) => {
       for (const [name, doc] of DIVERGING) {
-        assertStreamEquivalence(name, scheduleSnapshots(doc, [4, 4, 4, 4, 4, 4, 4, 4]), config);
+        assertStreamEquivalence(name, scheduleSnapshots(doc, [4, 4, 4, 4, 4, 4, 4, 4]), config, {
+          minIncrementalFrames: 0,
+        });
       }
     },
     60_000
   );
 
   test('the safe shapes stream like a full parse, and freezing survives them', () => {
+    let incremental = 0;
     for (const [name, doc, mustFreeze] of SAFE) {
-      assertStreamEquivalence(name, scheduleSnapshots(doc, [4, 4, 4, 4, 4, 4, 4, 4]), CATALOG[0]);
+      incremental += assertStreamEquivalence(name, scheduleSnapshots(doc, [4, 4, 4, 4, 4, 4, 4, 4]), CATALOG[0], {
+        minIncrementalFrames: 0,
+      }).incrementalFrames;
       if (mustFreeze) {
         expect({ name, frozen: boundary(doc) > 0 }).toEqual({ name, frozen: true });
       }
     }
+    // Per-shape engagement varies (some SAFE shapes only freeze late), so
+    // the anti-vacuity floor is the family aggregate: measured 10 frames.
+    expect(incremental).toBeGreaterThan(0);
   }, 60_000);
 });

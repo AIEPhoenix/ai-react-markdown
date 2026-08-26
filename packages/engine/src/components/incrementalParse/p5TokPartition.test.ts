@@ -48,10 +48,16 @@ describe('P5Tok partition + pendingTag overlay (B2 co-existence shapes)', () => 
   test('no phantom type-1 inside an open 2-5 construct', () => {
     const piDoc = '<?a\n<script>\nx\n</script>\n?>\n\ntail\n\nend\n';
     expect(boundary(piDoc)).toBe(0);
-    assertStreamEquivalence('c6-pi', scheduleSnapshots(piDoc, [4, 4, 4, 4, 4, 4, 4, 4]), CATALOG[0]);
+    // boundary 0 above: zero engagement IS the assertion — the stream
+    // pin checks the full path stays right while the poison holds.
+    assertStreamEquivalence('c6-pi', scheduleSnapshots(piDoc, [4, 4, 4, 4, 4, 4, 4, 4]), CATALOG[0], {
+      minIncrementalFrames: 0,
+    });
     const cdataDoc = '<![CDATA[\n<pre>\n]]>\n\ntail\n\nend\n';
     expect(boundary(cdataDoc)).toBe(0);
-    assertStreamEquivalence('c6-cdata', scheduleSnapshots(cdataDoc, [1, 1, 1, 1, 1, 1, 1, 1]), CATALOG[0]);
+    assertStreamEquivalence('c6-cdata', scheduleSnapshots(cdataDoc, [1, 1, 1, 1, 1, 1, 1, 1]), CATALOG[0], {
+      minIncrementalFrames: 0,
+    });
   });
 
   /** Migration B row 5's would-fail-if-flipped pin: a def-shaped line
@@ -77,7 +83,10 @@ describe('P5Tok partition + pendingTag overlay (B2 co-existence shapes)', () => 
     const doc =
       '<script>\nx\n</script/>\n\n<div>\nd\n</div>\n\n<!-->\n<details>\n-->\ninner prose\n</details>\n\nfoo line\n\u3000\n\u3000\nbar joins the paragraph\n\nprose with [a] used\n\n[a]: https://example.com/a\n\n[a a]: /u(x\n';
     expect(boundary(doc)).toBe(0);
-    assertStreamEquivalence('stray-closer', scheduleSnapshots(doc + 'x', [4, 4, 1, 4, 4, 4, 4, 4]), CATALOG[0]);
+    // boundary 0 above — the poison is the point, so no frame splices.
+    assertStreamEquivalence('stray-closer', scheduleSnapshots(doc + 'x', [4, 4, 1, 4, 4, 4, 4, 4]), CATALOG[0], {
+      minIncrementalFrames: 0,
+    });
   });
 
   test('F10 still fires for the script kind (M1)', () => {

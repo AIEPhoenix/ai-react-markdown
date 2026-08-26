@@ -102,9 +102,18 @@ describe('script data escape states', () => {
   });
 
   test('every shape streams like a full parse', () => {
+    let incremental = 0;
     for (const shape of [...RECOVERING, ...ERASURE_POISONED, ...STILL_OPEN, ...SAFE]) {
-      assertStreamEquivalence(shape, scheduleSnapshots(`${shape}${TAIL}`, [4, 4, 4, 4, 4, 4, 4, 4]), CATALOG[0]);
+      incremental += assertStreamEquivalence(
+        shape,
+        scheduleSnapshots(`${shape}${TAIL}`, [4, 4, 4, 4, 4, 4, 4, 4]),
+        CATALOG[0],
+        { minIncrementalFrames: 0 }
+      ).incrementalFrames;
     }
+    // ERASURE_POISONED and STILL_OPEN contribute zero by design — the floor
+    // is the aggregate the RECOVERING/SAFE halves owe (measured 25 frames).
+    expect(incremental).toBeGreaterThan(0);
   }, 60_000);
 
   /** The soak counterexample, verbatim — the `$$` block after the script is
@@ -116,7 +125,9 @@ describe('script data escape states', () => {
       [4, 4, 4, 4, 4, 4, 4, 4],
       [1, 4, 4, 4, 4, 4, 4, 4],
     ]) {
-      assertStreamEquivalence('soak leg 1', scheduleSnapshots(doc, sizes), CATALOG[0]);
+      // boundary 0 — the nested-script escape poisons the document, so no
+      // frame splices; the pin is the full path plus that poison.
+      assertStreamEquivalence('soak leg 1', scheduleSnapshots(doc, sizes), CATALOG[0], { minIncrementalFrames: 0 });
     }
   }, 30_000);
 

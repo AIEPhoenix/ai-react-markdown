@@ -77,7 +77,11 @@ describe('end tags discarded by a scope barrier', () => {
     (...sizes) => {
       for (const barrier of BARRIERS) {
         const shape = `<div><${barrier}></div></${barrier}>`;
-        assertStreamEquivalence(barrier, scheduleSnapshots(doc(shape), sizes), CATALOG[0]);
+        // The test above pins boundary 0 for every barrier shape: zero
+        // engagement is the asserted outcome here.
+        assertStreamEquivalence(barrier, scheduleSnapshots(doc(shape), sizes), CATALOG[0], {
+          minIncrementalFrames: 0,
+        });
       }
     },
     60_000
@@ -88,7 +92,9 @@ describe('end tags discarded by a scope barrier', () => {
     (config) => {
       for (const barrier of BARRIERS) {
         const shape = `<div><${barrier}></div></${barrier}>`;
-        assertStreamEquivalence(barrier, scheduleSnapshots(doc(shape), [2, 2, 2, 2, 2, 2, 2, 2]), config);
+        assertStreamEquivalence(barrier, scheduleSnapshots(doc(shape), [2, 2, 2, 2, 2, 2, 2, 2]), config, {
+          minIncrementalFrames: 0,
+        });
       }
     },
     60_000
@@ -103,9 +109,20 @@ describe('end tags discarded by a scope barrier', () => {
   });
 
   test('controls stream like a full parse', () => {
+    let incremental = 0;
     for (const shape of CONTROLS) {
-      assertStreamEquivalence(shape, scheduleSnapshots(doc(shape), [2, 2, 2, 2, 2, 2, 2, 2]), CATALOG[0]);
+      incremental += assertStreamEquivalence(
+        shape,
+        scheduleSnapshots(doc(shape), [2, 2, 2, 2, 2, 2, 2, 2]),
+        CATALOG[0],
+        {
+          minIncrementalFrames: 0,
+        }
+      ).incrementalFrames;
     }
+    // One control (`<div><p></div></p>`) freezes only at the very last frame
+    // and never splices; the floor is the family aggregate (measured 67).
+    expect(incremental).toBeGreaterThan(0);
   }, 60_000);
 
   /** The pair "boundary is 0" + "stream is equivalent" would also hold if the

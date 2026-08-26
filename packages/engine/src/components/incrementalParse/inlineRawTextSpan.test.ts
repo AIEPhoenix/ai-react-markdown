@@ -105,9 +105,12 @@ describe('inline raw-text spans', () => {
     (name, doc) => {
       for (const sizes of SCHEDULES) {
         for (const s of [sizes, [...sizes].reverse()]) {
-          expect(assertStreamEquivalence(`irt-${name}`, scheduleSnapshots(doc, s), CATALOG[0]).frames).toBeGreaterThan(
-            0
-          );
+          // UNSAFE shapes poison to boundary 0; the family aggregate floor
+          // lives in 'every plugin configuration agrees' below.
+          expect(
+            assertStreamEquivalence(`irt-${name}`, scheduleSnapshots(doc, s), CATALOG[0], { minIncrementalFrames: 0 })
+              .frames
+          ).toBeGreaterThan(0);
         }
       }
     },
@@ -115,12 +118,19 @@ describe('inline raw-text spans', () => {
   );
 
   test('every plugin configuration agrees', () => {
+    let incremental = 0;
     for (const [name, doc] of [...UNSAFE, ...SAFE]) {
       for (const cfg of CATALOG) {
-        expect(
-          assertStreamEquivalence(`irt-${name}`, scheduleSnapshots(doc, SCHEDULES[1]), cfg).frames
-        ).toBeGreaterThan(0);
+        const stats = assertStreamEquivalence(`irt-${name}`, scheduleSnapshots(doc, SCHEDULES[1]), cfg, {
+          minIncrementalFrames: 0,
+        });
+        expect(stats.frames).toBeGreaterThan(0);
+        incremental += stats.incrementalFrames;
       }
     }
+    // Anti-vacuity floor for the whole file: the SAFE half must splice
+    // (measured 528 frames across the sweep) even though every UNSAFE shape
+    // legitimately contributes zero.
+    expect(incremental).toBeGreaterThan(0);
   }, 60_000);
 });

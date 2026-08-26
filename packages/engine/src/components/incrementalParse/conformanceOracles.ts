@@ -393,6 +393,17 @@ export interface OracleFinding {
 
 export interface OracleSweepStats {
   probesRun: number;
+  /**
+   * Probes whose tail is NON-EMPTY — the only ones whose engagement means
+   * anything. `advanceIncrementalParse` reports `usedIncremental` for an
+   * identical-content frame (a memo hit, no splice), and the battery always
+   * carries two empty tails (`realTailOnly` and the `empty` probe) per
+   * recursion level, so counting every probe put a structural floor of 4
+   * per document under the anti-vacuity assertion — reachable with the
+   * splice fully collapsed (2026-08-26 review, mutation-verified).
+   */
+  spliceableProbes: number;
+  /** Of `spliceableProbes`, the ones the engine actually spliced. */
   incrementalProbes: number;
 }
 
@@ -429,7 +440,10 @@ export function oracleCheckDoc(
     const engine = engineProbe(doc, probe.tail, config);
     if (stats) {
       stats.probesRun += 1;
-      if (engine.usedIncremental) stats.incrementalProbes += 1;
+      if (probe.tail !== '') {
+        stats.spliceableProbes += 1;
+        if (engine.usedIncremental) stats.incrementalProbes += 1;
+      }
     }
     if (engine.disagreement !== null) {
       findings.push({ probeId: probe.id, boundary, severity: 'defect', detail: engine.disagreement });

@@ -64,6 +64,9 @@ describe('type 1 vs parse5 raw text (`<pre>`)', () => {
     // `<pre></pre>` with the tail paragraph as a SIBLING, while the full
     // parse keeps the paragraph INSIDE the still-open `<pre>`.
     const doc = '<pre>\n<?x\n</pre>\n\ntail\n\nend\nmore text\n';
-    assertStreamEquivalence('pre bogus opener', scheduleSnapshots(doc, [1]), CATALOG[0]);
+    // F13's fix poisons this shape to boundary 0 — zero engagement is the
+    // asserted outcome (the pre-fix engine spliced here and shipped 20
+    // divergent frames).
+    assertStreamEquivalence('pre bogus opener', scheduleSnapshots(doc, [1]), CATALOG[0], { minIncrementalFrames: 0 });
   }, 30_000);
 });

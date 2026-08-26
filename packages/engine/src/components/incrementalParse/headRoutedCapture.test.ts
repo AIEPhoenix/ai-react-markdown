@@ -85,17 +85,22 @@ const FUZZ_ORIGINAL =
 
 describe('head-routed raw text captures the wrong insertion mode', () => {
   test('the diverging shapes stream like a full parse', () => {
-    for (const doc of DIVERGING) assertStreamEquivalence(doc, twoFrames(doc), CATALOG[0]);
+    // The DIVERGING shapes are the ones the capture bail refuses — zero
+    // engagement is the asserted outcome (the CONVERGED battery below owns
+    // the counter-assertion that the bail is specific, not blanket).
+    for (const doc of DIVERGING) assertStreamEquivalence(doc, twoFrames(doc), CATALOG[0], { minIncrementalFrames: 0 });
   }, 60_000);
 
   test('the converged shapes stream like a full parse', () => {
-    for (const doc of CONVERGED) assertStreamEquivalence(doc, twoFrames(doc), CATALOG[0]);
+    // Not every converged shape splices on a two-frame schedule; the
+    // engagement claim is the `.some()` assertion at the end of this file.
+    for (const doc of CONVERGED) assertStreamEquivalence(doc, twoFrames(doc), CATALOG[0], { minIncrementalFrames: 0 });
   }, 60_000);
 
   test.each(CATALOG)(
     'the diverging shapes hold on every config — $label',
     (config) => {
-      for (const doc of DIVERGING) assertStreamEquivalence(doc, twoFrames(doc), config);
+      for (const doc of DIVERGING) assertStreamEquivalence(doc, twoFrames(doc), config, { minIncrementalFrames: 0 });
     },
     60_000
   );
@@ -103,14 +108,19 @@ describe('head-routed raw text captures the wrong insertion mode', () => {
   test('the 190-byte fuzz counterexample, on the schedule that found it', () => {
     const sizes = [4, 4, 4, 1, 4, 22, 4, 4];
     for (const s of [sizes, [...sizes].reverse()]) {
-      assertStreamEquivalence('fuzz original', scheduleSnapshots(FUZZ_ORIGINAL, s), CATALOG[0]);
+      // boundary 0 on this shape today — the script/comment tangle poisons.
+      assertStreamEquivalence('fuzz original', scheduleSnapshots(FUZZ_ORIGINAL, s), CATALOG[0], {
+        minIncrementalFrames: 0,
+      });
     }
   }, 60_000);
 
   /** The bail must be specific: a converged capture still splices, or the fix
    *  is just "stop freezing near raw text". */
   test('the converged shapes still take the incremental path', () => {
-    const engaged = CONVERGED.map((doc) => assertStreamEquivalence(doc, twoFrames(doc), CATALOG[0]).incrementalFrames);
+    const engaged = CONVERGED.map(
+      (doc) => assertStreamEquivalence(doc, twoFrames(doc), CATALOG[0], { minIncrementalFrames: 0 }).incrementalFrames
+    );
     expect(engaged.some((n) => n > 0)).toBe(true);
   }, 60_000);
 });

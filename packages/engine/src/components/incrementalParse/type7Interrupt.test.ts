@@ -202,7 +202,12 @@ describe('type-7 interrupt: prevLineOpenContent vs micromark', () => {
       '> q\n</span>\n> `<title>`\n\nafter container\n\ntail one\n\ntail two\n\nend\n',
       'para\n> q\n<br>\n> `<iframe>`\n\nafter container\n\ntail one\n\ntail two\n\nend\n',
     ]) {
-      assertStreamEquivalence('container lazy type 7', scheduleSnapshots(doc, [1]), CATALOG[0]);
+      // 14ba1ae poisons the container/tag-line pair to boundary 0, so zero
+      // engagement is the asserted outcome. The pin that MOVES on a revert
+      // is the direct boundary assertion below, not this stream pin.
+      assertStreamEquivalence('container lazy type 7', scheduleSnapshots(doc, [1]), CATALOG[0], {
+        minIncrementalFrames: 0,
+      });
     }
   }, 60_000);
 
@@ -215,6 +220,22 @@ describe('type-7 interrupt: prevLineOpenContent vs micromark', () => {
     // pipe-less row; the exact soak counterexample streams clean.
     const doc =
       '| a | b |\n| - | - |\n| 1 | 2 |\rsee [a] maybe, or [a][a] even ![a]\r<noscript title="a>b">\n$$\ne=mc^2\n$$\n\n> a quoted line\n\nend\n';
+    expect(computeFreezeBoundary(doc, OPTS).boundary).toBe(0);
+  });
+
+  test('the sticky marker survives a pipe-less row — DIRECT flip pin (35f7593)', () => {
+    // The discriminating shape the soak counterexample above is NOT: that
+    // one poisons for several independent reasons (CR line endings, the
+    // quoted `>` on the tag line, math), so reverting the stickiness leaves
+    // its boundary at 0 and the pin never moves. Here the ONLY thing
+    // holding the boundary down is `tableMaybeOpen` surviving the pipe-less
+    // continuation row: `row continuation prose` is still a table ROW to
+    // micromark, so type 7 opens at `<br/>` while the content model reads
+    // an open paragraph and refuses. Under the pre-35f7593 per-line design
+    // ("did THIS line hold a pipe") the marker cleared on the pipe-less row
+    // and the boundary rose to 88 — freezing across the undecidable line.
+    const doc =
+      '| a | b |\n| - | - |\n| 1 | 2 |\nrow continuation prose\n<br/>\ncontent\n\ntail one\n\ntail two\n\nend\n';
     expect(computeFreezeBoundary(doc, OPTS).boundary).toBe(0);
   });
 

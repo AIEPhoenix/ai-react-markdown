@@ -161,9 +161,13 @@ describe('document-structure poison', () => {
     (name, doc) => {
       for (const sizes of SCHEDULES) {
         for (const s of [sizes, [...sizes].reverse()]) {
-          expect(assertStreamEquivalence(`ds-${name}`, scheduleSnapshots(doc, s), CATALOG[0]).frames).toBeGreaterThan(
-            0
-          );
+          // RETROACTIVE shapes poison to boundary 0 by design; the
+          // engagement claim lives in 'the safe cases actually run the
+          // incremental path' above.
+          expect(
+            assertStreamEquivalence(`ds-${name}`, scheduleSnapshots(doc, s), CATALOG[0], { minIncrementalFrames: 0 })
+              .frames
+          ).toBeGreaterThan(0);
         }
       }
     },
@@ -174,7 +178,9 @@ describe('document-structure poison', () => {
     for (const [name, doc] of [...RETROACTIVE, ...SAFE, ...SAFE_BUT_CONSERVATIVE]) {
       for (const config of CATALOG) {
         expect(
-          assertStreamEquivalence(`ds-${name}`, scheduleSnapshots(doc, SCHEDULES[1]), config).frames
+          assertStreamEquivalence(`ds-${name}`, scheduleSnapshots(doc, SCHEDULES[1]), config, {
+            minIncrementalFrames: 0,
+          }).frames
         ).toBeGreaterThan(0);
       }
     }

@@ -59,12 +59,33 @@ export interface StreamStats {
   incrementalFrames: number;
 }
 
+export interface StreamOptions {
+  /**
+   * Anti-vacuity floor on incremental engagement across the driven
+   * schedule. DEFAULT 1: a stream pin that never once splices compares the
+   * full path against the full path and pins nothing — the empty-pin class
+   * the 2026-08-26 review found twice (bogusWindowRecovery's member-steal
+   * schedules, type7Interrupt's container battery).
+   *
+   * Pass 0 EXPLICITLY where zero engagement is the asserted outcome —
+   * poison-to-boundary-0 fixtures — or where the floor lives in an
+   * aggregate the caller owns (the fuzz families, the bounded census).
+   * Vacuity stays possible; it stops being invisible.
+   */
+  minIncrementalFrames?: number;
+}
+
 /**
  * Chain the state machine across snapshots, asserting per-frame equivalence
  * against a fresh full parse. Returns how often the incremental path ran so
  * callers can assert they exercised what they claim to exercise.
  */
-export function assertStreamEquivalence(name: string, snapshots: string[], config: CatalogConfig): StreamStats {
+export function assertStreamEquivalence(
+  name: string,
+  snapshots: string[],
+  config: CatalogConfig,
+  streamOptions?: StreamOptions
+): StreamStats {
   const options = buildAdvanceOptions(config);
   let state: IncrementalParseState | null = null;
   let incrementalFrames = 0;
@@ -84,6 +105,14 @@ export function assertStreamEquivalence(name: string, snapshots: string[], confi
     }
   });
 
+  const floor = streamOptions?.minIncrementalFrames ?? 1;
+  if (incrementalFrames < floor) {
+    expect.fail(
+      `${name} [${config.label}] drove ${snapshots.length} frames with incrementalFrames=${incrementalFrames} ` +
+        `(floor ${floor}) — the splice never ran, so this pin compared the full path against itself. ` +
+        `If zero engagement IS the assertion here, pass { minIncrementalFrames: 0 }.`
+    );
+  }
   return { frames: snapshots.length, incrementalFrames };
 }
 

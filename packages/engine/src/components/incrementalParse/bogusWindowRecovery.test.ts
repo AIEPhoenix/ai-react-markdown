@@ -27,6 +27,12 @@ const boundary = (doc: string) => computeFreezeBoundary(doc, { defListEnabled: f
 const boundaryNoTaint = (doc: string) =>
   computeFreezeBoundary(doc, { defListEnabled: false, referenceTaint: false }).boundary;
 
+/** The soak-20282500 counterexample: `</t>` opens a type-7 run with NO
+ *  blank in sight, so the whole document below is that run's content to
+ *  micromark. Shared by the direct boundary pin and the stream battery. */
+const MEMBER_STEAL_DOC =
+  '</t>\ntext after a stray end tag\r\n<![CDATA[\n<details>\n]]> trailing prose\n$$\ne = mc^2\n\n$$\n\n> a quoted line\n';
+
 describe('PI/CDATA first-`>` window recovery (P3b batch 3)', () => {
   test('markup-free windows converge at the terminator and freezing resumes', () => {
     const inline = 'x\n\n<?x >?>\n\ny\n\nzzz\n';
@@ -51,6 +57,18 @@ describe('PI/CDATA first-`>` window recovery (P3b batch 3)', () => {
     expect(boundary(doc)).toBeGreaterThan(0);
   });
 
+  test('a 2-5 opener inside a 6/7 run does not steal the member — DIRECT boundary pin', () => {
+    // The pin that MOVES when 96901ff is reverted. The stream harness above
+    // drives the ENGINE profile, where this document poisons to 0 either
+    // way — so it never saw the fix (2026-08-26 review: the whole schedule
+    // set ran at incrementalFrames=0). The steal is only visible on the
+    // SCANNER/PHANTOM profile, which no stream test drives: with the three
+    // `mdBlock.kind === 'none'` guards removed the CDATA opener overwrites
+    // the type-7 run's member, closes it at `]]>`, and the boundary climbs
+    // to 89 — freezing past a `$$` the engine reads as a real math open.
+    expect(computeFreezeBoundary(MEMBER_STEAL_DOC, { defListEnabled: false, referenceTaint: false }).boundary).toBe(0);
+  });
+
   test('a 2-5 opener inside a 6/7 run does not steal the member (soak 20282500)', () => {
     // `</t>` opens a type-7 run with NO blank in sight — the whole
     // document below is that run's content to micromark. The CDATA
@@ -59,14 +77,15 @@ describe('PI/CDATA first-`>` window recovery (P3b batch 3)', () => {
     // closer broke output-neutrality (fuzz shard 0 of the release gate;
     // masked by the run flag until its deletion). The member now keeps
     // the run; only the p5 bogus overlay opens inside it.
-    const doc =
-      '</t>\ntext after a stray end tag\r\n<![CDATA[\n<details>\n]]> trailing prose\n$$\ne = mc^2\n\n$$\n\n> a quoted line\n';
+    const doc = MEMBER_STEAL_DOC;
     for (const sizes of [
       [4, 4, 15, 4, 17, 4, 1, 4],
       [4, 4, 4, 4, 4, 4, 4, 4],
       [1, 4, 4, 4],
     ]) {
-      assertStreamEquivalence('member-steal', scheduleSnapshots(doc, sizes), CATALOG[0]);
+      // boundary 0 under every profile — zero engagement is the asserted
+      // outcome, and the direct boundary pin above is what a revert moves.
+      assertStreamEquivalence('member-steal', scheduleSnapshots(doc, sizes), CATALOG[0], { minIncrementalFrames: 0 });
     }
   }, 120_000);
 
@@ -82,14 +101,23 @@ describe('PI/CDATA first-`>` window recovery (P3b batch 3)', () => {
       '<![CDATA[\n\nd]]> after\n\ntail\n\nend\n',
       '<?a > w\n?> <div>x</div>\n\ntail\n\nend\n',
     ];
+    let incremental = 0;
     for (const doc of SHAPES) {
       for (const sizes of [
         [4, 4, 4, 4, 4, 4, 4, 4],
         [1, 4, 4, 4, 4, 4, 4, 4],
         [64, 8, 8, 8],
       ]) {
-        assertStreamEquivalence(JSON.stringify(doc.slice(0, 18)), scheduleSnapshots(doc, sizes), CATALOG[0]);
+        incremental += assertStreamEquivalence(
+          JSON.stringify(doc.slice(0, 18)),
+          scheduleSnapshots(doc, sizes),
+          CATALOG[0],
+          { minIncrementalFrames: 0 }
+        ).incrementalFrames;
       }
     }
+    // The markup-bearing windows poison to zero by design; the markup-free
+    // ones must recover and splice (measured 3 frames across the family).
+    expect(incremental).toBeGreaterThan(0);
   }, 240_000);
 });

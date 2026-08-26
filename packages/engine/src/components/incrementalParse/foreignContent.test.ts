@@ -100,10 +100,16 @@ describe('foreign content', () => {
   test.each(SCHEDULES)(
     'every shape streams like a full parse — schedule %#',
     (...sizes) => {
+      let incremental = 0;
       for (const [name, shape] of SHAPES) {
         const doc = `${HEAD}${shape}${TAIL}`;
-        assertStreamEquivalence(name, scheduleSnapshots(doc, sizes), CATALOG[0]);
+        incremental += assertStreamEquivalence(name, scheduleSnapshots(doc, sizes), CATALOG[0], {
+          minIncrementalFrames: 0,
+        }).incrementalFrames;
       }
+      // Some shapes poison to boundary 0 by design, so the floor is the
+      // family aggregate rather than per-shape.
+      expect(incremental).toBeGreaterThan(0);
     },
     60_000
   );
@@ -111,10 +117,14 @@ describe('foreign content', () => {
   test.each(CATALOG)(
     'every shape streams like a full parse — $label',
     (config) => {
+      let incremental = 0;
       for (const [name, shape] of SHAPES) {
         const doc = `${HEAD}${shape}${TAIL}`;
-        assertStreamEquivalence(name, scheduleSnapshots(doc, [4, 4, 4, 1, 4, 4, 4, 1]), config);
+        incremental += assertStreamEquivalence(name, scheduleSnapshots(doc, [4, 4, 4, 1, 4, 4, 4, 1]), config, {
+          minIncrementalFrames: 0,
+        }).incrementalFrames;
       }
+      expect(incremental).toBeGreaterThan(0);
     },
     60_000
   );
@@ -178,7 +188,9 @@ describe('foreign content', () => {
       [4, 4, 4, 1, 4, 4, 4, 4],
       [1, 1, 1, 1, 1, 1, 1, 1],
     ]) {
-      assertStreamEquivalence('void breakout', scheduleSnapshots(doc, sizes), CATALOG[0]);
+      // boundary 0 (the `<svg>` never closes to the scanner) — the pin is
+      // that the full path stays right, not that the splice engages.
+      assertStreamEquivalence('void breakout', scheduleSnapshots(doc, sizes), CATALOG[0], { minIncrementalFrames: 0 });
     }
   }, 30_000);
 
@@ -189,7 +201,8 @@ describe('foreign content', () => {
       [1, 1, 1, 1, 1, 1, 1, 1],
       [7, 3, 5, 2, 6, 4, 8, 1],
     ]) {
-      assertStreamEquivalence('counterexample', scheduleSnapshots(doc, sizes), CATALOG[0]);
+      // boundary 0, same as the void-breakout shape above.
+      assertStreamEquivalence('counterexample', scheduleSnapshots(doc, sizes), CATALOG[0], { minIncrementalFrames: 0 });
     }
   }, 30_000);
 

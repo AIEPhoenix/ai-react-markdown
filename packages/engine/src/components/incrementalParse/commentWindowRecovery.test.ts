@@ -51,14 +51,23 @@ describe('--!> window recovery (P3b batch 2)', () => {
       '<!--!>w\n-->\n\ntail\n\nend\n',
       '<!---!>w\n-->\n\ntail\n\nend\n',
     ];
+    let incremental = 0;
     for (const doc of SHAPES) {
       for (const sizes of [
         [4, 4, 4, 4, 4, 4, 4, 4],
         [1, 4, 4, 4, 4, 4, 4, 4],
         [64, 8, 8, 8],
       ]) {
-        assertStreamEquivalence(JSON.stringify(doc.slice(0, 18)), scheduleSnapshots(doc, sizes), CATALOG[0]);
+        incremental += assertStreamEquivalence(
+          JSON.stringify(doc.slice(0, 18)),
+          scheduleSnapshots(doc, sizes),
+          CATALOG[0],
+          { minIncrementalFrames: 0 }
+        ).incrementalFrames;
       }
     }
+    // The poisoned shapes contribute zero by design; the recovering ones
+    // must splice, so the floor is the family aggregate (measured 14).
+    expect(incremental).toBeGreaterThan(0);
   }, 240_000);
 });

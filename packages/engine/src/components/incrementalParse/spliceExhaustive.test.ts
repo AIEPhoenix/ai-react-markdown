@@ -113,7 +113,7 @@ const alignCut = (doc: string, at: number): number => {
   return code >= 0xd800 && code <= 0xdbff ? at + 1 : at;
 };
 
-function drive(doc: string, cuts: number[], config: typeof BASELINE): void {
+function drive(doc: string, cuts: number[], config: typeof BASELINE): { frames: number; incrementalFrames: number } {
   const snapshots: string[] = [];
   for (const cut of cuts) {
     const end = Math.min(doc.length, alignCut(doc, cut));
@@ -123,8 +123,16 @@ function drive(doc: string, cuts: number[], config: typeof BASELINE): void {
   }
   if (snapshots.length === 0 || snapshots[snapshots.length - 1] !== doc) snapshots.push(doc);
 
-  // P1 — the arbiter throws with a labeled diff on any mismatch.
-  assertStreamEquivalence(`exhaustive doc=${JSON.stringify(doc)} cuts=${JSON.stringify(cuts)}`, snapshots, config);
+  // P1 — the arbiter throws with a labeled diff on any mismatch. The
+  // engagement floor is an AGGREGATE over the whole census (asserted at the
+  // end of the sweep): most short token sequences legitimately poison to
+  // boundary 0, so a per-schedule floor would fight the alphabet.
+  const stats = assertStreamEquivalence(
+    `exhaustive doc=${JSON.stringify(doc)} cuts=${JSON.stringify(cuts)}`,
+    snapshots,
+    config,
+    { minIncrementalFrames: 0 }
+  );
 
   // P2 — resumed scan ≡ fresh scan, own lineage.
   const { defListEnabled } = buildAdvanceOptions(config);
@@ -139,12 +147,15 @@ function drive(doc: string, cuts: number[], config: typeof BASELINE): void {
     }
     checkpoint = resumed.checkpoint;
   }
+  return stats;
 }
 
 describe(`splice exhaustive sweep (K=${MAX_K}, alphabet=${TOKENS.length})`, () => {
   test('all sequences × all 2-cuts (+ sampled 3-cuts)', { timeout: TIMEOUT_MS }, () => {
     let docs = 0;
     let schedules = 0;
+    let frames = 0;
+    let incrementalFrames = 0;
     // Iterative odometer over sequence lengths 1..MAX_K.
     for (let k = 1; k <= MAX_K; k++) {
       const idx = new Array<number>(k).fill(0);
@@ -171,12 +182,16 @@ describe(`splice exhaustive sweep (K=${MAX_K}, alphabet=${TOKENS.length})`, () =
           // k-1 stride offsets rotate so every cut is hit across nearby
           // docs rather than the same residue class every time).
           for (let cut = 1 + ((docs + k) % CUT_STRIDE); cut < doc.length; cut += CUT_STRIDE) {
-            drive(doc, [cut], config);
+            const s = drive(doc, [cut], config);
+            frames += s.frames;
+            incrementalFrames += s.incrementalFrames;
             schedules += 1;
           }
           // Deterministic 3-cut sample: thirds (adds a mid-stream resume).
           if (doc.length >= 3) {
-            drive(doc, [Math.floor(doc.length / 3), Math.floor((2 * doc.length) / 3)], config);
+            const s = drive(doc, [Math.floor(doc.length / 3), Math.floor((2 * doc.length) / 3)], config);
+            frames += s.frames;
+            incrementalFrames += s.incrementalFrames;
             schedules += 1;
           }
         }
@@ -194,5 +209,21 @@ describe(`splice exhaustive sweep (K=${MAX_K}, alphabet=${TOKENS.length})`, () =
     // walk; `schedules` counts only this shard's driven work.
     expect(docs).toBeGreaterThanOrEqual(TOKENS.length ** MAX_K);
     expect(schedules * SHARD_TOTAL).toBeGreaterThan(docs);
+    console.log(
+      `[census] K=${MAX_K} stride=${CUT_STRIDE} shard=${SHARD_INDEX}/${SHARD_TOTAL} ` +
+        `schedules=${schedules} frames=${frames} incremental=${incrementalFrames} ` +
+        `ratio=${(incrementalFrames / frames).toFixed(4)}`
+    );
+    // Anti-vacuity floor, modelled on spliceFuzz's. The census alphabet is
+    // deliberately hazard-dense and most short sequences poison to boundary
+    // 0, so engagement is an order of magnitude below the fuzz families:
+    // measured 11198/400769 = 2.79% at the CI point (K=3, stride 3), and
+    // 2.5-2.9% across K=3 shards. 1% keeps a collapse (0%, mutation-checked)
+    // unmissable without sitting on the mean.
+    expect(frames).toBeGreaterThan(0);
+    expect(
+      incrementalFrames / frames,
+      `the census drove ${frames} frames and spliced ${incrementalFrames} — the path collapsed`
+    ).toBeGreaterThan(0.01);
   });
 });

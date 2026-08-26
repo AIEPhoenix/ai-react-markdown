@@ -121,7 +121,7 @@ describe('oracle sweep — pinned realistic corpus', () => {
   for (const doc of REALISTIC_DOCS) {
     test(`${doc.id}`, () => {
       const config = CATALOG[doc.configIndex % CATALOG.length];
-      const stats: OracleSweepStats = { probesRun: 0, incrementalProbes: 0 };
+      const stats: OracleSweepStats = { probesRun: 0, spliceableProbes: 0, incrementalProbes: 0 };
       const findings = oracleCheckDoc(doc.doc, config, stats, 0, ORACLE_OPTS);
       const defects = findings.filter((f) => f.severity === 'defect');
       for (const f of findings.filter((f) => f.severity === 'info')) {
@@ -129,8 +129,13 @@ describe('oracle sweep — pinned realistic corpus', () => {
       }
       expect(defects, `${doc.id} [${config.label}] ${formatFindings(defects)}`).toEqual([]);
       // The sweep must exercise the incremental path, not just prove the
-      // fallback correct.
-      expect(stats.probesRun).toBeGreaterThan(0);
+      // fallback correct — and the counter must be the NON-EMPTY-tail one,
+      // for the reason recorded on `OracleSweepStats.spliceableProbes`.
+      expect(stats.spliceableProbes).toBeGreaterThan(0);
+      expect(
+        stats.incrementalProbes,
+        `${doc.id} spliced ${stats.incrementalProbes}/${stats.spliceableProbes} non-empty-tail probes`
+      ).toBeGreaterThanOrEqual(Math.ceil(stats.spliceableProbes / 2));
     });
   }
 
@@ -150,7 +155,7 @@ describe('oracle sweep — fuzz corpus (env-scaled)', () => {
     // sweep as failed at soak scale.
     test(`${name} × ${runs}`, { timeout: Math.max(30_000, runs * 100) }, () => {
       const docs = fc.sample(arb, { seed: seed + seedOffset, numRuns: runs });
-      const stats: OracleSweepStats = { probesRun: 0, incrementalProbes: 0 };
+      const stats: OracleSweepStats = { probesRun: 0, spliceableProbes: 0, incrementalProbes: 0 };
       const failures: string[] = [];
       const infoBuckets = new Map<string, number>();
       const infoExamples = new Map<string, string[]>();
@@ -179,16 +184,23 @@ describe('oracle sweep — fuzz corpus (env-scaled)', () => {
       });
       const buckets = [...infoBuckets.entries()].sort((a, b) => b[1] - a[1]);
       console.log(
-        `[oracle ${name}] probes=${stats.probesRun} incremental=${stats.incrementalProbes} info=${buckets.reduce((a, [, n]) => a + n, 0)}\n` +
+        `[oracle ${name}] probes=${stats.probesRun} spliceable=${stats.spliceableProbes} incremental=${stats.incrementalProbes} info=${buckets.reduce((a, [, n]) => a + n, 0)}\n` +
           buckets
             .map(([k, n]) => `  ${k} ×${n}\n${(infoExamples.get(k) ?? []).map((e) => `    ${e}`).join('\n')}`)
             .join('\n')
       );
       expect(failures, failures.join('\n---\n').slice(0, 6000)).toEqual([]);
+      // Anti-vacuity floor, over NON-EMPTY tails only. The old form counted
+      // every probe and so could not fall below 4/doc even with the splice
+      // torn out — an identical-content frame is a memo hit that reports
+      // `usedIncremental` without splicing anything. Measured engagement on
+      // this counter sits near 90% for both families; half is a collapse
+      // detector with room for hazard drift.
+      expect(stats.spliceableProbes).toBeGreaterThan(0);
       expect(
-        stats.incrementalProbes,
-        'the sweep never engaged the incremental path — it proved nothing'
-      ).toBeGreaterThan(0);
+        stats.incrementalProbes / stats.spliceableProbes,
+        `the sweep spliced ${stats.incrementalProbes}/${stats.spliceableProbes} non-empty-tail probes — it proved little`
+      ).toBeGreaterThan(0.5);
     });
   };
 

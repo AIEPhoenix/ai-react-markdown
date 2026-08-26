@@ -82,7 +82,9 @@ describe('formElement latent divergence — the designed guards', () => {
       [4, 4, 4, 4, 4, 4, 4, 4],
       [1, 4, 4, 4, 4, 4, 4, 4],
     ]) {
-      assertStreamEquivalence('formElement', scheduleSnapshots(doc, sizes), CATALOG[0]);
+      // Guard 1 is exactly "the scanner never grants a boundary here", so
+      // zero engagement is the asserted outcome, not a vacuous pin.
+      assertStreamEquivalence('formElement', scheduleSnapshots(doc, sizes), CATALOG[0], { minIncrementalFrames: 0 });
     }
   }, 30_000);
 });

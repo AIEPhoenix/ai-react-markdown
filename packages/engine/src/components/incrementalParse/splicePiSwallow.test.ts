@@ -10,8 +10,11 @@
  */
 import { describe, expect, test } from 'vitest';
 import { CATALOG } from './testPluginCatalog';
+import { computeFreezeBoundary } from './computeFreezeBoundary';
 import { assertStreamEquivalence } from './spliceArbiterHarness';
 import { scheduleSnapshots } from './fuzzGenerators';
+
+const boundary = (doc: string) => computeFreezeBoundary(doc, { defListEnabled: false }).boundary;
 
 const DOC_HAZARD =
   '<i>y</i> <?php\n\n<?instr <b> ?> after the pi\n\n[^a]: body text\n\n    indented continuation\n\n[a]: https://example.com/a\n\n- tight one\n- tight two\n\n$$\ne = mc^2\n\n$$\n\n<![CDATA[<div>data</div>]]> trailing prose\n\n<b>x</b> <!-- trailing opener\n';
@@ -23,16 +26,30 @@ const SIZES_BENIGN = [4, 1, 4, 4, 4, 4, 4, 4];
 const CONFIG_BENIGN = CATALOG[52601443 % CATALOG.length];
 
 describe('splice seam: PI-headed raw block swallows post-closer text', () => {
+  // Both shapes now poison to boundary 0, so the STREAM pins no longer
+  // reach the splice — they compare the full path against itself (found by
+  // the harness engagement floor, 2026-08-26). The live assertion is the
+  // poison itself: if either boundary turns positive the seam is reachable
+  // again and these pins go back to carrying the original counterexample.
+  test('both shapes poison — the seam is unreachable', () => {
+    expect(boundary(DOC_HAZARD)).toBe(0);
+    expect(boundary(DOC_BENIGN)).toBe(0);
+  });
+
   test('seed 20260821 shape (hazard, CATALOG[0])', () => {
     for (const sizes of [SIZES_HAZARD, [...SIZES_HAZARD].reverse()]) {
-      const stats = assertStreamEquivalence('pi-swallow-hazard', scheduleSnapshots(DOC_HAZARD, sizes), CATALOG[0]);
+      const stats = assertStreamEquivalence('pi-swallow-hazard', scheduleSnapshots(DOC_HAZARD, sizes), CATALOG[0], {
+        minIncrementalFrames: 0,
+      });
       expect(stats.frames).toBeGreaterThan(0);
     }
   });
 
   test('seed 20260893 shape (benign, defaults-all-on)', () => {
     for (const sizes of [SIZES_BENIGN, [...SIZES_BENIGN].reverse()]) {
-      const stats = assertStreamEquivalence('pi-swallow-benign', scheduleSnapshots(DOC_BENIGN, sizes), CONFIG_BENIGN);
+      const stats = assertStreamEquivalence('pi-swallow-benign', scheduleSnapshots(DOC_BENIGN, sizes), CONFIG_BENIGN, {
+        minIncrementalFrames: 0,
+      });
       expect(stats.frames).toBeGreaterThan(0);
     }
   });

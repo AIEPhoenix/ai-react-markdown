@@ -73,8 +73,10 @@ function driveSample(fuzz: FuzzDoc, tag: string, totals: Totals): void {
   for (const sizes of [fuzz.sizes, [...fuzz.sizes].reverse()]) {
     const snapshots = scheduleSnapshots(fuzz.doc, sizes);
 
-    // P1 — per-frame splice ≡ full parse.
-    const stats = assertStreamEquivalence(tag, snapshots, config);
+    // P1 — per-frame splice ≡ full parse. The engagement floor is an
+    // AGGREGATE here (asserted per family below): an individual generated
+    // document may legitimately poison to boundary 0 on every frame.
+    const stats = assertStreamEquivalence(tag, snapshots, config, { minIncrementalFrames: 0 });
     totals.frames += stats.frames;
     totals.incrementalFrames += stats.incrementalFrames;
 
