@@ -448,14 +448,65 @@ enforcement caught: hazard doc #49 puts a `<col>` at the head of its own
 tail, and the resulting firings read as an unexplained whole-document
 family until the key moved to the content.
 
-| #   | Family                                                                                                                                                                                                                | Mechanism that owns it                                       | Direction                                                 |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------- |
-| E1  | An HTML table part at a flow position in the tail: the tail-alone fragment parse dispatches it from "in template", the full parse from "in body" (the F8 shape)                                                       | splice-side stray-table-part bail                            | tail refused → full path                                  |
-| E2  | GFM-table internal whitespace is foster-parented to the root and merges with the seam separator (grouping only, values conserved)                                                                                     | blocker-6 seam handling / splice seam synthesis              | seam-absorbed                                             |
-| E3  | Reference resolution split across the boundary: tail-alone parse sees orphan footnote/link/image refs, full parse resolves them against a prefix definition — same characters, different ref markup                   | phantom injection replay (`remarkInjectPhantomDefs`)         | production machinery, pinned by `assertStreamEquivalence` |
-| E4  | Same bytes, different node GROUPING: adjacent root text nodes fuse on the full side but not on the concatenated one, and the hoisted footnote section's separator merges into an element a probe left open            | hast text merging / furniture                                | grouping only, values conserved                           |
-| E5  | A stray END tag at a flow position in the tail. E1's insertion-mode asymmetry with a non-table name — `</p>` synthesizes an empty `<p>` at "in body" and nothing at "in template"; `</br>` becomes a `<br>` START tag | splice-side stray-tag bail (`spliceStructuralBail`)          | tail refused → full path                                  |
-| E6  | A definition-shaped line in the tail is a DEFINITION (no output) in one parse and paragraph text (whose inline content becomes nodes) in the other                                                                    | prefix-anchoring overclaim; netted by (M) + the engine probe | one side carries the def's inline content                 |
+**Tightened after an adversarial audit (2026-08-26).** The audit found no
+engine divergence — ~50k probes and 6,880 streamed documents, zero — but
+refuted the PREDICATES as written, and the amnesty it measured is the
+reason the tightening happened before the release soak rather than after
+it. Three changes, each reproduced here against the corpora:
+
+1. **Head-anchored, not whole-remainder.** E1/E5/E6 name an asymmetry in
+   how the tail is DISPATCHED, which lives at the tail's head and nowhere
+   else. Scanning the whole remainder for the pattern exempted 82.6% of
+   hazard probe positions (measured over 3,760); head-anchoring after a
+   leading-blank strip takes that to 26.7%. Under the old form four named
+   real families — formElement, F10, F11, F8 — bought amnesty by appending
+   one irrelevant `</span>` or `[zz]: /q` line, and F6/F7/F13's idiomatic
+   shapes needed no bait at all, since they end with a closer on its own
+   line. The repo's own F10 self-test fixture classified as E5.
+2. **Value-conserving families first.** E2/E4/E3 are decided by the two
+   trees, so they cannot be a text-pattern mislabel; E5 ran ahead of them
+   and 328 of 350 of its assignments were really E3 or E4, with its
+   "tail refused" direction false for 166.
+3. **The refusal conjunct.** E1/E5/E6 all claim "tail refused → full
+   path", so the classifier is now handed whether the engine actually
+   spliced that probe; if it did, the tail was not refused and the firing
+   is a new family by definition. The Direction column below is therefore
+   measured rather than asserted. This deliberately couples the (P)
+   instrument to an observation of the shipped path — a change to the
+   splice's bails now surfaces as raw-gate failures instead of silently
+   widening the amnesty — and it adds no parse5 field introspection:
+   `usedIncremental` is an output of the engine under test, not a peek
+   inside its parser.
+
+Two follow-on facts fell out of the reorder. E6 had never fired at all
+(0 of 2,727 firings — a ledger row that cannot fire is not enforcement);
+it is reachable now. And E3's flattening spelled an element `<div>`, which
+a literal `<div>` inside a raw-text element forges exactly — the F10
+shape — so the element marker is now a control character while text pieces
+stay unprefixed, which is what keeps the comparison blind to node
+grouping.
+
+Family histogram over the same 1,620 documents / 1,480 raw firings, before
+and after the tightening (unclassified is 0 in both — the amnesty was the
+problem, not a coverage gap):
+
+| Family | before | after |
+| ------ | -----: | ----: |
+| E1     |    449 |   347 |
+| E2     |    331 |   336 |
+| E3     |    195 |   287 |
+| E4     |    305 |   454 |
+| E5     |    200 |    26 |
+| E6     |      0 |    30 |
+
+| #   | Family                                                                                                                                                                                                                                                                                                             | Mechanism that owns it                                                                                                                                                                                                            | Direction                                                 |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| E1  | An HTML table part AT THE HEAD of the tail: the tail-alone fragment parse dispatches it from "in template", the full parse from "in body" (the F8 shape)                                                                                                                                                           | `TABLE_PART_TAG_RE` in `spliceParse.ts`                                                                                                                                                                                           | tail refused → full path (asserted, not assumed)          |
+| E2  | GFM-table internal whitespace is foster-parented to the root and merges with the seam separator (grouping only, values conserved)                                                                                                                                                                                  | blocker-6 seam handling / splice seam synthesis                                                                                                                                                                                   | seam-absorbed                                             |
+| E3  | Reference resolution split across the boundary: tail-alone parse sees orphan footnote/link/image refs, full parse resolves them against a prefix definition — same characters, different ref markup                                                                                                                | phantom injection replay (`remarkInjectPhantomDefs`)                                                                                                                                                                              | production machinery, pinned by `assertStreamEquivalence` |
+| E4  | Same bytes, different node GROUPING: adjacent root text nodes fuse on the full side but not on the concatenated one, and the hoisted footnote section's separator merges into an element a probe left open                                                                                                         | hast text merging / furniture                                                                                                                                                                                                     | grouping only, values conserved                           |
+| E5  | A stray END tag AT THE HEAD of the tail. E1's insertion-mode asymmetry with a non-table name — `</p>` synthesizes an empty `<p>` at "in body" and nothing at "in template"; `</br>` becomes a `<br>` START tag                                                                                                     | `STRAY_SYNTHESIZED_END_TAG_RE` in `spliceParse.ts`, at its seam-child and first-visible-node sites, exercised by spliceEquivalence / spliceExhaustive — NOT `spliceStructuralBail.test.ts`, which carries no stray-end-tag sample | tail refused → full path (asserted, not assumed)          |
+| E6  | A definition line AT THE HEAD of the tail is a DEFINITION (no output) in one parse and paragraph text (whose inline content becomes nodes) in the other. Mirrors the engine's own `DEF_RE`, which the earlier approximation did not: it accepted `[]:` and `[a[b]:`, neither of which is a definition to micromark | prefix-anchoring overclaim; netted by (M) + the engine probe                                                                                                                                                                      | one side carries the def's inline content                 |
 
 E4-E6 were named while enforcing the list; E4 also absorbed the
 `htmlKeepOpen` bucket, which the recursive `stripFurniture` fix
