@@ -251,6 +251,47 @@ describe('type-7 interrupt: prevLineOpenContent vs micromark', () => {
     const doc = 'a | b\nplain\n\ntail one\n\ntail two\n\nend\n';
     expect(computeFreezeBoundary(doc, OPTS).boundary).toBeGreaterThan(0);
   });
+
+  test('a pipe inside an html-owned line cannot arm the table marker', () => {
+    // The arming check ran on the raw line without asking whether the line
+    // is a table row candidate at all: a `|` inside an html comment armed
+    // the marker, the prose line carried it, and the tag line poisoned a
+    // document with no table in it (2026-08-26 review min-2).
+    const doc = '<!-- a|b -->\nprose\n<br/>\n\npara one\n\npara two\n\nend\n';
+    expect(computeFreezeBoundary(doc, OPTS).boundary).toBe(doc.indexOf('end'));
+    // This is the one shape in the stage whose boundary RISES (0 → 46), so
+    // the recovered region is checked against a full parse frame by frame
+    // rather than argued.
+    assertStreamEquivalence('min-2 false arming', scheduleSnapshots(doc, [1]), CATALOG[0]);
+  }, 30_000);
+
+  test('a real pipe line still arms it', () => {
+    const doc = 'a|b\nprose\n<br/>\n\npara one\n\npara two\n\nend\n';
+    expect(computeFreezeBoundary(doc, OPTS).boundary).toBe(0);
+  });
+
+  test('every html-owned pipe carrier recovers and still streams clean', () => {
+    // One sample is thin evidence for a boundary that RISES, so the whole
+    // carrier family is swept: each freezes past the tag line, and each is
+    // checked frame by frame against a full parse.
+    for (const carrier of ['<!-- a|b -->', '<div>x|y</div>', '<?pi a|b ?>', '<!EN a|b>']) {
+      const doc = `${carrier}\nprose\n<br/>\n\npara one\n\npara two\n\nend\n`;
+      expect({ carrier, past: computeFreezeBoundary(doc, OPTS).boundary > 0 }).toEqual({ carrier, past: true });
+      assertStreamEquivalence(`min-2 ${carrier}`, scheduleSnapshots(doc, [1]), CATALOG[0], {
+        minIncrementalFrames: 0,
+      });
+    }
+  }, 60_000);
+
+  test('the CDATA carrier stays blocked, by reference taint rather than the marker', () => {
+    // `<![CDATA[a|b]]>` carries a literal `[…]` that blocker 5 treats as an
+    // unresolved reference, so this shape sits at 0 with or without the
+    // marker narrowing — pre-existing conservatism, pinned here so a future
+    // reader does not read it as a hole in the recovery above.
+    const doc = '<![CDATA[a|b]]>\nprose\n<br/>\n\npara one\n\npara two\n\nend\n';
+    expect(computeFreezeBoundary(doc, OPTS).boundary).toBe(0);
+    expect(computeFreezeBoundary(doc, { defListEnabled: false, referenceTaint: false }).boundary).toBeGreaterThan(0);
+  });
 });
 
 /**
