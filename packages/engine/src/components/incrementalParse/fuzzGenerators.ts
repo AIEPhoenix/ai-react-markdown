@@ -628,7 +628,15 @@ const nonType6QuotedGtArb = fc.oneof(
     '<img title="a>b">\n<span',
     '<noscript title="a>b">\n$$\ne=mc^2\n$$',
     '- item\n  <img title="a>b">\n  ```\n  x\n  ```',
-    '<span title="a>b" class="c">x</span>\nplain follower line'
+    '<span title="a>b" class="c">x</span>\nplain follower line',
+    // Column-0 tag lines that LAZILY continue an open container — the two
+    // shapes B3 (14ba1ae) exists for, and the family's standing hole: every
+    // shape above either has no container or indents the tag INTO it, so
+    // the corpus could not reach the undecidable case at all. Both should
+    // poison now: a container line followed by a type-7-shaped tag line is
+    // undecidable, so no candidate at or past it survives.
+    '> q\n<span title="a>b">\n> `<div>`',
+    '- item\n<img title="a>b">\n  `<div>`'
   ),
   fc.constantFrom('<img title="a>b">\n[a]: /u', '<span title="a>b">\n<!-- c -->'),
   // Exact-type-7 interrupt contexts: the SAME complete tag line is a real
