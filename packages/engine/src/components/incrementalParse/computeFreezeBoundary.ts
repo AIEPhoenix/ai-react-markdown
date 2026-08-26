@@ -771,6 +771,10 @@ const BARE_MARKER_RE = /^(?:[-*+]|\d{1,9}[.)])[ \t]*$/;
 const SETEXT_LEFTOVER_RE = /^(?:=+|--)[ \t]*$/;
 /** Definition-list description marker (micromark-extension-definition-list). */
 const DEF_LIST_DD_RE = /^ {0,3}:[ \t]/;
+/** A whole line that is one closing tag and nothing else (`</div>`,
+ *  `</x-y>`, `</br>`). Such a line emits NO node through rehype-raw's
+ *  fragment context, so it cannot pin the blocker-6 seam. */
+const CLOSE_TAG_ONLY_RE = /^[ \t]*<\/[A-Za-z][A-Za-z0-9-]*[ \t]*>[ \t\r]*$/;
 const FENCE_RE = /^ {0,3}(`{3,}|~{3,})/;
 /** Leading dollar RUN at block indent — math flow fences carry a LENGTH
  *  like code fences (`$$$$` opens a fence only ≥4 dollars can close;
@@ -1167,7 +1171,16 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
         .replace(/<!--[\s\S]*?-->/g, ' ')
         .replace(/<!--[\s\S]*$/, ' ')
         .replace(/[ \t\r]/g, '') === '';
-    if (!defShapedLine && !commentOnly) {
+    // A line that is ONLY a closing tag emits no node either, and the
+    // predicate's other three clauses are all true of it — so `</div>`
+    // released a seam it does not pin (`<!-- c --> remnant\n</div>` froze
+    // 47 of 51 bytes; 2026-08-26 review M6). Through rehype-raw's fragment
+    // context a stray closer produces nothing at the root, which is the
+    // design's §2.1a RETRO measurement: the trailing root text node can
+    // still grow. Whole-line only — `</div> trailing` leaves a text node
+    // and pins the seam like any other content.
+    const closeTagOnly = CLOSE_TAG_ONLY_RE.test(ln.text);
+    if (!defShapedLine && !commentOnly && !closeTagOnly) {
       cp.p5SealPending = false;
     }
   }
@@ -1329,7 +1342,18 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   // must resolve to "not inside a table" (poison fires). The bag can only
   // over-count opens, and an over-counted `table` here would suppress a
   // poison wrongly — which is why the read is fenced into a named wrapper.
-  const definitelyInsideTable = (): boolean => (cp.tagBalance.get('table') ?? 0) > 0;
+  //
+  // PENDING TRUNCATED opens are subtracted for that reason, the same
+  // phantom argument the seam check makes with `effectiveOpen`: a
+  // paragraph-line `compare a<table b` is prose, parse5 discards the
+  // incomplete tag, and nothing is inside a table when a later `<td>` is
+  // judged — yet the bag counted it and suppressed the poison
+  // (`compare a<table b\n<td>x</td>\n</table>` froze 59 of 63 bytes;
+  // 2026-08-26 review M5, the one wrapper whose implementation contradicted
+  // its name). The `>` that CONFIRMS the open clears the pending list, so a
+  // real table recovers the suppression on the spot.
+  const definitelyInsideTable = (): boolean =>
+    (cp.tagBalance.get('table') ?? 0) > cp.pendingTruncatedTags.filter((t) => t === 'table').length;
   // P-tree, explicitly (two-model T3.2): a stray table part leaves parse5's
   // template insertion-mode stack at a table mode — a Parser field a fresh
   // parser does not share, permanently. The line model cannot watch that

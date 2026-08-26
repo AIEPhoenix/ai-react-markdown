@@ -500,6 +500,31 @@ describe('computeFreezeBoundary — raw-remnant seam (blocker 6)', () => {
     expect(computeFreezeBoundary(text, OFF)).toBe(0);
   });
 
+  test('a line that is ONLY a closing tag does not release the seam (2026-08-26 review M6)', () => {
+    // The release predicate meant "not blank, outside a run, not def-shaped,
+    // not comment-only" — which is true of exactly the stray end-tag lines
+    // the design's §2.1a measured as RETRO. Through rehype-raw's fragment
+    // context a stray `</div>` emits NO node, so nothing sits between the
+    // remnant and what streams in later and the trailing root text node can
+    // still grow. The next REAL content line is what pins the seam.
+    const text = '<!-- c --> remnant\n</div>\n\ntail paragraph';
+    expect(computeFreezeBoundary(text, OFF)).toBe(0);
+  });
+
+  test('a paragraph line that merely CONTAINS a closing tag does release', () => {
+    // The narrowing is whole-line: `prose </div>` is a paragraph, it emits
+    // its node, and it pins the seam like any other content line.
+    const text = '<!-- c --> remnant\nprose </div>\n\ntail paragraph';
+    expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('tail paragraph'));
+  });
+
+  test('a real content line after the closing tag still releases', () => {
+    // The seal is held, not lost: the candidate adjacent to the stray
+    // closer is rejected and the one after the pinning paragraph survives.
+    const text = '<!-- c --> remnant\n</div>\n\npinning paragraph\n\ntail';
+    expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('tail'));
+  });
+
   test('closed-comment content is not remnant', () => {
     const text = '<div>\n</div>\n<!-- note -->\n\ntail paragraph';
     expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('tail paragraph'));
