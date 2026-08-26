@@ -616,7 +616,7 @@ export interface FreezeScanCheckpointInternal extends FreezeScanCheckpoint {
    *  the end of the plain path derives this per line class; the one class
    *  a line model cannot settle (a pipe line: GFM table row, after which
    *  type 7 OPENS, vs pipe-bearing paragraph, after which it cannot) is
-   *  poisoned at the refused tag line instead — see `prevLineHadPipe`. */
+   *  poisoned at the refused tag line instead — see `tableMaybeOpen`. */
   prevLineOpenContent: boolean;
   /** A GFM table MAY be open: a pipe line was seen and every line since
    *  has been table-continuable. A table, once its header/delimiter pair
@@ -1779,6 +1779,12 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   // block) the def is a paragraph-continuation line and stays
   // unregistered. Loosen `defLineStart` and this migration's safety
   // argument goes with it.
+  // Deliberately NOT `htmlOwnedLine`: that one adds `rawFlowStart`, which
+  // this gate has no use for. A line that STARTS a 2-5 construct begins
+  // `<!--` / `<?` / `<!X` / `<![CDATA[` at block indent, and a def line
+  // begins `[` (DEF_RE / FOOTNOTE_DEF_RE) — the two are mutually exclusive
+  // at line start, so adding the term could not change a single verdict.
+  // The asymmetry is intentional, not an oversight (2026-08-26 review).
   const defRawToMicromark = cp.mdBlock.kind === 'html' || rawOpenAtLineStart || inRawTextTok(cp.p5Tok);
   const { validLinkDef } = collectRefLine(cp, ln.start, ln.end, scanText, defRawToMicromark, isBlockStart);
 
@@ -2002,6 +2008,16 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   // (`<!--` has the same erasure shape but its own earlier machinery has kept
   // every measured variant safe — its poison is not widened here, and the
   // corpus carries the shapes that would catch it if that ever stops.)
+  //
+  // `type >= 3` also matches the 6/7 members, and has since the member
+  // overwrite rule tightened (96901ff): a mid-line `<?…?>` or `<!X…>`
+  // INSIDE an open type 6/7 run no longer takes the member, so the run's
+  // own 6/7 survives to this test and the opener poisons document-wide.
+  // That is KEPT deliberately, not an accident of the member surviving —
+  // the run case is the same sanitize-erasure shape as the paragraph one,
+  // and narrowing the predicate back to 3-5 would raise boundaries for
+  // pure freeze-rate gain (2026-08-26 review min-1: measured, and declined
+  // on the risk side of that trade).
   if (inlineRawOpenerIdx !== -1 && cp.mdBlock.kind === 'html' && cp.mdBlock.type >= 3) {
     cp.phasePoisonedAt = 0;
   }

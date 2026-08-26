@@ -234,6 +234,11 @@ for exactly this, and the gate reads that instead of the type (F13).
 
 ### P4 status — COMPLETE (the last separation landed)
 
+> **Superseded in part by "Exact type 7 — SHIPPED" below.** This section
+> describes the state at the END of P4b-completion: type 7 approximate and
+> `mayBeRawToMicromark` alive. The next stage closed both — the classifier
+> is exact and the flag is DELETED. Read the two together, later wins.
+
 The P4b-completion sequence closed the stage (seven commits, each gated):
 P5Tok gained parse5's own comment state and the bogus branch was de-fused
 (the first-`>` divergence is now a RELATION between the two grammars'
@@ -460,21 +465,28 @@ root-level-only strip removed them from one side) only half explained.
 The exemptions apply to the (P) instrument ONLY. The authoritative engine
 probe runs on every probe in both modes and is never exempt.
 
-`formElement` remains the standing latent divergence (design §2.1): raw
-layer fires, sanitize masks the element, the grouping echo keeps the final
-layer firing; the scanner never grants the boundary (openStack keeps the
-implicitly-closed form counted). Pinned as an oracle self-test — and since
-2026-08-25 the two facts that keep it latent are DESIGNED guards with
-tripwires (`formElementLatent.test.ts`), no longer accidents:
+`formElement` remains the standing latent divergence (design §2.1): the
+raw layer fires and the scanner never grants the boundary (openStack keeps
+the implicitly-closed form counted). Pinned as an oracle self-test in
+`formElementLatent.test.ts`. There is **no runtime detection at all** — no
+checkpoint field, no poison — so exactly ONE thing keeps it latent:
 
-1. the end-tag walk removes only the matched element (no implied end
-   tags), so an implicitly-closed `<form>` stays counted and blocks every
-   later candidate — modelling implied end tags must ship an explicit
-   formElement guard with it;
-2. `form` is absent from the default sanitize `tagNames` (the named schema
-   entry per the masking-exemption rule). A caller-supplied schema that
-   allows `form` sits outside the default contract, like every ground-fact
-   change above.
+1. **The guard.** The end-tag walk removes only the matched element (no
+   implied end tags), so an implicitly-closed `<form>` stays counted and
+   blocks every later candidate. Mutation-verified 2026-08-26: dropping
+   the "matched element only" restriction moves the pinned boundary 0 → 39
+   and produces real engine-probe hast mismatches on four of the five class
+   members. Modelling implied end tags must ship an explicit formElement
+   guard with it.
+2. **Not a second guard.** `form` is absent from the default sanitize
+   `tagNames`, and this entry used to claim that as masking. **Falsified**
+   2026-08-26: adding `form` to the allowlist changes nothing, and the
+   divergence-class defects appear under the DEFAULT schema. The test pin
+   stays as a schema-drift tripwire — every "safe" column is derived
+   against the default schema — but it carries none of the safety
+   argument, and design §5.1 must stop citing `formElement` as its
+   masking example. (The masking RULE itself is unaffected: a real masking
+   exemption still has to name its schema entry.)
 
 ### T1.4 sweep result (2026-08-24)
 
@@ -520,12 +532,12 @@ Recording the reason matters more than recording the pass: every one of
 these is safe because of a blocker aimed at something else, so a change to
 that blocker can un-safe them silently.
 
-| Path                                       | Sweep                                                            | Held because                                                                                                                                                                                                  |
-| ------------------------------------------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Foreign content, all four foreign branches | 3140 hand-built shapes, then the fuzz corpus                     | the hand-built sweep passed and was WRONG to reassure: fuzz found the under-block once `foreignContentArb` existed. Held by the pop until P3a; now by the collapse (count everything, poison raw-text starts) |
-| Foster parenting out of a `<table>`        | 144 shapes with the merge target buried inside the frozen region | an open `<table>` holds `openTotal` above zero, so the boundary parks in front of the merge target BEFORE the fostered text exists                                                                            |
-| `<template>` in the content                | 12 shapes × 3 schedules                                          | children go to a content fragment that never reaches hast, and sanitize drops the element                                                                                                                     |
-| Script-data escape states                  | hand sweep passed, fuzz did NOT — see F6                         | not held: the double-escaped state now poisons                                                                                                                                                                |
+| Path                                       | Sweep                                                            | Held because                                                                                                                                                                                                                                                                                                                                |
+| ------------------------------------------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Foreign content, all four foreign branches | 3140 hand-built shapes, then the fuzz corpus                     | the hand-built sweep passed and was WRONG to reassure: fuzz found the under-block once `foreignContentArb` existed. Held by the pop until P3a; now by the collapse (count everything, poison raw-text starts)                                                                                                                               |
+| Foster parenting out of a `<table>`        | 144 shapes with the merge target buried inside the frozen region | an open `<table>` holds `openTotal` above zero, so the boundary parks in front of the merge target BEFORE the fostered text exists                                                                                                                                                                                                          |
+| `<template>` in the content                | 12 shapes × 3 schedules                                          | children go to a content fragment that never reaches hast, and sanitize drops the element                                                                                                                                                                                                                                                   |
+| Script-data escape states                  | hand sweep passed, fuzz did NOT — see F6                         | held by the EXACT escape ladder since P3b batch 1 (`double` implies `escaped`; while double a `</script>` steps back one level and the element stays open AND counted; `-->` exits both). The double-entry poison this row used to describe is retired; a multi-line tangle is blocked by the erasure poison at the surviving close instead |
 
 ## Open questions
 

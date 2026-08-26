@@ -17,25 +17,31 @@
  * (two-model design §2.1), and `oracleConformance.test.ts` pins that the
  * identity oracles fire on it.
  *
- * The scanner does NOT model the pointer. It is safe today because of two
- * facts that used to be accidents and are DESIGNED GUARDS from this file on:
+ * The scanner does NOT model the pointer — there is no `formElement` field
+ * and no poison, so nothing detects this at RUNTIME. What keeps it latent
+ * is ONE guard, plus a schema tripwire that is not a second one:
  *
- *  1. The end-tag walk in `computeFreezeBoundary` removes ONLY the matched
- *     element — implied end tags are deliberately not modelled — so the
- *     implicitly-closed `<form>` stays on `openStack`, `openTotal` stays
- *     positive, and every candidate past it is rejected. The pointer can
- *     only be non-null while the scanner is already refusing to freeze.
- *     If implied-end-tag modelling ever ships, the first test below goes
- *     red: that change must bring an explicit P-tree `formElement` field
- *     (or poison) with it.
+ *  1. **The guard.** The end-tag walk in `computeFreezeBoundary` removes
+ *     ONLY the matched element — implied end tags are deliberately not
+ *     modelled — so the implicitly-closed `<form>` stays on `openStack`,
+ *     `openTotal` stays positive, and every candidate past it is rejected.
+ *     The pointer can only be non-null while the scanner is already
+ *     refusing to freeze. Mutation-verified (2026-08-26): removing the
+ *     "matched element only" restriction moves the pinned boundary 0 → 39
+ *     and produces real engineProbe hast mismatches on four of the five
+ *     class members. If implied-end-tag modelling ever ships, the first
+ *     test below goes red, and that change must bring an explicit P-tree
+ *     `formElement` field (or poison) with it.
  *
- *  2. `form` is not in the sanitize schema's `tagNames`, so even the
- *     divergent element difference is masked in the final hast (children
- *     lifted). Masking exemptions must name the schema entry they rely on
- *     (execution plan §P3a acceptance) — the second test is that pin. A
- *     CALLER-supplied schema that allows `form` re-opens the exposure;
- *     that sits outside the default contract (GRAMMAR-COVERAGE ground
- *     facts: a changed schema re-derives every "safe" column).
+ *  2. **Not a guard — a schema-drift tripwire.** `form` is absent from the
+ *     sanitize schema's `tagNames`, and the design once cited that as
+ *     masking the divergence. The audit FALSIFIED it: adding `form` to the
+ *     allowlist changes nothing, and the divergence-class defects appear
+ *     under the DEFAULT schema. The pin below stays — a schema change here
+ *     is worth noticing, and GRAMMAR-COVERAGE's ground facts say a changed
+ *     schema re-derives every "safe" column — but it carries no part of
+ *     the safety argument, and design §5.1 must stop using `formElement`
+ *     as its masking example.
  */
 import { describe, expect, test } from 'vitest';
 import { computeFreezeBoundary } from './computeFreezeBoundary';
@@ -65,16 +71,17 @@ describe('formElement latent divergence — the designed guards', () => {
     expect(boundary(doc)).toBeGreaterThan(0);
   });
 
-  test('form is not in the sanitize allowlist (guard 2, the named schema entry)', () => {
-    // Guard 2's tripwire. Sanitize lifting the element is what masks the
-    // divergent ELEMENT difference in the final hast. Allowing `form` here
-    // makes the formElement divergence visible to the contract — adding it
-    // requires a real (P-tree) answer in the scanner first.
+  test('form is not in the sanitize allowlist (a schema-drift tripwire, NOT a guard)', () => {
+    // This was called guard 2 and it is not one: the audit measured the
+    // divergence class under the DEFAULT schema, and allowing `form` here
+    // changes none of it. The pin stays because a schema change is worth
+    // noticing — every "safe" column is derived against the default schema
+    // — but guard 1 is the whole mitigation.
     expect(sanitizeSchema.tagNames).not.toContain('form');
   });
 
   test('the counterexample streams like a full parse end to end', () => {
-    // The system-level statement the two guards buy: streamed at small
+    // The system-level statement the guard buys: streamed at small
     // chunks, the exact design-§2.1 shape produces the full parse's hast at
     // every frame (guard 1 forces these frames onto the safe path).
     const doc = '<div><form></div>\n\n<form>b</form>\n\npara after\n';
