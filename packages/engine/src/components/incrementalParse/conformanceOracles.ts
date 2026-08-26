@@ -246,6 +246,88 @@ function runToRawLayer(content: string, config: CatalogConfig): NodeLike {
   return transformStage(parsed) as unknown as NodeLike;
 }
 
+// ── (P) snapshot form: the raw-layer gate ───────────────────────────────
+
+/**
+ * Every POSITIONED node, any depth, lying entirely below `boundary`, as an
+ * identity signature.
+ *
+ * Depth is not optional. The boundary is a byte offset and raw-layer root
+ * children are far too coarse to bracket it: a root-children-only version
+ * of this compared ZERO nodes at 439 of 797 measured probe positions — an
+ * instrument that was mostly asserting nothing, found by measuring it
+ * before trusting its verdict. At full depth the same battery compares
+ * 7.2-7.6 nodes per position.
+ */
+function frozenSignatures(nodes: NodeLike[], boundary: number, out: string[] = []): string[] {
+  for (const node of nodes) {
+    const start = node.position?.start?.offset;
+    const end = node.position?.end?.offset;
+    // `start <= end` rejects MALFORMED ranges. Seam-adjacent raw nodes can
+    // carry an inverted one — measured `138-128` on a `<v>` element, which
+    // is rehype-raw reserialization furniture, not a frozen-region fact.
+    // It was this instrument's only false positive across ~346k probe
+    // positions, so the guard is the difference between a gate that can
+    // run and one that cries wolf once a corpus.
+    if (start !== undefined && end !== undefined && start <= end && end <= boundary) {
+      out.push(
+        `${start}-${end}:${node.type}:${node.tagName ?? ''}:` +
+          `${JSON.stringify(node.properties ?? null)}:${JSON.stringify(node.value ?? null)}`
+      );
+    }
+    frozenSignatures(node.children ?? [], boundary, out);
+  }
+  return out;
+}
+
+interface SnapshotResult {
+  /** Non-null when a node the scanner froze did not survive the append. */
+  detail: string | null;
+  /** Anti-vacuity readout: how many frozen nodes this position actually
+   *  compared. Zero means the instrument said nothing here. */
+  nodesCompared: number;
+}
+
+/**
+ * (P) SNAPSHOT-anchored: append-stability of the FROZEN REGION at the
+ * raw() layer — `raw(doc)` versus `raw(doc + tail)`, over every positioned
+ * node ending at or before `boundary`.
+ *
+ * This states the scanner's ACTUAL claim: bytes `[0, boundary)` are
+ * settled. It is the same re-anchoring the (M) span oracle received on
+ * 2026-08-24 — the load-bearing bad-oracle finding in GRAMMAR-COVERAGE —
+ * applied to the layer that never got it. Crucially there is no tail-alone
+ * parse anywhere in it, so no firing here can be an artifact of
+ * concatenating two independent parses. Every one of the E1-E7 families
+ * is exactly such an artifact, which is why they all go to zero under it.
+ */
+function snapshotRawDisagreement(doc: string, tail: string, boundary: number, config: CatalogConfig): SnapshotResult {
+  // SCOPE LIMITS, measured and accepted rather than papered over:
+  //  - 26.0% of provably-frozen nodes carry no position offsets and are
+  //    invisible here (raw reserialization drops them). The direction
+  //    battery and the engine probe cover those regions.
+  //  - `stripFurniture` removes the hoisted footnote section, so frozen
+  //    footnote-DEFINITION content is exempt by construction.
+  // Two further gaps are theoretical and unreachable in this corpus, so
+  // they are recorded rather than coded around: two frozen nodes sharing
+  // an identical signature would mask one being replaced by a copy of the
+  // other, and an append that only ADDS a node below the boundary is
+  // invisible to a subset check (the added node is simply not in `frozen`).
+  const frozen = frozenSignatures(stripFurniture((runToRawLayer(doc, config) as NodeLike).children ?? []), boundary);
+  const appended = new Set(
+    frozenSignatures(stripFurniture((runToRawLayer(doc + tail, config) as NodeLike).children ?? []), boundary)
+  );
+  for (const signature of frozen) {
+    if (!appended.has(signature)) {
+      return {
+        detail: `P-snap: frozen node ${signature.slice(0, 220)} did not survive the append (boundary ${boundary})`,
+        nodesCompared: frozen.length,
+      };
+    }
+  }
+  return { detail: null, nodesCompared: frozen.length };
+}
+
 // ── raw-layer exemption families (the ORACLE_RAW allowlist) ─────────────
 
 /**
@@ -257,16 +339,22 @@ function runToRawLayer(content: string, config: CatalogConfig): NodeLike {
  * `b` are the same content. Equal flattenings mean the two sides carry the
  * same bytes and differ only in how those bytes were grouped.
  */
-function flattenContent(nodes: NodeLike[], out: string[]): string[] {
+function flattenContent(nodes: NodeLike[], out: string[], depth = 0): string[] {
   for (const node of nodes) {
     if (node.type === 'text') {
       const v = (node.value ?? '').replace(/\s+/g, '');
-      if (v !== '') out.push(`t:${v}`);
+      if (v !== '') out.push(`t${depth}:${v}`);
       continue;
     }
-    if (node.type === 'element') out.push(`e:${node.tagName ?? ''}${JSON.stringify(node.properties ?? {})}`);
-    else if (node.value !== undefined) out.push(`${node.type}:${node.value}`);
-    flattenContent(node.children ?? [], out);
+    // DEPTH is part of the signature. Without it this cannot see nesting,
+    // so two sibling `<p>` and one `<p>` that SWALLOWED the other flatten
+    // identically, and E4 called a reparenting "values conserved" — false,
+    // and the wording is load-bearing for whoever triages a real failure
+    // (2026-08-26 adversarial pass; it is also why the F13 `<pre>` swallow
+    // probe classified as E4).
+    if (node.type === 'element') out.push(`e${depth}:${node.tagName ?? ''}${JSON.stringify(node.properties ?? {})}`);
+    else if (node.value !== undefined) out.push(`${node.type}${depth}:${node.value}`);
+    flattenContent(node.children ?? [], out, depth + 1);
   }
   return out;
 }
@@ -717,14 +805,34 @@ export function engineProbe(
   config: CatalogConfig
 ): { disagreement: string | null; usedIncremental: boolean } {
   const options = buildAdvanceOptions(config);
-  const first = advanceIncrementalParse(null, baseDoc, options);
-  const second = advanceIncrementalParse(first.nextState, baseDoc + tail, options);
+  // THREE frames, not two. A two-frame probe starts at
+  // `advance(null, baseDoc)`, which is not append-only and therefore
+  // always takes the FULL path — so the probed frame spliced onto a tree
+  // the full parser built, the checkpoint had been resumed exactly once,
+  // and the monotone boundary clamp never mattered. A whole class of
+  // state-carry faults was structurally unreachable. Measured against a
+  // planted `noClamp` mutation (2026-08-26, adversarial pass): two-frame
+  // recall 1.5%, three-frame 49.7%, for one extra advance per probe.
+  //
+  // The first cut is code-point aligned so a frame boundary never splits a
+  // surrogate pair (the repo-wide rule `codePointSnapshots` encodes).
+  const points = Array.from(baseDoc);
+  const firstCut = points.slice(0, Math.max(1, Math.floor(points.length / 2))).join('');
+  const f0 = advanceIncrementalParse(null, firstCut, options);
+  const f1 = advanceIncrementalParse(f0.nextState, baseDoc, options);
+  const second = advanceIncrementalParse(f1.nextState, baseDoc + tail, options);
   const expected = runFull(baseDoc + tail, config);
   let disagreement: string | null = null;
-  if (!isEqual(second.mdast, expected.mdast)) {
-    disagreement = `engine: mdast mismatch at frame 2 (boundary=${second.boundary})`;
+  // The INTERMEDIATE frame is asserted too: it is the frame that first
+  // splices onto a spliced tree, so a fault there is real even when the
+  // final frame happens to converge.
+  const midExpected = runFull(baseDoc, config);
+  if (!isEqual(f1.mdast, midExpected.mdast) || !isEqual(f1.hast, midExpected.hast)) {
+    disagreement = `engine: mismatch at the INTERMEDIATE frame (boundary=${f1.boundary}, cut=${firstCut.length})`;
+  } else if (!isEqual(second.mdast, expected.mdast)) {
+    disagreement = `engine: mdast mismatch at the final frame (boundary=${second.boundary})`;
   } else if (!isEqual(second.hast, expected.hast)) {
-    disagreement = `engine: hast mismatch at frame 2 (boundary=${second.boundary})`;
+    disagreement = `engine: hast mismatch at the final frame (boundary=${second.boundary})`;
   }
   return { disagreement, usedIncremental: second.usedIncremental };
 }
@@ -761,6 +869,12 @@ export interface OracleSweepStats {
   spliceableProbes: number;
   /** Of `spliceableProbes`, the ones the engine actually spliced. */
   incrementalProbes: number;
+  /** Anti-vacuity readout for the (P) snapshot gate: frozen nodes compared
+   *  across every probe position. A gate that compares nothing passes
+   *  everything. Only accumulated under `idealIdentity`. */
+  snapshotNodesCompared: number;
+  /** Probe positions where the snapshot gate compared at least one node. */
+  snapshotPositions: number;
 }
 
 /**
@@ -815,10 +929,37 @@ export function oracleCheckDoc(
         detail: m,
       });
     }
-    // The prefix-anchored ideal identity overclaims at evidence-dependent
-    // boundaries (see mSpanDisagreement's doc), so in sweeps it is opt-in
-    // exploratory instrumentation, not a default signal.
     if (options?.idealIdentity) {
+      // The GATE (2026-08-26 re-anchor): snapshot-anchored append
+      // stability of the frozen region. Any firing fails the sweep — it
+      // needs no exemption list, because it has no tail-alone parse to
+      // produce artifacts about.
+      // An EMPTY tail compares `raw(doc)` against ITSELF — it cannot fire,
+      // and counting it inflated the anti-vacuity floor with positions
+      // that assert nothing. Measured: 12.4% of probe positions have an
+      // empty tail and alone delivered 99.7% of the floor's budget, so a
+      // TOTAL gate collapse would have dropped it by 0.3%. Exactly the
+      // memo-hit bug the engagement floors had, repeated here and caught
+      // by the same adversarial reading.
+      if (probe.tail !== '') {
+        const snap = snapshotRawDisagreement(doc, probe.tail, boundary, config);
+        if (stats) {
+          stats.snapshotNodesCompared += snap.nodesCompared;
+          if (snap.nodesCompared > 0) stats.snapshotPositions += 1;
+        }
+        if (snap.detail !== null) {
+          findings.push({ probeId: probe.id, boundary, severity: 'defect', detail: snap.detail });
+        }
+      }
+      // The prefix-anchored form is retained as INFO-ONLY triage. It has
+      // real recall (99.1% of planted under-blocks, against the snapshot
+      // form's 31.5%) but fires on 50.8% of engine-clean positions, so it
+      // cannot gate anything without the E1-E7 allowlist — and that
+      // allowlist has now been refuted twice. Its recall is also redundant
+      // with the engine probe, which is authoritative, always on, and
+      // caught 100% of that same population by construction. Kept because
+      // a human triaging a real failure wants the extra signal; the
+      // classifier below is now its classification aid, not a gate.
       const family = {
         probeId: probe.id,
         tail: realTail + probe.tail,
