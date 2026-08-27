@@ -590,6 +590,51 @@ describe('computeFreezeBoundary — raw-remnant seam (blocker 6)', () => {
     });
   });
 
+  describe('a LAZY continuation of a resumed footnote body does not release the seam (release-gate F18)', () => {
+    // The adversarial review of the derived-release design refuted F16's
+    // `indent >= 4` conjunct with a live member #4: after `    cont`
+    // resumes the footnote body across the blank, `lazy tail` is that
+    // paragraph's LAZY continuation — indent 0, emits nothing at the root —
+    // and the conjunct read it as a releasing content line (boundary 72,
+    // P-snap defect at the raw layer under [no-orphan]; shipped stream
+    // output does NOT diverge — sanitize masks it — but masking is not a
+    // safety argument). The rule is indent-INDEPENDENT: below a resumable
+    // footnote, only a block-start line at ≤3 indent provably interrupts
+    // (blank above means it cannot be lazy); every other non-blank line
+    // keeps the seal.
+    test('indent-0 lazy tail after the resumed body holds (was: boundary 72)', () => {
+      expect(
+        computeFreezeBoundary(
+          '<div>\n</div>\nfloating remnant\n\n[^a]: note\n\n    cont\nlazy tail\n\n[b]: /v\n\ntail para\n',
+          OFF
+        )
+      ).toBe(0);
+    });
+
+    test('indent-2 lazy tail holds too (was: boundary 74)', () => {
+      expect(
+        computeFreezeBoundary(
+          '<div>\n</div>\nfloating remnant\n\n[^a]: note\n\n    cont\n  lazy tail\n\n[b]: /v\n\ntail para\n',
+          OFF
+        )
+      ).toBe(0);
+    });
+
+    test('indent-4 lazy line holds (the F16 class, unchanged)', () => {
+      expect(
+        computeFreezeBoundary(
+          '<div>\n</div>\nfloating remnant\n\n[^a]: note\n\n    cont\n    more cont\n\n[b]: /v\n\ntail para\n',
+          OFF
+        )
+      ).toBe(0);
+    });
+
+    test("control: a blank before the tail makes it a BLOCK START — release stands (the skeptic's control)", () => {
+      const text = '<div>\n</div>\nfloating remnant\n\n[^a]: note\n\n    cont\n\nlazy tail\n\n[b]: /v\n\ntail para\n';
+      expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('tail para'));
+    });
+  });
+
   test('a line that is ONLY a closing tag does not release the seam (2026-08-26 review M6)', () => {
     // The release predicate meant "not blank, outside a run, not def-shaped,
     // not comment-only" — which is true of exactly the stray end-tag lines

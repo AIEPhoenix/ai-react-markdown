@@ -680,15 +680,19 @@ export interface FreezeScanCheckpointInternal extends FreezeScanCheckpoint {
    *  line since has definitively interrupted the block. Unlike a link
    *  definition (whose `defBlockMaybeOpen` a blank provably ends), a
    *  footnote body CONTINUES ACROSS blank lines via ≥4-indent lines — the
-   *  list-item continuation rule — and those lines emit no top-level hast
-   *  node (the body renders in the footer section), so none of them may
-   *  release the blocker-6 seam. The seal release's old view classified a
-   *  post-blank indented line as indented CODE (node-emitting) and released
-   *  a live seam (release-gate finding A, seed 20293003 — F16, the
-   *  cross-blank sibling of F15). Armed by a footnote-def line; kept across
-   *  blanks and indented lines; cleared by a confirmed non-blank
-   *  BLOCK-START line at indent ≤ 3, which no footnote body can resume
-   *  past. Read only by the seal release, where holding it over-blocks. */
+   *  list-item continuation rule — and a resumed body paragraph then takes
+   *  LAZY continuation lines at ANY indent. None of those lines emits a
+   *  top-level hast node (the body renders in the footer section), so none
+   *  of them may release the blocker-6 seam. The seal release's first view
+   *  classified a post-blank indented line as indented CODE and released a
+   *  live seam (release-gate finding A, seed 20293003 — F16, the
+   *  cross-blank sibling of F15); its second view kept an `indent >= 4`
+   *  conjunct, which the lazy continuation refuted at indent 0 (F18, the
+   *  adversarial review of the derived-release design). Armed by a
+   *  footnote-def line; kept across blanks and every non-interrupting line;
+   *  cleared by a confirmed non-blank BLOCK-START line at indent ≤ 3, the
+   *  one shape no footnote body can resume past (blank above ⟹ not lazy).
+   *  Read only by the seal release, where holding it over-blocks. */
   fnDefResumable: boolean;
   /** Offset of the first fence/math OPEN suppressed inside an html-flow
    *  run — the member gate since Migration B row 6 (Infinity = none). Whether the run really swallowed that line depends
@@ -1195,15 +1199,22 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     // The def clause is the LINE's own shape plus the sticky block flags: a
     // definition's destination and title lines are def CONTINUATIONS that
     // emit no node either, and a shape test cannot see them (see
-    // `defBlockMaybeOpen`); a ≥4-indent line while a FOOTNOTE definition is
-    // still resumable is that footnote's BODY continuation — across blank
-    // lines included — not indented code, and it emits no top-level node
-    // either (see `fnDefResumable`; F16, finding A of the release gate).
+    // `defBlockMaybeOpen`); below a RESUMABLE footnote definition every
+    // line that is not the block's provable interruption belongs (or may
+    // lazily belong) to its BODY and emits no top-level node — the ≥4-indent
+    // continuation (F16), but also the LAZY continuation of a resumed body
+    // paragraph at ANY indent (`[^a]: note` + blank + `    cont` +
+    // `lazy tail` — F18, the adversarial-review refutation of the F16
+    // indent conjunct: `lazy tail` sits at indent 0 and released a live
+    // seam). The only line that provably interrupts the footnote is a
+    // BLOCK-START line at ≤3 indent (blank above, so it cannot be lazy),
+    // and that line releases on its own merits through the clauses below;
+    // everything else keeps, indent-independent (see `fnDefResumable`).
     const defShapedLine =
       DEF_RE.test(ln.text) ||
       FOOTNOTE_DEF_RE.test(ln.text) ||
       cp.defBlockMaybeOpen ||
-      (cp.fnDefResumable && ln.indent >= 4);
+      (cp.fnDefResumable && !(isBlockStart && ln.indent <= 3));
     const commentOnly =
       ln.text
         .replace(/<!--[\s\S]*?-->/g, ' ')
