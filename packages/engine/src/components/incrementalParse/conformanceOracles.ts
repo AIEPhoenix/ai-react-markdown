@@ -56,8 +56,11 @@
  *
  * - The GFM footnote section is hoisted to document end by remark-rehype,
  *   so its POSITION moves with every append by design. It is stripped from
- *   both sides; the machinery that keeps footnote CONTENT correct across
- *   the splice is injection replay, pinned by `assertStreamEquivalence`.
+ *   both sides — by the section wrapper, and in the snapshot gate also by
+ *   the definition's source bytes, because parse5 can eat the wrapper's
+ *   start tag (F21); the machinery that keeps footnote CONTENT correct
+ *   across the splice is injection replay, pinned by
+ *   `assertStreamEquivalence`.
  *   Reference retargeting inside the body — the (R) dimension — is NOT
  *   stripped: an orphan `[^x]` flipping to a sup link is a body diff.
  * - remark-rehype separates root children with `\n` text nodes. The split
@@ -209,6 +212,42 @@ function stripFurniture(children: NodeLike[]): NodeLike[] {
   return out;
 }
 
+/**
+ * Source ranges of every `footnoteDefinition`, from the mdast.
+ *
+ * The footer is the only place a definition's bytes render, and
+ * remark-rehype copies the definition's POSITION onto the `<li>` it
+ * builds — so those nodes sit at frozen offsets while living at document
+ * end. `stripFurniture` normally removes them by the `data-footnotes`
+ * marker, but that marker is only reachable while the section's START TAG
+ * survives, and a start tag is exactly what parse5 drops in the "text"
+ * insertion mode: any raw-text or escapable-raw-text element still OPEN
+ * when the footer is emitted (`textarea`, `title`, `style`, `script`,
+ * `xmp`, `iframe`, `noembed`) eats the `<section>` and `<h2>` opens, and
+ * the `<ol>` resurfaces at the root with no marker on it. The strip then
+ * removes the footer from the side whose region is CLOSED and keeps it on
+ * the side whose region is open.
+ *
+ * So the exemption is stated in source bytes instead: a definition's bytes
+ * are the domain fact, and the wrapper is one spelling of it that a
+ * grammar collision can erase.
+ *
+ * Only the snapshot GATE consumes this. The prefix-anchored instruments
+ * carry the same artifact and keep the wrapper strip alone, deliberately:
+ * they gate nothing, they already fire on half the engine-clean positions,
+ * and re-cutting their info stream would move the classification buckets
+ * the ledger describes for no gain.
+ */
+function footnoteDefinitionRanges(mdast: NodeLike, out: Array<[number, number]> = []): Array<[number, number]> {
+  for (const child of mdast.children ?? []) {
+    const s = child.position?.start?.offset;
+    const e = child.position?.end?.offset;
+    if (child.type === 'footnoteDefinition' && s !== undefined && e !== undefined) out.push([s, e]);
+    else footnoteDefinitionRanges(child, out);
+  }
+  return out;
+}
+
 function rebaseNode(node: NodeLike, byOffset: number, byLine: number): NodeLike {
   const clone: NodeLike = { ...node };
   if (node.position) {
@@ -259,10 +298,20 @@ function runToRawLayer(content: string, config: CatalogConfig): NodeLike {
  * before trusting its verdict. At full depth the same battery compares
  * 7.2-7.6 nodes per position.
  */
-function frozenSignatures(nodes: NodeLike[], boundary: number, out: string[] = []): string[] {
+function frozenSignatures(
+  nodes: NodeLike[],
+  boundary: number,
+  footnoteBytes: Array<[number, number]>,
+  out: string[] = []
+): string[] {
   for (const node of nodes) {
     const start = node.position?.start?.offset;
     const end = node.position?.end?.offset;
+    // Footer furniture, by the bytes it renders rather than by the wrapper
+    // it usually hangs under — see `footnoteDefinitionRanges`. The whole
+    // subtree goes: everything under a footer `<li>` carries offsets from
+    // inside the same definition.
+    if (start !== undefined && footnoteBytes.some(([s, e]) => start >= s && start < e)) continue;
     // `start <= end` rejects MALFORMED ranges. Seam-adjacent raw nodes can
     // carry an inverted one — measured `138-128` on a `<v>` element, which
     // is rehype-raw reserialization furniture, not a frozen-region fact.
@@ -286,7 +335,7 @@ function frozenSignatures(nodes: NodeLike[], boundary: number, out: string[] = [
           `${JSON.stringify(node.properties ?? null)}:${JSON.stringify(node.value ?? null)}`
       );
     }
-    frozenSignatures(node.children ?? [], boundary, out);
+    frozenSignatures(node.children ?? [], boundary, footnoteBytes, out);
   }
   return out;
 }
@@ -316,22 +365,41 @@ export function snapshotRawDisagreement(
   doc: string,
   tail: string,
   boundary: number,
-  config: CatalogConfig
+  config: CatalogConfig,
+  docMdast?: NodeLike
 ): SnapshotResult {
   // SCOPE LIMITS, measured and accepted rather than papered over:
   //  - 26.0% of provably-frozen nodes carry no position offsets and are
   //    invisible here (raw reserialization drops them). The direction
   //    battery and the engine probe cover those regions.
-  //  - `stripFurniture` removes the hoisted footnote section, so frozen
-  //    footnote-DEFINITION content is exempt by construction.
+  //  - frozen footnote-DEFINITION content is exempt: the footer it renders
+  //    into is hoisted to document end and rebuilt from the whole document
+  //    every frame, so its shape is injection replay's contract, pinned by
+  //    `assertStreamEquivalence`, not the boundary's. `stripFurniture`
+  //    removes it by the section wrapper and `footnoteDefinitionRanges` by
+  //    the bytes, because the wrapper does not always survive parse5.
   // Two further gaps are theoretical and unreachable in this corpus, so
   // they are recorded rather than coded around: two frozen nodes sharing
   // an identical signature would mask one being replaced by a copy of the
   // other, and an append that only ADDS a node below the boundary is
   // invisible to a subset check (the added node is simply not in `frozen`).
-  const frozen = frozenSignatures(stripFurniture((runToRawLayer(doc, config) as NodeLike).children ?? []), boundary);
+  //
+  // The exempt ranges come from `doc` and are applied to BOTH sides. Taking
+  // the appended side's own ranges would let a definition that GREW under
+  // the tail exempt a node it did not own before, which is the direction
+  // that hides things.
+  const footnoteBytes = footnoteDefinitionRanges(docMdast ?? (runFull(doc, config).mdast as NodeLike));
+  const frozen = frozenSignatures(
+    stripFurniture((runToRawLayer(doc, config) as NodeLike).children ?? []),
+    boundary,
+    footnoteBytes
+  );
   const appended = new Set(
-    frozenSignatures(stripFurniture((runToRawLayer(doc + tail, config) as NodeLike).children ?? []), boundary)
+    frozenSignatures(
+      stripFurniture((runToRawLayer(doc + tail, config) as NodeLike).children ?? []),
+      boundary,
+      footnoteBytes
+    )
   );
   for (const signature of frozen) {
     if (!appended.has(signature)) {
@@ -958,7 +1026,7 @@ export function oracleCheckDoc(
       // memo-hit bug the engagement floors had, repeated here and caught
       // by the same adversarial reading.
       if (probe.tail !== '') {
-        const snap = snapshotRawDisagreement(doc, probe.tail, boundary, config);
+        const snap = snapshotRawDisagreement(doc, probe.tail, boundary, config, docRun.mdast as NodeLike);
         if (stats) {
           stats.snapshotNodesCompared += snap.nodesCompared;
           if (snap.nodesCompared > 0) stats.snapshotPositions += 1;
