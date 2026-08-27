@@ -530,6 +530,66 @@ describe('computeFreezeBoundary — raw-remnant seam (blocker 6)', () => {
     });
   });
 
+  describe('a footnote-def BODY continuation across a blank does not release the seam (release-gate F16, seed 20293003)', () => {
+    // F15's cross-blank sibling: `defBlockMaybeOpen` clears at the blank
+    // because a LINK definition provably ends there — but a FOOTNOTE
+    // definition does not. Its body continues across blank lines via
+    // ≥4-indent lines (the list-item continuation rule), and those lines
+    // emit no top-level hast node (the body renders in the footer), so they
+    // cannot pin the seam. The release predicate classified the post-blank
+    // indented line as indented CODE and released a live seam.
+    //
+    // Seal trace of the RED shape below, line by line:
+    //   `<!-- c --> </s>`   floating remnant ` ` → p5SealPending = true
+    //   (blank)             candidate emitted, seamRisk — rejected
+    //   `[^a]: body`        FOOTNOTE_DEF_RE → no release; arms fnDefResumable
+    //   (blank)             defBlockMaybeOpen clears; fnDefResumable holds
+    //   `    cont`          footnote BODY continuation — the line that
+    //                       WRONGLY released before the fix (no node emitted)
+    //   (blank)             candidate — must stay seamRisk-rejected
+    //   `[b]: /v`           DEF_RE → no release; clears fnDefResumable
+    //   (blank)             candidate — still seamRisk-rejected
+    //   `tail para`         releases (emits a node), no candidate after it
+    test('the ≥4-indent continuation line holds the seal (was: released as indented code)', () => {
+      expect(computeFreezeBoundary('<!-- c --> </s>\n\n[^a]: body\n\n    cont\n\n[b]: /v\n\ntail para', OFF)).toBe(0);
+    });
+
+    test('a lazy body line between def and continuation does not break the hold', () => {
+      // `lazy line` is not a block start (no blank above), so it neither
+      // releases (defBlockMaybeOpen still set) nor clears resumability.
+      expect(
+        computeFreezeBoundary('<!-- c --> </s>\n\n[^a]: body\nlazy line\n\n    cont\n\n[b]: /v\n\ntail para', OFF)
+      ).toBe(0);
+    });
+
+    test('the shrunk soak prefix (finding A, seed 20293003) is refused whole', () => {
+      // The exact prefix the splice froze at boundary 91: footnote def +
+      // indented continuation + link def, every line node-less, remnant live.
+      expect(
+        computeFreezeBoundary(
+          '<!-- c --> </s>\n\n\n[^a]: body text\n\n    indented continuation\n\n[a]: https://example.com/a\n\n\n- t',
+          OFF
+        )
+      ).toBe(0);
+    });
+
+    test('CLEAR, positive: a ≤3-indent block-start def ends the footnote — indented code then releases', () => {
+      // `[a]: /u` is a block start at indent 0: no footnote body can resume
+      // past it, so it clears fnDefResumable (while itself not releasing —
+      // DEF_RE). The later `    code` line is then REAL indented code,
+      // which emits a <pre> and releases; the def line after it carries a
+      // clean candidate. If the clear never fired, the indented line would
+      // hold the seal and the boundary would be 0.
+      const text = '<!-- c --> </s>\n\n[^a]: body\n\n[a]: /u\n\n    code\n\n[b]: /v\n\ntail para';
+      expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('tail para'));
+    });
+
+    test('CLEAR, negative: an interrupting paragraph clears AND releases', () => {
+      const text = '<!-- c --> </s>\n\n[^a]: body\n\npinning paragraph\n\ntail para';
+      expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('tail para'));
+    });
+  });
+
   test('a line that is ONLY a closing tag does not release the seam (2026-08-26 review M6)', () => {
     // The release predicate meant "not blank, outside a run, not def-shaped,
     // not comment-only" — which is true of exactly the stray end-tag lines
@@ -558,6 +618,46 @@ describe('computeFreezeBoundary — raw-remnant seam (blocker 6)', () => {
   test('closed-comment content is not remnant', () => {
     const text = '<div>\n</div>\n<!-- note -->\n\ntail paragraph';
     expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('tail paragraph'));
+  });
+});
+
+describe('computeFreezeBoundary — retroactive constructs inside an inline-opened raw-text mask (release-gate F17, seed 20293004)', () => {
+  // `p<iframe> …` opens parse5 RCDATA/RAWTEXT from a paragraph line
+  // (openedInline). `</iframe a>` carries attributes: literal TEXT to
+  // micromark (a closing tag takes none), a REAL end tag to parse5's
+  // raw-text states — so parse5 may already be back in DATA while the
+  // scanner still masks every construct scan. A `<!DOCTYPE …>` behind that
+  // mask is then a REAL doctype whose fragment-mode drop merges text
+  // BACKWARD past candidates emitted before the region opened (the F9/F11
+  // erasure class) — the doctype's own document-wide poison never fired
+  // because the raw-construct scan breaks inside the mask. Unknowable ⇒
+  // poison document-wide.
+  test('a doctype behind the mask poisons the whole document (was: boundary 5)', () => {
+    expect(computeFreezeBoundary('foo\n\n[^a]: b\r\np<iframe> x </iframe a> y\n\n<!DOCTYPE html>\n\n', OFF)).toBe(0);
+  });
+
+  test('a <template> behind the mask poisons the whole document', () => {
+    expect(computeFreezeBoundary('foo\n\np<iframe> x </iframe a> y\n\n<template>\n\n', OFF)).toBe(0);
+  });
+
+  test('a document-structure end tag behind the mask poisons the whole document', () => {
+    expect(computeFreezeBoundary('foo\n\np<iframe> x </iframe a> y\n\n</body>\n\n', OFF)).toBe(0);
+  });
+
+  test('DOWN guard: the mask without a retroactive shape keeps the pre-region boundary', () => {
+    // The from-here-on poison at the region's opening line already covers
+    // forward damage; candidates BEFORE the region must survive.
+    const text = 'foo\n\n[^a]: b\r\np<iframe> x </iframe a> y\n\nz\n\n';
+    expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('[^a]'));
+    const text2 = 'foo\n\np<iframe> x </iframe a> y\n\nplain z line\n\n';
+    expect(computeFreezeBoundary(text2, OFF)).toBe(text2.indexOf('p<iframe>'));
+  });
+
+  test('an attribute-free close ends the mask and the doctype poison fires on its own', () => {
+    // Control for the mechanism: `</iframe>` closes the region for BOTH
+    // grammars' models, the construct scan resumes, and the doctype's own
+    // document-wide poison (not this fix) zeroes the boundary.
+    expect(computeFreezeBoundary('foo\n\n[^a]: b\r\np<iframe> x </iframe> y\n\n<!DOCTYPE html>\n\n', OFF)).toBe(0);
   });
 });
 
