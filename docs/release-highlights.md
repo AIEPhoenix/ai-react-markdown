@@ -8,6 +8,16 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 ## 2.8.x — The deferred cuts close
 
+### 2.8.2 — The enumeration's fourth member, and a corpus that can finally see composites
+
+The v2.8.1 ledger left two debts; both close here, and paying the first one down found a bug.
+
+**A fourth member of the seal-release enumeration falls (F18).** Adversarial review of the derived-seal-release design constructed the shape the F16 fix's own `indent >= 4` conjunct still let through: a lazy continuation of a footnote body resumed across a blank (`[^a]: note`, blank, indented `cont`, then `lazy tail` at indent 0 or 2) emits no node yet released the seal. Measured plainly: this is a model-level under-block — 11 append schedules × 6 configs show ZERO shipped-output divergence (the raw-layer snapshot gate fires; sanitize happens to mask it), so v2.8.1 shipped no observable defect, and the fix rests on the "masking is not a safety argument" rule rather than an incident. The clause is now interruption logic, not an indent test: below a resumable footnote, only a blank-preceded ≤3-indent block start escapes withholding — any other non-blank line keeps the seal, indent-independent. The general lesson is in the ledger: an indent-conditioned "emits no node" clause is inherently wrong. Ledger row F18; four flip/control pins; baseline moved by zero entries.
+
+**The corpus learns the composite shapes it was blind to.** Five confirmed v2.8.1-campaign defects had moved the 6,000-entry pinned corpus by exactly nothing — the generators never composed the ingredients. Eight composite families land (three new: `preBogusOpener`, `sealReleasePiercer`, `rawTextRunOn`; five folded into the mechanism-owning families), each with measured REACH (generated shape vs one-byte control flips the scanner's boundary — e.g. a `<pre>`-held PI opener 0 vs 22, a masked doctype 0 vs 10, a wrapped def title under a remnant 0 vs 39) and a measured density cost (untouched families keep ~88% of their sampling; every pinned-seed marker clears the RUNS/60 floor). The seal-piercer family distinguishes the F18-fixed tree from the unfixed one, and a new `containerHeldRemnant` family pins today's root-approximation behavior — those rows are the ones a future derived-seal swap must move DOWN, and the regen rule records it. The split-vs-fold criterion, all numbers, and the tree attribution are in GRAMMAR-COVERAGE's composite-families note.
+
+The derived-seal-release design itself (three-layer L1×L2×L3 conjunction, unknown-withholds default, differential-tripwire migration) survived two adversarial review rounds — the first of which found F18 — and is finalized as a design; implementation is scheduled separately.
+
 ### 2.8.1 — The review pays its way: two streaming defects, an honest ledger, and a regime that can no longer pass vacuously
 
 A full-mainline external review (v2.5.5..v2.8.0, differential A/B measurement against live micromark/parse5) found three blockers and a set of structural weaknesses in the verification regime. Everything it found ships fixed here; nothing was deferred.
