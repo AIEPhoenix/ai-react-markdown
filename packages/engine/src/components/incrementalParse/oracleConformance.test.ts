@@ -25,7 +25,8 @@
 import { describe, expect, test } from 'vitest';
 import fc from 'fast-check';
 
-import { CATALOG } from './testPluginCatalog';
+import { CATALOG, buildAdvanceOptions } from './testPluginCatalog';
+import { computeFreezeBoundary } from './computeFreezeBoundary';
 import {
   mSpanDisagreement,
   pipelineIdentityDisagreement,
@@ -125,6 +126,64 @@ describe('oracle self-tests (must fire / must stay quiet)', () => {
         findings.filter((f) => f.detail.startsWith('P-snap')),
         `[${config.label}] full probe battery`
       ).toEqual([]);
+    }
+  });
+
+  test('a still-open raw-text element does not turn footer furniture into a frozen claim (F21)', () => {
+    // v2.8.2 gate, oracle shard 11 (ORACLE_SEED=20298311, hazard #1990):
+    // `P-snap: frozen node 49-67:element:li:{"id":"fn-spec"}` — a footnote
+    // footer `<li>`, which the gate has always meant to exempt.
+    //
+    // The exemption used to key on the section wrapper's `data-footnotes`,
+    // and a wrapper is a START TAG: any raw-text or escapable-raw-text
+    // element still open when remark-rehype's footer is emitted puts parse5
+    // in the "text" insertion mode, which drops start tags. The `<section>`
+    // and `<h2>` opens vanish, "Footnotes" lands as element text, and the
+    // `<ol>` resurfaces at the ROOT — unmarked, so the strip kept it on the
+    // open side and removed it on the side the tail closed. All seven
+    // members of the class behave identically; `plaintext` does not, because
+    // it swallows the `<ol>` too, and neither does a comment.
+    //
+    // Engine-clean on the whole class before the instrument was touched:
+    // 185k frames / 20k engaged over 250 randomized documents × 6 configs,
+    // zero divergence, plus the shard's own document at 413 frames per
+    // config. The scanner is not involved — boundaries are byte-identical on
+    // v2.8.1 (77b1577) and db9f091.
+    const withRef = (tag: string) => `uses [^x] here\n\n[^x]: body\n\npara\n\n<${tag}>\n`;
+    const orphanOnly = (tag: string) => `[^x]: body\n\npara\n\n<${tag}>\n`;
+    for (const tag of ['textarea', 'title', 'style', 'script', 'xmp', 'iframe', 'noembed']) {
+      for (const shape of [withRef, orphanOnly]) {
+        const doc = shape(tag);
+        for (const config of CATALOG) {
+          const { defListEnabled } = buildAdvanceOptions(config);
+          const boundary = computeFreezeBoundary(doc, { defListEnabled }).boundary;
+          const r = snapshotRawDisagreement(doc, `</${tag}>\n`, boundary, config);
+          const at = `<${tag}> [${config.label}] b=${boundary}`;
+          // Non-vacuous: the body nodes below the boundary are still compared.
+          expect(r.nodesCompared, `${at} compared`).toBeGreaterThan(0);
+          expect(r.detail, at).toBeNull();
+        }
+      }
+    }
+    // Control A — the same shape with a wrapper that SURVIVES. Quiet before
+    // and after the fix, so it cannot be what the pin above is measuring.
+    for (const config of CATALOG) {
+      const doc = 'uses [^x] here\n\n[^x]: body\n\npara\n\n<div>\n';
+      const { defListEnabled } = buildAdvanceOptions(config);
+      const boundary = computeFreezeBoundary(doc, { defListEnabled }).boundary;
+      const r = snapshotRawDisagreement(doc, '</div>\n', boundary, config);
+      expect(r.nodesCompared, `<div> [${config.label}] compared`).toBeGreaterThan(0);
+      expect(r.detail, `<div> [${config.label}]`).toBeNull();
+    }
+    // Control B — the exemption is stated in a definition's OWN bytes, so a
+    // document that carries one must still be able to fail. The planted
+    // reference under-block fires on every config with a footnote definition
+    // sitting above it.
+    for (const config of CATALOG) {
+      const doc = '[^n]: note\n\nuses [x] here\n\n';
+      const r = snapshotRawDisagreement(doc, '[x]: /u\n', doc.length, config);
+      expect(r.nodesCompared, `plant [${config.label}] compared`).toBeGreaterThan(0);
+      expect(r.detail, `plant [${config.label}]`).toMatch(/^P-snap/);
     }
   });
 
