@@ -111,9 +111,25 @@ describe('type 1 vs parse5 raw text (`<pre>`)', () => {
  * line is what finally closes the script-opened block.)
  */
 describe('the type-1 mask outliving parse5 (F20)', () => {
-  /** parse5 accepts these end tags; CommonMark's literal test rejects all
-   *  three, so micromark's block runs on and the mask is unbacked. */
-  const DESYNC_CLOSERS = ['</script/>', '</script >', '</script foo>'];
+  /** The CLASS, not the two spellings the fuzzer drew. parse5's end-tag
+   *  grammar takes a name then any whitespace, attributes and a bogus
+   *  self-closing slash; CommonMark's type-1 end condition is the LITERAL
+   *  string `</script>`. Everything parse5 accepts and that literal test
+   *  refuses parts the two grammars, and the guard is spelling-agnostic
+   *  because it tests the resulting STATE disagreement rather than any of
+   *  these shapes. */
+  const DESYNC_CLOSERS = [
+    '</script/>',
+    '</script >',
+    '</script foo>',
+    '</script\t>',
+    '</script//>',
+    '</script  bar=1>',
+    '</SCRIPT/>',
+    'x</script/>y', // mid-line: the block still runs on
+  ];
+  /** Both spellings that close BOTH grammars on the same line. */
+  const BACKED_CLOSERS = ['</script>', '</SCRIPT>'];
 
   test('a bogus opener behind an unbacked mask blocks the boundary', () => {
     for (const closer of DESYNC_CLOSERS) {
@@ -121,6 +137,35 @@ describe('the type-1 mask outliving parse5 (F20)', () => {
         const doc = `<script>\n${closer}\n\n<pre>\n${opener}\n</pre>\n\nt\n`;
         expect({ closer, opener, boundary: boundary(doc) }).toEqual({ closer, opener, boundary: 0 });
       }
+    }
+  });
+
+  /** The opener axis: every type-1 name that IS raw text to parse5 carries
+   *  the same disagreement, and the guard reads the member rather than the
+   *  name. `pre` is absent on purpose — it is not raw text to parse5, so no
+   *  mask is ever on and F13 above owns it. */
+  test.each(['script', 'style', 'textarea'])('the disagreement is per member, not per name — %s', (name) => {
+    expect(boundary(`<${name}>\n</${name}/>\n\n<pre>\n</3\n</pre>\n\nt\n`)).toBe(0);
+    // and the literal close of the same name still freezes
+    expect(boundary(`<${name}>\n</${name}>\n\n<pre>\n</3\n</pre>\n\nt\n`)).toBeGreaterThan(0);
+  });
+
+  /** The REVERSE disagreement, and why it needs no code here. CommonMark's
+   *  end condition accepts ANY of the four literals, so a `</pre>` line
+   *  closes a `<script>`-opened block for micromark while parse5's script
+   *  data runs on — micromark closed, parse5 open, the mirror of F20. It is
+   *  already covered, and the two guards are exactly complementary: F10's
+   *  blank-line poison is skipped for type-1 blocks (`!mdHtml(mdBlock, 1)`,
+   *  correct — a blank does not end one), which is why F20 exists; and in
+   *  the reverse case `mdBlock` is NOT type-1, so F10 fires. A candidate
+   *  cannot appear before the first blank, so the blank is the whole
+   *  exposure. Pinned so that narrowing either guard shows up here. */
+  test('the reverse disagreement is covered by the blank-line poison', () => {
+    for (const closer of ['</pre>', '</style>', '</textarea>']) {
+      expect({ closer, boundary: boundary(`<script>\n${closer}\n\n<div>\nd\n</div>\n\ntail para\n`) }).toEqual({
+        closer,
+        boundary: 0,
+      });
     }
   });
 
@@ -151,7 +196,20 @@ describe('the type-1 mask outliving parse5 (F20)', () => {
    *  own fixture, and an earlier draft of the guard broke it by testing the
    *  desync mid-scan, where `mdBlock` is not yet settled. */
   test('a literal close leaves F13 to do its own job', () => {
-    expect(boundary('<script>\n</script>\n\n<pre>\n</3\n</pre>\n\nt\n')).toBe(20);
+    for (const closer of BACKED_CLOSERS) {
+      expect({ closer, boundary: boundary(`<script>\n${closer}\n\n<pre>\n</3\n</pre>\n\nt\n`) }).toEqual({
+        closer,
+        boundary: 20,
+      });
+    }
+  });
+
+  /** A truncated `<script` at EOL was forecast as a one-line over-block (the
+   *  block opens for micromark while parse5 is still inside the tag).
+   *  Measured: it does not happen — pinned so that a later change to the
+   *  pending-tag path cannot introduce the cost unnoticed. */
+  test('a tag-spanning open costs nothing', () => {
+    expect(boundary('<script\n>\nx\n</script>\n\ntail para\n\nmore\n')).toBeGreaterThan(0);
   });
 
   test('well-formed raw-text blocks still freeze', () => {
