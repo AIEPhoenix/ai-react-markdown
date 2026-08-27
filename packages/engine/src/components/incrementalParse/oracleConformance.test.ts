@@ -179,10 +179,17 @@ describe('oracle sweep — fuzz corpus (env-scaled)', () => {
   const seed = Number(testEnv('ORACLE_SEED') ?? 20260824);
 
   const sweep = (name: string, arb: fc.Arbitrary<FuzzDoc>, seedOffset: number) => {
-    // ~25 docs/s (each doc runs ~9 probes × two engine frames + the layer
-    // instruments); the default 5 s timeout marks a COMPLETED zero-defect
-    // sweep as failed at soak scale.
-    test(`${name} × ${runs}`, { timeout: Math.max(30_000, runs * 100) }, () => {
+    // Per-run budget is MEASURED, not guessed (the 100 ms/run guess timed a
+    // COMPLETED zero-defect leg-5 sweep out at 4000 runs on g7pt): local dev
+    // machine, idle, ORACLE_RUNS=800 — benign 26.3 ms/run, hazard 26.9
+    // ms/run (21.1 s / 21.6 s per sweep, 2026-08-27, P0 three-frame probe +
+    // snapshot instrument included). The g7pt timeout proves > 100 ms/run
+    // on slower server cores under 12-way shard contention, so the budget
+    // is 300 ms/run — ≈ 11× the local measurement and ≈ 3× the observed
+    // server lower bound. A timeout here marks a FINISHED sweep failed, so
+    // generous is the correct direction; real hangs still die within the
+    // frame budget.
+    test(`${name} × ${runs}`, { timeout: Math.max(60_000, runs * 300) }, () => {
       const docs = fc.sample(arb, { seed: seed + seedOffset, numRuns: runs });
       const stats: OracleSweepStats = {
         probesRun: 0,
