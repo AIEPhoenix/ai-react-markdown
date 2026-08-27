@@ -22,7 +22,12 @@
 import { describe, expect, test } from 'vitest';
 
 import { DEFAULT_PAYLOAD, withDefs } from '../../fixtures/scenarios';
-import { collectPrefixInjection, type InjectionEvent } from './spliceParse';
+import {
+  collectPrefixInjection,
+  isExactSanitizeStrippedConstruct,
+  isSanitizeStrippedConstruct,
+  type InjectionEvent,
+} from './spliceParse';
 import { advanceIncrementalParse, type IncrementalParseState } from './advanceIncrementalParse';
 import { buildAdvanceOptions, buildCrossChunkAdvanceOptions, CATALOG, type CatalogConfig } from './testPluginCatalog';
 import { codePointSnapshots as chunkSnapshots } from './codePointSnapshots';
@@ -1418,5 +1423,131 @@ describe('splice equivalence — cross-chunk phantom suffixes', () => {
     const options = buildCrossChunkAdvanceOptions(new Set(['A1']), new Set());
     const stats = runCrossChunk('own-plus-cross', frames, () => options);
     expect(stats.incrementalFrames).toBeGreaterThan(0);
+  });
+});
+
+describe('splice equivalence — constructs that vanish at PARSE5 time (release-gate F16/F17)', () => {
+  // The 2026-08-27 release-gate soak caught two hast mismatches on the
+  // production advance path (seeds 20293003 / 20293004). One mechanism, two
+  // consumers: a construct that vanishes AT PARSE5 TIME (a `<!DOCTYPE>` —
+  // dropped token, no node — or the un-construct tail of a mixed html block,
+  // `<!-- c --> </s>` → remnant ` `) merges the wrap slots around it, while
+  // the splice's separator model classified it like a construct SANITIZE
+  // strips (node existed at raw time ⇒ slots stay separate). Both resolve
+  // DOWN: the shapes bail to a full parse. The generator's U+3000
+  // continuation lines rode along in both counterexamples but are inert —
+  // kept in the pinned docs verbatim anyway (transcribed by codepoint).
+  const BASELINE = CATALOG[0];
+
+  /** driveSample's schedule pair, minus the fuzz machinery: equivalence on
+   *  the exact doc × sizes, forward and reversed. Engagement floor 0 —
+   *  post-fix these shapes are REFUSED (scanner poison / splice bail), and
+   *  that refusal is the assertion; the controls below pin the splice
+   *  still engaging on the sanitize-stripped neighbours. */
+  const pinShrunk = (name: string, doc: string, sizes: number[]): void => {
+    for (const schedule of [sizes, [...sizes].reverse()]) {
+      assertStreamEquivalence(name, scheduleSnapshots(doc, schedule), BASELINE, { minIncrementalFrames: 0 });
+    }
+  };
+
+  test('finding A (seed 20293003): frozen html block whose tail is not a construct — the fast-check shrink', () => {
+    // Failure was at frame 19 (boundary 90): the block's whole output is
+    // stripped/dropped, its remnant ` ` merges into the seam slot (`" \n"`),
+    // and the trailing rebuild synthesized a bare `"\n"`.
+    pinShrunk(
+      'f16-shrunk',
+      '<!-- c --> </s>\n\n\n[^a]: body text\n\n    indented continuation\n\n[a]: https://example.com/a\n\n\n- tight one\n- tight two\n\n```\nconst x = "[a]<div>";\n\n```\n\nfoo line\n\u3000\n\u3000\nbar joins the paragraph\n\n[a]: /u(x)y\n',
+      [1, 4, 7, 4, 5, 10, 1, 7]
+    );
+  });
+
+  test('finding A: hand-shrunk two-frame reproducer', () => {
+    pinShrunk('f16-min', '<!-- c --> </s>\n\n[^a]: body\n\n    cont\n\n[a]: /u\n\nx', [48, 1]);
+  });
+
+  test('finding B (seed 20293004): doctype vanishing at parse5 time merges the seam — the fast-check shrink', () => {
+    // Failure was at frame 31 (boundary 55): everything between the seam and
+    // the doctype emits no top-level output, so the doctype's drop merged
+    // the seam slot with the post-doctype slot (`"\n\n"`) while the join
+    // kept two nodes (`"\n" | "\n"`).
+    pinShrunk(
+      'f17-shrunk',
+      '> a quoted line\n\nfoo line\n\u3000\n\u3000\nbar joins the paragraph\n\n[^a]: body text\r\np<iframe> x </iframe a> y\n\n<!DOCTYPE html>\n\ntail para\n\n</br>\n\nTerm line\n\n:   description body\n\n[^a]: body text\n',
+      [4, 4, 4, 4, 4, 4, 4, 1]
+    );
+  });
+
+  test('finding B: hand-shrunk two-frame reproducer', () => {
+    pinShrunk('f17-min', 'foo\n\n[^a]: b\r\np<iframe> x </iframe a> y\n\n<!DOCTYPE html>\n\n', [5, 53]);
+  });
+
+  test('doctype variants stay equivalent whichever side of the seam they land on', () => {
+    for (const [name, doc] of [
+      ['doctype-in-tail', 'x\n\n<!DOCTYPE html>\n\ny'],
+      ['doctype-tail-only', 'x\n\n<!DOCTYPE html>\n'],
+      ['doctype-in-prefix', 'x\n\n<!DOCTYPE html>\n\ny\n\nz'],
+      ['doctype-after-defs', 'x\n\n[a]: /u\n\n<!DOCTYPE html>\n\nz'],
+    ] as const) {
+      for (const chunk of [3, 7]) {
+        assertStreamEquivalence(name, chunkSnapshots(doc, chunk), BASELINE, { minIncrementalFrames: 0 });
+      }
+    }
+  });
+
+  test('controls: the sanitize-stripped neighbours still SPLICE', () => {
+    // The tightened predicates must not swallow the legitimate class — a
+    // pure comment trailing child, a bogus (non-doctype) declaration in the
+    // tail, and a paragraph pinning the seam all keep the incremental path
+    // engaged (floor 1 via the default).
+    const controls: Array<[string, string[]]> = [
+      ['ctl-pure-comment-def', ['<!-- c -->\n\n[a]: /u\n\n', '<!-- c -->\n\n[a]: /u\n\nx']],
+      ['ctl-bogus-decl-tail', ['x\n\n', 'x\n\n[a]: /u\n\n<!ELEMENT html>\n\n', 'x\n\n[a]: /u\n\n<!ELEMENT html>\n\nz']],
+      ['ctl-paragraph-pins-seam', ['<!-- c --> </s>\n\npara line\n\n', '<!-- c --> </s>\n\npara line\n\nx']],
+    ];
+    for (const [name, frames] of controls) {
+      assertStreamEquivalence(name, frames, BASELINE);
+    }
+  });
+
+  describe('the stripped-construct predicates carry PARSE5 term semantics, not micromark ones', () => {
+    test('seam classifier: doctype is NOT sanitize-stripped (no node ever exists)', () => {
+      expect(isSanitizeStrippedConstruct('<!DOCTYPE html>')).toBe(false);
+      expect(isSanitizeStrippedConstruct('<!doctype html>')).toBe(false);
+      // Non-doctype declarations ARE bogus comments — node exists.
+      expect(isSanitizeStrippedConstruct('<!ELEMENT html>')).toBe(true);
+      expect(isSanitizeStrippedConstruct('<!-- c -->')).toBe(true);
+      expect(isSanitizeStrippedConstruct('<?php x ?>')).toBe(true);
+      expect(isSanitizeStrippedConstruct('<![CDATA[x]]>')).toBe(true);
+    });
+
+    test('trailing rebuild: only ONE construct covering the value exactly', () => {
+      // The finding-A shape: construct + remnant.
+      expect(isExactSanitizeStrippedConstruct('<!-- c --> </s>')).toBe(false);
+      // Whitespace between two constructs is a remnant text node.
+      expect(isExactSanitizeStrippedConstruct('<!-- a --> <!-- b -->')).toBe(false);
+      // A multi-line block's inner newline survives as its own text node.
+      expect(isExactSanitizeStrippedConstruct('<!-- c -->\n<!-- d -->')).toBe(false);
+      expect(isExactSanitizeStrippedConstruct('<!DOCTYPE html>')).toBe(false);
+      expect(isExactSanitizeStrippedConstruct('<!-- c -->')).toBe(true);
+      expect(isExactSanitizeStrippedConstruct('<!---->')).toBe(true);
+      expect(isExactSanitizeStrippedConstruct('<!ELEMENT html>')).toBe(true);
+    });
+
+    test('a bogus comment ends at the FIRST `>` — a `>` inside the micromark body leaves a remnant', () => {
+      // micromark's PI runs to `?>`; parse5's bogus comment closed at `a >`
+      // and ` b ?>` survives as text. Same for CDATA and declarations.
+      expect(isExactSanitizeStrippedConstruct('<?a > b ?>')).toBe(false);
+      expect(isExactSanitizeStrippedConstruct('<![CDATA[a>b]]>')).toBe(false);
+      expect(isExactSanitizeStrippedConstruct('<!EL a > b>')).toBe(false);
+      expect(isExactSanitizeStrippedConstruct('<?x?>')).toBe(true);
+      expect(isExactSanitizeStrippedConstruct('<![CDATA[ab]]>')).toBe(true);
+    });
+
+    test('a comment also closes at `--!>` — micromark ignores it, parse5 does not', () => {
+      // parse5's comment node ends at `--!>`; ` b -->` survives as text
+      // while micromark's block ran to the `-->`.
+      expect(isExactSanitizeStrippedConstruct('<!-- a --!> b -->')).toBe(false);
+      expect(isExactSanitizeStrippedConstruct('<!-- a --> b --!>')).toBe(false);
+    });
   });
 });

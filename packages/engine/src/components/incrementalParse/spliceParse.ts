@@ -1143,14 +1143,19 @@ function alignPrefixCut(
   // shape a sanitize-stripped node leaves (comment/PI/CDATA/declaration:
   // rehype-raw made a node, sanitize removed it, the separators around it
   // stay separate texts). An html block that parse5 DROPPED outright (a
-  // stray `</details>`, or an element sanitize removed as a whole) leaves
-  // no node, and hast-util-raw merges the separators around it into one
-  // `"\n\n"` — the two are indistinguishable from the cut hast (release
-  // soak of 2.4.2, `</details>\n<!-- c\n\n-->\n</details>` — pre-existing).
-  // Bail unless every stripped trailing child is a raw-construct block.
+  // stray `</details>`, a `<!DOCTYPE>`, or an element sanitize removed as a
+  // whole) leaves no node, and hast-util-raw merges the separators around
+  // it into one `"\n\n"` — the two are indistinguishable from the cut hast
+  // (release soak of 2.4.2, `</details>\n<!-- c\n\n-->\n</details>` —
+  // pre-existing). And a child that only STARTS with a construct leaves the
+  // rest as a text remnant that merges into a slot the rebuild synthesizes
+  // bare (`<!-- c --> </s>` → `" \n"`, release-gate finding A, seed
+  // 20293003 — the old `/^\s*<[!?]/` prefix test admitted it). Bail unless
+  // every stripped trailing child is EXACTLY one sanitize-stripped
+  // construct.
   for (let j = pairIdx + 1; j < visibles.length; j++) {
     const v = visibles[j];
-    if (v.type === 'html' && !/^\s*<[!?]/.test((v as { value: string }).value)) return null;
+    if (v.type === 'html' && !isExactSanitizeStrippedConstruct((v as { value: string }).value)) return null;
   }
   for (let i = 0; i < trailingGaps + seam; i++) {
     out.push({ type: 'text', value: '\n' });
@@ -1274,8 +1279,10 @@ function tailLeadingTextIsHoist(tailMdastChildren: MdastContent[], tailHastChild
     if (firstText.type === 'text' && firstText.position === undefined && firstVisible?.type === 'html') {
       if (/^\s*<\/[A-Za-z][A-Za-z0-9-]*\s*>/.test(firstVisible.value)) return true;
       // A complete comment/PI/decl/CDATA existed at raw time (sanitize
-      // stripped it later) — its slots stay separate: no merge.
-      if (isCompleteRawConstruct(firstVisible.value)) return false;
+      // stripped it later) — its slots stay separate: no merge. A DOCTYPE
+      // is not in that class (parse5 drops it, no node) and falls to the
+      // bail below.
+      if (isSanitizeStrippedConstruct(firstVisible.value)) return false;
       // Anything else — an unterminated `<div` opener the tokenizer drops
       // at EOF-in-tag (release soak: `<div\n\n</t>\ntext`), mixed raw
       // values — needs the tokenizer to say whether a node existed
@@ -1296,21 +1303,67 @@ function tailLeadingTextIsHoist(tailMdastChildren: MdastContent[], tailHastChild
     }
   }
   if (firstVisible.type === 'math') return false; // KaTeX output, never dropped
-  if (firstVisible.type === 'html' && isCompleteRawConstruct(firstVisible.value)) return false;
+  // Sanitize-stripped constructs only: a raw-time node existed, the slots
+  // stay separate. A `<!DOCTYPE …>` child VANISHES at parse5 time instead
+  // (no node — fragment tree construction drops the doctype token), so the
+  // seam separator and the tail's leading text MERGE in a full parse
+  // (release-gate finding B, seed 20293004) — it falls through to the null
+  // bail, full parse for the frame.
+  if (firstVisible.type === 'html' && isSanitizeStrippedConstruct(firstVisible.value)) return false;
   return null;
 }
 
-/** Single complete comment / PI / declaration / CDATA — raw-time node
- *  guaranteed (sanitize strips it later, so its separator slots stay
- *  separate). Anything unterminated or mixed → not classifiable here. */
-function isCompleteRawConstruct(value: string): boolean {
+/** Single complete comment / PI / declaration / CDATA that begins with a
+ *  construct parse5 turns into a NODE (a comment) — raw-time node
+ *  guaranteed, sanitize strips it later, so its separator slots stay
+ *  separate. `<!DOCTYPE …>` is the one declaration this is FALSE of:
+ *  parse5's tokenizer recognizes it as a real doctype token, and fragment
+ *  tree construction then DROPS it outright — no node ever exists, so the
+ *  texts on either side MERGE at reparse time (release-gate finding B:
+ *  classifying it "stripped ⇒ slots separate" split a seam text the full
+ *  parse merges). Doctypes and anything unterminated or mixed → not
+ *  classifiable here. Exported for the semantics pins. */
+export function isSanitizeStrippedConstruct(value: string): boolean {
   const v = value.trim();
   return (
     (v.startsWith('<!--') && v.endsWith('-->')) ||
     (v.startsWith('<?') && v.endsWith('?>')) ||
     (v.startsWith('<![CDATA[') && v.endsWith(']]>')) ||
-    (/^<![A-Za-z]/.test(v) && v.endsWith('>'))
+    (/^<![A-Za-z]/.test(v) && !/^<!doctype/i.test(v) && v.endsWith('>'))
   );
+}
+
+/** The trailing-slot rebuild's admission test — STRICTER than the seam
+ *  classifier above, because the rebuild asserts the stripped child leaves
+ *  EXACTLY one bare '\n' wrap slot and nothing else. The whole value must
+ *  be ONE construct that parse5 tokenizes into a node and sanitize strips,
+ *  covering the value EXACTLY: any surrounding bytes survive the strip as a
+ *  text remnant that merges into a neighbouring slot, which the plain-'\n'
+ *  rebuild cannot represent (`<!-- c --> </s>` leaves ` ` and the full
+ *  parse's slot is `" \n"` — release-gate finding A). The construct ends
+ *  are PARSE5's, not micromark's:
+ *  - a comment also closes at `--!>` (micromark ignores it), so the first
+ *    parse5 close must be the value's own terminal `-->`;
+ *  - `<?…` / `<!x…` / `<![CDATA[…` in HTML content are ONE bogus comment
+ *    running to the FIRST `>` — a `>` inside the micromark construct body
+ *    ends the node early and leaves a remnant;
+ *  - `<!doctype` never makes a node at all (see the seam classifier).
+ *  Exported for the semantics pins. */
+export function isExactSanitizeStrippedConstruct(value: string): boolean {
+  if (value.startsWith('<!--')) {
+    if (value.length < 7 || !value.endsWith('-->')) return false;
+    // First close scanned from past the opener; an overlap-close empty
+    // comment (`<!--->`) is refused — conservative, full parse instead.
+    const close = value.indexOf('-->', 4);
+    const bangClose = value.indexOf('--!>', 4);
+    if (close !== value.length - 3) return false;
+    return bangClose === -1 || bangClose > close;
+  }
+  if (/^<!doctype/i.test(value)) return false;
+  if (value.startsWith('<?') || /^<!(?:[A-Za-z]|\[CDATA\[)/.test(value)) {
+    return value.indexOf('>') === value.length - 1;
+  }
+  return false;
 }
 
 /** Position-less whitespace-only root text — wrap()/rehype-raw separator runs. */
