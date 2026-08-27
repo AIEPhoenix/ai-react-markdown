@@ -570,8 +570,9 @@ const scriptEscapeArb = fc.oneof(
 // size lands under the floor on ordinary seed variation. Every family
 // therefore sits at 2 or above; raise the whole pool rather than singling one
 // out when a new family is added (2026-08-21: the pool went 38 → 49;
-// 2026-08-27: 58 → 64 with the three composite families — the measured
-// density cost is in GRAMMAR-COVERAGE's corpus-composite note).
+// 2026-08-27: 58 → 66 with the three composite families and two floor
+// re-weights, then 66 → 68 with the container-remnant family — the
+// measured density cost is in GRAMMAR-COVERAGE's corpus-composite note).
 /** End tags parse5 DISCARDS because a scope barrier hides their element.
  *  `<div><table></div></table>` leaves the div OPEN — `</div>` is a parse
  *  error and is ignored, `</table>` pops only the table — so every later block
@@ -688,7 +689,11 @@ const rawPhaseSplitArb = fc.oneof(
  *  with ZERO pinned-corpus delta: `linkDefArb` had the wrapped title and
  *  `footnoteDefArb` the cross-blank body, but never composed with a live
  *  remnant. Pinned in computeFreezeBoundary.test.ts (soak 20289117 / seed
- *  20293003). */
+ *  20293003). The F18 shapes joined 2026-08-27 (second batch): a resumed
+ *  footnote body's LAZY continuation at indent 0/2 emits no node either —
+ *  the F16 clause's `indent >= 4` conjunct read it as a releasing line
+ *  (measured: the reproducer released at 72/59 on the unfixed 77b1577
+ *  tree; the withhold holds it at 0 since 5f07996). */
 const sealPiercerArb = fc.oneof(
   {
     weight: 2,
@@ -696,7 +701,9 @@ const sealPiercerArb = fc.oneof(
       '<!-- c --> </s>\n\n[^a]: body\n\n    cont\n\n[b]: /v\n\ntail para',
       '</details>\nr\n\n[b]: /b\n[b]: /b "t\nw"\n\n<!--',
       '</details>\nr\n\n[a]: /u\n"t"\n\n<!--',
-      '<!-- c --> </s>\n\n[^a]: body text\n\n    indented continuation\n\n[a]: https://example.com/a\n\n- t'
+      '<!-- c --> </s>\n\n[^a]: body text\n\n    indented continuation\n\n[a]: https://example.com/a\n\n- t',
+      '<div>\n</div>\nfloating remnant\n\n[^a]: note\n\n    cont\nlazy tail\n\n[b]: /v\n\ntail para',
+      '<!-- c --> </s>\n\n[^a]: note\n\n    cont\n  lazy two\n\n[b]: /v\n\ntail para'
     ),
   },
   {
@@ -708,7 +715,43 @@ const sealPiercerArb = fc.oneof(
     arbitrary: fc.constantFrom(
       '<!-- c --> </s>\n\n[^a]: body\n\npinning paragraph\n\ntail para',
       '</details>\nr\n\n[a]: /u\n\nreal paragraph\n\ntail para',
-      '<!-- c --> </s>\n\n[^a]: body\n\n[a]: /u\n\n    code\n\n[b]: /v\n\ntail para'
+      '<!-- c --> </s>\n\n[^a]: body\n\n[a]: /u\n\n    code\n\n[b]: /v\n\ntail para',
+      // The F18 clear: a ≤3-indent block start after the continuation is
+      // the one line no body can lazily absorb — it interrupts AND
+      // releases on its own merits.
+      '<div>\n</div>\nfloating remnant\n\n[^a]: note\n\n    cont\n\npinning paragraph\n\ntail para'
+    ),
+  }
+);
+
+/** Container-held html remnants: the blocker-6 seal arm reads the FLOATING
+ *  remnant at root, and every corpus shape so far put it there — a remnant
+ *  INSIDE a blockquote or list item was never sampled (49-weight corpus,
+ *  zero coverage). Measured 2026-08-27 on the fixed tree: the container
+ *  forms release where the root form holds (`> …remnant` + def tail
+ *  frees 46/47/28 against root 0), streamed equivalence green on every
+ *  shape — absorbed today, and exactly the shapes the future derived
+ *  seal-release swap (open question 1) must stay measured against. The
+ *  comment-terminator remnant carries into containers unchanged (poisons
+ *  to 0). */
+const containerRemnantArb = fc.oneof(
+  {
+    weight: 2,
+    arbitrary: fc.constantFrom(
+      '> <div>\n> </div>\n> floating remnant\n\n[a]: /u\n\nx marks it',
+      '- <div>\n  </div>\n  remnant\n\ncol zero\n\n[a]: /u\n\nx marks it',
+      '> <!-- c --> </s>\n\n[a]: /u\n\nx marks it',
+      '> <div>\n> </div>\n> <!-- open\n> --> tail remnant\n\ntail para',
+      '> <div>\n> </div>\n> remnant\n\n[^a]: note\n\n    cont\n\ntail para'
+    ),
+  },
+  {
+    // Controls: pinned by prose inside the container, or no remnant at all.
+    weight: 2,
+    arbitrary: fc.constantFrom(
+      '> <div>x</div>\n> prose line\n\ntail para',
+      '> <!-- c -->\n\ntail para',
+      '- <div>x</div>\n- second item\n\ntail para'
     ),
   }
 );
@@ -836,6 +879,7 @@ const rawHtmlArb = fc.oneof(
   { weight: 2, arbitrary: type1BoundaryArb },
   { weight: 2, arbitrary: preBogusOpenerArb },
   { weight: 2, arbitrary: sealPiercerArb },
+  { weight: 2, arbitrary: containerRemnantArb },
   { weight: 2, arbitrary: rawTextRunOnArb },
   { weight: 2, arbitrary: rawTextElementArb },
   { weight: 2, arbitrary: inlineRawTextSpanArb },
@@ -1083,6 +1127,7 @@ export const COVERAGE_MARKERS: Record<string, RegExp> = {
   headRoutedCapture: /<(?:title|noframes)>\n\n|<(?:title|noframes)>[a-z]*<\/(?:title|noframes)>/,
   rawPhaseSplit: /x <(?:!D|\?p|!\[CDATA\[) y|<iframe>\n\n\*b\*|<iframe>x<\/iframe>/,
   preBogusOpener: /<pre>[\n ]<[?!/]|<(?:style|script|textarea)>\n<(?:\?x|!y|!\[)/,
-  sealReleasePiercer: /<\/s>\n\n\[\^a\]|"t\nw"\n\n<!--|\n"t"\n\n<!--|<\/details>\nr\n/,
+  sealReleasePiercer: /<\/s>\n\n\[\^a\]|"t\nw"\n\n<!--|\n"t"\n\n<!--|<\/details>\nr\n|remnant\n\n\[\^a\]/,
   rawTextRunOn: /<\/(?:textareax|scripty)>|<\/textarea>\r\r|<\/script>\r\r|<\?i\r/,
+  containerHeldRemnant: /> (?:floating |tail )?remnant|\n {2}remnant\n|> prose line|> <!-- c -->|- second item/,
 };
