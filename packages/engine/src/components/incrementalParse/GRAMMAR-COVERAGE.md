@@ -441,6 +441,33 @@ weight-derived floor remains the real fix. Within-family dilution for
 the folds: `treeQuirk` 8 → 11 members, `inlineRawTextSpan` 6 → 10,
 `nonType6QuotedGt` +6 shapes.
 
+**Second batch (same day, after the F18 landing).** Two more classes
+from the design review of the derived seal-release:
+
+- FOLD into `sealPiercerArb` — F18: a resumed footnote body's LAZY
+  continuation at indent 0/2 under a floating remnant, plus the
+  block-start clear as control. Reach measured on BOTH trees: the
+  reproducer released at 72 (indent-2 form: 59) on the unfixed 77b1577
+  tree and holds at 0 since 5f07996 — the family distinguishes fixed
+  from unfixed, which is the whole job.
+- NEW `containerHeldRemnant` — html remnants INSIDE blockquote/list
+  containers, a class the 49-weight corpus had zero coverage of. The
+  seal arm reads the floating remnant at ROOT, and the measurement
+  (fixed tree, 2026-08-27) shows the difference is real: container-held
+  remnant + node-less def tail releases at 46/47/28 where the root form
+  holds at 0; the comment-terminator remnant poisons to 0 in containers
+  exactly as at root; streamed equivalence is green on every shape —
+  absorbed today. This family is the stated precondition for the
+  derived-release swap (open question 1): when the swap lands, these
+  samples are the ones whose baseline rows must move DOWN, and the
+  regen rule will show it.
+
+Pool 66 → 68; pinned-seed marker floor re-verified (all ≥ 5, lowest
+`crossLineSelfClosing`/`foreignContent` at exactly 5; new markers
+`containerHeldRemnant` pinned 7, `sealReleasePiercer` 11). Second regen
+attribution: 969 of 2020 samples redrawn, byte-unchanged 1051 samples /
+3153 entries at 0 increases, 0 decreases.
+
 **The fingerprint is a regen TRIGGER, not an escape hatch (v-4, hardened
 2026-08-26).** It used to be asserted before the increases check, so any
 generator edit tripped regeneration and the red line was never evaluated —
