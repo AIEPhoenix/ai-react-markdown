@@ -269,7 +269,18 @@ function frozenSignatures(nodes: NodeLike[], boundary: number, out: string[] = [
     // It was this instrument's only false positive across ~346k probe
     // positions, so the guard is the difference between a gate that can
     // run and one that cries wolf once a corpus.
-    if (start !== undefined && end !== undefined && start <= end && end <= boundary) {
+    //
+    // `start < boundary` requires the node to OWN at least one frozen byte.
+    // Under the other two conjuncts the only shape it excludes is a
+    // ZERO-WIDTH node sitting exactly AT the boundary (start >= boundary ∧
+    // end <= boundary ∧ start <= end ⇒ start = end = boundary): raw
+    // furniture whose identity derives ENTIRELY from tail bytes — measured
+    // `297-297:element:p` where the tail line `p<iframe> x </iframe a> y`
+    // collapses its own paragraph element at the raw layer (281d oracle
+    // leg, seed 20294308 #558; engine-clean on seven schedules × six
+    // configs, so an instrument artifact). The scanner's claim covers
+    // bytes [0, boundary) and says nothing about a node holding none.
+    if (start !== undefined && end !== undefined && start <= end && start < boundary && end <= boundary) {
       out.push(
         `${start}-${end}:${node.type}:${node.tagName ?? ''}:` +
           `${JSON.stringify(node.properties ?? null)}:${JSON.stringify(node.value ?? null)}`
@@ -301,7 +312,12 @@ interface SnapshotResult {
  * concatenating two independent parses. Every one of the E1-E7 families
  * is exactly such an artifact, which is why they all go to zero under it.
  */
-function snapshotRawDisagreement(doc: string, tail: string, boundary: number, config: CatalogConfig): SnapshotResult {
+export function snapshotRawDisagreement(
+  doc: string,
+  tail: string,
+  boundary: number,
+  config: CatalogConfig
+): SnapshotResult {
   // SCOPE LIMITS, measured and accepted rather than papered over:
   //  - 26.0% of provably-frozen nodes carry no position offsets and are
   //    invisible here (raw reserialization drops them). The direction

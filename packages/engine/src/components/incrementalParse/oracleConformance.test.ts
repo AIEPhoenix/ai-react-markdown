@@ -33,6 +33,7 @@ import {
   probeTailsFor,
   oracleCheckDoc,
   engineProbe,
+  snapshotRawDisagreement,
   type OracleSweepStats,
 } from './conformanceOracles';
 import { REALISTIC_DOCS, pinnedFuzzDocs } from './pinnedCorpus';
@@ -86,6 +87,45 @@ describe('oracle self-tests (must fire / must stay quiet)', () => {
     const prefix = '<iframe>\n\n';
     const tail = '<div>probe</div>\n\n</iframe>\n';
     expect(rawLayerIdentityDisagreement(prefix, tail, CATALOG[0])).not.toBeNull();
+  });
+
+  test('a planted under-block fires on the P snapshot gate (the gate is not blind)', () => {
+    // The snapshot gate had no must-fire plant of its own — the edge fix
+    // below could have blinded it silently. Two shapes whose frozen nodes
+    // OWN bytes below the (deliberately wrong) boundary and are rewritten
+    // by the tail:
+    // - a reference the tail's definition retargets (the text node splits
+    //   around a new <a>);
+    // - the F10 iframe whose raw-text region swallows the probe.
+    const ref = snapshotRawDisagreement('uses [x] here\n\n', '[x]: /u\n', 15, CATALOG[0]);
+    expect(ref.nodesCompared).toBeGreaterThan(0);
+    expect(ref.detail).toMatch(/^P-snap/);
+    const f10 = snapshotRawDisagreement('<iframe>\n\n<div>probe</div>\n\n', '</iframe>\n', 28, CATALOG[0]);
+    expect(f10.nodesCompared).toBeGreaterThan(0);
+    expect(f10.detail).toMatch(/^P-snap/);
+  });
+
+  test('a zero-width node AT the boundary stays quiet on the P snapshot gate (281d artifact)', () => {
+    // 281d oracle leg, ORACLE_SEED=20294308 benign #558 [no-orphan]: the
+    // tail line `p<iframe> x </iframe a> y` collapses its own paragraph
+    // element to a ZERO-WIDTH raw node sitting exactly AT the boundary
+    // (`297-297:element:p`), and every probe's append legitimately reshapes
+    // it. The node owns no frozen byte, so it is not the scanner's claim —
+    // engine-clean on seven schedules × six configs, measured before the
+    // predicate gained `start < boundary`. Minimal 33-byte reproduction,
+    // all configs; nodesCompared stays positive, so the quiet verdict is
+    // not vacuous.
+    const doc = 'x\n\np<iframe> x </iframe a> y\nmore\n';
+    for (const config of CATALOG) {
+      const r = snapshotRawDisagreement(doc, 'probe tail text\n', 3, config);
+      expect(r.nodesCompared, `[${config.label}] compared`).toBeGreaterThan(0);
+      expect(r.detail, `[${config.label}]`).toBeNull();
+      const findings = oracleCheckDoc(doc, config, undefined, 0, { idealIdentity: true });
+      expect(
+        findings.filter((f) => f.detail.startsWith('P-snap')),
+        `[${config.label}] full probe battery`
+      ).toEqual([]);
+    }
   });
 
   test('the M oracle stays quiet on paragraph prefixes for every probe', () => {
