@@ -202,6 +202,41 @@ const type1BoundaryArb = fc.constantFrom(
   '<pre>\nx\n</pre >\n\n```\ncode\n```',
   '<script>\nx\n</scripty>\n\n<!-- c -->'
 );
+/** B2/F13 — bogus-comment openers INSIDE a type-1 block. `pre` is html{1}
+ *  to micromark and a DATA element to parse5 — the one `TYPE1_NAMES` member
+ *  outside `RAW_TEXT_ELEMENTS` — so `<?x` / `<!y` / `<![CDATA[` / `</3` on
+ *  its lines really open a bogus comment, which eats the `>` of the
+ *  `</pre>` closer line and leaves the element open swallowing the rest of
+ *  the document (F13, shipped; pinned in type1PreNotRawText.test.ts). The
+ *  raw-text names are the control side: parse5 reads the same bytes as
+ *  element TEXT, both grammars agree, and the doc keeps freezing. The
+ *  pinned corpus had ZERO of these compositions when F13 shipped (6063
+ *  entries, zero delta) — `rawTextBlockArb` carried the openers only under
+ *  raw-text names, where they are inert. */
+const preBogusOpenerArb = fc.oneof(
+  {
+    weight: 2,
+    arbitrary: fc.constantFrom(
+      '<pre>\n<?x\n</pre>\n\ntail para',
+      '<pre>\n<!y\n</pre>\n\ntail para',
+      '<pre>\n<![CDATA[\n</pre>\n\ntail para',
+      '<pre>\n</3\n</pre>\n\ntail para',
+      '<pre> <?x\n</pre>\n\ntail para'
+    ),
+  },
+  {
+    // Controls: same openers under real raw-text names stay inert, and a
+    // plain `<pre>` block closes cleanly — the family's freezable side.
+    weight: 3,
+    arbitrary: fc.constantFrom(
+      '<style>\n<?x\n</style>\n\ntail para',
+      '<script>\n<!y\n</script>\n\ntail para',
+      '<textarea>\n<![CDATA[\n</textarea>\n\ntail para',
+      '<pre>\nplain pre text\n</pre>\n\ntail para'
+    ),
+  }
+);
+
 /** parse5 RAWTEXT / RCDATA elements that sit in the CommonMark type-6 list
  *  (no hazardVerdict): their content is TEXT to parse5 — a `</div>` inside
  *  must not close anything (2026-08-19 review r2 P1-4). */
@@ -228,7 +263,17 @@ const treeQuirkArb = fc.constantFrom(
   '<td>s</td>\n\n| a |\n| - |',
   '<td>s</td>\n\n| a | b |\n| - | - |\n| 1 | 2 |',
   '<td>s</td>\n\npara\n\n| a |\n| - |',
-  '<col>'
+  '<col>',
+  // 2026-08-26 review M5: a paragraph line ENDING in a truncated `<table`
+  // is prose — parse5 discards the incomplete tag — yet the raw bag counted
+  // it and `definitelyInsideTable()` suppressed the stray-part poison
+  // (`compare a<table b\n<td>x</td>\n</table>` froze 59 of 63 bytes).
+  // Pending truncated opens are subtracted now; pinned in
+  // tablePartPoison.test.ts. The `>`-confirmed variant is the control: a
+  // real table recovers the suppression on the spot.
+  'compare a<table b\n<td>s</td>\n</table>\n\ntail para',
+  'compare a<table b>\n<td>s</td>\n</table>\n\ntail para',
+  'compare a<table b\n<col>\n\ntail para'
 );
 
 /** Cross-line tag garbage (oracle review of 2.4.4, pre-existing under-
@@ -349,7 +394,20 @@ const inlineRawTextSpanArb = fc.constantFrom(
   'p<iframe>\ninner\n</iframe>',
   'p<noframes>\n</noframes>',
   'prose <title>\nlifted\n</title> tail',
-  'p<iframe> x </iframe a> y'
+  'p<iframe> x </iframe a> y',
+  // F17 — a retroactive construct BEHIND the mask the attribute-bearing
+  // close leaves dangling: `</iframe a>` is literal text to micromark and a
+  // REAL end tag to parse5's raw-text state, so parse5 is back in DATA
+  // while the scanner still masks the construct scan. A doctype /
+  // `<template>` / structure end tag in the masked region must poison
+  // document-wide (its own poison never fires inside the mask); pinned in
+  // computeFreezeBoundary.test.ts (seed 20293004). The attribute-free
+  // close and the plain-line tail are the control side (DOWN guard:
+  // candidates BEFORE the region survive).
+  'p<iframe> x </iframe a> y\n\n<!DOCTYPE html>\n\ntail para',
+  'p<iframe> x </iframe a> y\n\n<template>\n\ntail para',
+  'p<title> x </title a> y\n\n</body>\n\ntail para',
+  'p<iframe> x </iframe a> y\n\nplain z line\n\ntail para'
 );
 
 /** Foreign content (`<svg>` / `<math>`). The corpus carried NO svg or math
@@ -511,7 +569,9 @@ const scriptEscapeArb = fc.oneof(
 // floor of RUNS/60 hits per family, so a family at weight 1 in a pool this
 // size lands under the floor on ordinary seed variation. Every family
 // therefore sits at 2 or above; raise the whole pool rather than singling one
-// out when a new family is added (2026-08-21: the pool went 38 → 49).
+// out when a new family is added (2026-08-21: the pool went 38 → 49;
+// 2026-08-27: 58 → 64 with the three composite families — the measured
+// density cost is in GRAMMAR-COVERAGE's corpus-composite note).
 /** End tags parse5 DISCARDS because a scope barrier hides their element.
  *  `<div><table></div></table>` leaves the div OPEN — `</div>` is a parse
  *  error and is ignored, `</table>` pops only the table — so every later block
@@ -617,6 +677,72 @@ const rawPhaseSplitArb = fc.oneof(
   }
 );
 
+/** F15/F16 — seal-release piercers: a FLOATING RAW REMNANT (blocker 6)
+ *  followed by line classes that emit no top-level hast node, so the seam
+ *  seal must hold PAST them. A link definition's continuation lines (title
+ *  wrapping inside its quotes, title on its own line — F15) and a footnote
+ *  definition's cross-blank ≥4-indent BODY continuations (F16) are exactly
+ *  the classes the release enumeration missed, twice; the trailing `<!--`
+ *  future is what makes a wrong release OBSERVABLE (the remnant's hast
+ *  shape changes when `-->` completes). Both were fresh-seed soak finds
+ *  with ZERO pinned-corpus delta: `linkDefArb` had the wrapped title and
+ *  `footnoteDefArb` the cross-blank body, but never composed with a live
+ *  remnant. Pinned in computeFreezeBoundary.test.ts (soak 20289117 / seed
+ *  20293003). */
+const sealPiercerArb = fc.oneof(
+  {
+    weight: 2,
+    arbitrary: fc.constantFrom(
+      '<!-- c --> </s>\n\n[^a]: body\n\n    cont\n\n[b]: /v\n\ntail para',
+      '</details>\nr\n\n[b]: /b\n[b]: /b "t\nw"\n\n<!--',
+      '</details>\nr\n\n[a]: /u\n"t"\n\n<!--',
+      '<!-- c --> </s>\n\n[^a]: body text\n\n    indented continuation\n\n[a]: https://example.com/a\n\n- t'
+    ),
+  },
+  {
+    // Controls: a line that DOES emit a node pins the seam and the doc
+    // keeps freezing — the family's engagement side. The third shape is
+    // the fnDefResumable CLEAR: a ≤3-indent block-start def ends the
+    // footnote body, so the later indented line is REAL code and releases.
+    weight: 3,
+    arbitrary: fc.constantFrom(
+      '<!-- c --> </s>\n\n[^a]: body\n\npinning paragraph\n\ntail para',
+      '</details>\nr\n\n[a]: /u\n\nreal paragraph\n\ntail para',
+      '<!-- c --> </s>\n\n[^a]: body\n\n[a]: /u\n\n    code\n\n[b]: /v\n\ntail para'
+    ),
+  }
+);
+
+/** E7 — raw-text run-on compositions. micromark ends a type-1 block on the
+ *  `</name` SUBSTRING while parse5 needs the appropriate end tag in full,
+ *  so `</scripty>` / `</textareax>` close the block for one grammar and
+ *  leave the element open for the other (scanner-side counterpart: the F10
+ *  blank-line poison). The soak-scale E7 firings all rode compositions the
+ *  pinned corpus never assembled — PI blocks, a synthesized `</br>`, math
+ *  fences and CR line endings around the run-on — so the composition is
+ *  baked in here rather than left to separator luck (the type1Boundary
+ *  family carries the bare `</scripty>` under `\n` only). Proper closers
+ *  are the control side: both grammars agree and the doc keeps freezing. */
+const rawTextRunOnArb = fc.oneof(
+  {
+    weight: 1,
+    arbitrary: fc.constantFrom(
+      '<textarea>\rt\r</textareax>\r\r$$\re=mc^2\r$$\r\rtail para',
+      '<script>\rs\r</scripty>\r\r<?i\r?>\r\r</br>\r\rtail para',
+      '<?i\r</br>\r?>\r<textarea>\r<!-- not a comment\r</textarea>\r\r$$\rx\r$$',
+      '<textarea>\r\nt\r\n</textareax>\r\n\r\n</br>\r\n\r\n$$\r\ne=mc^2\r\n$$'
+    ),
+  },
+  {
+    weight: 2,
+    arbitrary: fc.constantFrom(
+      '<textarea>\rt\r</textarea>\r\r$$\re=mc^2\r$$\r\rtail para',
+      '<script>\rs\r</script>\r\r</br>\r\rtail para',
+      '<?i ?>\r</br>\r\r<textarea>x</textarea>\r\rtail para'
+    ),
+  }
+);
+
 /** See the pool comment: line-initial non-type-6 name with a quoted `>`,
  *  alone on its line, opening the run — paired with the follower shapes
  *  whose consumers the run flag guards (a fence, a backtick-span line, a
@@ -636,7 +762,19 @@ const nonType6QuotedGtArb = fc.oneof(
     // poison now: a container line followed by a type-7-shaped tag line is
     // undecidable, so no candidate at or past it survives.
     '> q\n<span title="a>b">\n> `<div>`',
-    '- item\n<img title="a>b">\n  `<div>`'
+    '- item\n<img title="a>b">\n  `<div>`',
+    // Container CLOSED by a non-paragraph last line — the OTHER B3 reading
+    // (F14 sub-class ii): the heading closes the blockquote, so the
+    // column-0 tag line opens a TOP-LEVEL multi-line block; still
+    // undecidable to the content model, still poisons.
+    '> # h\n<img title="a>b">\n`<div>` follower',
+    // A footnote definition and a def-list description are container lines
+    // too — each arms the same sticky marker.
+    '[^a]: note body\n<img title="a>b">\n`<div>` body',
+    'Term line\n:   desc body\n<img title="a>b">\n`<div>` body',
+    // Control: the blank closed the container, the marker disarmed, and
+    // the tag line's verdict is decided again — keeps freezing.
+    '> q\n\n<img title="a>b">\nplain follower'
   ),
   fc.constantFrom('<img title="a>b">\n[a]: /u', '<span title="a>b">\n<!-- c -->'),
   // Exact-type-7 interrupt contexts: the SAME complete tag line is a real
@@ -676,7 +814,11 @@ const rawHtmlArb = fc.oneof(
   // quoted `>`; the P4b-completion review measured four boundary rises
   // under a naive migration). Exact type 7 classifies these lines by the
   // member — this family keeps standing guard over exactly that claim.
-  { weight: 2, arbitrary: nonType6QuotedGtArb },
+  // 3, not 2: the B3 container shapes folded in here (2026-08-27) grew the
+  // member pool and the family's marker landed exactly ON the floor at the
+  // pinned seed — same starvation pattern as crossLineQuoteBogus at the
+  // 38 → 42 growth.
+  { weight: 3, arbitrary: nonType6QuotedGtArb },
   { weight: 2, arbitrary: multiLineDeclArb },
   { weight: 2, arbitrary: multiLineCdataArb },
   { weight: 2, arbitrary: documentStructureArb },
@@ -692,6 +834,9 @@ const rawHtmlArb = fc.oneof(
   { weight: 2, arbitrary: overlapSettledArb },
   { weight: 2, arbitrary: rawTextBlockArb },
   { weight: 2, arbitrary: type1BoundaryArb },
+  { weight: 2, arbitrary: preBogusOpenerArb },
+  { weight: 2, arbitrary: sealPiercerArb },
+  { weight: 2, arbitrary: rawTextRunOnArb },
   { weight: 2, arbitrary: rawTextElementArb },
   { weight: 2, arbitrary: inlineRawTextSpanArb },
   { weight: 2, arbitrary: foreignContentArb },
@@ -699,7 +844,9 @@ const rawHtmlArb = fc.oneof(
   { weight: 2, arbitrary: scriptEscapeArb },
   { weight: 2, arbitrary: scopeBarrierArb },
   { weight: 2, arbitrary: headRoutedCaptureArb },
-  { weight: 2, arbitrary: rawPhaseSplitArb },
+  // 3, not 2: the 58 → 66 pool growth (2026-08-27) pushed this marker to 4
+  // at the pinned seed, under the RUNS/60 floor of 5.
+  { weight: 3, arbitrary: rawPhaseSplitArb },
   // Unsettled openers (the assembler may close them later or leave them).
   { weight: 4, arbitrary: fc.constantFrom('<details>', '<!--', '<div') },
   { weight: 2, arbitrary: overlapTerminatorArb }
@@ -935,4 +1082,7 @@ export const COVERAGE_MARKERS: Record<string, RegExp> = {
   scopeBarrier: /<(?:div|section|blockquote)><(?:table|marquee|object|template|applet)>|<div><(?:span|p|em)><\/div>/,
   headRoutedCapture: /<(?:title|noframes)>\n\n|<(?:title|noframes)>[a-z]*<\/(?:title|noframes)>/,
   rawPhaseSplit: /x <(?:!D|\?p|!\[CDATA\[) y|<iframe>\n\n\*b\*|<iframe>x<\/iframe>/,
+  preBogusOpener: /<pre>[\n ]<[?!/]|<(?:style|script|textarea)>\n<(?:\?x|!y|!\[)/,
+  sealReleasePiercer: /<\/s>\n\n\[\^a\]|"t\nw"\n\n<!--|\n"t"\n\n<!--|<\/details>\nr\n/,
+  rawTextRunOn: /<\/(?:textareax|scripty)>|<\/textarea>\r\r|<\/script>\r\r|<\?i\r/,
 };
