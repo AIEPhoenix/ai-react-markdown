@@ -460,7 +460,13 @@ from the design review of the derived seal-release:
   absorbed today. This family is the stated precondition for the
   derived-release swap (open question 1): when the swap lands, these
   samples are the ones whose baseline rows must move DOWN, and the
-  regen rule will show it.
+  regen rule will show it. The family carries BOTH remnant sub-shapes:
+  the floating TEXT remnant above, and the UNCLOSED element opened
+  inline in the container's paragraph (`> text <div>` — micromark's
+  blockquote ends at the blank, parse5's div stays open inside it).
+  The unclosed form is blocked today by the open count (measured 0
+  against 43/44 for the closed controls, streamed equivalence green);
+  the derived release must keep both blocked.
 
 Pool 66 → 68; pinned-seed marker floor re-verified (all ≥ 5, lowest
 `crossLineSelfClosing`/`foreignContent` at exactly 5; new markers

@@ -742,16 +742,28 @@ const containerRemnantArb = fc.oneof(
       '- <div>\n  </div>\n  remnant\n\ncol zero\n\n[a]: /u\n\nx marks it',
       '> <!-- c --> </s>\n\n[a]: /u\n\nx marks it',
       '> <div>\n> </div>\n> <!-- open\n> --> tail remnant\n\ntail para',
-      '> <div>\n> </div>\n> remnant\n\n[^a]: note\n\n    cont\n\ntail para'
+      '> <div>\n> </div>\n> remnant\n\n[^a]: note\n\n    cont\n\ntail para',
+      // The UNCLOSED-element sub-shape: an element opened inline in the
+      // container's paragraph and never closed — micromark's blockquote
+      // ends at the blank while parse5's div/iframe stays open INSIDE it
+      // and swallows what follows. Blocked today by the open count
+      // (measured: 0 against 43/44 for the closed controls); the derived
+      // seal-release must keep both sub-shapes blocked.
+      '> text <div>\n> more\n\nfollowing para',
+      '- item text <div>\n  more\n\nfollowing para',
+      '> p <iframe>\n> in\n\nfollowing para'
     ),
   },
   {
-    // Controls: pinned by prose inside the container, or no remnant at all.
+    // Controls: pinned by prose inside the container, no remnant at all,
+    // or the same inline element CLOSED on its line.
     weight: 2,
     arbitrary: fc.constantFrom(
       '> <div>x</div>\n> prose line\n\ntail para',
       '> <!-- c -->\n\ntail para',
-      '- <div>x</div>\n- second item\n\ntail para'
+      '- <div>x</div>\n- second item\n\ntail para',
+      '> text <div></div>\n> more\n\nfollowing para',
+      '> p <iframe></iframe>\n> in\n\nfollowing para'
     ),
   }
 );
@@ -1129,5 +1141,6 @@ export const COVERAGE_MARKERS: Record<string, RegExp> = {
   preBogusOpener: /<pre>[\n ]<[?!/]|<(?:style|script|textarea)>\n<(?:\?x|!y|!\[)/,
   sealReleasePiercer: /<\/s>\n\n\[\^a\]|"t\nw"\n\n<!--|\n"t"\n\n<!--|<\/details>\nr\n|remnant\n\n\[\^a\]/,
   rawTextRunOn: /<\/(?:textareax|scripty)>|<\/textarea>\r\r|<\/script>\r\r|<\?i\r/,
-  containerHeldRemnant: /> (?:floating |tail )?remnant|\n {2}remnant\n|> prose line|> <!-- c -->|- second item/,
+  containerHeldRemnant:
+    /> (?:floating |tail )?remnant|\n {2}remnant\n|> prose line|> <!-- c -->|- second item|(?:> text|item text|> p) <(?:div|iframe)>/,
 };
