@@ -1984,9 +1984,16 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       // doctype's own document-wide poison from firing (release-gate
       // finding B, seed 20293004 — F17). Whether parse5 really saw the
       // construct cannot be decided; poison document-wide, the erasure
-      // standard. Block-opened regions are exempt: their close is tracked
-      // exactly (attribute-bearing end tags included), so the doctype
-      // branch below really runs once the region ends.
+      // standard.
+      //
+      // Block-opened regions were exempt here until F20 (2026-08-27), on the
+      // stated ground that "their close is tracked exactly, attribute-bearing
+      // end tags included". That is true of PARSE5's close and false of
+      // micromark's, and the mask's third term asks micromark. `</script/>`
+      // is a valid end tag to parse5 — the `/` is a bogus self-closing flag —
+      // while CommonMark's type-1 end condition wants the LITERAL `</script>`,
+      // so the block runs on and `mdType1RawText` keeps masking a region
+      // parse5 has already left. `maskUnbacked` below is that desync.
       if (
         inRawTextTok(cp.p5Tok) &&
         cp.p5Tok.openedInline &&
@@ -1994,6 +2001,10 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       ) {
         cp.phasePoisonedAt = 0;
       }
+      // The block-opened half is F20, guarded at the END of the line instead
+      // (`maskUnbacked`): the desync it tests is a property of the line's
+      // SETTLED state, and `mdBlock` is not settled here — a legitimate
+      // `</script>` line still reads as type-1 open at this point in the scan.
       break;
     }
     const pi = scanText.indexOf('<?', pos);
@@ -2681,5 +2692,35 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   const confirmedBarriers = cp.openStack.filter(isBarrier).length - cp.pendingTruncatedTags.filter(isBarrier).length;
   if (!topLevelHtmlBlock && confirmedBarriers > 0) {
     cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
+  }
+  // F20 — the raw-text mask outliving the grammar that justifies it.
+  //
+  // The tag scan is suppressed while `mdType1RawText(cp.mdBlock)` holds, and
+  // that member's contract is "the state in which BOTH grammars agree every
+  // byte up to the closer is content". `</script/>` breaks the agreement: the
+  // `/` is a bogus self-closing flag parse5 ignores, so the element closes for
+  // parse5, while CommonMark's type-1 end condition wants the LITERAL
+  // `</script>` and the block runs on. From there the mask hides tags parse5
+  // really acts on — `<script>` + `</script/>` + `<pre>` + `</3` + `</pre>`
+  // froze 39 of 41 bytes while the bogus comment ate the `>` of the `</pre>`
+  // line and left the `pre` open swallowing the tail (100% of engaged frames
+  // diverged on three of six configs; pre-existing through db9f091). F17 fixed
+  // the inline-opened case and exempted this one because "their close is
+  // tracked exactly" — true of parse5's close, false of micromark's.
+  //
+  // Settled state only, which is why this sits at the end of the line and not
+  // in the scan loop: mid-scan a legitimate `</script>` line still reads as
+  // type-1 open, and testing there poisoned F13's own fixture.
+  //
+  // Forward damage (the tags the scan is not counting) takes the from-here
+  // poison; backward damage takes the document-wide one on the same erasure
+  // standard as the inline branch — a doctype inside the masked bytes merges
+  // text across candidates emitted long before the region opened.
+  const maskUnbacked = mdType1RawText(cp.mdBlock) && !inRawTextTok(cp.p5Tok);
+  if (maskUnbacked) {
+    cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
+    if (tailCarriesRetroactive(ln.text) || /<template(?![a-z0-9-])/i.test(ln.text)) {
+      cp.phasePoisonedAt = 0;
+    }
   }
 }
