@@ -121,8 +121,19 @@ describe('table-part poison fires only for STRAY parts', () => {
     test('a CONFIRMED `<table` still suppresses it', () => {
       // The `>` arrives, the pending open is confirmed, and the part is
       // genuinely inside a table again — the B1 behaviour is untouched.
-      const doc = 'compare a<table b>\n<td>x</td>\n</table>\n\npara one\n\npara two\n\nend\n';
+      //
+      // Measured on the SAME-LINE shape since F19: the original reproducer
+      // spread the table over three lines (`compare a<table b>` / `<td>x</td>`
+      // / `</table>`), which leaves a scope barrier open across the end of a
+      // paragraph line — F19 poisons that to 0 for its own reason, and the
+      // suppression this test names stops being observable through the
+      // boundary. Opening and closing the table within one line keeps the
+      // barrier from straddling anything, so what moves the number here is
+      // the stray-part poison and nothing else.
+      const doc = 'compare a<table b><td>x</td></table>\n\npara one\n\npara two\n\nend\n';
       expect(boundary(doc)).toBeGreaterThan(0);
+      // The control: same prose, same `<td>`, no table to be inside.
+      expect(boundary('compare a<td>x</td>\n\npara one\n\npara two\n\nend\n')).toBe(0);
     });
 
     test('the truncated shape streams like a full parse', () => {

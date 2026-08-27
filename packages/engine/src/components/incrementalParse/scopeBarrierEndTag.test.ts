@@ -133,3 +133,131 @@ describe('end tags discarded by a scope barrier', () => {
     expect(boundary(doc('<div><table></table></div>'))).toBeGreaterThan(0);
   });
 });
+
+/**
+ * F19 — the same discard, on an end tag that is not in the document.
+ *
+ * Everything above needs the discarded end tag to be WRITTEN: `</div>` is
+ * there in the source, the scanner scans it, and the stack walk models what
+ * parse5 does with it. The second consequence needs no such tag.
+ * `hast-util-raw` serialises the whole mdast before re-parsing, so every
+ * markdown construct contributes a real tag pair to parse5's input — `>` is
+ * `<blockquote>…</blockquote>`, `#` is `<h1>…</h1>`, `*a*` is `<em>…</em>`.
+ * A barrier still open when one of THOSE end tags fires discards it by the
+ * same scope walk, and the host leaks:
+ *
+ *   ><table>
+ *   </table>
+ *
+ * is 19 bytes in which nothing is unbalanced — `<table>` opens, `</table>`
+ * closes, `openTotal` is 0 — and the tail paragraph lands INSIDE the
+ * blockquote, because the generated `</blockquote>` was thrown away while the
+ * table was open. 11 of 13 hazard futures move the frozen region.
+ *
+ * For a formatting host the leak is worse than re-nesting: the element stays
+ * in the active-formatting-elements list and is RECONSTRUCTED around all
+ * following content. That one is a live shipped divergence, not a model-level
+ * one — `*<object>*\n</object>` + blank + prose puts the tail inside a
+ * top-level `<em>` that the incremental path never produced, on every
+ * incremental frame of all six configs, byte-identical back through v2.8.1
+ * and the pre-campaign scanner (found 2026-08-27, pre-existing).
+ *
+ * The matrix that found it is not about which NAME is a barrier: `table`
+ * leaks out of a blockquote or a heading but not out of a paragraph, because
+ * a `<table>` start tag closes an open `p` and foster-parents its text back
+ * out in front of itself, so the barrier is no longer between `em`/`p` and
+ * its end tag by the time that end tag fires. Reading the matrix as a
+ * name-vs-host rule would have encoded foster parenting into the scanner.
+ * The rule is the concept's own: is anything GENERATED open around this
+ * barrier — which is answerable, because the answer is no in exactly one
+ * position, a column-0 html block.
+ */
+describe('generated end tags discarded by a scope barrier (F19)', () => {
+  /** The 19-byte minimum, with no tail at all: this scanner applies no
+   *  minimum-gain threshold, so the short shape measures the boundary and not
+   *  a vacuum. Without the fix it freezes all 19. */
+  test('the 19-byte minimum freezes nothing', () => {
+    expect(boundary('><table>\n</table>\n\n')).toBe(0);
+    // The same 15-byte shape with a non-barrier name still freezes.
+    expect(boundary('><div>\n</div>\n\n')).toBeGreaterThan(0);
+  });
+
+  /** One per host that leaks — the axis the family matrix moves along. */
+  const LEAKING_HOSTS: Array<[string, string]> = [
+    ['blockquote marker', '><table>\n</table>'],
+    ['blockquote lazy continuation', '> a quoted line\ncompare a<table b>\n</table>'],
+    ['list item', '- a <table>\n</table>'],
+    ['list item own line', '- a\n  <table>\n</table>'],
+    ['atx heading + table', '# h <table>\n</table>'],
+    ['atx heading + marquee', '# h <marquee>\n</marquee>'],
+    ['setext heading + object', 'h <object>\n===\n</object>'],
+    ['emphasis + object', '*a<object>b*\n</object>'],
+    ['emphasis + marquee', '*a<marquee>b*\n</marquee>'],
+    ['link text + applet', '[a<applet>b](/u)\n</applet>'],
+  ];
+
+  test('a barrier held by a markdown construct freezes nothing', () => {
+    for (const [host, shape] of LEAKING_HOSTS) {
+      expect({ host, boundary: boundary(doc(shape)) }).toEqual({ host, boundary: 0 });
+    }
+  });
+
+  test.each(SCHEDULES)(
+    'the family streams like a full parse — schedule %#',
+    (...sizes) => {
+      for (const [host, shape] of LEAKING_HOSTS) {
+        assertStreamEquivalence(host, scheduleSnapshots(doc(shape), sizes), CATALOG[0], { minIncrementalFrames: 0 });
+      }
+    },
+    60_000
+  );
+
+  /** The shipped half: this one diverged in `advanceIncrementalParse` itself,
+   *  on every frame it engaged, under every config. */
+  test.each(CATALOG)(
+    'the formatting-host reproducer streams like a full parse — $label',
+    (config) => {
+      assertStreamEquivalence(
+        'em + object',
+        scheduleSnapshots('*<object>*\n</object>\n\ntail para here\n\nmore prose\n', [1]),
+        config,
+        { minIncrementalFrames: 0 }
+      );
+    },
+    60_000
+  );
+
+  /** Without these the fix is a blanket refusal to freeze near a barrier. The
+   *  first two are the measured controls of the 19-byte minimum: the same
+   *  shape with a non-barrier name, and the same barrier with no host. */
+  const CONTROLS_F19 = [
+    '><div>\n</div>',
+    '<table>\n</table>',
+    '<marquee>\n</marquee>',
+    '<object>\n</object>',
+    '*a<span>b*\n</span>',
+    '<div>\n<table>\n</table>\n</div>',
+  ];
+
+  test('controls still freeze past the construct', () => {
+    for (const shape of CONTROLS_F19) {
+      expect({ shape, frozen: boundary(doc(shape)) > shape.length }).toEqual({ shape, frozen: true });
+    }
+  });
+
+  test('controls stream like a full parse', () => {
+    for (const shape of CONTROLS_F19) {
+      assertStreamEquivalence(shape, scheduleSnapshots(doc(shape), [2, 2, 2, 2, 2, 2, 2, 2]), CATALOG[0], {
+        minIncrementalFrames: 0,
+      });
+    }
+  }, 60_000);
+
+  /** A barrier that opens and closes INSIDE its host never straddles the
+   *  generated end tag, and a GENERATED barrier (a GFM pipe table) is well
+   *  nested by construction — which is what bounds this defect to raw
+   *  barriers. Both freeze; only the second is free of over-block. */
+  test('a well-nested generated barrier is not the defect', () => {
+    expect(boundary(doc('<div>\n\n| a | b |\n| - | - |\n\n</div>'))).toBeGreaterThan(0);
+  });
+});

@@ -217,6 +217,23 @@ function tailCarriesRetroactive(text: string): boolean {
  *  41 of 66 while the full parse nests the whole tail inside the div).
  *  `marquee`, `object`, `template` and `applet` are the same family.
  *
+ *  That discard has a SECOND consequence, on end tags that are never in the
+ *  source at all (F19, 2026-08-27). `hast-util-raw` serialises the whole mdast
+ *  before re-parsing, so every markdown construct contributes a real tag pair
+ *  to parse5's input: `>` becomes `<blockquote>…</blockquote>`, `#` becomes
+ *  `<h1>…</h1>`, `*a*` becomes `<em>…</em>`. A barrier still OPEN when one of
+ *  those GENERATED end tags fires discards it by the same scope walk — and the
+ *  host then leaks, re-nesting everything after it (`><table>\n</table>` +
+ *  blank + prose puts the tail paragraph INSIDE the blockquote; `# h <table>`
+ *  inside the h1). For a formatting name the leak is worse: the element stays
+ *  in the active-formatting-elements list and is RECONSTRUCTED around all
+ *  following content, which is a live shipped divergence — `*<object>*\n
+ *  </object>` + blank + prose wraps the tail in a top-level `<em>` that the
+ *  incremental path never produces (23 bytes, every incremental frame).
+ *  The closing walk below cannot see this: the barrier's own raw tags are
+ *  BALANCED, and the tag that gets discarded was never scanned. So the second
+ *  consequence needs its own guard — `scopeBarrierStraddlesHost`.
+ *
  *  Per the HTML spec's "has an element in scope"; the MathML text integration
  *  points and the SVG ones are barriers too. */
 const SCOPE_BARRIER_NAMES = new Set([
@@ -488,8 +505,15 @@ type MdBlock =
    *  content in the DATA state). `raw` carries that fact ON the member,
    *  taken from the name at the claim site — the consumer that needs it
    *  asks about PARSE5's grammar, not micromark's, and inferring it from
-   *  `p5Tok` there would read a field the same line sets one phase later. */
-  | { kind: 'html'; type: 1; raw: boolean }
+   *  `p5Tok` there would read a field the same line sets one phase later.
+   *
+   *  `indent` is the opener line's indent, and carries the same meaning it
+   *  does on `fence`/`math` above: only a column-0 opener is provably
+   *  top-level. An html block opened at indent 1-3 may be a list item's
+   *  content (`- a` then `  <table>`), and the F19 guard reads it for
+   *  exactly that — a barrier inside a container-HELD html block still
+   *  straddles the item's generated end tag. */
+  | { kind: 'html'; type: 1; raw: boolean; indent: number }
   /** The rest of the CommonMark html blocks. Types 2-5 end by their own
    *  terminators; types 6/7 end at the blank. Type 7 is entered by the
    *  EXACT §4.6 test (`isType7Line`) since the exact-type-7 stage — the
@@ -497,7 +521,7 @@ type MdBlock =
    *  `mayBeRawToMicromark` flag covered) is
    *  closed, which is what let the remaining run-flag consumers migrate
    *  to the member. */
-  | { kind: 'html'; type: 2 | 3 | 4 | 5 | 6 | 7 };
+  | { kind: 'html'; type: 2 | 3 | 4 | 5 | 6 | 7; indent: number };
 
 const mdHtml = (b: MdBlock, type: 1 | 2 | 3 | 4 | 5): boolean => b.kind === 'html' && b.type === type;
 /** A type-1 block whose element is RAW TEXT to parse5 too — the state in
@@ -1719,7 +1743,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     const t1 = noRealBlockOpen ? TYPE1_START_RE.exec(mdTrimStart(ln.text)) : null;
     // `raw` is the parse5 half of the same line: three of the four type-1
     // names are raw-text elements, `pre` is not.
-    if (t1) cp.mdBlock = { kind: 'html', type: 1, raw: RAW_TEXT_ELEMENTS.has(t1[1].toLowerCase()) };
+    if (t1) cp.mdBlock = { kind: 'html', type: 1, raw: RAW_TEXT_ELEMENTS.has(t1[1].toLowerCase()), indent: ln.indent };
     if (cp.mdBlock.kind !== 'html') {
       const t = mdTrimStart(ln.text);
       const t6 = TYPE6_START_RE.exec(t);
@@ -1744,7 +1768,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       ) {
         // The 6/7 member (type 1 wrote html{1} above; inside this branch
         // the member is provably 'none', the guard is shape only).
-        if (cp.mdBlock.kind === 'none') cp.mdBlock = { kind: 'html', type: realT6 ? 6 : 7 };
+        if (cp.mdBlock.kind === 'none') cp.mdBlock = { kind: 'html', type: realT6 ? 6 : 7, indent: ln.indent };
       } else if (cp.prevLineOpenContent && cp.tableMaybeOpen && type7Shaped) {
         // The one interrupt class a line model cannot settle: after a GFM
         // TABLE row type 7 opens (a table is not content), after a
@@ -2014,7 +2038,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       // Same rule as `<!--` since P4b commit 1: the parse5 half lives on
       // the overlay regardless (`<![CDATA[` in fragment html is a bogus
       // comment to the first `>` — rev2 #4, measured).
-      if (cp.mdBlock.kind === 'none') cp.mdBlock = { kind: 'html', type: 5 };
+      if (cp.mdBlock.kind === 'none') cp.mdBlock = { kind: 'html', type: 5, indent: ln.indent };
       if (cp.p5Tok.kind === 'data') cp.p5Tok = { kind: 'bogus' };
       if (!isMdBlank(scanText.slice(0, cd)) || ln.indent > 3) inlineRawOpenerIdx = cd;
       pos = cd + 9;
@@ -2034,7 +2058,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       }
       rawSpans.push([pi, pi + 2]);
       // Member only outside a 6/7 run (see the CDATA branch).
-      if (cp.mdBlock.kind === 'none') cp.mdBlock = { kind: 'html', type: 3 };
+      if (cp.mdBlock.kind === 'none') cp.mdBlock = { kind: 'html', type: 3, indent: ln.indent };
       if (cp.p5Tok.kind === 'data') cp.p5Tok = { kind: 'bogus' };
       if (!isMdBlank(scanText.slice(0, pi)) || ln.indent > 3) inlineRawOpenerIdx = pi;
       pos = pi + 2;
@@ -2055,7 +2079,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       // before this scan and never reach here at all.
       if (ln.indent <= 3 && /^doctype/i.test(scanText.slice(decl + 2))) cp.phasePoisonedAt = 0;
       // Member only outside a 6/7 run (see the CDATA branch).
-      if (cp.mdBlock.kind === 'none') cp.mdBlock = { kind: 'html', type: 4 };
+      if (cp.mdBlock.kind === 'none') cp.mdBlock = { kind: 'html', type: 4, indent: ln.indent };
       // md type 4 and the p5 bogus comment share their first-`>` end, so
       // no window can open — the pairing is still tracked for honesty.
       if (cp.p5Tok.kind === 'data') cp.p5Tok = { kind: 'bogus' };
@@ -2205,7 +2229,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
         // CONTENT — the member keeps the run's identity; parse5's comment
         // half lives on `p5Tok` (commit 1), and every comment read below
         // goes through the union.
-        if (cp.mdBlock.kind === 'none') cp.mdBlock = { kind: 'html', type: 2 };
+        if (cp.mdBlock.kind === 'none') cp.mdBlock = { kind: 'html', type: 2, indent: ln.indent };
         if (cp.p5Tok.kind === 'data') cp.p5Tok = { kind: 'comment' };
         lastCommentOpenerIdx = m.index;
         continue;
@@ -2620,4 +2644,42 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   // blanks that never reach this function's non-blank tail — carries it.
   if (FOOTNOTE_DEF_RE.test(ln.text)) cp.fnDefResumable = true;
   else if (isBlockStart && ln.indent <= 3) cp.fnDefResumable = false;
+  // F19, the barrier's second consequence (see SCOPE_BARRIER_NAMES): a barrier
+  // left open at the end of a line whose content is HELD by a markdown
+  // construct will swallow that construct's generated end tag. The scanner
+  // cannot enumerate generated elements — it never sees them — so it answers
+  // the only question that decides the case: is anything generated open around
+  // this barrier? No, in exactly one position: an html BLOCK, whose raw text
+  // becomes a root-level node with no wrapper. Every other position (a
+  // container marker line, a heading line, a paragraph's inline html) has at
+  // least one generated element around it, and which one is unknowable here.
+  // "Top-level" takes the reading `pendingFenceCloser` already gives it: only
+  // a column-0 opener is provably top-level, since an html block opened at
+  // indent 1-3 may be a list item's own content (`- a` then `  <table>`, the
+  // one family cell the block-vs-inline test alone left UNDER).
+  //
+  // Direction: writes the poison only, so both ways of being wrong LOWER the
+  // boundary — an over-claimed barrier on the bag widens it, and so does
+  // calling a top-level host non-top-level. `ln.start`, not 0: the re-nesting
+  // reaches forward only (measured — every node before the host is unchanged).
+  //
+  // The accepted cost is the shapes where the barrier closes on a LATER line
+  // inside the same host and never straddles anything (`> <table>\n> </table>`,
+  // and the paragraph-inline `<table>` that parse5 foster-parents out of its
+  // own way). Sparing those needs a per-host "did this construct end here"
+  // model — a second grammar, for the shapes this one is already blind to.
+  //
+  // PENDING TRUNCATED opens are subtracted, the `effectiveOpen` argument: a
+  // line-truncated `compare a<td b` leaves parse5's tokenizer INSIDE the tag,
+  // so no element is open yet and no generated end tag can be discarded. This
+  // is the one reading here that fires the poison LESS, and it is sound
+  // because it only DEFERS: if a later line brings the `>`, the pending list
+  // is cleared with the name still on `openStack`, and the check fires on that
+  // line — still ahead of the blank where the paragraph's `</p>` is emitted.
+  const isBarrier = (name: string): boolean => SCOPE_BARRIER_NAMES.has(name);
+  const topLevelHtmlBlock = cp.mdBlock.kind === 'html' && cp.mdBlock.indent === 0;
+  const confirmedBarriers = cp.openStack.filter(isBarrier).length - cp.pendingTruncatedTags.filter(isBarrier).length;
+  if (!topLevelHtmlBlock && confirmedBarriers > 0) {
+    cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
+  }
 }
