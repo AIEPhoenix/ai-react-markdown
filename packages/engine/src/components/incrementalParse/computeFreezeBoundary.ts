@@ -676,6 +676,20 @@ export interface FreezeScanCheckpointInternal extends FreezeScanCheckpoint {
    *  `-->` future). Cleared at the blank, where a definition provably
    *  ends; read only by the seal release, where holding it over-blocks. */
   defBlockMaybeOpen: boolean;
+  /** A FOOTNOTE definition may still be RESUMABLE: `[^…]:` was seen and no
+   *  line since has definitively interrupted the block. Unlike a link
+   *  definition (whose `defBlockMaybeOpen` a blank provably ends), a
+   *  footnote body CONTINUES ACROSS blank lines via ≥4-indent lines — the
+   *  list-item continuation rule — and those lines emit no top-level hast
+   *  node (the body renders in the footer section), so none of them may
+   *  release the blocker-6 seam. The seal release's old view classified a
+   *  post-blank indented line as indented CODE (node-emitting) and released
+   *  a live seam (release-gate finding A, seed 20293003 — F16, the
+   *  cross-blank sibling of F15). Armed by a footnote-def line; kept across
+   *  blanks and indented lines; cleared by a confirmed non-blank
+   *  BLOCK-START line at indent ≤ 3, which no footnote body can resume
+   *  past. Read only by the seal release, where holding it over-blocks. */
+  fnDefResumable: boolean;
   /** Offset of the first fence/math OPEN suppressed inside an html-flow
    *  run — the member gate since Migration B row 6 (Infinity = none). Whether the run really swallowed that line depends
    *  on container context the line scan cannot see (`<embed` inside a list
@@ -959,6 +973,7 @@ function freshCheckpoint(
     openBracket: null,
     p5SealPending: false,
     defBlockMaybeOpen: false,
+    fnDefResumable: false,
     phasePoisonedAt: Infinity,
     pendingTruncatedTags: [],
     pendingTruncatedCloses: [],
@@ -1177,11 +1192,18 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     cp.mdBlock.kind !== 'html' &&
     !(cp.p5Tok.kind === 'comment' || cp.p5Tok.kind === 'bogus')
   ) {
-    // The def clause is the LINE's own shape plus the sticky block flag: a
+    // The def clause is the LINE's own shape plus the sticky block flags: a
     // definition's destination and title lines are def CONTINUATIONS that
     // emit no node either, and a shape test cannot see them (see
-    // `defBlockMaybeOpen`).
-    const defShapedLine = DEF_RE.test(ln.text) || FOOTNOTE_DEF_RE.test(ln.text) || cp.defBlockMaybeOpen;
+    // `defBlockMaybeOpen`); a ≥4-indent line while a FOOTNOTE definition is
+    // still resumable is that footnote's BODY continuation — across blank
+    // lines included — not indented code, and it emits no top-level node
+    // either (see `fnDefResumable`; F16, finding A of the release gate).
+    const defShapedLine =
+      DEF_RE.test(ln.text) ||
+      FOOTNOTE_DEF_RE.test(ln.text) ||
+      cp.defBlockMaybeOpen ||
+      (cp.fnDefResumable && ln.indent >= 4);
     const commentOnly =
       ln.text
         .replace(/<!--[\s\S]*?-->/g, ' ')
@@ -1913,7 +1935,32 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     // (F13 — 20 divergent frames on `<pre>\n<?x\n</pre>` + tail; before the
     // gate existed the phantom opener's own first-`>` poison covered it by
     // accident, and the gate removed both).
-    if (commentOpenAtLineStart || inRawTextTok(cp.p5Tok) || mdType1RawText(cp.mdBlock)) break;
+    if (commentOpenAtLineStart || inRawTextTok(cp.p5Tok) || mdType1RawText(cp.mdBlock)) {
+      // An INLINE-opened raw-text region is the one masked context whose
+      // parse5 state is unknowable from here: micromark called the opener
+      // paragraph text, and parse5's tokenizer may have CLOSED the region
+      // already (`</iframe a>` — attributes make it literal text to
+      // micromark and a real end tag to parse5's RCDATA/RAWTEXT states).
+      // The from-here-on poison at the region's opening line covers
+      // forward damage, but a RETROACTIVE construct inside the masked
+      // bytes (`<!DOCTYPE …>`, document-structure tags, `<template>`)
+      // erases and merges BACKWARD past candidates emitted long before the
+      // region opened — this scan breaking here is exactly what kept the
+      // doctype's own document-wide poison from firing (release-gate
+      // finding B, seed 20293004 — F17). Whether parse5 really saw the
+      // construct cannot be decided; poison document-wide, the erasure
+      // standard. Block-opened regions are exempt: their close is tracked
+      // exactly (attribute-bearing end tags included), so the doctype
+      // branch below really runs once the region ends.
+      if (
+        inRawTextTok(cp.p5Tok) &&
+        cp.p5Tok.openedInline &&
+        (tailCarriesRetroactive(ln.text) || /<template(?![a-z0-9-])/i.test(ln.text))
+      ) {
+        cp.phasePoisonedAt = 0;
+      }
+      break;
+    }
     const pi = scanText.indexOf('<?', pos);
     const cd = scanText.indexOf('<![CDATA[', pos);
     // `<!` + letter = declaration; `<!--` (third char '-') and
@@ -2555,4 +2602,11 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   // node the blocker-6 seam can hang on. Carrying it across ordinary
   // paragraph lines too only delays the release to the blank — over-block.
   cp.defBlockMaybeOpen = cp.defBlockMaybeOpen || DEF_RE.test(ln.text) || FOOTNOTE_DEF_RE.test(ln.text);
+  // Footnote-def resumability (F16): armed by the def line itself; a
+  // non-blank BLOCK-START line at indent ≤ 3 definitively interrupts the
+  // footnote block (no body line can resume past it), everything else —
+  // lazy continuations (not block starts), ≥4-indent continuations, and the
+  // blanks that never reach this function's non-blank tail — carries it.
+  if (FOOTNOTE_DEF_RE.test(ln.text)) cp.fnDefResumable = true;
+  else if (isBlockStart && ln.indent <= 3) cp.fnDefResumable = false;
 }
