@@ -482,7 +482,13 @@ function driveRawFrozen(doc: string, config: CatalogConfig, stats: RawFrozenStat
       if (stats.defectSamples.length < MAX_SAMPLES) stats.defectSamples.push(line);
       continue;
     }
-    const key = `${config.label}|${probe.id}|${snap.detail.slice(0, 96)}`;
+    // The key is (config, moved node) and deliberately NOT (config, probe,
+    // moved node). Keying on the probe was the first version and it wasted
+    // the whole sample budget: one document fires on ~13 of its 14 tails
+    // with an identical signature, so 20 slots held ONE document and a half
+    // instead of twenty distinct positions. The probe that revealed a
+    // firing is triage colour; the node that moved is the finding.
+    const key = `${config.label}|${snap.detail.slice(0, 96)}`;
     if (stats.seen.has(key) || stats.samples.length >= MAX_SAMPLES) continue;
     stats.seen.add(key);
     stats.samples.push(line);
