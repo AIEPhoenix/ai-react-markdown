@@ -53,6 +53,13 @@
  * POSITION-LESS path (later frames, where the merge already happened),
  * which the four docs below do exercise. Do not read their green as
  * coverage of the equal case.
+ *
+ * This is NOT a TODO for a fourth harvest. Harvesting is the wrong
+ * instrument now, and a run that came back with a doc would mean the seal
+ * had a hole again, not that the guard was healthy. Restoring real coverage
+ * of the equal case needs a different one — reaching the classifier
+ * directly rather than through a scanner boundary, so that what it asserts
+ * does not depend on blocker 6 being wrong.
  */
 import { describe, expect, test } from 'vitest';
 import { CATALOG } from './testPluginCatalog';
