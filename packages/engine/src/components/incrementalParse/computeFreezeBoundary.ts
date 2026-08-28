@@ -778,15 +778,28 @@ export interface FreezeScanCheckpointInternal extends FreezeScanCheckpoint {
   openStack: string[];
 }
 
+/** Elements parse5 inserts WITHOUT pushing them on the open-element stack.
+ *  This is parse5's list, not the HTML spec's void-element list: the spec
+ *  names fourteen, and parse5 additionally inserts `basefont`, `bgsound`
+ *  and `keygen` as void (the first two through "in head", `keygen` through
+ *  "in body"). Omitting the three counted them OPEN forever, which
+ *  over-blocks — the safe direction, and why it survived; the dangerous
+ *  direction (a name here that parse5 really keeps open) was measured
+ *  empty. `frame` is deliberately NOT here: outside a frameset parse5
+ *  IGNORES it — no element at all — which is the discarded-token class the
+ *  `frameset` document-structure poison already covers. */
 const VOID_TAGS = new Set([
   'area',
   'base',
+  'basefont',
+  'bgsound',
   'br',
   'col',
   'embed',
   'hr',
   'img',
   'input',
+  'keygen',
   'link',
   'meta',
   'param',
@@ -1189,6 +1202,134 @@ function floatingResidue(text: string, commentOpenAtStart: boolean): string {
   return out;
 }
 
+/** A raw construct (html block types 2-5) STARTING at the head of a line:
+ *  comment, processing instruction, declaration, CDATA. Shared by the
+ *  line's own `rawFlowStart` and by the seal release's L3. */
+const RAW_CONSTRUCT_START_RE = /^<(?:!--|\?|![A-Za-z]|!\[CDATA\[)/;
+
+/** Blocks a LATER line can continue without emitting a node of its own —
+ *  the seal release's L1a input. A link definition takes destination and
+ *  title lines; a footnote definition's body resumes across blank lines and
+ *  the resumed paragraph then takes lazy continuations at any indent; a
+ *  container (list item, blockquote, def-list description) holds content
+ *  lines the same way. Membership is per BLOCK, never per line shape: the
+ *  gate runs before the line is classified at all, because a line below a
+ *  resumable block has no independent block identity to classify. */
+const sealResumableAbove = (cp: FreezeScanCheckpointInternal): boolean =>
+  cp.defBlockMaybeOpen || cp.fnDefResumable || cp.containerMaybeOpen;
+
+/**
+ * Blocker-6 seam release, DERIVED from parse5's own rule instead of
+ * enumerated (design rev3 §2/§6).
+ *
+ * The rule at the token layer: a trailing text node is sealed by a NODE
+ * being appended after it, at whatever insertion point is current —
+ * `defaultTreeAdapter.insertText` extends the last child only while that
+ * child is still a text node, and a root-level append is merely the most
+ * common way to stop it. Lifted to lines:
+ *
+ *   > Release at the first confirmed line whose bytes cause at least one
+ *   > node to be appended, at whatever insertion point is current, after
+ *   > the remnant.
+ *
+ * A line does that iff all three of
+ *
+ *   L1  it STARTS a block (micromark) — not a blank, not the interior of an
+ *       open leaf block, not a continuation of a resumable block above;
+ *   L2  that block's type has to-hast output — `isWrapInvisible`
+ *       (spliceParse) is the exact complement: `definition` and
+ *       `footnoteDefinition` are the only invisible types;
+ *   L3  that block's serialized output survives parse5 as ≥ 1 node.
+ *
+ * Every layer is positively decided and an unclassified line WITHHOLDS.
+ * That default is the whole point. The enumeration this replaces listed the
+ * node-less line classes and released everything it had not listed, so its
+ * failure mode was an under-block, and it took one on four separate
+ * occasions — def continuations (F15), whole-line stray closers (review
+ * M6), cross-blank body continuations (F16), lazy continuations of a
+ * resumed body (F18) — each fixed by adding one member to a list whose
+ * complement has no enumeration.
+ */
+function sealReleaseDerived(cp: FreezeScanCheckpointInternal, ln: LineRec, isBlockStart: boolean): boolean {
+  // L1a — the resumable-context gate, ahead of every classification. The
+  // only line that provably interrupts a resumable block is a BLOCK-START
+  // line at ≤ 3 indent: blank above means it cannot be a lazy continuation,
+  // ≤ 3 indent means no 4-indent-gated body can resume through it. Below
+  // that interruption the rule is indent-INDEPENDENT, and every
+  // indent-conditioned reading of it has been refuted (F16's `indent >= 4`
+  // conjunct fell to a lazy continuation at indent 0 within hours of
+  // landing). The escape stays sound for CONTAINERS by the general seal
+  // rule above: a ≤3-indent line below an open list item either continues
+  // the item — appending its paragraph INSIDE the item, after the remnant —
+  // or closes the container, appending at the root after the whole list.
+  if (sealResumableAbove(cp) && !(isBlockStart && ln.indent <= 3)) return false;
+  // L1b — the line must START a block. `prevLineOpenContent` is micromark's
+  // own "content construct open" answer, derived per line class by the
+  // decision table at the end of this function; while it holds, this line
+  // belongs to the block above and appends nothing of its own.
+  if (cp.prevLineOpenContent) return false;
+  // The one class the line model cannot settle stays UNKNOWN, and UNKNOWN
+  // withholds: after a pipe line, whether a GFM table is open decides
+  // whether this line is another ROW (no node of its own) or a fresh block.
+  if (cp.tableMaybeOpen) return false;
+  // Both conjuncts above are the model speaking, not a measured guard, and
+  // the difference is worth writing down: over the pinned corpus neither
+  // decided a single verdict the enumeration would have decided otherwise
+  // (every divergence was L3). They are unreachable through TODAY's arm site
+  // — a line that arms the seam is html-owned, which closes content and
+  // disarms both markers — so they cost nothing and hold the moment the arm
+  // widens. Delete them only together with that argument.
+  const head = mdTrimStart(ln.text);
+  // L3 — parse5 survival, uniform across the whole html-flow class. The
+  // class holds both node-emitting members (`<div>` opens an element) and
+  // the parse5-DROPPED ones (a stray end tag, a doctype, a
+  // document-structure name — no node, the remnant stays last), and the
+  // enumeration leaked on that split twice: M6 for whole-line closers, and
+  // again on doctype and `<html>`/`<head>` lines, which it released while
+  // parse5 leaves no node for any of them (found by this migration's own
+  // tripwire, inert only because the document-structure poison happened to
+  // cover them). It also released a whole-line `<?instr ?>` while withholding
+  // a whole-line `<!-- note -->` — same class, neither answer earned, and
+  // that release is revoked here. Releasing the emitting half of the class is
+  // a precision change with its own attribution, not part of this landing. The test runs at ANY indent: a
+  // ≥4-indent html-shaped line is indented CODE and does emit, so
+  // withholding it over-blocks rather than claims — and it keeps this
+  // predicate at or inside the enumeration's releases, which the migration
+  // asserts.
+  if (RAW_CONSTRUCT_START_RE.test(head) || TYPE1_START_RE.test(head) || isType7Line(head)) return false;
+  const t6 = TYPE6_START_RE.exec(head);
+  if (t6 !== null && TYPE6_NAMES.has(t6[1].toLowerCase())) return false;
+  // L2 — wrap visibility. A def-SHAPED but INVALID line does emit its
+  // paragraph; withholding on the shape only over-blocks, and the shape is
+  // all a line model has.
+  if (DEF_RE.test(ln.text) || FOOTNOTE_DEF_RE.test(ln.text)) return false;
+  // What is left starts a block whose to-hast output is an element —
+  // paragraph, heading, thematic break, fence, flow math, list, blockquote,
+  // table, indented code — and every one of them appends a node after the
+  // remnant.
+  return true;
+}
+
+/**
+ * The RETIRED enumeration of node-less line classes, kept for one release
+ * as the migration's containment assertion (design §8.4): the derived
+ * predicate must release only where this one did. Deleted with its F-rows
+ * at the next version.
+ */
+function sealReleaseEnumerated(cp: FreezeScanCheckpointInternal, ln: LineRec, isBlockStart: boolean): boolean {
+  const defShapedLine =
+    DEF_RE.test(ln.text) ||
+    FOOTNOTE_DEF_RE.test(ln.text) ||
+    cp.defBlockMaybeOpen ||
+    (cp.fnDefResumable && !(isBlockStart && ln.indent <= 3));
+  const commentOnly =
+    ln.text
+      .replace(/<!--[\s\S]*?-->/g, ' ')
+      .replace(/<!--[\s\S]*$/, ' ')
+      .replace(/[ \t\r]/g, '') === '';
+  return !defShapedLine && !commentOnly && !CLOSE_TAG_ONLY_RE.test(ln.text);
+}
+
 /** Bake one confirmed line into the checkpoint. */
 function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, text: string): void {
   // Blocker-4 eager settle: this line is the "next confirmed line" of the
@@ -1199,62 +1340,40 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     newest.defListSettled = ln.blank ? true : !canBecomeDdLine(ln.text, true);
   }
   const isBlockStart = cp.prevLineBlank;
-  // Blocker-6 seam release: a confirmed non-blank line that starts OUTSIDE
-  // any html-flow run AND emits a top-level hast node at its own position is
-  // real content that will sit between the remnant and whatever streams in
-  // later — the seam is pinned from the frozen side. Lines that emit NOTHING
-  // there must NOT release: link/footnote definition lines produce no hast
-  // node (def-SHAPED but invalid lines do emit a paragraph — not releasing
-  // on them only over-blocks), and comment-only lines produce at most a
-  // comment node whose seam-pinning power is unverified. (Lines INSIDE the
-  // run keep the flag; the run's own blank keeps it so every candidate in
-  // the trailing blank run stays rejected.)
-  // Migration B row 7, the CLEAR half (exact type 7): "starts OUTSIDE any
-  // html-flow run" is the MEMBER's answer at line start — the retired
-  // proxy also held the seam through `<embed x`-style paragraph lines,
-  // which emit their paragraph node and pin the seam like any other
-  // content line.
+  // Blocker-6 seam release (see `sealReleaseDerived` for the rule and its
+  // three layers). The three conditions here are L1's leaf-block half,
+  // answered from state rather than from the line: a blank line starts no
+  // block, a line INSIDE an html-flow run or inside a still-open
+  // comment/bogus-comment token is that construct's interior, and the run's
+  // own blank keeps the flag so every candidate in the trailing blank run
+  // stays rejected.
+  //
+  // Evaluation order is load-bearing: this runs BEFORE the line's own
+  // construct effects (the raw-construct scan and the tag scan sit further
+  // down), so the predicate answers from the previous line's state plus
+  // this line's raw text.
   if (
     cp.p5SealPending &&
     !ln.blank &&
     cp.mdBlock.kind !== 'html' &&
     !(cp.p5Tok.kind === 'comment' || cp.p5Tok.kind === 'bogus')
   ) {
-    // The def clause is the LINE's own shape plus the sticky block flags: a
-    // definition's destination and title lines are def CONTINUATIONS that
-    // emit no node either, and a shape test cannot see them (see
-    // `defBlockMaybeOpen`); below a RESUMABLE footnote definition every
-    // line that is not the block's provable interruption belongs (or may
-    // lazily belong) to its BODY and emits no top-level node — the ≥4-indent
-    // continuation (F16), but also the LAZY continuation of a resumed body
-    // paragraph at ANY indent (`[^a]: note` + blank + `    cont` +
-    // `lazy tail` — F18, the adversarial-review refutation of the F16
-    // indent conjunct: `lazy tail` sits at indent 0 and released a live
-    // seam). The only line that provably interrupts the footnote is a
-    // BLOCK-START line at ≤3 indent (blank above, so it cannot be lazy),
-    // and that line releases on its own merits through the clauses below;
-    // everything else keeps, indent-independent (see `fnDefResumable`).
-    const defShapedLine =
-      DEF_RE.test(ln.text) ||
-      FOOTNOTE_DEF_RE.test(ln.text) ||
-      cp.defBlockMaybeOpen ||
-      (cp.fnDefResumable && !(isBlockStart && ln.indent <= 3));
-    const commentOnly =
-      ln.text
-        .replace(/<!--[\s\S]*?-->/g, ' ')
-        .replace(/<!--[\s\S]*$/, ' ')
-        .replace(/[ \t\r]/g, '') === '';
-    // A line that is ONLY a closing tag emits no node either, and the
-    // predicate's other three clauses are all true of it — so `</div>`
-    // released a seam it does not pin (`<!-- c --> remnant\n</div>` froze
-    // 47 of 51 bytes; 2026-08-26 review M6). Through rehype-raw's fragment
-    // context a stray closer produces nothing at the root, which is the
-    // design's §2.1a RETRO measurement: the trailing root text node can
-    // still grow. Whole-line only — `</div> trailing` leaves a text node
-    // and pins the seam like any other content.
-    const closeTagOnly = CLOSE_TAG_ONLY_RE.test(ln.text);
-    if (!defShapedLine && !commentOnly && !closeTagOnly) {
+    if (sealReleaseDerived(cp, ln, isBlockStart)) {
       cp.p5SealPending = false;
+      // The migration's containment assertion, live for one release: the
+      // derived predicate must release only where the enumeration it
+      // replaces did. The other quadrant (the enumeration releasing where
+      // the derived one holds) is this change's whole point and is silent;
+      // THIS direction would be the derived side going UP, which is the
+      // defect direction, so it is reported rather than tolerated. Not a
+      // hot path — the check runs on a non-blank line only while a seam is
+      // actually pending.
+      if (process.env.NODE_ENV !== 'production' && !sealReleaseEnumerated(cp, ln, isBlockStart)) {
+        console.error(
+          `[ai-react-markdown] seal-release containment broken at offset ${ln.start}: the derived predicate ` +
+            `released a line the retired enumeration withheld (${JSON.stringify(ln.text.slice(0, 80))}).`
+        );
+      }
     }
   }
   /** Post-collapse (T3.4) this deliberately OVER-claims: parse5 pops the
@@ -1288,6 +1407,9 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
    *  mask shut where parse5 opens it — F2, the shipped under-block.
    *  Neither direction is safe, so the honest answer is a poison. */
   const foreignRawTextSwitchUnknowable = (): boolean => possiblyInsideForeign();
+  /** This line carried an end tag parse5 DISCARDS (F24). Consumed by the
+   *  blocker-6 arm below — see the `idx === -1` branch for the rule. */
+  let discardedEndTag = false;
   const applyTag = (tag: string, closing: boolean): void => {
     // Inside a raw-text element only its own end tag is markup.
     if (inRawTextTok(cp.p5Tok)) {
@@ -1372,7 +1494,29 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
         }
         if (SCOPE_BARRIER_NAMES.has(cp.openStack[i])) break;
       }
-      if (idx === -1) return;
+      if (idx === -1) {
+        // parse5's "any other end tag" rule reached its end: no element to
+        // pop, so the token is DROPPED and the character data on either side
+        // of it lands at one insertion point — one text node where the raw
+        // bytes show two runs. That merge is RETROACTIVE, and the trailing
+        // half of it can still grow when later bytes arrive, which is
+        // blocker 6's own hazard: arm the seam and let the release predicate
+        // decide when a node finally sits after it.
+        //
+        // F24, and the reason this is keyed on the RULE: the hazard used to
+        // be covered by `DOCUMENT_STRUCTURE_NAMES` — four names, poisoning
+        // the whole document — while parse5 discards end tags by the
+        // thousand-name-wide rule above. `</address>\n</address>\n\n` is 23
+        // bytes that froze all 23 while the `\n` between the two discarded
+        // tags was a live trailing text node; `<area>\n</script >\n\n` is the
+        // same shape whose FIRST construct is a void START tag, which is why
+        // no reading of it as "stray end tags" closes the class. The four
+        // names keep their document-wide poison: they also merge ATTRIBUTES
+        // onto elements that already exist, which is an erasure this seam
+        // does not model.
+        discardedEndTag = true;
+        return;
+      }
       // Remove ONLY the matched element. What parse5 does with the elements
       // above it depends on which end tag this is: a block name generates
       // implied end tags and pops through, while a formatting name runs the
@@ -1814,7 +1958,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   // followed by a def line that a later append turns into a paragraph —
   // direction-battery counterexample surfaced by the overlapping-
   // terminator generator family, 2026-08). Feeds the blocker-6 check only.
-  const rawFlowStart = ln.indent <= 3 && /^<(?:!--|\?|![A-Za-z]|!\[CDATA\[)/.test(mdTrimStart(ln.text));
+  const rawFlowStart = ln.indent <= 3 && RAW_CONSTRUCT_START_RE.test(mdTrimStart(ln.text));
   // Whether this line's bytes belong to an html block / raw construct in
   // either grammar — captured HERE (after the tag-start pre-scan classified
   // the line, before the raw-construct machine may close a 2-5 member
@@ -2526,7 +2670,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
     // the `--!>` window (md open, p5 closed) the bytes are parse5 TEXT —
     // real remnant with a tail-dependent seam; a p5-only comment inside a
     // type 6/7 run over-flags, which is the safe direction.
-    if (floatingResidue(masked, bothCommentsOpenAtLineStart).length > 0) {
+    if (floatingResidue(masked, bothCommentsOpenAtLineStart).length > 0 || discardedEndTag) {
       cp.p5SealPending = true;
     }
   }
