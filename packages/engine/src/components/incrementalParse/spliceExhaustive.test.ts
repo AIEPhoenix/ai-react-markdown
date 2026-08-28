@@ -403,15 +403,24 @@ const alignCut = (doc: string, at: number): number => {
  * carrying this ingredient: `"x\n\n</address>\n</address>\n\n"` engages
  * 10-11 of 26 byte-by-byte frames on every config, and
  * `"</address>\n</address>\n\nx\n\ny\n"` engages 20 of 20 tail frames —
- * both with zero divergence. What holds across a 28-document × 6-config ×
- * 20-tail battery is that engagement and firing are DISJOINT: the gate
- * fires only while the boundary sits at EOF with a trailing blank whose
- * text node can still grow, and the splice engages only once settled
- * content follows that blank. The edit that gives the splice something to
- * reuse is the edit that settles the node. So the narrowness is a property
- * of the splice's current appetite, not of the scanner's claim — which is
- * why this is recorded rather than dismissed. Reported to the scanner's
- * owner rather than fixed here; a scanner change needs the five-leg gate.
+ * both with zero divergence. What holds — across a 28-document × 6-config
+ * × 20-tail battery, FOR THIS MECHANISM, which is as far as the claim
+ * goes — is that engagement and firing were disjoint: the gate fires only
+ * while the boundary sits at EOF with a trailing blank whose text node can
+ * still grow, and the splice engages only once settled content follows
+ * that blank. The edit that gives the splice something to reuse is the
+ * edit that settles the node.
+ *
+ * Do NOT generalise that to the trigger class. F23 in GRAMMAR-COVERAGE is
+ * a different mechanism under the SAME `boundary == document length`
+ * trigger — a PI's residue text node absorbing the seam newline — and
+ * there the splice engages on 12 of 14 probes under `display-only` with
+ * shipped output correct every time. So the class demonstrably contains
+ * engaging members; this mechanism's members happen not to be, on the
+ * documents reachable so far. The narrowness is a property of the splice's
+ * current appetite, not of the scanner's claim, which is why this is
+ * recorded rather than dismissed. Reported to the scanner's owner rather
+ * than fixed here; a scanner change needs the five-leg gate.
  *
  * NOT done here, and why: `oracleCheckDoc` follows each document with a
  * ZERO-DISTANCE variant — the claimed prefix re-run as a document of its
