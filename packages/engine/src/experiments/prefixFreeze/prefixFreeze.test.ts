@@ -25,6 +25,27 @@ import { FREEZE_TIERS, type FreezeTier } from './detectFreezeBoundaries';
 import { simulateStream, type SimulationReport } from './pipelineHarness';
 
 /** Tiers expected to record at least one stability violation vs. tiers expected clean. */
+/** Diagnostics on the real stream — see the channel note in
+ *  `vitest.config.ts`. `console.*` is dropped for passing tests here. */
+const emit = (line: string): void => {
+  (process as unknown as { stdout?: { write(text: string): void } }).stdout?.write(line);
+};
+
+/** `console.table` replacement: column-aligned text, since the stream takes
+ *  strings and the table's job is to be read in a soak log. */
+function renderTable(title: string, rows: Array<Record<string, string | number>>): string {
+  if (rows.length === 0) return `[prefixFreeze] ${title}: (no rows)\n`;
+  const columns = Object.keys(rows[0]);
+  const width = (c: string): number => Math.max(c.length, ...rows.map((r) => String(r[c] ?? '').length));
+  const line = (cells: string[]): string => cells.map((cell, i) => cell.padEnd(width(columns[i]))).join('  ');
+  return [
+    `[prefixFreeze] ${title}`,
+    line(columns),
+    ...rows.map((r) => line(columns.map((c) => String(r[c] ?? '')))),
+    '',
+  ].join('\n');
+}
+
 function expectOutcomes(sim: SimulationReport, expected: { violated: FreezeTier[]; clean: FreezeTier[] }): void {
   const observed = Object.fromEntries(
     FREEZE_TIERS.map((tier) => [tier, sim.tiers[tier].violationFrames > 0 ? 'violated' : 'clean'])
@@ -202,8 +223,15 @@ describe('prefix-freeze measurement', () => {
       });
     }
 
-    console.table(coverageRows);
-
-    console.table(costRows);
+    // `console.table` is intercepted and dropped for a PASSING test in this
+    // package, so these two tables — the entire measured output of this
+    // harness, and the source of the numbers in this directory's README —
+    // have been printing nothing. The real stream is not intercepted.
+    // (The README's run command also still points at `packages/core`, a path
+    // that moved with the engine split; `--disable-console-intercept` there
+    // was one author's local workaround for this same drop, never
+    // generalised. Both are noted rather than changed here.)
+    emit(renderTable('coverage per tier', coverageRows));
+    emit(renderTable('full-vs-tail pipeline cost', costRows));
   }, 120_000);
 });

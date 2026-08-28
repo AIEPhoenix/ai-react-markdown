@@ -9,6 +9,22 @@
  * until the baseline is deliberately regenerated alongside that stage's
  * ledger entry.
  *
+ * The two halves of that rule do NOT share a channel, and the difference is
+ * why the decrease histogram is written to the real stream rather than
+ * through `console.log` (see `emit` below and the note in
+ * `vitest.config.ts`). Increases FAIL, so their rows ride out in an
+ * assertion message and always surface. Decreases are allowed, so the
+ * histogram is the only record they ever had — and through `console.log` it
+ * printed nothing on a passing run, which is every run in which decreases
+ * are the whole story.
+ *
+ * Consequence worth stating rather than quietly repairing: the ledger's
+ * decrease counts from before 2026-08-28 (F19's "3 of 6060 move DOWN, zero
+ * UP", F20's "2 of 6060") came through that silent channel. They are
+ * probably right — someone recorded them, so someone saw them — but they
+ * are not reproducible by re-running this file today, and no attempt is made
+ * here to re-derive them. From this commit forward the histogram prints.
+ *
  * Baseline lifecycle:
  *   BOUNDARY_BASELINE_WRITE=1 vitest --run boundaryDiff  → rewrite the file
  *   (then `prettier --write` it: the write path emits 1-space JSON and the
@@ -74,6 +90,18 @@ interface NodeFsLike {
 }
 const fs = (await import('node' + ':fs')) as unknown as NodeFsLike;
 
+/**
+ * Diagnostics on the real stream, because `console.*` is intercepted here and
+ * a PASSING test's output is dropped — the exact case this file's decrease
+ * histogram lives in. The cast mirrors `spliceExhaustive.test.ts`: the engine
+ * package takes no `@types/node`, and its `process` shim deliberately exposes
+ * only `env`, so widening the shim would hand production code a Node global
+ * the package is built not to have.
+ */
+const emit = (line: string): void => {
+  (process as unknown as { stdout?: { write(text: string): void } }).stdout?.write(line);
+};
+
 const BASELINE_URL = new URL('./boundaryBaseline.json', import.meta.url);
 
 interface Baseline {
@@ -121,7 +149,7 @@ describe('boundary diff against the committed baseline', () => {
 
     if (testEnv('BOUNDARY_BASELINE_WRITE') === '1') {
       fs.writeFileSync(BASELINE_URL, `${JSON.stringify(current, null, 1)}\n`);
-      console.log(`[boundaryDiff] baseline rewritten: ${Object.keys(current.boundaries).length} entries`);
+      emit(`[boundaryDiff] baseline rewritten: ${Object.keys(current.boundaries).length} entries\n`);
       return;
     }
 
@@ -163,10 +191,20 @@ describe('boundary diff against the committed baseline', () => {
       }
     }
 
-    if (decreases > 0) {
-      const rows = [...decreaseHistogram.entries()].sort().map(([b, n]) => `2^${b}≈${n}`);
-      console.log(`[boundaryDiff] ${decreases} decreases (allowed): ${rows.join(' ')}`);
-    }
+    // UNCONDITIONAL, including the zero cases. A line that appears only when
+    // there is something to say cannot be told apart from a channel that is
+    // broken — which is precisely how this histogram spent its silent months
+    // looking normal. Printing `compared` on every run also exposes the one
+    // way this net can pass while proving nothing: if a corpus regen changed
+    // every sample's bytes, every sample is exempt, `compared` is 0 and the
+    // red line is evaluated over an empty set. That is reported, not
+    // asserted — tightening it is a separate decision.
+    const rows = [...decreaseHistogram.entries()].sort().map(([b, n]) => `2^${b}≈${n}`);
+    emit(
+      `[boundaryDiff] compared=${compared} increases=${increases.length} decreases=${decreases}` +
+        `${decreases > 0 ? ` histogram: ${rows.join(' ')}` : ''}` +
+        `${composition.length > 0 ? ` composition-exempt=${composition.length}` : ''}\n`
+    );
     // Increases first: this check is the red line, and it must be evaluated
     // whether or not the corpus composition moved (2026-08-26 review v-4).
     expect(
