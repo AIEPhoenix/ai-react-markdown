@@ -85,6 +85,24 @@ function driveSample(fuzz: FuzzDoc, tag: string, totals: Totals): void {
     totals.incrementalFrames += stats.incrementalFrames;
 
     // P2 — resumed scan ≡ fresh scan, own lineage, boundary values only.
+    //
+    // WHAT P2 DOES NOT LICENSE. This loop is LINEAR: one checkpoint, one
+    // successor, the shape a stream has. A checkpoint is CONSUMED by the
+    // call it is passed to — `computeFreezeBoundary` returns the very
+    // object it was handed, with `confirmedOffset` advanced in place — so
+    // handing one checkpoint to two calls resumes the second from a state
+    // the first already moved. P2 says nothing about that, and "resumed
+    // equals fresh" without the word LINEAR invites the reading that it
+    // does. A state-directed SEARCH is the counterexample: one node, many
+    // children, one checkpoint.
+    //
+    // Audited 2026-08-28 across the repo — every other resume is a linear
+    // loop, `engineProbe` builds a fresh chain per probe rather than
+    // sharing one, and `MarkdownContent`'s catch already nulls its state
+    // ref for this exact reason. The same paragraph sits at the census
+    // leg's P2 in `spliceExhaustive.test.ts`; two identical loops with the
+    // warning on only one of them is how a local fix hides a global
+    // hazard.
     let checkpoint: FreezeScanCheckpoint | null = null;
     for (const snapshot of snapshots) {
       const fresh = computeFreezeBoundary(snapshot, { defListEnabled });
