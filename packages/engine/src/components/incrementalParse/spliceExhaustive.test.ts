@@ -1026,6 +1026,19 @@ const BFS_KEEP = Number(testEnv('EXHAUSTIVE_BFS_KEEP') ?? 3);
  *  sub-line constructs and the line tokens reach named elements, and a
  *  state search wants every transition it can get. */
 const BFS_TOKENS: readonly string[] = [...FRAGMENT_TOKENS, ...NAME_CLASS_TOKENS];
+/**
+ * FRONTIER CAP, and it is reported rather than silent.
+ *
+ * Depth 4 without one exits 144 — the frontier and the `seen` map both
+ * grow with distinct keys, and keying on the unconfirmed tail (necessary,
+ * see the dedup key) multiplies them. A search that quietly truncates
+ * would still print a coverage report, and that report would claim
+ * everything it did not reach was unreachable. So the cap is counted, and
+ * `clamped` rides in the readout next to the coverage numbers: a clamped
+ * run's unreached list is a list of "not reached BY THIS RUN", which is a
+ * different claim and has to look different.
+ */
+const BFS_MAX_FRONTIER = Number(testEnv('EXHAUSTIVE_BFS_MAX_FRONTIER') ?? 120_000);
 const BFS_TIMEOUT_MS = Math.max(600_000, 300_000 * Math.max(1, BFS_DEPTH - 3));
 
 interface BfsResult {
@@ -1046,6 +1059,9 @@ interface BfsResult {
    *  abstraction, and a failure rather than a curiosity. */
   undeclared: string[];
   representatives: string[];
+  /** Representatives dropped because the frontier cap was hit. Non-zero
+   *  means the unreached list is "not reached by this run". */
+  clamped: number;
 }
 
 function bfs(defListEnabled: boolean, depth: number): BfsResult {
@@ -1058,6 +1074,7 @@ function bfs(defListEnabled: boolean, depth: number): BfsResult {
     chainWitness: new Map(),
     undeclared: [],
     representatives: [],
+    clamped: 0,
   };
   const seen = new Map<string, number>();
   // The empty prefix is the search's root; its checkpoint is whatever the
@@ -1132,6 +1149,10 @@ function bfs(defListEnabled: boolean, depth: number): BfsResult {
         if (count >= BFS_KEEP) continue;
         seen.set(key, count + 1);
         if (count === 0) out.states += 1;
+        if (next.length >= BFS_MAX_FRONTIER) {
+          out.clamped += 1;
+          continue;
+        }
         next.push(doc);
         out.expanded += 1;
         if (out.representatives.length < 400) out.representatives.push(doc);
@@ -1180,7 +1201,9 @@ function bfsReport(label: string, r: BfsResult): void {
   const seenValueCount = declaredValues - missingValues.length;
   emit(
     `\n[bfs:${label}] depth=${BFS_DEPTH} keep=${BFS_KEEP} alphabet=${BFS_TOKENS.length} ` +
-      `visited=${r.visited} expanded=${r.expanded} states=${r.states}\n` +
+      `visited=${r.visited} expanded=${r.expanded} states=${r.states}` +
+      (r.clamped > 0 ? ` CLAMPED=${r.clamped} (coverage below is THIS RUN's reach, not the space's)` : '') +
+      '\n' +
       `[bfs:${label}] values=${seenValueCount}/${declaredValues} pairs=${r.seenPairs.size}/${declaredPairs} ` +
       '\n' +
       `[bfs:${label}] F20 chain: ` +
@@ -1191,7 +1214,8 @@ function bfsReport(label: string, r: BfsResult): void {
         .join('') +
       (missingValues.length === 0
         ? `[bfs:${label}] every declared value reached\n`
-        : `[bfs:${label}] UNREACHED values (${missingValues.length}): ${missingValues.join(' ')}\n`)
+        : `[bfs:${label}] ${r.clamped > 0 ? 'NOT REACHED BY THIS (CLAMPED) RUN' : 'UNREACHED'} values ` +
+          `(${missingValues.length}): ${missingValues.join(' ')}\n`)
   );
   // The abstraction must not rot behind the scanner it describes.
   expect(
