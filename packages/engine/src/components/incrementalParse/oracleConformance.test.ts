@@ -501,10 +501,38 @@ describe('oracle sweep — fuzz corpus (env-scaled)', () => {
         // — but at n≈1200 documents per sweep the sampling sd is 0.6pp, so
         // 8% sits ~5.8 sd out and noise cannot reach it. Only a corpus
         // change can, and a corpus change that moves this by 78% is worth
-        // the investigation it would trigger. If a generator addition
-        // pushes hazard up legitimately, re-measure the spread and move
-        // the threshold WITH the evidence rather than to whatever makes
-        // the run green.
+        // the investigation it would trigger.
+        //
+        // 8 is an ABSOLUTE, corpus-derived constant — the only one in this
+        // package. Contrast the engagement floor below: `/2` is a RELATIVE
+        // bound that still means the same thing under any corpus, so it
+        // never needs re-deriving. This one does, whenever the generators
+        // move. HOW to re-derive it, because an instruction to "re-measure
+        // with evidence" that does not say how is the same failure one
+        // level up:
+        //
+        //   for i in $(seq 0 11); do
+        //     ORACLE_RAW=1 ORACLE_RUNS=4000 ORACLE_SEED=$((<fresh> + i)) \
+        //       ../../node_modules/.bin/vitest run \
+        //       src/components/incrementalParse/oracleConformance.test.ts &
+        //   done
+        //
+        // Read `blindDocs=N/M` from each sweep's readout — one line per
+        // family per shard, 24 readings — and take the spread. Use a FRESH
+        // seed base above every one already used (20400400-411 and
+        // 20400700-711 are spent), for the reason `fiveleg.sh` insists on
+        // one. No reporter flag is needed: the readout goes through
+        // `emit`/`process.stdout.write`, not `console.log`.
+        //
+        // That last point is why the original calibration appears in no
+        // committed log. Until 0cf5f90 this readout was a `console.log`,
+        // and vitest 4 drops those from PASSING tests unless a reporter is
+        // named — which no leg does. The numbers above were captured by
+        // passing `--reporter=dot` by hand. Re-deriving them today needs
+        // no such trick; the method above is the whole of it.
+        //
+        // Then move the threshold WITH that evidence, rather than to
+        // whatever makes the run green.
         expect(stats.documentsProbed).toBeGreaterThan(0);
         expect(
           stats.fullyBlindDocs / stats.documentsProbed,
