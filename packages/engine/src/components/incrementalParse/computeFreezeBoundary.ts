@@ -1759,6 +1759,29 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
         cp.p5Tok = { kind: 'data' };
       }
     }
+    // The THIRD state, and the one this branch did not have (F27). parse5
+    // has exactly three non-data token states that can outlive micromark's
+    // block across a blank: a raw-text element (poisoned below), a bogus
+    // comment (right above), and a COMMENT — which had no alignment check
+    // at all. A `<!--` inside an ALREADY-OPEN type-6 block is that block's
+    // raw CONTENT to micromark, so no type-2 block ever opens for it; the
+    // type-6 block then ends at this blank while parse5's comment runs to
+    // end of document, and the candidate sailed through `htmlBalanced`
+    // because that check excludes only `bogus`.
+    // `<div><p></div></p>` + `<!--` + blank froze 25 of 36 bytes with the
+    // whole rest of the document sitting inside a comment nothing closes.
+    // The balanced tag pair on the first line is load-bearing in the
+    // counterexample: `<div>` alone leaves the bag open and the candidate
+    // dies of that instead, which is how the shape hides from minimisation.
+    //
+    // Poison ONLY — deliberately no `p5Tok` reset, unlike the bogus sibling
+    // above. A bogus comment ends at the next `>`, so its state is
+    // unrecoverable and resetting is the honest answer there; a real comment
+    // runs to `-->`, and resetting would read later comment CONTENT as live
+    // markup, which is the under-block direction. Do not tidy the asymmetry.
+    if (cp.p5Tok.kind === 'comment' && !mdHtml(cp.mdBlock, 2)) {
+      cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
+    }
     // Types 6/7 end AT this blank — the member clears before the candidate
     // is judged, exactly when the block ends. (Type 1 survives the blank;
     // 2-5 run to their terminators.)
