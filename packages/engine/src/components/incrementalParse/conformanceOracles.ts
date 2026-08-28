@@ -56,11 +56,12 @@
  *
  * - The GFM footnote section is hoisted to document end by remark-rehype,
  *   so its POSITION moves with every append by design. It is stripped from
- *   both sides — by the section wrapper, and in the snapshot gate also by
- *   the definition's source bytes, because parse5 can eat the wrapper's
- *   start tag (F21); the machinery that keeps footnote CONTENT correct
- *   across the splice is injection replay, pinned by
- *   `assertStreamEquivalence`.
+ *   both sides: the snapshot gate does it by the DEFINITION'S SOURCE BYTES
+ *   alone, the prefix-anchored instruments by the section wrapper. The
+ *   split is not stylistic — a wrapper is a start tag parse5 can eat (F21)
+ *   and an attribute a document can forge, so the gate states the exemption
+ *   in bytes only; the machinery that keeps footnote CONTENT correct across
+ *   the splice is injection replay, pinned by `assertStreamEquivalence`.
  *   Reference retargeting inside the body — the (R) dimension — is NOT
  *   stripped: an orphan `[^x]` flipping to a sup link is a body diff.
  * - remark-rehype separates root children with `\n` text nodes. The split
@@ -175,7 +176,29 @@ export function mSpanDisagreement(
 function isFootnoteSection(node: NodeLike): boolean {
   // `dataFootnotes` is `true` from mdast-util-to-hast but `''` once
   // rehype-raw has reserialized the attribute — presence is the signal.
-  return node.type === 'element' && node.properties !== undefined && 'dataFootnotes' in node.properties;
+  //
+  // The POSITION conjunct is what makes the signal unforgeable. The footer
+  // is synthesized by remark-rehype and carries no source offsets, on every
+  // shape measured (24 documents × 6 configs, including footers reparented
+  // into an element a tail left open): zero generated footers with a
+  // position. An attribute, by contrast, is 24 bytes any document can
+  // write, and `<section data-footnotes>` at column 0 becomes exactly this
+  // element once rehype-raw reparses it — after which the strip removed the
+  // author's own content from BOTH sides of every identity. Measured before
+  // the conjunct: 24 source bytes reduced the snapshot gate to zero
+  // compared nodes for the whole document, on all six configs, and a
+  // planted under-block that fires without the wrapper went silent
+  // (`smuggles through the raw-mode gate` below pins it).
+  //
+  // Same defect class as F21, from the other side: F21 was a real footer
+  // the parser ATE, this is a fake footer the document FED it. A key that
+  // only source bytes can produce is wrong in both directions.
+  return (
+    node.type === 'element' &&
+    node.position === undefined &&
+    node.properties !== undefined &&
+    'dataFootnotes' in node.properties
+  );
 }
 
 /** Is the footnote section anywhere below this node? Cheap enough to run
@@ -232,11 +255,12 @@ function stripFurniture(children: NodeLike[]): NodeLike[] {
  * are the domain fact, and the wrapper is one spelling of it that a
  * grammar collision can erase.
  *
- * Only the snapshot GATE consumes this. The prefix-anchored instruments
- * carry the same artifact and keep the wrapper strip alone, deliberately:
- * they gate nothing, they already fire on half the engine-clean positions,
- * and re-cutting their info stream would move the classification buckets
- * the ledger describes for no gain.
+ * Only the snapshot GATE consumes this, and since 2026-08-28 it is the
+ * gate's whole footer exemption — `stripFurniture` no longer runs there.
+ * The prefix-anchored instruments keep the wrapper strip alone,
+ * deliberately: they gate nothing, they already fire on half the
+ * engine-clean positions, and re-cutting their info stream would move the
+ * classification buckets the ledger describes for no gain.
  */
 function footnoteDefinitionRanges(mdast: NodeLike, out: Array<[number, number]> = []): Array<[number, number]> {
   for (const child of mdast.children ?? []) {
@@ -308,10 +332,16 @@ function frozenSignatures(
     const start = node.position?.start?.offset;
     const end = node.position?.end?.offset;
     // Footer furniture, by the bytes it renders rather than by the wrapper
-    // it usually hangs under — see `footnoteDefinitionRanges`. The whole
-    // subtree goes: everything under a footer `<li>` carries offsets from
-    // inside the same definition.
-    if (start !== undefined && footnoteBytes.some(([s, e]) => start >= s && start < e)) continue;
+    // it usually hangs under — see `footnoteDefinitionRanges`.
+    //
+    // The exemption covers THIS node only, and the walk descends anyway.
+    // Skipping the subtree was the wider claim — "everything under a footer
+    // `<li>` carries offsets from inside the same definition" is true of
+    // every footer measured, and it is a statement about what the children
+    // happen to be rather than about what the exemption means. Each node is
+    // asked for its own bytes instead. Measured free: identical signature
+    // counts on 4,000 fuzz documents / ~17k probe positions.
+    const rendersFooterBytes = start !== undefined && footnoteBytes.some(([s, e]) => start >= s && start < e);
     // `start <= end` rejects MALFORMED ranges. Seam-adjacent raw nodes can
     // carry an inverted one — measured `138-128` on a `<v>` element, which
     // is rehype-raw reserialization furniture, not a frozen-region fact.
@@ -329,7 +359,14 @@ function frozenSignatures(
     // leg, seed 20294308 #558; engine-clean on seven schedules × six
     // configs, so an instrument artifact). The scanner's claim covers
     // bytes [0, boundary) and says nothing about a node holding none.
-    if (start !== undefined && end !== undefined && start <= end && start < boundary && end <= boundary) {
+    if (
+      !rendersFooterBytes &&
+      start !== undefined &&
+      end !== undefined &&
+      start <= end &&
+      start < boundary &&
+      end <= boundary
+    ) {
       out.push(
         `${start}-${end}:${node.type}:${node.tagName ?? ''}:` +
           `${JSON.stringify(node.properties ?? null)}:${JSON.stringify(node.value ?? null)}`
@@ -375,9 +412,19 @@ export function snapshotRawDisagreement(
   //  - frozen footnote-DEFINITION content is exempt: the footer it renders
   //    into is hoisted to document end and rebuilt from the whole document
   //    every frame, so its shape is injection replay's contract, pinned by
-  //    `assertStreamEquivalence`, not the boundary's. `stripFurniture`
-  //    removes it by the section wrapper and `footnoteDefinitionRanges` by
-  //    the bytes, because the wrapper does not always survive parse5.
+  //    `assertStreamEquivalence`, not the boundary's.
+  //
+  // That definition-bytes exemption is the gate's ONLY footer carve-out.
+  // `stripFurniture` used to run here too, and it is gone: measured over
+  // 4,000 fuzz documents / ~17k probe positions it suppressed not one
+  // signature that `footnoteDefinitionRanges` did not already suppress
+  // (identical counts: 89,570 benign / 47,364 hazard), while removing the
+  // BYTE exemption from the same run reproduced F21's false positive
+  // immediately. An exemption with no firing that needs it is not a safety
+  // margin, it is unaudited surface — and this one read a key any document
+  // can spell (see `isFootnoteSection`). The prefix-anchored instruments
+  // keep the wrapper strip, where its need IS measured (the `htmlKeepOpen`
+  // bucket); they gate nothing.
   // Two further gaps are theoretical and unreachable in this corpus, so
   // they are recorded rather than coded around: two frozen nodes sharing
   // an identical signature would mask one being replaced by a copy of the
@@ -389,17 +436,9 @@ export function snapshotRawDisagreement(
   // the tail exempt a node it did not own before, which is the direction
   // that hides things.
   const footnoteBytes = footnoteDefinitionRanges(docMdast ?? (runFull(doc, config).mdast as NodeLike));
-  const frozen = frozenSignatures(
-    stripFurniture((runToRawLayer(doc, config) as NodeLike).children ?? []),
-    boundary,
-    footnoteBytes
-  );
+  const frozen = frozenSignatures((runToRawLayer(doc, config) as NodeLike).children ?? [], boundary, footnoteBytes);
   const appended = new Set(
-    frozenSignatures(
-      stripFurniture((runToRawLayer(doc + tail, config) as NodeLike).children ?? []),
-      boundary,
-      footnoteBytes
-    )
+    frozenSignatures((runToRawLayer(doc + tail, config) as NodeLike).children ?? [], boundary, footnoteBytes)
   );
   for (const signature of frozen) {
     if (!appended.has(signature)) {
@@ -466,6 +505,14 @@ const EL = '\u0002';
  *
  * A pair that is equal under this is the (R) dimension and nothing else:
  * same characters, different reference markup.
+ *
+ * `sup`, `img` and `a` are tag names a document can WRITE, so a divergence
+ * inside a hand-authored `<sup>` collapses to `REF` and reads as (R) here.
+ * That is tolerable for exactly one reason and it should not be extended:
+ * this function classifies, it does not gate. The 2026-08-28 audit removed
+ * every forgeable key from the gate itself, which now exempts on one thing
+ * only — a `footnoteDefinition`'s source bytes, read off the mdast, which
+ * no rendered artifact can spell into existence.
  */
 function flattenRefNormalized(nodes: NodeLike[], out: string[]): string[] {
   for (const node of nodes) {
@@ -503,25 +550,58 @@ function flattenRefNormalized(nodes: NodeLike[], out: string[]): string[] {
 
 /**
  * The exemption families kept for `ORACLE_RAW=1` runs (GRAMMAR-COVERAGE's
- * classification ledger). A raw-mode firing that matches NONE of these is
- * a new family: the sweep fails, and it gets classified before it is
- * allowed back in. Every direction here is refuse-or-absorb, never an
- * under-block — and for the refuse-direction families that is now
- * measured per firing rather than asserted (see `spliced` below).
+ * classification ledger). Every direction here is refuse-or-absorb, never
+ * an under-block — and for the refuse-direction families that is measured
+ * per firing rather than asserted (see `spliced` below).
+ *
+ * These GATE NOTHING: the ORACLE_RAW gate is `snapshotRawDisagreement`, and
+ * `rawFamily` is read by zero assertions. What a family buys is a label in
+ * the info log, and what an unlabelled firing buys is a human's attention —
+ * which is the whole reason a family must not be broader than its
+ * mechanism. A bucket that absorbs a new mechanism costs exactly that
+ * attention.
  *
  * Adversarial audit 2026-08-26: 0 engine divergences in ~50k probes /
  * 6,880 streamed documents. The predicates were nonetheless too broad,
  * and were head-anchored + refusal-gated as a result — benign today is
  * not the same claim as tight.
+ *
+ * Second audit 2026-08-28: **E2-gfmTable is gone**, and with it the last
+ * key that named WHICH PROBE RAN rather than what diverged. `probeId ===
+ * 'gfmTable'` classified unconditionally, ahead of the value-conserving
+ * families, so any mechanism the GFM-table probe happened to trigger landed
+ * in a known bucket unexamined — 147 benign / 139 hazard firings per
+ * 800-document sweep, 21-27% of every classification made. Deleting it
+ * left ZERO firings unclassified: all of them were E4-grouping and
+ * E3-refResolution, decided by the trees, which E2 had been sitting above
+ * and stealing. `probeId === 'tablePart'` went the same way in the same
+ * measurement (E1 130/132 rather than 136/144; the difference is 6 benign
+ * and 12 hazard firings that are really E6 and E5 by their own head
+ * predicates). This is the E5 finding of 2026-08-26 repeated twice over:
+ * a family placed above the tree-decided ones absorbs their firings and
+ * reports a mechanism that was never measured.
+ *
+ * What the two keys had been absorbing, measured on the verification run
+ * (ORACLE_RAW=1, ORACLE_RUNS=4000 × 12 shards, seeds 20400300+i): 133
+ * firings of 78,293 now carry no label, 0.2%, and they concentrate in about
+ * three documents per 4,000-document sweep — one document fires once per
+ * probe id, so the battery multiplies a single artifact by ~15. By shape:
+ * 74 are the footnote footer resurfacing at the root without its wrapper,
+ * which is F21's mechanism reaching the PREFIX-ANCHORED instruments (they
+ * keep the wrapper strip deliberately, so they carry that artifact by
+ * choice — the gate does not); 10 are a seam separator that is one newline
+ * on one side and two on the other; the rest are content reparented across
+ * the seam, `<p>` against `<dl>` at the same root index.
+ *
+ * They are left UNLABELLED on purpose. Every one is engine-clean — a
+ * divergence with an engine disagreement is severity `defect` and fails the
+ * shard, and all 12 passed — and inventing a family to re-absorb them would
+ * rebuild exactly the thing this audit removed. A label has to be earned by
+ * a measured mechanism, and "the probe battery hit the same document
+ * fifteen times" is not one.
  */
 export type RawFamily =
-  | 'E1-tablePart'
-  | 'E2-gfmTable'
-  | 'E3-refResolution'
-  | 'E4-grouping'
-  | 'E5-strayEndTag'
-  | 'E6-defVsParagraph'
-  | 'E7-rawTextRunOn';
+  'E1-tablePart' | 'E3-refResolution' | 'E4-grouping' | 'E5-strayEndTag' | 'E6-defVsParagraph' | 'E7-rawTextRunOn';
 
 /**
  * The shape families (E1/E5/E6) are HEAD-ANCHORED: the insertion-mode
@@ -674,11 +754,18 @@ function rawTextRunOn(actual: NodeLike[], expected: NodeLike[], inRawText = fals
 
 /**
  * Order matters and is not arbitrary. The VALUE-CONSERVING families
- * (E2/E4/E3) are decided by the two trees — same bytes, same characters —
- * so they cannot be a text-pattern mislabel, and they go first. Running
- * E5 ahead of them was the second audit finding: 328 of 350 E5 assignments
+ * (E4/E3) are decided by the two trees — same bytes, same characters — so
+ * they cannot be a text-pattern mislabel, and they go first. Running E5
+ * ahead of them was the second audit finding: 328 of 350 E5 assignments
  * were really E3/E4, and E5's claimed "tail refused" direction was false
- * for 166 of them.
+ * for 166 of them. E2 and E1's `probeId` keys were the same fault a level
+ * up — they ran ahead of EVERYTHING and asked which probe had been used —
+ * and both are gone (see `RawFamily`).
+ *
+ * Nothing in here reads a probe id any more. A family is decided by the
+ * two trees, or by the tail's own SOURCE BYTES, and never by the harness's
+ * name for the tail it appended: a name is not a mechanism, and a bucket
+ * keyed on one absorbs mechanisms it was never measured against.
  *
  * `spliced` is the refusal conjunct. E1/E5/E6 all claim the direction
  * "tail refused → full path", and that claim is now MEASURED: if the
@@ -690,15 +777,8 @@ function rawTextRunOn(actual: NodeLike[], expected: NodeLike[], inRawText = fals
  * parse5 field introspection: `usedIncremental` is an output of the engine
  * under test, not a peek inside its parser.
  */
-function classifyRawFamily(
-  probeId: string,
-  tail: string,
-  spliced: boolean,
-  actual: NodeLike[],
-  expected: NodeLike[]
-): RawFamily | null {
+function classifyRawFamily(tail: string, spliced: boolean, actual: NodeLike[], expected: NodeLike[]): RawFamily | null {
   // ── value-conserving, decided by the trees ──
-  if (probeId === 'gfmTable') return 'E2-gfmTable';
   // E4: the same bytes, grouped into different nodes. Covers the seam
   // separator merge (adjacent root text nodes fuse on the full side but
   // not on the concatenated one) and the footnote section hoisted INTO an
@@ -723,7 +803,7 @@ function classifyRawFamily(
   //    Both require the tail to have ACTUALLY been refused. ──
   if (spliced) return null;
   const head = stripLeadingBlanks(tail);
-  if (probeId === 'tablePart' || TABLE_PART_HEAD_RE.test(head)) return 'E1-tablePart';
+  if (TABLE_PART_HEAD_RE.test(head)) return 'E1-tablePart';
   if (STRAY_END_TAG_HEAD_RE.test(head)) return 'E5-strayEndTag';
   if (DEF_LINE_HEAD_RE.test(head)) return 'E6-defVsParagraph';
 
@@ -748,7 +828,7 @@ function identityDisagreement(
   left: NodeLike,
   full: NodeLike,
   right: NodeLike,
-  family?: { probeId: string; tail: string; spliced: boolean; value: RawFamily | null }
+  family?: { tail: string; spliced: boolean; value: RawFamily | null }
 ): string | null {
   // Count line ENDINGS the way micromark does (`\r\n`, `\n`, lone `\r`) —
   // the tail's line numbers shift by exactly this many.
@@ -765,7 +845,7 @@ function identityDisagreement(
   const actual = stripFurniture(full.children ?? []);
 
   if (isEqual(actual, expected)) return null;
-  if (family) family.value = classifyRawFamily(family.probeId, family.tail, family.spliced, actual, expected);
+  if (family) family.value = classifyRawFamily(family.tail, family.spliced, actual, expected);
   const max = Math.max(actual.length, expected.length);
   for (let i = 0; i < max; i++) {
     if (!isEqual(actual[i], expected[i])) {
@@ -810,7 +890,7 @@ export function rawLayerIdentityDisagreement(
   prefix: string,
   tail: string,
   config: CatalogConfig,
-  family?: { probeId: string; tail: string; spliced: boolean; value: RawFamily | null }
+  family?: { tail: string; spliced: boolean; value: RawFamily | null }
 ): string | null {
   if (!/[\n\r]$/.test(prefix)) throw new Error('rawLayerIdentityDisagreement: prefix must end at a line ending');
   const left = runToRawLayer(prefix, config);
@@ -1045,7 +1125,6 @@ export function oracleCheckDoc(
       // a human triaging a real failure wants the extra signal; the
       // classifier below is now its classification aid, not a gate.
       const family = {
-        probeId: probe.id,
         tail: realTail + probe.tail,
         // The refusal conjunct: an EMPTY tail cannot be "refused" (the
         // frame is identical content, a memo hit), so it never counts as
