@@ -30,7 +30,16 @@
 # Env overrides (defaults = the standard gate; the scaled release gate used
 # FUZZ1=33334 FUZZ2=50000 for 400k/600k legs):
 #   SHARDS (12)  FUZZ1 (12500)  FUZZ2 (30000)  FUZZ3 (8000)  ORACLE (4000)
-#   CENSUS_STRIDE (3)  CENSUS_NAME_K (3)
+#   CENSUS_STRIDE (1)  CENSUS_NAME_K (3)
+#
+# CENSUS_STRIDE is 1, which is FULL cut schedules — the value it had before
+# 2026-08-28 and the value `spliceExhaustive.test.ts` has always described as
+# the gate's. It went to 3 in the same commit that fixed two other knobs for
+# running CI's values, and nothing said so: the gate quietly sampled every
+# third cut at K=4 for one release. Restored 2026-08-29 with the F28 batch.
+# Set CENSUS_STRIDE=3 by hand if a release cannot afford the wall clock — the
+# point is that skipping two thirds of the cut schedules is a decision someone
+# makes at the prompt, not a default that reads as the full census.
 #
 # ORACLE default is 4000 because the blindness floor is STRUCTURALLY INERT
 # below it: the guard is `documentsProbed >= 1000`, `documentsProbed` is
@@ -61,7 +70,7 @@ FUZZ1=${FUZZ1:-12500}
 FUZZ2=${FUZZ2:-30000}
 FUZZ3=${FUZZ3:-8000}
 ORACLE=${ORACLE:-4000}
-CENSUS_STRIDE=${CENSUS_STRIDE:-3}
+CENSUS_STRIDE=${CENSUS_STRIDE:-1}
 CENSUS_NAME_K=${CENSUS_NAME_K:-3}
 
 ROOT=${0:a:h:h:h}

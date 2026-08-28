@@ -416,6 +416,13 @@ const CONFIGS = (() => {
  * at stride 1 (22%). The gate runs at stride 1, so P3 rides along there
  * cheaply and this switch exists for cost experiments rather than for the
  * gate. `EXHAUSTIVE_RAW_FROZEN=0` turns it off.
+ *
+ * "The gate runs at stride 1" was FALSE for one release and this comment did
+ * not notice, which is the only interesting thing about it: `fiveleg.sh`
+ * defaulted `CENSUS_STRIDE` to 3 between 2026-08-28 and 2026-08-29 while
+ * three sentences here went on describing full-stride as a gate property. A
+ * cost argument that names a setting has to be checked against the script
+ * that passes it — the script is the fact, this is a claim about the script.
  */
 const RAW_FROZEN = (testEnv('EXHAUSTIVE_RAW_FROZEN') ?? '1') !== '0';
 /**
