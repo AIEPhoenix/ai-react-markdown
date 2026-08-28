@@ -242,6 +242,42 @@ describe('oracle self-tests (must fire / must stay quiet)', () => {
     }
   });
 
+  test('the per-document vacuity counter responds to a blinded document', () => {
+    // `fullyBlindDocs` is a floor, and a floor that cannot be made to move
+    // is decoration. The blind document is not hand-invented — it is the
+    // 141-byte hazard sample this counter first flagged (seed 20400401),
+    // hand-shrunk to 52 bytes: everything the scanner freezes is
+    // definition content, which is the gate's one legitimate exemption, so
+    // the gate correctly says nothing and the counter must notice that it
+    // said nothing. Probed and blind on all six configs; a document with
+    // ordinary frozen content must not be counted.
+    //
+    // Both halves matter. Asserting only the blind side would pass on a
+    // counter stuck at 1, and asserting only the speaking side would pass
+    // on one stuck at 0.
+    const blind = '[^x]: body\n\n    cont\n\n[y]: /y\n\nprose [text][y] used\n';
+    const speaking = 'para one with some words\n\npara two with more\n\npara three\n\n';
+    const count = (doc: string) => {
+      const stats: OracleSweepStats = {
+        probesRun: 0,
+        spliceableProbes: 0,
+        incrementalProbes: 0,
+        snapshotNodesCompared: 0,
+        snapshotPositions: 0,
+        documentsProbed: 0,
+        fullyBlindDocs: 0,
+      };
+      for (const config of CATALOG) oracleCheckDoc(doc, config, stats, 0, { idealIdentity: true });
+      return stats;
+    };
+    const a = count(speaking);
+    expect(a.documentsProbed, 'the speaking document was never probed — pick another').toBeGreaterThan(0);
+    expect(a.fullyBlindDocs, 'ordinary frozen content counted as blind').toBe(0);
+    const b = count(blind);
+    expect(b.documentsProbed, 'the blind document was never probed — pick another').toBeGreaterThan(0);
+    expect(b.fullyBlindDocs, 'a document the gate said nothing about was not counted').toBe(b.documentsProbed);
+  });
+
   test('the M oracle stays quiet on paragraph prefixes for every probe', () => {
     const prefix = 'para one with *emphasis*\n\npara two\n\n';
     for (const config of CATALOG) {
@@ -294,6 +330,8 @@ describe('oracle sweep — pinned realistic corpus', () => {
         incrementalProbes: 0,
         snapshotNodesCompared: 0,
         snapshotPositions: 0,
+        documentsProbed: 0,
+        fullyBlindDocs: 0,
       };
       const findings = oracleCheckDoc(doc.doc, config, stats, 0, ORACLE_OPTS);
       const defects = findings.filter((f) => f.severity === 'defect');
@@ -351,6 +389,8 @@ describe('oracle sweep — fuzz corpus (env-scaled)', () => {
         incrementalProbes: 0,
         snapshotNodesCompared: 0,
         snapshotPositions: 0,
+        documentsProbed: 0,
+        fullyBlindDocs: 0,
       };
       const failures: string[] = [];
       const snapFirings: string[] = [];
@@ -385,7 +425,8 @@ describe('oracle sweep — fuzz corpus (env-scaled)', () => {
       const buckets = [...infoBuckets.entries()].sort((a, b) => b[1] - a[1]);
       console.log(
         `[oracle ${name}] probes=${stats.probesRun} spliceable=${stats.spliceableProbes} incremental=${stats.incrementalProbes} ` +
-          `snapNodes=${stats.snapshotNodesCompared} snapPositions=${stats.snapshotPositions} info=${buckets.reduce((a, [, n]) => a + n, 0)}\n` +
+          `snapNodes=${stats.snapshotNodesCompared} snapPositions=${stats.snapshotPositions} ` +
+          `blindDocs=${stats.fullyBlindDocs}/${stats.documentsProbed} info=${buckets.reduce((a, [, n]) => a + n, 0)}\n` +
           buckets
             .map(([k, n]) => `  ${k} ×${n}\n${(infoExamples.get(k) ?? []).map((e) => `    ${e}`).join('\n')}`)
             .join('\n')
@@ -424,6 +465,43 @@ describe('oracle sweep — fuzz corpus (env-scaled)', () => {
           stats.snapshotPositions / stats.spliceableProbes,
           'the snapshot gate was silent at most probe positions'
         ).toBeGreaterThan(0.5);
+        // PER-DOCUMENT vacuity, which the two ratios above structurally
+        // cannot see. They are corpus-wide, so one blinded document moves
+        // them by a millionth: at the measured 0.974 against a 0.5
+        // threshold, 48.7% of documents could be blind before either
+        // fired. F22 is why that got measured — a forged footer wrapper
+        // took a document's gate to zero compared nodes on all six configs
+        // while every ratio here stayed comfortable.
+        //
+        // This is NOT an F22 detector, and must not be sold as one: at a
+        // scanner-GRANTED boundary the forgery is unreachable (an open
+        // `<section>` suppresses freezing entirely, so the document is
+        // never probed and never counted here) and F22 is fixed at its own
+        // key besides. What this catches is the general class — any future
+        // mechanism that silences the gate on part of a corpus.
+        //
+        // Blindness is all-or-nothing per document: measured over 1,263
+        // probed documents, the count blind at EVERY position equals the
+        // count blind at ANY position (benign 4, hazard 24). Whether the
+        // gate can speak is a property of the document, not of the probe,
+        // so counting silent documents is the whole instrument.
+        //
+        // Threshold 8% against 12 shards x 4000 runs (seeds 20400400+i):
+        // benign 0.23-1.37% (mean 0.74), hazard 3.70-5.54% (mean 4.50).
+        // 1.44x the worst observed, which is thinner than the floors above
+        // — but at n≈1200 documents per sweep the sampling sd is 0.6pp, so
+        // 8% sits ~5.8 sd out and noise cannot reach it. Only a corpus
+        // change can, and a corpus change that moves this by 78% is worth
+        // the investigation it would trigger. If a generator addition
+        // pushes hazard up legitimately, re-measure the spread and move
+        // the threshold WITH the evidence rather than to whatever makes
+        // the run green.
+        expect(stats.documentsProbed).toBeGreaterThan(0);
+        expect(
+          stats.fullyBlindDocs / stats.documentsProbed,
+          `the gate compared nothing at all on ${stats.fullyBlindDocs}/${stats.documentsProbed} documents — ` +
+            `a per-document blinding the corpus-wide ratios cannot see`
+        ).toBeLessThan(0.08);
       }
       // Anti-vacuity floor, over NON-EMPTY tails only. The old form counted
       // every probe and so could not fall below 4/doc even with the splice
