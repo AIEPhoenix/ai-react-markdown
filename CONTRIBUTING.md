@@ -73,6 +73,23 @@ pnpm --filter @ai-react-markdown/engine fuzz:splice
 
 A green soak is a **release** gate, not a per-PR one; CI does not run it. If your PR changes engine behavior, say in the description whether you ran it and what the result was.
 
+#### Where a number goes
+
+Tightening one of these instruments produces two kinds of number, and they need different homes:
+
+| the number                                                                                                        | where it goes                                               | why                                                                                                     |
+| ----------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| **gates** — a threshold, a floor, a must-fire shape                                                               | an `expect(value, message)`                                 | an assertion carries its own evidence forever and re-proves itself on every run                         |
+| **justifies a gate** — "this exemption suppresses nothing", "the tightening lost no recall", a calibration spread | a committed script under `scripts/`                         | it compares the code against a version of itself that no longer exists, so it can never be an assertion |
+| anything that matters                                                                                             | **not** a deleted scratch file, and **not** a `console.log` | both are silent by default; see below                                                                   |
+
+The middle row is the one that used to go wrong. "Delete every scratch file before committing" is a real rule — leftover probes have reddened preflight more than once, and one of them failed _by design_ — but the harness that proves "no recall lost" is exactly the artifact that rule deletes, and its numbers then survive only as prose in a comment. Commit it as a script instead: reproducible, outside the test count, invisible to preflight. `scripts/soak/gate-evidence.sh` is the worked example, re-running the two comparative measurements behind the raw-mode gate's exemption set.
+
+Two traps worth knowing before you write the readout:
+
+- **`console.log` in a passing test is discarded.** Vitest 4 drops `console.*` from passing tests unless a reporter is named explicitly, and no soak leg names one. Use `process.stdout.write` in anything whose purpose is to print.
+- **An assertion message is a gate, not a gauge.** The numbers in a failure message appear only once the threshold is already crossed, and stay mute on every passing run — which is precisely when you would want to watch a ratio drift toward its limit. If you want early warning, print it on the passing path too.
+
 ## Branching & PRs
 
 - Branch off `main`. Name your branch `<type>/<short-desc>` — e.g. `fix/cross-chunk-orphan-defs`, `docs/typescript-generics-example`.
