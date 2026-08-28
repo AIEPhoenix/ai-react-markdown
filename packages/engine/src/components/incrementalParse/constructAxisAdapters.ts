@@ -312,6 +312,49 @@ export function measureIsVoid(name: string, config: CatalogConfig): VoidVerdict 
   return textContent(raw).includes('MARKER') ? 'void' : 'unmeasurable';
 }
 
+/** The contexts `measureBuildsElement` asks its question in. `root` is the
+ *  fragment's own insertion mode; `table` is the one context the scanner
+ *  models separately (`TABLE_PART_NAMES`), and the only one in which a name
+ *  that builds nothing at the root can still build an element. Adding a
+ *  context here widens what "no element ANYWHERE" is allowed to mean. */
+export type ElementContext = 'root' | 'table';
+
+/**
+ * ADAPTER 7 — does parse5 put an element UNDER THIS TAG NAME in the tree?
+ *
+ * `measureIsVoid` already needed this question and answered it only well
+ * enough to refuse: its `unmeasurable` bucket holds every name whose element
+ * never reaches the tree, and stops there, because void-ness is genuinely not
+ * observable for them. That was the right answer to the void question and it
+ * left a different question unasked — the scanner keys its whole
+ * open-element model on tag names, so a name parse5 never pushes is a name
+ * whose `openStack` entry is a phantom. A balanced pair of phantoms pops back
+ * to `openTotal === 0` and the candidate freezes across a merge parse5
+ * already performed (F28: `frame`, `image`).
+ *
+ * So the bucket is split here. Three answers, because two of them look
+ * identical from inside `measureIsVoid`:
+ *
+ * - `builds` — an element with this exact tag name is in the tree.
+ * - `renamed` — no element with this name, but the marker survived, so parse5
+ *   built SOMETHING (`image` → `img`). The end tag is still discarded.
+ * - `no-element` — no element with this name and the marker is gone with it,
+ *   or nothing was built at all (`frame`, `body`).
+ *
+ * `renamed` and `no-element` are separated for the reader, not for the
+ * caller: both mean the scanner must not push, and the scanner's treatment is
+ * the same poison. Collapsing them would hide which mechanism a future member
+ * arrived through, and the two mechanisms have nothing in common.
+ */
+export type ElementVerdict = 'builds' | 'renamed' | 'no-element';
+
+export function measureBuildsElement(name: string, config: CatalogConfig, context: ElementContext): ElementVerdict {
+  const inner = `<${name}>MARKER</${name}>`;
+  const raw = runToRawLayer(context === 'table' ? `<table>${inner}</table>\n` : `${inner}\n`, config);
+  if (findElement(raw, name) !== null) return 'builds';
+  return textContent(raw).includes('MARKER') ? 'renamed' : 'no-element';
+}
+
 // ── the operator set ────────────────────────────────────────────────────
 
 export type OperatorName = 'identity' | 'slash' | 'space' | 'attr' | 'newline' | 'caseFold' | 'truncate' | 'elide';

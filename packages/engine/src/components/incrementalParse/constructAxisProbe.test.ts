@@ -35,6 +35,7 @@ import {
   elementSwallows,
   findElement,
   mdBlockExtent,
+  measureBuildsElement,
   measureP5ContentState,
   measureIsVoid,
   micromarkKeepsBlockOpenPastBlank,
@@ -539,7 +540,86 @@ describe('construct axis: the facts the templates are derived from', () => {
       // `.content`. All four would otherwise read as "holds nothing", which
       // is indistinguishable from void — the same false positive the content
       // -state adapter hit on its first run.
+      //
+      // A third answer is only worth having if somebody asks it a question.
+      // This bucket held `frame` and `image` correctly, with the mechanism
+      // written out correctly, for as long as it existed — and nothing read
+      // it, so the scanner went on pushing both onto `openStack` and freezing
+      // across their retroactive merges (F28). The test below is that
+      // question, asked of the same measurement.
       unmeasurable: ['col', 'frame', 'image', 'template'],
+    });
+  });
+
+  /**
+   * `NO_ELEMENT_NAMES` against parse5, and the reason it is a separate
+   * question from `void`.
+   *
+   * The scanner keys its whole open-element model on tag names. A name parse5
+   * builds no element for is therefore a name whose `openStack` entry is a
+   * phantom: the unbalanced form over-counts and over-blocks, but a BALANCED
+   * pair pops back to zero and the candidate freezes across a merge that
+   * already happened. That is F28, and it reached production through `frame`
+   * (discarded outright) and `image` (rewritten to `img`).
+   *
+   * Pool provenance, same discipline as the lists above: the names come from
+   * the void package, the hand-written non-block set, every other scanner
+   * list, and the table-part and raw-text neighbours that share the shape —
+   * the list under test is unioned in LAST, so a missing name reds too.
+   *
+   * Both contexts are measured because membership claims "no element ANYWHERE
+   * the scanner can be", and the table is the one context the scanner models
+   * separately. A name that builds in one and not the other would be
+   * context-sensitive, could not be poisoned document-wide, and belongs with
+   * `strayTablePart` instead — the assertion below says the split is empty.
+   */
+  test('the no-element list agrees with what parse5 builds, in both contexts', () => {
+    const lists = new Map(SCANNER_NAME_LISTS);
+    const noElementList = lists.get('noElement');
+    if (noElementList === undefined) throw new Error('SCANNER_NAME_LISTS lost noElement');
+
+    const pool = [
+      ...new Set([
+        ...HTML_VOID_ELEMENTS,
+        ...NON_BLOCK_HTML_ELEMENTS,
+        ...SCANNER_NAME_LISTS.flatMap(([, set]) => [...set]),
+        'image',
+        'listing',
+        'isindex',
+        'rb',
+        'rt',
+        'div',
+        'p',
+      ]),
+    ].sort();
+
+    const atRoot = new Map(pool.map((n) => [n, measureBuildsElement(n, CFG, 'root')]));
+    const inTable = new Map(pool.map((n) => [n, measureBuildsElement(n, CFG, 'table')]));
+    const noElementAtRoot = pool.filter((n) => atRoot.get(n) !== 'builds');
+
+    expect({
+      poolSize: pool.length,
+      // The DANGEROUS direction: parse5 builds nothing, the scanner pushes a
+      // phantom and pops it. This is the set F28 lived in.
+      missingFromList: noElementAtRoot.filter((n) => !noElementList.has(n)),
+      // The over-blocking direction: poisoning a name parse5 really builds.
+      listedButBuilds: [...noElementList].filter((n) => atRoot.get(n) === 'builds'),
+      // Context-sensitivity would refute the document-wide poison outright.
+      contextSplit: pool.filter((n) => (atRoot.get(n) === 'builds') !== (inTable.get(n) === 'builds')),
+      // Which mechanism the members arrived through. `no-element` is empty on
+      // this pool and is recorded as measured rather than assumed: every
+      // current member leaves its MARKER behind as text, so none of them
+      // erases content outright. A member that did would be a worse hazard
+      // than the six here, and this cell is where it would first show up.
+      renamed: noElementAtRoot.filter((n) => atRoot.get(n) === 'renamed'),
+      erased: noElementAtRoot.filter((n) => atRoot.get(n) === 'no-element'),
+    }).toEqual({
+      poolSize: 146,
+      missingFromList: [],
+      listedButBuilds: [],
+      contextSplit: [],
+      renamed: ['body', 'frame', 'frameset', 'head', 'html', 'image'],
+      erased: [],
     });
   });
 

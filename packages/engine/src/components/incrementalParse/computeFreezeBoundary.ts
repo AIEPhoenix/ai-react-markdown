@@ -156,6 +156,41 @@ const TABLE_PART_NAMES = new Set(['td', 'th', 'tr', 'tbody', 'thead', 'tfoot', '
  *  BALANCED `<body>…</body>` form reaches zero and freezes across. */
 const DOCUMENT_STRUCTURE_NAMES = new Set(['html', 'head', 'body', 'frameset']);
 
+/** The RULE the four names above are one mechanism of, keyed on the
+ *  consequence rather than on the route that produces it: **parse5 builds no
+ *  element under this tag name**. `openStack` is a MODEL of parse5's
+ *  open-element stack, so for these names every entry in it is a phantom —
+ *  and the unbalanced form is safe only by the accident the note above
+ *  records for `<body>`, while the BALANCED pair pops back to
+ *  `openTotal === 0` and freezes across a merge parse5 already performed.
+ *
+ *  Three mechanisms, one consequence, which is why the list cannot be keyed
+ *  on the mechanism:
+ *   - `html`/`head`/`body`/`frameset` — routed out by "in template", above.
+ *   - `frame` — parse5's insertion modes DISCARD the start tag outside a
+ *     frameset. No element, no node, nothing to pop.
+ *   - `image` — parse5 REWRITES it to `img`, so an element appears and
+ *     `image` never does. `</image>` is then a stray end tag parse5 drops,
+ *     merging the text on either side of it — F24's own hazard, reached
+ *     through the one door F24's `idx === -1` branch cannot see, because the
+ *     scanner's stack matched where parse5's would not have.
+ *
+ *  F28 (2026-08-29 review). `<frame>\n</frame>\n\n` froze all 18 bytes with
+ *  the `\n` between the tags a live root text node (`7-8:text:"\n"` →
+ *  `"\n\n"` on any append); `<image>` is the same 18 bytes. Both shipped from
+ *  long before v2.6.0. Neither name occurs in `fuzzGenerators.ts`,
+ *  `pinnedCorpus.ts` or anywhere else in this repo, so no past green run is
+ *  invalidated — and nothing in the gate could have found them: the census
+ *  alphabet's equivalence classes are the SCANNER's, so `frame` sat in one
+ *  39-name class with `div`, and `image` is in no list at all.
+ *
+ *  Membership is MEASURED, not asserted — `measureBuildsElement` in
+ *  `constructAxisProbe`, over a pool wider than this list and in both
+ *  contexts the scanner distinguishes, so a missing name reds and not only an
+ *  extra one. Table parts are not here: they build elements normally in this
+ *  fragment context, and their own hazard is `strayTablePart`'s. */
+const NO_ELEMENT_NAMES = new Set([...DOCUMENT_STRUCTURE_NAMES, 'frame', 'image']);
+
 /** The same retroactive constructs as literal openers, for the TRAILING
  *  PARTIAL line. That line is never confirmed and never enters the
  *  checkpoint, so `processConfirmedLine` cannot poison from it — yet the
@@ -165,14 +200,12 @@ const DOCUMENT_STRUCTURE_NAMES = new Set(['html', 'head', 'body', 'frameset']);
  *  arriving doctype then rewrote). */
 const RETROACTIVE_OPENERS = [
   '<!doctype',
-  '<html',
-  '<head',
-  '<body',
-  '<frameset',
-  '</html',
-  '</head',
-  '</body',
-  '</frameset',
+  // DERIVED, so the trailing-partial guard cannot drift from the poison the
+  // confirmed lines get. It was transcribed until F28, and the transcription
+  // was already two names behind by then. `<frame` subsumes `<frameset`,
+  // which is why the derived list is SHORTER than the one it replaces and
+  // still covers strictly more.
+  ...[...NO_ELEMENT_NAMES].flatMap((name) => [`<${name}`, `</${name}`]),
 ];
 
 /** Does a partial line already carry one of them? Matches COMPLETE openers
@@ -785,9 +818,11 @@ export interface FreezeScanCheckpointInternal extends FreezeScanCheckpoint {
  *  "in body"). Omitting the three counted them OPEN forever, which
  *  over-blocks — the safe direction, and why it survived; the dangerous
  *  direction (a name here that parse5 really keeps open) was measured
- *  empty. `frame` is deliberately NOT here: outside a frameset parse5
- *  IGNORES it — no element at all — which is the discarded-token class the
- *  `frameset` document-structure poison already covers. */
+ *  empty. `frame` is deliberately NOT here — parse5 builds no element for
+ *  it, which is a different fact from "void" — and it belongs to
+ *  `NO_ELEMENT_NAMES` instead. It used to say the `frameset` poison covered
+ *  it; that was a defence keyed on `frameset` against a hazard spelled
+ *  `frame`, and it was wrong for as long as it was written (F28). */
 const VOID_TAGS = new Set([
   'area',
   'base',
@@ -1458,13 +1493,20 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
         if (tag === 'plaintext') cp.phasePoisonedAt = Math.min(cp.phasePoisonedAt, ln.start);
       }
     }
-    // Retroactive construct (see DOCUMENT_STRUCTURE_NAMES): parse5 erases
-    // the tag and merges the text around it, changing hast BEFORE this
-    // point. Poison from offset 0 — nothing in the document is freeze-safe
-    // once one of these is confirmed, and the poison is monotone so it
-    // stays that way. Sits past the raw-text guard on purpose: a `<body>`
-    // inside `<script>` is text to parse5 too, and must not poison.
-    if (DOCUMENT_STRUCTURE_NAMES.has(tag)) cp.phasePoisonedAt = 0;
+    // Retroactive construct (see NO_ELEMENT_NAMES): parse5 builds no element
+    // under this name, so it erases the tag and merges the text around it,
+    // changing hast BEFORE this point. Poison from offset 0 — nothing in the
+    // document is freeze-safe once one of these is confirmed, and the poison
+    // is monotone so it stays that way. Sits past the raw-text guard on
+    // purpose: a `<body>` inside `<script>` is text to parse5 too, and must
+    // not poison.
+    //
+    // Keyed on the NAME rather than on the end tag's discard (F24) because
+    // the merge here is RETROACTIVE: it extends a node that starts before the
+    // construct, which is the one thing arming a forward seam cannot repair.
+    // `<frame>` and `<image>` are not a wider reading of F24; they are the
+    // same class as `<body>` and get its treatment.
+    if (NO_ELEMENT_NAMES.has(tag)) cp.phasePoisonedAt = 0;
     // `<template>` is the second kind of erasure. Its children go into a
     // content FRAGMENT (`hast-util-from-parse5` hangs them off `.content`,
     // not `.children`), and the sanitize pass then drops the element — so a
@@ -2913,6 +2955,11 @@ export const SCANNER_NAME_LISTS: ReadonlyArray<readonly [string, ReadonlySet<str
   ['type6', TYPE6_NAMES],
   ['void', VOID_TAGS],
   ['documentStructure', DOCUMENT_STRUCTURE_NAMES],
+  // Added with F28, and it is the list that would have made F28 visible: the
+  // derived census alphabet partitions names by their membership across THIS
+  // table, so before it existed `frame` shared one 39-name class with `div`
+  // and could never be sampled apart from it.
+  ['noElement', NO_ELEMENT_NAMES],
   ['tablePart', TABLE_PART_NAMES],
   ['scopeBarrier', SCOPE_BARRIER_NAMES],
   ['foreignRoot', new Set(FOREIGN_ROOT_NAMES)],

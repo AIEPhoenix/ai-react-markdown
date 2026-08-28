@@ -787,6 +787,61 @@ describe('computeFreezeBoundary — raw-remnant seam (blocker 6)', () => {
       expect(computeFreezeBoundary(text, OFF)).toBe(text.lastIndexOf('tail'));
     });
   });
+
+  describe('a name parse5 builds no element for is a phantom on openStack (F28)', () => {
+    // F24 keyed the discard on `idx === -1` — no match on the SCANNER's
+    // `openStack` — and called that parse5's own answer. It is a model of
+    // parse5's stack, and the two disagree on exactly the names parse5 never
+    // pushes under: the scanner pushed one, so the end tag MATCHED and popped,
+    // `discardedEndTag` stayed false, and `openTotal` came back to zero. The
+    // unbalanced form was safe by accident (the phantom blocked candidates),
+    // which is the same accident `DOCUMENT_STRUCTURE_NAMES` records for an
+    // unclosed `<body>` — so the balanced pair is where it shipped.
+    //
+    // Measured on v2.8.2 and v2.9.0, byte-identical: boundary 18 of 18, with
+    // the raw layer's root text node going `7-8:"\n"` → `"\n\n"` on any
+    // append. Fires on three of six configs; the other three reach boundary 0
+    // through an unrelated guard, which is how it hid.
+    test('a discarded start tag: <frame> (was: 18 of 18)', () => {
+      expect(computeFreezeBoundary('<frame>\n</frame>\n\ntail', OFF)).toBe(0);
+    });
+
+    test('a RENAMED start tag: <image> becomes img, so `image` never exists (was: 18 of 18)', () => {
+      // The second mechanism, and why the list cannot be keyed on "parse5
+      // ignores it": parse5 builds an element here — just not one named
+      // `image` — so `</image>` is still a stray end tag it discards.
+      expect(computeFreezeBoundary('<image>\n</image>\n\ntail', OFF)).toBe(0);
+    });
+
+    test('attribute-bearing and self-closing spellings reach the same poison', () => {
+      expect(computeFreezeBoundary('<frame src=a>\n</frame>\n\ntail', OFF)).toBe(0);
+      expect(computeFreezeBoundary('<frame/>\n</frame>\n\ntail', OFF)).toBe(0);
+    });
+
+    test('the poison is document-wide, so an unbalanced one is refused too', () => {
+      // Not a behaviour change — the phantom already blocked these — but the
+      // reason is now the rule rather than the accident, and it must not
+      // regress if the push ever stops.
+      expect(computeFreezeBoundary('<frame>\n\ntail', OFF)).toBe(0);
+      expect(computeFreezeBoundary('<image>\nremnant\n\ntail', OFF)).toBe(0);
+    });
+
+    test('CLEAR: a name parse5 DOES build keeps freezing', () => {
+      // The control that separates F28 from "any tag pair poisons". `div` is
+      // in the same alphabet equivalence class as `frame` — one 39-name class
+      // keyed on `type6` alone — which is precisely why the census could not
+      // have sampled them apart before `noElement` joined the table.
+      const text = '<div>\n</div>\n\ntail paragraph';
+      expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('tail paragraph'));
+    });
+
+    test('CLEAR: the names are markup, not text — one inside <script> must not poison', () => {
+      // The poison sits past the raw-text guard on purpose (see the call
+      // site). A `<frame>` inside a raw-text element is text to parse5 too.
+      const text = '<script>\n<frame>\n</script>\n\ntail paragraph';
+      expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('tail paragraph'));
+    });
+  });
 });
 
 describe('computeFreezeBoundary — retroactive constructs inside an inline-opened raw-text mask (release-gate F17, seed 20293004)', () => {
