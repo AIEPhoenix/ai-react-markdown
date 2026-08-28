@@ -381,6 +381,38 @@ production code.
 | Boundary diff        | `boundaryDiff.test.ts` + `boundaryBaseline.json`                                        | Regression net (§2.3). Per-sample observables over the pinned corpus × three lineages; `e`/`s` record the boundary, `p` records `pendingFenceCloser` length (the only thing the phantom consumer reads). Increases FAIL until the baseline is regenerated with a ledger entry; decreases report a histogram. Since 2026-08-26 a corpus-composition change NARROWS the net to the byte-unchanged samples instead of disabling it — see the regen rule below. |
 | Pinned corpus        | `pinnedCorpus.ts`                                                                       | 17 frozen fixture docs + 3 purpose-built REF_RESOLUTION docs + 2000 pinned-seed fuzz samples, fingerprinted against corpus drift.                                                                                                                                                                                                                                                                                                                           |
 
+**Diagnostic-channel rule (learned the hard way on 2026-08-28).** Numbers in
+an assertion message live; numbers in `console.*` die. vitest 4 intercepts
+`console.log`/`error`/`warn`/`info`/`table` in this package and DROPS the
+output of a test that PASSES — a failing test's survives, a passing test's
+does not. The switch is whether a reporter is passed EXPLICITLY, and nothing
+here passes one (`pnpm test`, CI's `pnpm -r test`, and all five soak legs use
+bare `--run`), so the drop was global and silent.
+
+The corollary is the part that bites: **a diagnostic that only speaks when the
+test PASSES has no other survivable channel and must be written to
+`process.stdout.write`**, which is never intercepted. That is exactly the
+shape of the instruments here — the boundary-diff decrease histogram, the
+oracle sweep's engagement and `blindDocs` readout, the census `[census]`
+lines. All of them printed nothing for months while looking normal, because a
+line that appears only when there is something to say cannot be told apart
+from a channel that is broken.
+
+An assertion is a GATE, not a GAUGE. Its message arrives once the limit is
+already crossed, so it cannot show a ratio drifting toward its threshold —
+which matters for `fullyBlindDocs/documentsProbed < 0.08`, the one limit in
+this package that is an absolute constant calibrated from observed ratios
+(hazard 3.70-5.54%, ×1.44) rather than a relative bound. Every other floor is
+relative (`incrementalProbes >= spliceable/2`) or mutation-verified, and
+relative bounds do not rot when their channel goes quiet.
+
+How it went unnoticed is the better lesson: someone hit the drop, added
+`--disable-console-intercept` to the run command in
+`experiments/prefixFreeze/README.md`, and the knowledge never left that file.
+One experiment kept working when run by hand while every gate leg printed
+nothing, and nobody compared the two. **A local workaround is what prevented
+the global fix from being found.**
+
 **Corpus-regen rule (learned the hard way at v2.8.0):** any edit to
 `fuzzGenerators.ts` or `pinnedCorpus.ts` shifts the pinned-seed sample
 stream deterministically — on ANY node version — so it must regenerate

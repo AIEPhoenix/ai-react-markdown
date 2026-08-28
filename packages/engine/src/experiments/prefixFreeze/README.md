@@ -66,9 +66,24 @@ Their rule is safe only because of three properties we don't share:
 Run with:
 
 ```sh
-npx vitest --run --project unit --disable-console-intercept \
-  packages/core/src/experiments/prefixFreeze/prefixFreeze.test.ts
+npx vitest --run --project unit \
+  packages/engine/src/experiments/prefixFreeze/prefixFreeze.test.ts
 ```
+
+Two things changed in that command on 2026-08-28, and the reasons are worth
+more than the edit. The path said `packages/core` — this directory moved to
+`packages/engine` with the v2.3.0 split and the command had been unrunnable
+ever since, so the repro for the findings below could not be repeated by
+anyone who tried it. And `--disable-console-intercept` is gone because it is
+no longer needed: the two tables now write to the real stream instead of
+`console.table`, which vitest 4 drops for a test that PASSES.
+
+That flag is also the whole reason this package's diagnostics went dark
+without anyone noticing. Someone hit the drop here, worked around it locally
+by adding the flag to this one command, and the knowledge never left this
+file — so the census and oracle legs, which pass no such flag, printed
+nothing for months while this one experiment still worked when run by hand.
+A local workaround is what kept the global problem from being found.
 
 ## Findings (2026-07-14)
 
