@@ -216,10 +216,28 @@ export function collectRefLine(
   lnStart: number,
   lnEnd: number,
   scanText: string,
+  rawText: string,
   inRawText: boolean,
   isBlockStart: boolean
 ): RefLineFacts {
-  const defShaped = inRawText ? null : DEF_RE.exec(scanText);
+  // The definition decision reads the RAW line, never `scanText`. A link
+  // reference definition is a BLOCK construct: micromark decides it before
+  // any inline parsing, so a code span does not exist yet and its backticks
+  // are ordinary characters. `scanText` has intra-line code spans blanked
+  // out — correct for the inline extractions below, and an input error
+  // here, because blanking DELETES the very content that invalidates a
+  // definition. `[x]: /u    ` + a code span is a PARAGRAPH whose `[x]` is a
+  // live shortcut reference; masked, it read as a valid definition, so the
+  // scanner registered a ghost def, never tainted the reference, and froze
+  // a paragraph that a later `[x]: …` retargets into a linkReference —
+  // 18 of 18 bytes, shipped-output divergence on three configs (gate290
+  // census leg, fragment band K=4, probe collideDef:x).
+  //
+  // Index arithmetic stays sound across the two strings because masking is
+  // LENGTH-PRESERVING (spans become runs of spaces), so `defBracket` below
+  // is a valid offset into `scanText` even though `def` was matched here.
+  // Keep that property if you touch `maskIntraLineCodeSpans`.
+  const defShaped = inRawText ? null : DEF_RE.exec(rawText);
   // micromark requires a NON-EMPTY destination followed by nothing but an
   // optional TITLE for a link definition. A bare `[label]:` line, or one
   // with non-title garbage after the destination (`[x]: /u[x]: /u` — K=4
@@ -229,7 +247,7 @@ export function collectRefLine(
   // under-blocks. Footnote defs legitimately have empty bodies.
   const def =
     defShaped !== null &&
-    (defShaped[1].startsWith('^') || isPlausibleLinkDefRest(scanText.slice(defShaped.index + defShaped[0].length)))
+    (defShaped[1].startsWith('^') || isPlausibleLinkDefRest(rawText.slice(defShaped.index + defShaped[0].length)))
       ? defShaped
       : null;
   const defLineStart = isBlockStart || !cp.prevLineWasText || cp.prevLineWasValidDef;

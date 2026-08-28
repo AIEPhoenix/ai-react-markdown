@@ -2006,7 +2006,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   // at line start, so adding the term could not change a single verdict.
   // The asymmetry is intentional, not an oversight (2026-08-26 review).
   const defRawToMicromark = cp.mdBlock.kind === 'html' || rawOpenAtLineStart || inRawTextTok(cp.p5Tok);
-  const { validLinkDef } = collectRefLine(cp, ln.start, ln.end, scanText, defRawToMicromark, isBlockStart);
+  const { validLinkDef } = collectRefLine(cp, ln.start, ln.end, scanText, ln.text, defRawToMicromark, isBlockStart);
 
   // Blocker 1: raw-block (types 3–5) state machine, then tag balance.
   // `rawSpans` records the byte ranges this line contributes to raw

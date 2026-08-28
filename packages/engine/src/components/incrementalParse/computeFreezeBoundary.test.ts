@@ -1230,6 +1230,59 @@ describe('computeFreezeBoundary — link-definition destination validity (ghost 
       expect(computeFreezeBoundary(t, OFF), dest).toBe(expected);
     }
   });
+
+  describe('the definition decision reads the RAW line, not the code-span mask (F26)', () => {
+    // A link reference definition is a BLOCK construct: micromark decides it
+    // before any inline parsing, where backticks are ordinary characters and
+    // a code span does not exist yet. The scanner masks intra-line code
+    // spans to keep its INLINE extractions honest, then handed the same
+    // masked line to the definition scan — and masking DELETES exactly the
+    // content that invalidates a definition, so def-shaped paragraphs
+    // registered as ghost defs and the `[label]` micromark leaves live as a
+    // shortcut reference was never tainted.
+    //
+    // Found by the gate290 census leg (fragment band K=4, probe
+    // `collideDef:x`) as a raw-layer under-block that REACHED SHIPPED
+    // OUTPUT: mdast mismatch on the final frame, three of six configs. The
+    // three defList-ON configs are quiet because blocker 4 holds the same
+    // candidate for its own reasons — the usual second mechanism standing
+    // in for a broken first one.
+    test('a code span after the destination is junk, not a definition (was: 18 of 18)', () => {
+      // The gate's own document. `[x]: /u` + spaces + a code span is a
+      // PARAGRAPH; appending `[x]: /collide` turns its leading `[x]` into a
+      // linkReference and splits the frozen text node 0-11.
+      expect(computeFreezeBoundary('[x]: /u    `<d>`\n\n', OFF)).toBe(0);
+    });
+
+    test('a code span after a CLOSED title is junk too (was: 19)', () => {
+      // The same cause one clause further along: the title parses, and the
+      // mask hid the garbage that has to follow it.
+      expect(computeFreezeBoundary('[a]: /u "t" `<d>`\n\ntail', OFF)).toBe(0);
+    });
+
+    test('the LABEL is raw too — a masked label registered the wrong identifier (was: 26)', () => {
+      // Third projection of one cause: masking rewrote `[a`b`]` to `[a   ]`,
+      // so the def registered under `a`, and the later `[a]` reference
+      // resolved against a definition micromark calls `a`b``. The boundary
+      // now stops at the unresolved reference instead of freezing past it.
+      const text = '[a`b`]: /u\n\nsee [a] here\n\ntail';
+      expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('see [a] here'));
+    });
+
+    test('CLEAR: a code span inside a TITLE still registers — the mask was the only problem', () => {
+      // Backticks inside a quoted title are ordinary characters to
+      // micromark, so this IS a definition and the taint still lifts.
+      const text = '[a]: /u "ti`ck ti`ck"\n\ntail';
+      expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('tail'));
+    });
+
+    test('CLEAR: masking still protects the INLINE extractions', () => {
+      // The precision the mask exists for is untouched: a reference inside a
+      // code span is code, not a live reference, and must not taint.
+      const text = 'see `[a]` here\n\ntail';
+      expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('tail'));
+    });
+  });
 });
 
 describe('computeFreezeBoundary — scanner profile (mathFlow/referenceTaint off)', () => {
