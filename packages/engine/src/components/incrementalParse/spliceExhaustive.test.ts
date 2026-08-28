@@ -35,24 +35,39 @@
  * band needs five or six for. Merging them would multiply two alphabets
  * that want opposite knobs.
  *
- * TWO CONFIGURATIONS, and the defaults are the CI one. CI runs both bands
- * at K=2 with rotated configs — 27 s here, and it keeps P3, which is the
- * part that sees what the old leg structurally could not. Depth is what
- * pays for that: a PR check costing half an hour gets skipped, then
- * disabled, then deleted.
+ * TWO CONFIGURATIONS, and the defaults are the CI one: both bands at K=2,
+ * all six configs crossed, P3 on. ~200 s here. A PR check costing half an
+ * hour gets skipped, then disabled, then deleted, so depth is what pays
+ * for the budget — the PROPERTY stays, because P3 is the part that sees
+ * what the old leg structurally could not, and its cost is per DOCUMENT
+ * rather than per schedule, so it survives the cut nearly intact.
+ *
+ * WHAT ONLY THE GATE COVERS — read this before treating a green CI as the
+ * full claim:
+ *   - K=3 and K=4 documents in the fragment band. CI stops at two tokens,
+ *     so no composed three-fragment construct (`<!--` + `>` + a stray
+ *     `-->`) is ever built. Every P1 of the 2026-08 review's batch lived
+ *     in exactly that gap.
+ *   - K=3 in the name band, which is where P3 currently fires at all: the
+ *     stray-end-tag class needs three lines, and CI's two-line documents
+ *     produce `fired=0` every run. A green CI is silent about it.
+ *   - Full-stride cut schedules. CI runs stride 1 only because K=2
+ *     documents are short; the gate's K=4 documents are strided.
  *
  * The release gate passes the expensive values, sharded — one process per
  * shard, since a census is a single vitest test and therefore a single
  * core:
- *   for i in $(seq 0 11); do EXHAUSTIVE_K=4 EXHAUSTIVE_STRIDE=1 \
- *     EXHAUSTIVE_NAME_K=3 EXHAUSTIVE_CONFIG_MODE=cross \
- *     EXHAUSTIVE_SHARD=$i/12 \
+ *   for i in $(seq 0 11); do EXHAUSTIVE_K=4 EXHAUSTIVE_STRIDE=3 \
+ *     EXHAUSTIVE_NAME_K=3 EXHAUSTIVE_SHARD=$i/12 \
  *     ../../node_modules/.bin/vitest --run src/components/incrementalParse/spliceExhaustive.test.ts & done
+ * Measured: ~27 min/shard for the fragment band plus ~6 min for the name
+ * band, ~45 min on the worst shard at the recorded ×1.5 skew.
  * `EXHAUSTIVE_SHARD` scatters BOTH bands, so one set of shard processes
  * covers the whole leg. Knobs: `EXHAUSTIVE_CONFIGS` (label list) narrows
- * the catalog, `EXHAUSTIVE_CONFIG_MODE=cross` spends every config on every
- * document, `EXHAUSTIVE_RAW_FROZEN=0` turns P3 off, `EXHAUSTIVE_NAME_K=0`
- * skips the name band, `EXHAUSTIVE_NAME_STRIDE` is its own cut stride.
+ * the catalog, `EXHAUSTIVE_CONFIG_MODE=rotate` spends one config per
+ * document instead of all six, `EXHAUSTIVE_RAW_FROZEN=0` turns P3 off,
+ * `EXHAUSTIVE_NAME_K=0` skips the name band, `EXHAUSTIVE_NAME_STRIDE` is
+ * its own cut stride.
  */
 
 import { describe, expect, test } from 'vitest';
@@ -233,17 +248,14 @@ const NAME_CLASS_TOKENS: readonly string[] = [
  * CI DEFAULT vs GATE, and the defaults here are the CI half.
  *
  * A PR check that costs half an hour gets skipped, then disabled, then
- * deleted, so the defaults have to fit a ~3 minute CI budget — which on a
- * shared runner 2-3× slower than this machine means ~60-90 s locally. Six
- * configs and P3 took the old K=3 default to 709 s, so the default K comes
- * down to 2 and the config spend rotates.
+ * deleted. Six configs and P3 took the old K=3 default to 709 s, so the
+ * default K comes down to 2 — ~200 s here.
  *
- * What CI keeps is the PROPERTY, not the depth. P3 is the part that sees
- * what the old leg structurally could not, and its cost is per DOCUMENT,
- * so it survives the cut almost intact while K-depth pays for it. The gate
- * script passes the expensive values:
- *   EXHAUSTIVE_K=4 EXHAUSTIVE_STRIDE=1 EXHAUSTIVE_NAME_K=3 \
- *     EXHAUSTIVE_CONFIG_MODE=cross EXHAUSTIVE_SHARD=$i/12
+ * DEPTH is the only thing cut. The config cross-product stays and P3 stays,
+ * because P3 is the part that sees what the old leg structurally could not
+ * and its cost is per DOCUMENT rather than per schedule. See the header for
+ * what that leaves to the gate alone, and read that list before treating a
+ * green CI as the whole claim.
  */
 const MAX_K = Number(testEnv('EXHAUSTIVE_K') ?? 2);
 /** Cut-schedule stride: CI samples every 3rd cut at K=3; deep runs set
@@ -292,18 +304,22 @@ const [SHARD_INDEX, SHARD_TOTAL] = (() => {
  *
  * HOW the cells are spent is a separate knob, `EXHAUSTIVE_CONFIG_MODE`.
  * `cross` runs every document against every config — the honest
- * cross-product, and what the gate uses. `rotate` runs each document
- * against ONE config, so the corpus covers all six at a sixth of the cost.
- * Rotation is the CI default because the alternative way to fit a CI
- * budget is picking two cells by hand, which is the curation this whole
- * change removes; a rotation still exercises every cell, just on a
- * deterministic 1/6 slice of documents each. It is a real reduction and
- * not a free lunch — a defect needing a SPECIFIC document under a SPECIFIC
- * config has a 1/6 chance per document rather than certainty — but F20's
- * shape (100% of engaged frames on 3 of 6 cells) is hit many times over by
- * any 1/6 slice, whereas a hand-picked pair can miss it outright.
+ * cross-product. `rotate` runs each document against ONE, so the corpus
+ * still covers all six at a sixth of the cost.
+ *
+ * `cross` is the DEFAULT everywhere, CI included (decided 2026-08-28). At
+ * K=2 the corpus is small enough that the full cross-product fits the
+ * budget, and a cross-product states something a sample cannot: every
+ * document was tried under every shipped configuration. `rotate` exists
+ * for the day that stops being affordable, and it is the right shape for
+ * that day because the other way to fit a budget is picking two cells by
+ * hand — the curation this whole change removes. It is a real reduction
+ * and not a free lunch: a defect needing a SPECIFIC document under a
+ * SPECIFIC config drops from certainty to a 1/6 chance per document.
+ * F20's shape (100% of engaged frames on 3 of 6 cells) survives any 1/6
+ * slice; a hand-picked pair can miss it outright.
  */
-const CONFIG_MODE = testEnv('EXHAUSTIVE_CONFIG_MODE') ?? 'rotate';
+const CONFIG_MODE = testEnv('EXHAUSTIVE_CONFIG_MODE') ?? 'cross';
 const CONFIGS = (() => {
   const raw = testEnv('EXHAUSTIVE_CONFIGS');
   if (!raw) return CATALOG;
@@ -757,19 +773,20 @@ function reportAndAssert(band: string, tokens: readonly string[], maxK: number, 
   // tripped by an alphabet change instead.
   //
   // Measured 2026-08-28, fragment band: 0.319 nodes per probe at K=3
-  // cross, 0.127 at K=2 cross, and 0.0896 at K=2 ROTATE — which is the CI
-  // default and therefore the configuration this runs in most often, so it
-  // is the one the floor has to clear. Rotation lowers the density because
-  // each document contributes one config's boundaries instead of six.
-  // 0.03 leaves 3× margin at the default and 10× at K=3, and still makes a
-  // total blinding (0/N, the shape a root-children-only signature walk
-  // produced elsewhere in this directory) unmissable.
+  // cross, 0.127 at the K=2 cross CI default, and 0.0896 at K=2 rotate —
+  // rotation lowers the density because each document contributes one
+  // config's boundaries instead of six. The floor has to clear the
+  // SMALLEST configuration anyone runs, which is the rotate one even
+  // though it is not the default, so 0.05 is set from 0.0896: 1.8× there,
+  // 2.5× at the default, 6.4× at K=3. A total blinding (0/N, the shape a
+  // root-children-only signature walk produced elsewhere in this
+  // directory) stays unmissable at any of them.
   if (RAW_FROZEN) {
     expect(s.rawFrozen.probes, `P3/${band} drove no probe tails — the raw-layer property never ran`).toBeGreaterThan(0);
     expect(
       s.rawFrozen.nodesCompared / s.rawFrozen.probes,
       `P3/${band} drove ${s.rawFrozen.probes} probes and compared ${s.rawFrozen.nodesCompared} frozen nodes — the instrument went blind`
-    ).toBeGreaterThan(0.03);
+    ).toBeGreaterThan(0.05);
   }
 }
 
