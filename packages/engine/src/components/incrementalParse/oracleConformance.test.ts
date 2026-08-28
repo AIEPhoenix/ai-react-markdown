@@ -148,7 +148,7 @@ describe('oracle self-tests (must fire / must stay quiet)', () => {
     // 185k frames / 20k engaged over 250 randomized documents × 6 configs,
     // zero divergence, plus the shard's own document at 413 frames per
     // config. The scanner is not involved — boundaries are byte-identical on
-    // v2.8.1 (77b1577) and db9f091.
+    // v2.8.1 and the 22.23.2 corpus regen.
     const withRef = (tag: string) => `uses [^x] here\n\n[^x]: body\n\npara\n\n<${tag}>\n`;
     const orphanOnly = (tag: string) => `[^x]: body\n\npara\n\n<${tag}>\n`;
     for (const tag of ['textarea', 'title', 'style', 'script', 'xmp', 'iframe', 'noembed']) {
