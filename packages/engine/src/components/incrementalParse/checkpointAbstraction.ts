@@ -19,11 +19,21 @@
  * FALSIFY this file (observing a value not declared here fails the test)
  * but it can never widen it, which is the direction that matters.
  *
- * The licence for treating the checkpoint as sufficient scan state is
- * already pinned elsewhere: the census's P2 asserts, for every snapshot of
- * every document it sweeps, that a scan resumed from a checkpoint produces
- * the same boundary as a fresh scan. Without that this abstraction would
- * be a guess about what the scanner remembers.
+ * The licence for treating the checkpoint as sufficient scan state comes
+ * from the census's P2, which asserts for every snapshot of every document
+ * it sweeps that a scan resumed from a checkpoint produces the same
+ * boundary as a fresh scan. Without that this abstraction would be a guess
+ * about what the scanner remembers.
+ *
+ * That licence covers a LINEAR chain of snapshots and nothing more, which
+ * is worth stating because the search initially exceeded it. A checkpoint
+ * is CONSUMED by the call it is passed to — measured 2026-08-28,
+ * `computeFreezeBoundary` returns the very object it was handed
+ * (`parent.checkpoint === child.checkpoint`) with `confirmedOffset`
+ * advanced in place. A stream has one successor per state and a search has
+ * dozens, so the search scans every node fresh; see the note at its scan
+ * step. Anyone tempted to make it faster by resuming needs to clone first,
+ * and the shape to clone is documented as changing between minor versions.
  *
  * WHAT THIS IS NOT: soundness-preserving. Two prefixes with equal abstract
  * signatures can have different hast, so a property can hold on one and
@@ -146,9 +156,26 @@ export function signatureValues(cp: FreezeScanCheckpointInternal): string[] {
  * mdType1RawText(mdBlock) && !inRawTextTok(p5Tok)`) is a MEMBERSHIP test,
  * which is exactly why it is expressible here.
  *
- * Stage 3 is the one that matters: a bogus-comment opener while the mask
- * is unbacked is the state in which the scanner froze bytes parse5 was
- * still going to reinterpret.
+ * Stage 3 was written as the state in which the scanner froze bytes
+ * parse5 was still going to reinterpret: a bogus-comment opener while the
+ * mask is unbacked. It is UNREACHABLE, and the reason is the point —
+ * stage 3 describes the scanner BEFORE F20 was fixed.
+ *
+ * Measured 2026-08-28 by direct probe, independent of the search, because
+ * "the search did not reach it" and "it cannot be reached" are different
+ * claims and only the second is worth reporting. `<?` alone gives
+ * `p5Tok=bogus`; the same `<?` line appended to
+ * `"<script>\n</script/>\n"` gives `p5Tok=data` and
+ * `phasePoisonedAt=9`. The mask going unbacked POISONS at the line where
+ * it happens, so there is no later state to observe — every candidate
+ * shape tested (`<?`, `<!x`, `</3`, after `script`/`style`/`textarea`,
+ * with `/>`- and space-form closers) lands the same way, boundary 0.
+ *
+ * So the chain's value is not that it finds F20; it is that stages 1 and
+ * 2 remaining reachable while stage 3 stays unreachable IS the fix
+ * holding. If a change ever removes the `maskUnbacked` poison, stage 3
+ * becomes reachable and this search will say so — which is why it is
+ * reported on every run and deliberately not asserted either way.
  */
 export const F20_CHAIN: readonly { id: string; hit: (v: Record<string, string>) => boolean }[] = [
   { id: '1:type1-rawtext-open', hit: (v) => v.mdBlock === 'html1raw' },
