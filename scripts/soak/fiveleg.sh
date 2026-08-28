@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 # The five-leg fresh-seed soak — the repo's release safety gate for the
 # freeze scanner (verification protocol §2.2). The boundary-diff harness
 # and the unit suite are REGRESSION nets; only this run is a safety
@@ -49,13 +49,21 @@
 # already used by hand. Cost at 4000 is ~10 min across twelve shards
 # against a two-hour gate, so this is a correction, not a new spend.
 #
-# Logs land in .soak-logs/<label>-*.log (gitignored). The script re-execs
-# itself under `caffeinate -dimsu`; note that caffeinate does NOT survive a
-# lid close — an overnight run on a closed laptop dies to wall-clock
-# timeouts (measured 2026-08-25: 12 shards × 43364 s, all spurious).
+# Logs land in .soak-logs/<label>-*.log (gitignored). On macOS the script
+# re-execs itself under `caffeinate -dimsu`; note that caffeinate does NOT
+# survive a lid close — an overnight run on a closed laptop dies to
+# wall-clock timeouts (measured 2026-08-25: 12 shards × 43364 s, all
+# spurious).
+#
+# bash, not zsh, and that is load-bearing rather than taste: not every
+# machine this runs on has zsh at all, which is the real reason a split gate
+# used to be hand-assembled instead of driven from this script. A gate script that
+# only runs on one of the two machines the gate runs on is not a gate script.
+# bash 3.2 is the floor (macOS ships it), so no associative arrays and no
+# `${var,,}`.
 set -uo pipefail
 
-if [ -z "${SOAK_CAFFEINATED:-}" ]; then
+if [ -z "${SOAK_CAFFEINATED:-}" ] && command -v caffeinate > /dev/null 2>&1; then
   exec caffeinate -dimsu env SOAK_CAFFEINATED=1 "$0" "$@"
 fi
 
@@ -79,7 +87,7 @@ CENSUS_NAME_K=${CENSUS_NAME_K:-3}
 # sharding, so a split run is byte-equivalent to a single-machine one.
 LEGS=${LEGS:-fuzz,dir,scanner,census,oracle}
 
-ROOT=${0:a:h:h:h}
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$ROOT/packages/engine"
 VITEST=../../node_modules/.bin/vitest
 OUT="$ROOT/.soak-logs"
@@ -138,6 +146,6 @@ run_leg oracle src/components/incrementalParse/oracleConformance.test.ts \
 
 if [ "$FAIL" -eq 0 ]; then echo "[$LABEL] ALL CLEAN (legs: $LEGS)"; else echo "[$LABEL] FAILURES — inspect $OUT/$LABEL-*.log"; fi
 for f in "$OUT"/$LABEL-*.log; do
-  printf "%-28s %s\n" "${f:t}" "$(grep -oE 'Tests +[0-9]+ (failed|passed)' "$f" | tail -1)"
+  printf "%-28s %s\n" "$(basename "$f")" "$(grep -oE 'Tests +[0-9]+ (failed|passed)' "$f" | tail -1)"
 done
 exit $FAIL
