@@ -1056,6 +1056,47 @@ describe('computeFreezeBoundary — suppressed fence/math opens poison the phase
     expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('```'));
   });
 
+  describe('a parse5 COMMENT that outlives micromark’s block poisons (F27)', () => {
+    // At a blank line, parse5 has exactly three non-data token states that
+    // can outlive micromark's block: a raw-text element, a bogus comment,
+    // and a comment. Two had alignment checks; the third had none, and the
+    // candidate then passed `htmlBalanced`, which excludes only `bogus`.
+    test('a `<!--` inside an open type-6 block leaves parse5 in a comment (was: 25 of 36)', () => {
+      // `<!--` here is the type-6 block's raw CONTENT — micromark opens no
+      // type-2 block for it, so its type-6 block ends at the blank while
+      // parse5's comment runs to end of document. The balanced tag pair is
+      // load-bearing: with a bare `<div>` the element bag stays open and the
+      // candidate is refused for that reason instead, which is exactly how
+      // the shape survives being minimised.
+      expect(computeFreezeBoundary('<div><p></div></p>\n<!--\n\ntail\n\nmore\n', OFF)).toBe(0);
+      // The gate's own line endings (CRLF after the opener) behave the same.
+      expect(computeFreezeBoundary('<div><p></div></p>\n<!--\r\n\r\ntail\n\nmore\n', OFF)).toBe(0);
+    });
+
+    test('CLEAR: the ALIGNED crossing is untouched — both grammars inside the comment', () => {
+      // When `<!--` starts its own line at block indent, micromark DOES open
+      // a type-2 block and the two grammars cross the blank together. That
+      // candidate is already refused by the html member, and this fix must
+      // not be what refuses it — the aligned path stays exactly as it was.
+      const aligned = '<!--\n\nstill inside\n\nmore\n';
+      expect(computeFreezeBoundary(aligned, OFF)).toBe(0);
+      const cp = scanFreezeBoundary(aligned, OFF).checkpoint as FreezeScanCheckpointInternal;
+      expect(cp.mdBlock, 'micromark is still in its type-2 block, so the crossing is aligned').toEqual({
+        kind: 'html',
+        type: 2,
+        indent: 0,
+      });
+      expect(cp.phasePoisonedAt, 'the aligned crossing must not poison').toBe(Infinity);
+    });
+
+    test('CLEAR: a CLOSED comment on that line still freezes', () => {
+      // The poison keys on parse5 still being inside a comment at the blank,
+      // not on the line having held one.
+      const text = '<div><p></div></p>\n<!-- c -->\n\ntail\n\nmore\n';
+      expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('more'));
+    });
+  });
+
   test('a line-START <!-- block keeps terminator semantics (no poison)', () => {
     const text = 'x\n\n<!--\ninner\n-->\n\ntail prose\n\nmore prose\n';
     expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('more prose'));
