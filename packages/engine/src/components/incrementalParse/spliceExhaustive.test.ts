@@ -64,6 +64,13 @@
  * gets the same config on every run, so CI's blind five-sixths does not
  * shrink by running CI more often. `EXHAUSTIVE_ROTATE_SALT` moves it.
  *
+ * A THIRD SEARCH sits below the two censuses: a state-directed BFS over
+ * abstract scanner checkpoints. The censuses enumerate the token surface,
+ * which is bounded by token granularity rather than by K; the BFS
+ * enumerates reachable ABSTRACT STATES, which is what gets to F20's shape
+ * in two tokens instead of eight. It is a directed search, not a proof —
+ * see `checkpointAbstraction.ts`. `EXHAUSTIVE_BFS_DEPTH=0` skips it.
+ *
  * The release gate passes the expensive values, sharded — one process per
  * shard, since a census is a single vitest test and therefore a single
  * core:
@@ -90,6 +97,8 @@ import { CATALOG, buildAdvanceOptions, type CatalogConfig } from './testPluginCa
 import { assertStreamEquivalence, runFull, testEnv } from './spliceArbiterHarness';
 import { engineProbe, probeTailsFor, snapshotRawDisagreement, type NodeLike } from './conformanceOracles';
 import { CONSTRUCT_AXIS_CLAIMED_SHAPES } from './constructAxisAdapters';
+import { F20_CHAIN, SIGNATURE_DOMAIN, signatureValues } from './checkpointAbstraction';
+import type { FreezeScanCheckpointInternal } from './computeFreezeBoundary';
 
 /**
  * The FRAGMENT band: sub-line pieces that compose within a line.
@@ -979,3 +988,240 @@ describe.skipIf(NAME_K === 0)(
     });
   }
 );
+
+// ── state-directed search ───────────────────────────────────────────────
+
+/**
+ * BFS over ABSTRACT SCANNER STATES, the third search shape in this file.
+ *
+ * The two censuses enumerate the token surface, and that surface is
+ * bounded by token granularity rather than by K: F20's witness is eight
+ * line-tokens, 30^8 ≈ 6.6e11, unreachable at any fundable depth with any
+ * alphabet. This one grows prefixes, keys each on
+ * `abstractSignature(checkpoint)`, and keeps at most `BFS_KEEP`
+ * representatives of each NOVEL signature. Cost becomes linear in
+ * REACHABLE ABSTRACT STATES instead of exponential in depth, so depth 8-12
+ * costs about what K=4 costs the fragment band.
+ *
+ * WHAT IT IS: a directed search. WHAT IT IS NOT: soundness-preserving.
+ * Two prefixes with the same abstract signature can produce different
+ * hast, so a property can hold on the representative and fail on the
+ * prefix that was discarded. It finds things or it does not; it never
+ * proves a state safe. `checkpointAbstraction.ts` carries the same
+ * warning next to the abstraction, because that is where someone tempted
+ * to read a green run as a proof will be standing.
+ *
+ * The scan profile, not the plugin catalog, is what shapes this space: the
+ * scanner takes only `defListEnabled` (plus profile flags baked at
+ * creation), so the two profiles are the whole state space, and the
+ * per-config plugin selection matters only to the PROPERTIES run on the
+ * representatives. Searching six configs would have cost 3× for nothing.
+ */
+/** Depth 2 costs 1.2 s and already reaches 1408 abstract states and both
+ *  of F20's first two chain stages, so it is the CI default; depth 3 is
+ *  25 s and 37184 states. `EXHAUSTIVE_BFS_DEPTH=0` skips the search. */
+const BFS_DEPTH = Number(testEnv('EXHAUSTIVE_BFS_DEPTH') ?? 2);
+const BFS_KEEP = Number(testEnv('EXHAUSTIVE_BFS_KEEP') ?? 3);
+/** The search alphabet is BOTH bands: the fragment tokens compose
+ *  sub-line constructs and the line tokens reach named elements, and a
+ *  state search wants every transition it can get. */
+const BFS_TOKENS: readonly string[] = [...FRAGMENT_TOKENS, ...NAME_CLASS_TOKENS];
+const BFS_TIMEOUT_MS = Math.max(600_000, 300_000 * Math.max(1, BFS_DEPTH - 3));
+
+interface BfsResult {
+  /** Distinct abstract signatures reached. */
+  states: number;
+  /** Prefixes actually expanded (representatives), not the space walked. */
+  expanded: number;
+  /** Prefixes built and scanned — the search's real cost. */
+  visited: number;
+  /** Per-field observed values, for the coverage report. */
+  seenValues: Map<string, Set<string>>;
+  /** Observed unordered field-pair value combinations, keyed
+   *  `fieldA=valA|fieldB=valB`. */
+  seenPairs: Set<string>;
+  /** Shortest witness found for each declared F20 chain stage. */
+  chainWitness: Map<string, string>;
+  /** Values observed that the domain table does not declare — a stale
+   *  abstraction, and a failure rather than a curiosity. */
+  undeclared: string[];
+  representatives: string[];
+}
+
+function bfs(defListEnabled: boolean, depth: number): BfsResult {
+  const out: BfsResult = {
+    states: 0,
+    expanded: 0,
+    visited: 0,
+    seenValues: new Map(SIGNATURE_DOMAIN.map((f) => [f.name, new Set<string>()])),
+    seenPairs: new Set(),
+    chainWitness: new Map(),
+    undeclared: [],
+    representatives: [],
+  };
+  const seen = new Map<string, number>();
+  // The empty prefix is the search's root; its checkpoint is whatever the
+  // scanner produces for zero confirmed lines.
+  let frontier: string[] = [''];
+
+  for (let d = 0; d < depth; d++) {
+    const next: string[] = [];
+    for (const prefix of frontier) {
+      for (const token of BFS_TOKENS) {
+        const doc = prefix + token;
+        out.visited += 1;
+        // FRESH SCAN per node, deliberately, after the resume version was
+        // caught being wrong. A checkpoint is CONSUMED by the call it is
+        // passed to: measured 2026-08-28, `computeFreezeBoundary` returns
+        // the very object it was given (`parent.checkpoint ===
+        // child.checkpoint`) with `confirmedOffset` advanced in place, 9
+        // to 11 on the probe. A BFS node has one checkpoint and many
+        // children, so resuming all 83 successors from it left every
+        // sibling after the first resuming from a state the first had
+        // already advanced. P2 does not license that and never did — it
+        // pins resumed-equals-fresh for a LINEAR chain of snapshots, which
+        // is the shape a stream has and a search does not.
+        //
+        // Cloning the parent instead would mean deep-copying a shape the
+        // scanner documents as an implementation detail that changes
+        // between minor versions. Rescanning costs O(prefix) per node
+        // rather than O(token), which at these depths is a few seconds.
+        const scanned = computeFreezeBoundary(doc, { defListEnabled });
+        const cp = scanned.checkpoint as FreezeScanCheckpointInternal;
+        const values = signatureValues(cp);
+        const signature = values.join('|');
+
+        SIGNATURE_DOMAIN.forEach((field, i) => {
+          const v = values[i];
+          if (!field.values.includes(v)) out.undeclared.push(`${field.name}=${JSON.stringify(v)} doc=${JSON.stringify(doc)}`);
+          out.seenValues.get(field.name)!.add(v);
+        });
+        for (let a = 0; a < SIGNATURE_DOMAIN.length; a++) {
+          for (let b = a + 1; b < SIGNATURE_DOMAIN.length; b++) {
+            out.seenPairs.add(`${SIGNATURE_DOMAIN[a].name}=${values[a]}|${SIGNATURE_DOMAIN[b].name}=${values[b]}`);
+          }
+        }
+        const byName: Record<string, string> = {};
+        SIGNATURE_DOMAIN.forEach((f, i) => (byName[f.name] = values[i]));
+        for (const stage of F20_CHAIN) {
+          if (!out.chainWitness.has(stage.id) && stage.hit(byName)) out.chainWitness.set(stage.id, doc);
+        }
+
+        // The dedup key is the signature PLUS THE UNCONFIRMED TAIL, and
+        // leaving the tail out was this search's own first bug — worth
+        // keeping because the coverage report is what caught it.
+        //
+        // A checkpoint describes the scan strictly BEFORE
+        // `confirmedOffset`; its own declaration says so. So every prefix
+        // ending mid-line — `'<!--'`, `'<?'`, `'<d'`, `'$$'`, every
+        // fragment token — leaves the checkpoint identical to its parent's
+        // and collapses to ONE signature. Keeping three representatives of
+        // that signature then discarded every other half-finished
+        // construct, and with it every state reachable only by completing
+        // one. The search reported 13 unreached values and every one was
+        // an artifact: `<!--\n` alone reaches `p5Tok=comment`, `$$\n`
+        // reaches `mdBlock=math`, `<!x\n` reaches `html4`+`bogus` — all
+        // at depth 2, all called unreachable at depth 4.
+        //
+        // The tail is bounded by a line, so keying on it verbatim is
+        // cheap, and it restores the property a state search needs: two
+        // prefixes share a key only when the scanner AND the bytes it has
+        // not yet judged are the same.
+        const key = `${signature}\u0000${doc.slice(cp.confirmedOffset)}`;
+        const count = seen.get(key) ?? 0;
+        if (count >= BFS_KEEP) continue;
+        seen.set(key, count + 1);
+        if (count === 0) out.states += 1;
+        next.push(doc);
+        out.expanded += 1;
+        if (out.representatives.length < 400) out.representatives.push(doc);
+      }
+    }
+    frontier = next;
+    if (frontier.length === 0) break;
+  }
+  return out;
+}
+
+/**
+ * The coverage report, and the reason it is worth more than the search.
+ *
+ * An unreached signature value is an ALPHABET GAP with a mechanical name —
+ * the thing that turns "is the alphabet complete?" from an assertion into
+ * a measurement. The domain it is measured against lives in
+ * `checkpointAbstraction.ts` and is written from the scanner's type
+ * declarations, never from a run, because a search that decides what it
+ * should have covered reports total coverage by construction. That is the
+ * same failure that let three floors above look like corroboration when
+ * two of them shared one input.
+ *
+ * LIMIT, stated because the report cannot tell the difference: an
+ * unreached value is either a gap in the alphabet OR a state the scanner
+ * cannot enter at all. Deciding which needs a human reading the scanner.
+ * What the report does prove is the direction that matters — an
+ * UNDECLARED value fails the test, so the abstraction cannot silently rot
+ * behind the scanner it describes.
+ */
+function bfsReport(label: string, r: BfsResult): void {
+  const missingValues: string[] = [];
+  let declaredValues = 0;
+  for (const field of SIGNATURE_DOMAIN) {
+    declaredValues += field.values.length;
+    for (const v of field.values) {
+      if (!r.seenValues.get(field.name)!.has(v)) missingValues.push(`${field.name}=${v}`);
+    }
+  }
+  let declaredPairs = 0;
+  for (let a = 0; a < SIGNATURE_DOMAIN.length; a++) {
+    for (let b = a + 1; b < SIGNATURE_DOMAIN.length; b++) {
+      declaredPairs += SIGNATURE_DOMAIN[a].values.length * SIGNATURE_DOMAIN[b].values.length;
+    }
+  }
+  const seenValueCount = declaredValues - missingValues.length;
+  emit(
+    `\n[bfs:${label}] depth=${BFS_DEPTH} keep=${BFS_KEEP} alphabet=${BFS_TOKENS.length} ` +
+      `visited=${r.visited} expanded=${r.expanded} states=${r.states}\n` +
+      `[bfs:${label}] values=${seenValueCount}/${declaredValues} pairs=${r.seenPairs.size}/${declaredPairs} ` +
+      '\n' +
+      `[bfs:${label}] F20 chain: ` +
+      F20_CHAIN.map((s) => `${s.id}=${r.chainWitness.has(s.id) ? 'REACHED' : 'unreached'}`).join(' ') +
+      '\n' +
+      F20_CHAIN.filter((s) => r.chainWitness.has(s.id))
+        .map((s) => `[bfs:${label}]   ${s.id} witness=${JSON.stringify(r.chainWitness.get(s.id))}\n`)
+        .join('') +
+      (missingValues.length === 0
+        ? `[bfs:${label}] every declared value reached\n`
+        : `[bfs:${label}] UNREACHED values (${missingValues.length}): ${missingValues.join(' ')}\n`)
+  );
+  // The abstraction must not rot behind the scanner it describes.
+  expect(
+    r.undeclared.slice(0, 8),
+    `the checkpoint produced values SIGNATURE_DOMAIN does not declare — the abstraction is stale`
+  ).toEqual([]);
+  // Anti-vacuity: a search that expands nothing reports perfect coverage
+  // of nothing. Measured at the committed defaults in the commit message.
+  expect(r.visited, `[bfs:${label}] visited nothing`).toBeGreaterThan(BFS_TOKENS.length);
+  expect(r.states, `[bfs:${label}] found only ${r.states} distinct abstract states`).toBeGreaterThan(20);
+  // The first two F20 stages are PINNED as reached, because they are what
+  // makes this search worth running: the surface censuses need eight line
+  // tokens to build that state and this one is at it in two. If a change
+  // to the alphabet or the abstraction stops reaching them, the search has
+  // quietly lost the capability it exists for, and a coverage report full
+  // of green would not say so. Stage 3 is deliberately NOT pinned — it is
+  // unreached, and pinning an unreached stage as unreached would freeze a
+  // gap into a requirement.
+  for (const stage of F20_CHAIN.slice(0, 2)) {
+    expect(
+      r.chainWitness.has(stage.id),
+      `[bfs:${label}] F20 chain stage ${stage.id} is no longer reachable — the search lost the state it exists to find`
+    ).toBe(true);
+  }
+}
+
+describe.skipIf(BFS_DEPTH === 0)(`state-directed search (depth=${BFS_DEPTH}, keep=${BFS_KEEP})`, () => {
+  test('abstract state coverage and F20 reachability', { timeout: BFS_TIMEOUT_MS }, () => {
+    for (const defListEnabled of [false, true]) {
+      bfsReport(defListEnabled ? 'defList' : 'baseline', bfs(defListEnabled, BFS_DEPTH));
+    }
+  });
+});
