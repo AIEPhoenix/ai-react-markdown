@@ -547,7 +547,9 @@ describe('oracle sweep — fuzz corpus (env-scaled)', () => {
         // `emit`/`process.stdout.write`, not `console.log`.
         //
         // That last point is why the original calibration appears in no
-        // committed log. Until 0cf5f90 this readout was a `console.log`,
+        // committed log. Until "the diagnostics that only speak on a
+        // green run were the ones being dropped", this readout was a
+        // `console.log`,
         // and vitest 4 drops those from PASSING tests unless a reporter is
         // named — which no leg does. The numbers above were captured by
         // passing `--reporter=dot` by hand. Re-deriving them today needs

@@ -202,7 +202,8 @@ describe('type-7 interrupt: prevLineOpenContent vs micromark', () => {
       '> q\n</span>\n> `<title>`\n\nafter container\n\ntail one\n\ntail two\n\nend\n',
       'para\n> q\n<br>\n> `<iframe>`\n\nafter container\n\ntail one\n\ntail two\n\nend\n',
     ]) {
-      // 14ba1ae poisons the container/tag-line pair to boundary 0, so zero
+      // "a container line makes a type-7 tag line undecidable" poisons the
+      // container/tag-line pair to boundary 0, so zero
       // engagement is the asserted outcome. The pin that MOVES on a revert
       // is the direct boundary assertion below, not this stream pin.
       assertStreamEquivalence('container lazy type 7', scheduleSnapshots(doc, [1]), CATALOG[0], {

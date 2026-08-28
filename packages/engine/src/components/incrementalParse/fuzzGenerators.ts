@@ -692,8 +692,9 @@ const rawPhaseSplitArb = fc.oneof(
  *  20293003). The F18 shapes joined 2026-08-27 (second batch): a resumed
  *  footnote body's LAZY continuation at indent 0/2 emits no node either —
  *  the F16 clause's `indent >= 4` conjunct read it as a releasing line
- *  (measured: the reproducer released at 72/59 on the unfixed 77b1577
- *  tree; the withhold holds it at 0 since 5f07996). */
+ *  (measured: the reproducer released at 72/59 on the unfixed v2.8.1
+ *  tree; the withhold holds it at 0 since "a lazy continuation of a
+ *  resumed footnote body is still the body"). */
 const sealPiercerArb = fc.oneof(
   {
     weight: 2,

@@ -2,7 +2,8 @@
  * EVIDENCE HARNESS — not a test. Run it from `scripts/soak/gate-evidence.sh`.
  *
  * It reproduces the two COMPARATIVE measurements that justify the raw-mode
- * gate's exemption set (the 2026-08-28 audit, commit 54c5151). Neither can
+ * gate's exemption set (the 2026-08-28 audit, "the gate trusted a footer
+ * key any document can write"). Neither can
  * be an assertion, because each compares the gate against a version of
  * itself that no longer exists in the source — and a number that cannot be
  * an assertion decays the moment the harness that produced it is deleted.
@@ -29,7 +30,8 @@
  * deliberately: the harness has to run the PRE-audit behaviour, which the
  * source no longer contains, so it cannot call the real one for both arms.
  * Everything else is imported — in particular `runToRawLayer`, which was
- * exported (102c7fe) precisely because a copied raw layer stops being the
+ * exported ("a copied runToRawLayer stops observing the layer it names")
+ * precisely because a copied raw layer stops being the
  * layer under test the moment production's plugin assembly moves. Only the
  * part that must differ is duplicated; nothing that must match is.
  *
@@ -175,7 +177,7 @@ interface Arm {
 }
 const ARMS: Arm[] = [
   { label: 'PRE (v2.8.2)', guards: PRE },
-  { label: 'POST (54c5151)', guards: POST },
+  { label: 'POST (2026-08-28)', guards: POST },
   { label: 'no-wrapperStrip', guards: { ...PRE, wrapperStrip: false } },
   { label: 'no-byteStrip', guards: { ...PRE, byteStrip: false } },
   { label: 'no-inverted', guards: { ...PRE, invertedGuard: false } },
@@ -215,7 +217,7 @@ function sweep(name: string, arb: fc.Arbitrary<FuzzDoc>, seed: number, runs: num
 }
 
 describe('gate exemption evidence', () => {
-  test('the two comparative measurements behind 54c5151', { timeout: 3_600_000 }, () => {
+  test('the two comparative measurements behind the 2026-08-28 audit', { timeout: 3_600_000 }, () => {
     const seed = Number(testEnv('EVIDENCE_SEED') ?? 20298311);
     const suppressionRuns = Number(testEnv('EVIDENCE_SUPPRESSION_RUNS') ?? 2000);
     const recallRuns = Number(testEnv('EVIDENCE_RECALL_RUNS') ?? 800);

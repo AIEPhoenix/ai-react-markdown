@@ -96,6 +96,30 @@ Two traps worth knowing before you write the readout:
 - Keep PRs small and focused. If you find yourself doing two unrelated changes, that's usually two PRs.
 - Use [Conventional Commits](https://www.conventionalcommits.org/)-style messages where reasonable: `fix(core): …`, `feat(mantine): …`, `docs: …`, `chore: …`. We're not strict — clarity over format.
 
+### Never cite a commit by hash
+
+**In a comment, a doc, or a commit message, cite a commit by its SUBJECT LINE — or by a tag when you mean "the state before this landed".** This history has been rewritten three times (twice to remove documents, once to collapse timestamps), and every rewrite orphans every hash written down before it. Subject lines and tags survive; hashes do not.
+
+The failure is quiet, which is the reason for the rule rather than a habit. After a rewrite the pre-rewrite objects are still in the local object store, dangling, so `git log <hash>` and `git cat-file` keep answering for the person who just ran the rewrite. The citation only dies at the next `git gc`, on a fresh clone, and for everyone else. **A reviewer who checks it that day gets a valid commit back and reasonably says nothing.**
+
+So the check has to test reachability, not resolvability:
+
+```bash
+# Every tracked file, every 7+ hex string that is really a commit, tested
+# against HEAD. Anything printed ORPHAN is a dead citation, however well
+# `git log` answers for it right now.
+git ls-files -z | xargs -0 grep -hoE '\b[0-9a-f]{7,40}\b' | sort -u \
+  | git cat-file --batch-check 2>/dev/null | awk '$2=="commit"{print $1}' \
+  | while read -r h; do
+      git merge-base --is-ancestor "$h" HEAD 2>/dev/null \
+        || echo "ORPHAN $h  $(git log -1 --format=%s "$h")"
+    done
+```
+
+Run it after any history rewrite. Grepping for the hashes you rewrote is not enough — it misses citations TO commits outside the range and citations ADDED by commits inside it, which is how six of them survived the 2026-08-28 collapse.
+
+This rule was learned once before, recorded in a commit named for it, and then not followed — the commit teaching it was itself cited by hash a few lines away. Writing a lesson down is not the same as adopting it.
+
 ## What makes a good PR
 
 - **Test coverage for behavior changes.** New behavior gets new tests; bug fixes get regression tests. The `byteEquivalence.test.tsx` harness exists to catch silent drift between code paths — leverage it.
