@@ -72,6 +72,12 @@ FUZZ3=${FUZZ3:-8000}
 ORACLE=${ORACLE:-4000}
 CENSUS_STRIDE=${CENSUS_STRIDE:-1}
 CENSUS_NAME_K=${CENSUS_NAME_K:-3}
+# Comma-separated leg subset; default is all five. `LEGS=census` on the
+# larger box and `LEGS=fuzz,dir,scanner,oracle` on the other is the standard
+# split.
+# Legs share nothing but the tree, and the census leg is seed-free exhaustive
+# sharding, so a split run is byte-equivalent to a single-machine one.
+LEGS=${LEGS:-fuzz,dir,scanner,census,oracle}
 
 ROOT=${0:a:h:h:h}
 cd "$ROOT/packages/engine"
@@ -82,6 +88,16 @@ FAIL=0
 
 run_leg() {
   local name=$1 file=$2 env1=$3 env2=$4
+  # LEGS selects a subset, because the gate has been split across two
+  # machines for every release since 2.8.1 and the split was hand-assembled
+  # from this script's env lines each time — the ad-hoc pattern the header
+  # complains about, applied to the script that complains about it. A
+  # SKIPPED leg is announced: a run that silently did four fifths of the
+  # work and printed ALL CLEAN is the failure this whole batch is about.
+  if [[ ",$LEGS," != *",$name,"* ]]; then
+    echo "[$LABEL] $name SKIPPED (LEGS=$LEGS)"
+    return
+  fi
   echo "[$LABEL] $name"
   local pids=()
   for i in $(seq 0 $((SHARDS - 1))); do
@@ -120,7 +136,7 @@ run_leg census src/components/incrementalParse/spliceExhaustive.test.ts \
 run_leg oracle src/components/incrementalParse/oracleConformance.test.ts \
   'ORACLE_RAW=1 ORACLE_RUNS=$ORACLE' 'ORACLE_SEED=$((SEED + 300 + i))'
 
-if [ "$FAIL" -eq 0 ]; then echo "[$LABEL] ALL CLEAN"; else echo "[$LABEL] FAILURES — inspect $OUT/$LABEL-*.log"; fi
+if [ "$FAIL" -eq 0 ]; then echo "[$LABEL] ALL CLEAN (legs: $LEGS)"; else echo "[$LABEL] FAILURES — inspect $OUT/$LABEL-*.log"; fi
 for f in "$OUT"/$LABEL-*.log; do
   printf "%-28s %s\n" "${f:t}" "$(grep -oE 'Tests +[0-9]+ (failed|passed)' "$f" | tail -1)"
 done
