@@ -269,6 +269,23 @@ function sweep(name: string, arb: fc.Arbitrary<FuzzDoc>, seed: number, runs: num
  * positive across ~346k probe positions, and a corpus that cannot reach a
  * once-per-346k event is not a corpus that has refuted it. Deleting them on
  * this evidence would be the same over-reading as keeping them on it.
+ *
+ * RECORDED, NOT RESOLVED (ruling 2026-08-28) — and it has a trigger, so it
+ * cannot sit undecided forever by default. A soak-scale hunt for the
+ * missing half becomes worth funding when EITHER of these happens:
+ *
+ *  1. Someone proposes deleting one of these guards. The evidence has to
+ *     exist BEFORE the deletion, not be assembled to justify it afterwards.
+ *     `UNCHANGED` below is not an argument for removal; it is the absence
+ *     of one in both directions.
+ *  2. The lines below start printing `NO EFFECT` instead of `UNCHANGED`.
+ *     That means the corpus stopped reaching the exemption at all, which is
+ *     a DIFFERENT question from a guard nothing needs — a guard nothing can
+ *     reach cannot be evaluated by this harness at any scale, and the
+ *     fixture has to be replaced before anything else can be said.
+ *
+ * Until one of those fires, `UNCHANGED` on every run is the correct state:
+ * visible, honest, and not pretending to be evidence either way.
  */
 function singleNodeExemptions(): void {
   const cases = [
