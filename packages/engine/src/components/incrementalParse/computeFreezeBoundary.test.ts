@@ -417,6 +417,24 @@ describe('computeFreezeBoundary — raw HTML blockers', () => {
     expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('tail'));
   });
 
+  test("parse5's void list is wider than the spec's: basefont, bgsound and keygen open nothing", () => {
+    // The three names parse5 inserts as void outside the HTML spec's list
+    // (basefont/bgsound through "in head", keygen through "in body"). While
+    // they were missing from VOID_TAGS the scanner pushed an element parse5
+    // never opened and the whole rest of the document stopped freezing —
+    // over-block, the safe direction, which is why it survived being
+    // measured (constructAxisProbe's void-list probe recorded the gap by
+    // name). Each line here froze 0 before the names were added.
+    for (const name of ['basefont', 'bgsound', 'keygen']) {
+      const text = `<${name}>\n\ntail paragraph`;
+      expect(computeFreezeBoundary(text, OFF), name).toBe(text.indexOf('tail paragraph'));
+    }
+    // `frame` is deliberately NOT in the list: outside a frameset parse5
+    // ignores the tag entirely, so nothing is inserted and the over-block
+    // stands.
+    expect(computeFreezeBoundary('<frame>\n\ntail paragraph', OFF)).toBe(0);
+  });
+
   test('autolinks are not treated as tags', () => {
     const text = 'see <https://example.com> now\n\ntail';
     expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('tail'));
@@ -663,6 +681,111 @@ describe('computeFreezeBoundary — raw-remnant seam (blocker 6)', () => {
   test('closed-comment content is not remnant', () => {
     const text = '<div>\n</div>\n<!-- note -->\n\ntail paragraph';
     expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('tail paragraph'));
+  });
+
+  describe('the release is DERIVED, not enumerated (design rev3)', () => {
+    // The predicate answers three layers — does the line START a block, does
+    // that block type have to-hast output, does its output survive parse5 —
+    // and WITHHOLDS anything it cannot decide. The enumeration it replaces
+    // listed the node-less classes and released everything else, so its
+    // default was "release", and four separate events each added one member
+    // to a list whose complement has no enumeration (F15, M6, F16, F18).
+    //
+    // These pin the DOWN side of the swap: the html-flow class withholds
+    // whole, which revokes releases the enumeration granted by omission.
+    // Each `was:` number is the boundary the enumeration produced on the
+    // same bytes, measured by wiring it back in.
+    test('a whole-line processing instruction withholds (was: 31)', () => {
+      // The enumeration's own drift, and the clearest one: a whole-line
+      // `<?instr ?>` released while a whole-line `<!-- note -->` withheld,
+      // though both are the same L3 class — neither answer was earned.
+      expect(computeFreezeBoundary('<!-- c --> remnant\n<?instr ?>\n\ntail paragraph', OFF)).toBe(0);
+      expect(computeFreezeBoundary('<!-- c --> remnant\n<?>\n\ntail paragraph', OFF)).toBe(0);
+    });
+
+    test('a whole-line html block withholds (was: 32)', () => {
+      // `<div></div>` opens and closes on its line, so the element bag is
+      // balanced and nothing else rejects the candidate: the release is the
+      // only thing holding it. The class contains both node-emitting members
+      // (this one) and parse5-dropped ones (a stray closer, a doctype), and
+      // the first landing does not split them.
+      expect(computeFreezeBoundary('<!-- c --> remnant\n<div></div>\n\ntail paragraph', OFF)).toBe(0);
+    });
+
+    test('an indented comment-only line withholds at any indent', () => {
+      // The L3 test runs on the trimmed line, so a ≥4-indent html shape
+      // withholds too. That line is really indented CODE and does emit, so
+      // this is an over-block — kept because it holds the derived predicate
+      // at or inside the enumeration's releases, which the migration asserts
+      // (the enumeration's comment-only and closing-tag clauses are
+      // indent-blind).
+      expect(computeFreezeBoundary('<!-- c --> remnant\n\n    <!-- note -->\n\ntail paragraph', OFF)).toBe(0);
+    });
+
+    test('CLEAR: html-SHAPED lines that are PARAGRAPHS still release', () => {
+      // The layer classifies, it does not reject every line starting with
+      // `<`. Two shapes micromark reads as paragraphs: an incomplete tag,
+      // and two complete tags on one line (condition 7 takes exactly one).
+      // Both emit their paragraph and pin the seam like any other content.
+      const truncated = '<!-- c --> remnant\n<zz x\n\ntail paragraph';
+      expect(computeFreezeBoundary(truncated, OFF)).toBe(truncated.indexOf('tail paragraph'));
+      const twoTags = '<!-- c --> remnant\n<x-y></x-y>\n\ntail paragraph';
+      expect(computeFreezeBoundary(twoTags, OFF)).toBe(twoTags.indexOf('tail paragraph'));
+    });
+
+    test('CLEAR: ordinary content lines release exactly as before', () => {
+      const para = '<!-- c --> remnant\nplain prose\n\ntail paragraph';
+      expect(computeFreezeBoundary(para, OFF)).toBe(para.indexOf('tail paragraph'));
+      const heading = '<!-- c --> remnant\n# heading\n\ntail paragraph';
+      expect(computeFreezeBoundary(heading, OFF)).toBe(heading.indexOf('tail paragraph'));
+    });
+
+    test('a PI residue is not a node the frozen prefix can keep (F23, was: 86 of 86)', () => {
+      // parse5 ends the bogus comment at the FIRST `>` — inside `<b` — so
+      // ` ?> after the pi` is a root-level TEXT node, and an append extends
+      // it with the seam newline and drops its end offset (19-35 →
+      // 19-undefined). The seam was armed correctly and the `<details>`
+      // line released it: an html-flow line, the class this predicate
+      // withholds. Fires under [display-only] alone, where the splice
+      // engaged on 12 of 14 probes — the divergence was real at the raw
+      // layer and only sanitize kept it out of shipped output.
+      const text = '```\n```\n<?instr <b> ?> after the pi\r\n<details>\n</details>\r\n<!-- a closed comment -->\n\n';
+      expect(computeFreezeBoundary(text, OFF)).toBe(0);
+    });
+  });
+
+  describe('an end tag parse5 DISCARDS arms the seam (F24)', () => {
+    // parse5 drops an end tag with no matching open element in scope, and
+    // the character data on either side of it then lands at one insertion
+    // point — one text node where the raw bytes show two runs, retroactively
+    // and below the boundary. `DOCUMENT_STRUCTURE_NAMES` poisoned for that
+    // merge on FOUR names while parse5 reaches it through a rule with no
+    // enumeration, so the fix is keyed on the rule: the scanner already
+    // walks `openStack` for the match, and the no-match branch is parse5's
+    // own answer.
+    test('two stray end tags leave a live trailing text node (was: 23 of 23)', () => {
+      expect(computeFreezeBoundary('</address>\n</address>\n\ntail', OFF)).toBe(0);
+    });
+
+    test('the first construct can be a void START tag (was: 19 of 19)', () => {
+      // Why "stray end tags" is the wrong reading of the class: `<area>` is
+      // a void START tag, and the invariant is about the GAP — a text node
+      // parse5 leaves between two constructs, at EOF, growing under append.
+      expect(computeFreezeBoundary('<area>\n</script >\n\ntail', OFF)).toBe(0);
+    });
+
+    test('CLEAR: a MATCHED end tag arms nothing', () => {
+      // The seam is armed by the discard, not by the closing tag: parse5
+      // pops the div, the text between the tags is sealed inside it, and the
+      // pure-tag run keeps freezing.
+      const text = '<div>\n</div>\n\ntail paragraph';
+      expect(computeFreezeBoundary(text, OFF)).toBe(text.indexOf('tail paragraph'));
+    });
+
+    test('CLEAR: the seam is HELD, not lost — a later content line releases it', () => {
+      const text = '</address>\n</address>\n\npinning paragraph\n\ntail';
+      expect(computeFreezeBoundary(text, OFF)).toBe(text.lastIndexOf('tail'));
+    });
   });
 });
 

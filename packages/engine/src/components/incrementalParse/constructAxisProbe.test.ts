@@ -523,12 +523,16 @@ describe('construct axis: the facts the templates are derived from', () => {
       unmeasurable: pool.filter((n) => verdicts.get(n) === 'unmeasurable'),
     }).toEqual({
       listedButNotVoid: [],
-      // The safe direction, pinned by name so it stays a decision. parse5
-      // treats all three as void; the scanner does not list them, so it
-      // pushes an element parse5 never opened, over-counts, and over-blocks.
-      // Obsolete names a markdown stream is unlikely to carry, which is
-      // presumably why they were left out — recorded, not "fixed".
-      missingFromList: ['basefont', 'bgsound', 'keygen'],
+      // Both directions now empty. `basefont`, `bgsound` and `keygen` were
+      // the safe-direction gap this probe recorded rather than fixed — the
+      // scanner pushed an element parse5 never opened, over-counted, and
+      // over-blocked. They joined VOID_TAGS with the derived-seal batch (the
+      // gap was measured, unclaimed, and waiting for a change that already
+      // needed the release gate). An EMPTY set here is a stronger statement
+      // than the old three-name list and a more fragile one: any name this
+      // probe measures as void and the scanner does not list will now fail
+      // the test rather than sit in a comment, which is the point.
+      missingFromList: [],
       // Void-ness is not observable for these four. `col` and `frame` are
       // re-dispatched out of the tree outside a table/frameset, `image` is
       // rewritten to `img` by parse5, and `template` hides its content on

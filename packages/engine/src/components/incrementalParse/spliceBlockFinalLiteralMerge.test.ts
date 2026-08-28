@@ -29,6 +29,30 @@
  * (`<script>` type-1 block, no footnote-def continuation involved).
  * Re-verified both ways: green on shipped, red on flipped (the literal
  * ` ?> after the pi` keeps its position and loses the merged `\n`).
+ *
+ * THIRD CORRIDOR, and the last one: the derived seal release (design rev3)
+ * closed the hole the 2026-08-27 harvest had used. Its corridor was the
+ * enumeration releasing a whole-line `<script>…</script>` — an html-flow
+ * line — which is the same claim F23 recorded as a defect, on the same
+ * literal (` ?> after the pi`, position kept where the full parse merges a
+ * `\n`). So the doc that killed the mutant was reaching the merge path
+ * THROUGH the defect the seal fix removes; with the fix its boundary is 0
+ * and its floor joins the other two at zero.
+ *
+ * The pattern is not bad luck, and it is why no fourth harvest was run
+ * after the third: a block-final literal AT a first freeze is a root-level
+ * trailing text node the next append can extend — blocker 6's hazard,
+ * stated exactly. A sound seal therefore refuses every first freeze this
+ * branch could classify, so the branch is reachable only through a
+ * blocker-6 hole, and each hole closed has cost this guard its witness
+ * (F16, then this one). Re-harvest attempted anyway against the fixed
+ * scanner, same method, 3 shards × 2000 samples × 2 schedules (seeds
+ * 20296001-003): the flipped classifier SURVIVED all three. Recorded, not
+ * papered over: the `litEnd === litOwnerEnd` classification now has no
+ * deterministic killer, and what still guards the branch is the
+ * POSITION-LESS path (later frames, where the merge already happened),
+ * which the four docs below do exercise. Do not read their green as
+ * coverage of the equal case.
  */
 import { describe, expect, test } from 'vitest';
 import { CATALOG } from './testPluginCatalog';
@@ -51,10 +75,11 @@ const CASES: Array<{ name: string; doc: string; sizes: number[]; configIndex: nu
     floor: 0,
   },
   {
-    name: 'PI literal + script comment block + scanned literal + truncated def (seed 20293107, post-F16 harvest)',
+    name: 'PI literal + script comment block + scanned literal + truncated def (seed 20293107 — F23/enumeration corridor, now refused)',
     doc: '<?instr <b> ?> after the pi\n\n<script><!--x--></script>\n\n\n    <details>[a] scanned literal\n\n<!-- a closed comment -->\n\n[a]: /u(x\n',
     sizes: [4, 4, 1, 4, 4, 1, 4, 4],
     configIndex: 336555039,
+    floor: 0,
   },
   {
     name: 'ref-dense literal + wrapped def title + PI + multi-line embed (seed 20270104)',
