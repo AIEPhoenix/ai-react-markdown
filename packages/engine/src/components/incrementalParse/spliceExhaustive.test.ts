@@ -35,17 +35,24 @@
  * band needs five or six for. Merging them would multiply two alphabets
  * that want opposite knobs.
  *
- * Scale. CI runs the fragment band at K=3 and the name band at K=2. The
- * release gate lifts both, sharded — one process per shard, since a census
- * is a single vitest test and therefore a single core:
+ * TWO CONFIGURATIONS, and the defaults are the CI one. CI runs both bands
+ * at K=2 with rotated configs — 27 s here, and it keeps P3, which is the
+ * part that sees what the old leg structurally could not. Depth is what
+ * pays for that: a PR check costing half an hour gets skipped, then
+ * disabled, then deleted.
+ *
+ * The release gate passes the expensive values, sharded — one process per
+ * shard, since a census is a single vitest test and therefore a single
+ * core:
  *   for i in $(seq 0 11); do EXHAUSTIVE_K=4 EXHAUSTIVE_STRIDE=1 \
- *     EXHAUSTIVE_NAME_K=3 EXHAUSTIVE_SHARD=$i/12 \
+ *     EXHAUSTIVE_NAME_K=3 EXHAUSTIVE_CONFIG_MODE=cross \
+ *     EXHAUSTIVE_SHARD=$i/12 \
  *     ../../node_modules/.bin/vitest --run src/components/incrementalParse/spliceExhaustive.test.ts & done
  * `EXHAUSTIVE_SHARD` scatters BOTH bands, so one set of shard processes
  * covers the whole leg. Knobs: `EXHAUSTIVE_CONFIGS` (label list) narrows
- * the catalog, `EXHAUSTIVE_RAW_FROZEN=0` turns P3 off,
- * `EXHAUSTIVE_NAME_K=0` skips the name band, `EXHAUSTIVE_NAME_STRIDE`
- * is its own cut stride.
+ * the catalog, `EXHAUSTIVE_CONFIG_MODE=cross` spends every config on every
+ * document, `EXHAUSTIVE_RAW_FROZEN=0` turns P3 off, `EXHAUSTIVE_NAME_K=0`
+ * skips the name band, `EXHAUSTIVE_NAME_STRIDE` is its own cut stride.
  */
 
 import { describe, expect, test } from 'vitest';
@@ -222,7 +229,23 @@ const NAME_CLASS_TOKENS: readonly string[] = [
   '```\n',
 ];
 
-const MAX_K = Number(testEnv('EXHAUSTIVE_K') ?? 3);
+/**
+ * CI DEFAULT vs GATE, and the defaults here are the CI half.
+ *
+ * A PR check that costs half an hour gets skipped, then disabled, then
+ * deleted, so the defaults have to fit a ~3 minute CI budget — which on a
+ * shared runner 2-3× slower than this machine means ~60-90 s locally. Six
+ * configs and P3 took the old K=3 default to 709 s, so the default K comes
+ * down to 2 and the config spend rotates.
+ *
+ * What CI keeps is the PROPERTY, not the depth. P3 is the part that sees
+ * what the old leg structurally could not, and its cost is per DOCUMENT,
+ * so it survives the cut almost intact while K-depth pays for it. The gate
+ * script passes the expensive values:
+ *   EXHAUSTIVE_K=4 EXHAUSTIVE_STRIDE=1 EXHAUSTIVE_NAME_K=3 \
+ *     EXHAUSTIVE_CONFIG_MODE=cross EXHAUSTIVE_SHARD=$i/12
+ */
+const MAX_K = Number(testEnv('EXHAUSTIVE_K') ?? 2);
 /** Cut-schedule stride: CI samples every 3rd cut at K=3; deep runs set
  *  EXHAUSTIVE_STRIDE=1 for the full census. K≤2 is always full. The ≈40 s
  *  this comment used to quote predates six-config coverage and P3 — see
@@ -266,7 +289,21 @@ const [SHARD_INDEX, SHARD_TOTAL] = (() => {
  *
  * `EXHAUSTIVE_CONFIGS` narrows it back for cost experiments (a
  * comma-separated label list); the default is every cell.
+ *
+ * HOW the cells are spent is a separate knob, `EXHAUSTIVE_CONFIG_MODE`.
+ * `cross` runs every document against every config — the honest
+ * cross-product, and what the gate uses. `rotate` runs each document
+ * against ONE config, so the corpus covers all six at a sixth of the cost.
+ * Rotation is the CI default because the alternative way to fit a CI
+ * budget is picking two cells by hand, which is the curation this whole
+ * change removes; a rotation still exercises every cell, just on a
+ * deterministic 1/6 slice of documents each. It is a real reduction and
+ * not a free lunch — a defect needing a SPECIFIC document under a SPECIFIC
+ * config has a 1/6 chance per document rather than certainty — but F20's
+ * shape (100% of engaged frames on 3 of 6 cells) is hit many times over by
+ * any 1/6 slice, whereas a hand-picked pair can miss it outright.
  */
+const CONFIG_MODE = testEnv('EXHAUSTIVE_CONFIG_MODE') ?? 'rotate';
 const CONFIGS = (() => {
   const raw = testEnv('EXHAUSTIVE_CONFIGS');
   if (!raw) return CATALOG;
@@ -609,7 +646,20 @@ function sweep(tokens: readonly string[], maxK: number, stride: number): SweepSt
         continue;
       }
       const doc = idx.map((i) => tokens[i]).join('');
-      for (const config of CONFIGS) {
+      // Rotation picks the config by a HASH of the document counter, not by
+      // `docs % CONFIGS.length`, for the reason the shard comment above
+      // gives and one worse: the counter advances in step with the LAST
+      // token index, so under a plain modulo — with any alphabet size
+      // sharing a factor with the catalog, and 30 shares 6 — the config
+      // would be a deterministic function of the last token. Three cells
+      // would then never see a document ending in `'---'`. Different
+      // multiplier and different bits from the shard hash, so the two
+      // selections stay independent.
+      const configs =
+        CONFIG_MODE === 'cross'
+          ? CONFIGS
+          : [CONFIGS[(Math.imul(out.docs, 0x85ebca6b) >>> 13) % CONFIGS.length]];
+      for (const config of configs) {
         // P3 first: it is per-document, not per-schedule, and it does not
         // care whether anything below engages.
         if (RAW_FROZEN) driveRawFrozen(doc, config, out.rawFrozen);
@@ -659,7 +709,7 @@ function reportAndAssert(band: string, tokens: readonly string[], maxK: number, 
   expect(s.schedules * SHARD_TOTAL).toBeGreaterThan(s.docs);
   emit(
     `\n[census:${band}] K=${maxK} stride=${stride} alphabet=${tokens.length} ` +
-      `shard=${SHARD_INDEX}/${SHARD_TOTAL} configs=${CONFIGS.length} docs=${s.docs} ` +
+      `shard=${SHARD_INDEX}/${SHARD_TOTAL} configs=${CONFIGS.length}/${CONFIG_MODE} docs=${s.docs} ` +
       `schedules=${s.schedules} frames=${s.frames} incremental=${s.incrementalFrames} ` +
       `ratio=${(s.incrementalFrames / s.frames).toFixed(4)}\n` +
       `[census:${band}] P3 rawFrozen=${RAW_FROZEN ? 'on' : 'off'} boundaries=${s.rawFrozen.boundaries} ` +
@@ -706,18 +756,20 @@ function reportAndAssert(band: string, tokens: readonly string[], maxK: number, 
   // a positional floor tight enough to catch a blinded instrument would be
   // tripped by an alphabet change instead.
   //
-  // Measured 2026-08-28: fragment band 91100/285357 = 0.319 nodes per
-  // probe at K=3, and 1029/8088 = 0.127 at K=2. The floor has to clear the
-  // SMALLEST configuration anyone runs, so it is set from K=2: 0.05 leaves
-  // 2.5× margin there and 6.4× at K=3, and a total blinding (0/N, the
-  // shape a root-children-only signature walk produced elsewhere in this
-  // directory) is unmissable.
+  // Measured 2026-08-28, fragment band: 0.319 nodes per probe at K=3
+  // cross, 0.127 at K=2 cross, and 0.0896 at K=2 ROTATE — which is the CI
+  // default and therefore the configuration this runs in most often, so it
+  // is the one the floor has to clear. Rotation lowers the density because
+  // each document contributes one config's boundaries instead of six.
+  // 0.03 leaves 3× margin at the default and 10× at K=3, and still makes a
+  // total blinding (0/N, the shape a root-children-only signature walk
+  // produced elsewhere in this directory) unmissable.
   if (RAW_FROZEN) {
     expect(s.rawFrozen.probes, `P3/${band} drove no probe tails — the raw-layer property never ran`).toBeGreaterThan(0);
     expect(
       s.rawFrozen.nodesCompared / s.rawFrozen.probes,
       `P3/${band} drove ${s.rawFrozen.probes} probes and compared ${s.rawFrozen.nodesCompared} frozen nodes — the instrument went blind`
-    ).toBeGreaterThan(0.05);
+    ).toBeGreaterThan(0.03);
   }
 }
 
