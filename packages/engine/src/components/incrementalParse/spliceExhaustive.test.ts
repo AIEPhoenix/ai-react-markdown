@@ -1055,6 +1055,12 @@ const BFS_TOKENS: readonly string[] = [...FRAGMENT_TOKENS, ...NAME_CLASS_TOKENS]
  * `clamped` rides in the readout next to the coverage numbers: a clamped
  * run's unreached list is a list of "not reached BY THIS RUN", which is a
  * different claim and has to look different.
+ *
+ * This is not decoration. The first deep run to use it — depth 4,
+ * `keep=1`, 2026-08-28 — DID clamp: 3,293,938 visited, 159,685 expanded,
+ * 813,219 representatives dropped. It reported the same three unreached
+ * values as the unclamped depth-3 run, and without the label it would have
+ * reported them with the same confidence as an exhaustive pass.
  */
 const BFS_MAX_FRONTIER = Number(testEnv('EXHAUSTIVE_BFS_MAX_FRONTIER') ?? 120_000);
 const BFS_TIMEOUT_MS = Math.max(600_000, 300_000 * Math.max(1, BFS_DEPTH - 3));
