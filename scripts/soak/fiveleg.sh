@@ -80,8 +80,14 @@ run_leg() {
       > "$OUT/$LABEL-$name-$i.log" 2>&1 &
     pids+=($!)
   done
-  for pid in "${pids[@]}"; do wait "$pid" || FAIL=1; done
-  echo "[$LABEL] $name fail=$FAIL"
+  # Per-leg, NOT cumulative. `FAIL` is the run's verdict and must persist, but
+  # reporting it per leg made every leg after a failure look failed: gate290's
+  # oracle leg was 12/12 green and printed `fail=1` because census had already
+  # set it. A leg's line has to answer for that leg, or a clean leg reads as a
+  # second defect and someone goes looking for it.
+  local legfail=0
+  for pid in "${pids[@]}"; do wait "$pid" || { legfail=1; FAIL=1; }; done
+  echo "[$LABEL] $name fail=$legfail"
 }
 
 run_leg fuzz src/components/incrementalParse/spliceFuzz.test.ts \
