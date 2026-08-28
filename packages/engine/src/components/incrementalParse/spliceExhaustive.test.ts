@@ -278,6 +278,26 @@ const CUT_STRIDE = Number(testEnv('EXHAUSTIVE_STRIDE') ?? (MAX_K >= 3 ? 3 : 1));
  * ×1.5 wall-clock skew across census shards (measured 2026-08-24).
  * The doc/schedule counters still count the whole space walk, so the
  * sanity floors scale by TOTAL below.
+ *
+ * THE GENERAL RULE, because this trap has now been walked into twice in
+ * this one file and it fails SILENTLY both times: any modulo taken over a
+ * counter that advances with the enumeration inherits the enumeration's
+ * periodicity. The odometer's last digit ticks once per document and so
+ * does the counter, so `counter % N` is congruent to `lastTokenIndex % N`
+ * up to a constant — and the moment `N` shares a factor with the alphabet
+ * size, the selection becomes a function of the final token.
+ *
+ * Second host, `EXHAUSTIVE_CONFIG_MODE=rotate` (2026-08-28): the obvious
+ * `docs % CONFIGS.length` would have pinned each config to a residue class
+ * of the last token, and with 30 tokens against 6 configs three cells
+ * would never once have seen a document ending in `'---'`. It would have
+ * looked like working six-config coverage forever, because nothing about a
+ * green run says which cells the documents actually reached. First host
+ * only skewed wall-clock; this one would have silently halved the corpus.
+ *
+ * So: hash, never modulo, and use different multipliers and different bits
+ * per selection so two hashed selections do not correlate with each other
+ * either.
  */
 const [SHARD_INDEX, SHARD_TOTAL] = (() => {
   const raw = testEnv('EXHAUSTIVE_SHARD');
