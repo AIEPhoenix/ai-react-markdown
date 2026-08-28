@@ -35,7 +35,9 @@ import {
   findElement,
   mdBlockExtent,
   measureP5ContentState,
+  measureIsVoid,
   micromarkKeepsBlockOpenPastBlank,
+  micromarkOpensType6,
   nodeCovers,
   runToRawLayer,
   type ConstructAxisCell,
@@ -44,6 +46,103 @@ import {
 import { runFull } from './spliceArbiterHarness';
 
 const CFG = CATALOG[0];
+
+/**
+ * The HTML void-element set, transcribed from the HTML spec — including the
+ * obsolete members (`basefont`, `bgsound`, `command`, `frame`, `image`,
+ * `keygen`) that a modern parser may or may not still treat as void. That is
+ * the interesting part: the scanner's own list is shorter, and this pool
+ * exists to find out whether the difference matters. `html-void-elements`
+ * carries the same set but is not a direct dependency of this package, so it
+ * is written out rather than added to package.json for a test.
+ */
+const HTML_VOID_ELEMENTS = [
+  'area',
+  'base',
+  'basefont',
+  'bgsound',
+  'br',
+  'col',
+  'command',
+  'embed',
+  'frame',
+  'hr',
+  'image',
+  'img',
+  'input',
+  'keygen',
+  'link',
+  'meta',
+  'param',
+  'source',
+  'track',
+  'wbr',
+];
+
+/**
+ * Ordinary HTML elements that are NOT CommonMark block names, written out
+ * here so the name-list checks have a candidate pool whose provenance is
+ * independent of the lists they falsify. Seeding candidates from the list
+ * under test is what makes a derived alphabet self-certifying; this is the
+ * counterweight, and it is why these names are transcribed by hand from the
+ * HTML element set rather than imported from the scanner.
+ */
+const NON_BLOCK_HTML_ELEMENTS = [
+  'a',
+  'abbr',
+  'b',
+  'bdi',
+  'bdo',
+  'big',
+  'blink',
+  'canvas',
+  'cite',
+  'code',
+  'data',
+  'datalist',
+  'del',
+  'dfn',
+  'em',
+  'i',
+  'ins',
+  'kbd',
+  'label',
+  'map',
+  'mark',
+  'marquee',
+  'meter',
+  'noscript',
+  'object',
+  'output',
+  'picture',
+  'progress',
+  'q',
+  'rp',
+  'rt',
+  'ruby',
+  's',
+  'samp',
+  'select',
+  'slot',
+  'small',
+  'span',
+  'strong',
+  'sub',
+  'sup',
+  'template',
+  'time',
+  'tt',
+  'u',
+  'var',
+  'video',
+  'audio',
+  'applet',
+  'svg',
+  'math',
+  'button',
+  'form-x',
+  'custom-element',
+];
 const boundaryOf = (doc: string): number => computeFreezeBoundary(doc, { defListEnabled: false }).boundary;
 
 interface NodeLike {
@@ -339,6 +438,104 @@ describe('construct axis: the facts the templates are derived from', () => {
       type1ListedButNotType1: [],
       rawTextMissingFromList: [],
       rawTextListedButNotRaw: [],
+    });
+  });
+
+  /**
+   * `type6` is the biggest list in `SCANNER_NAME_LISTS` (62 names) and, until
+   * this test, the largest self-certifying surface in a design where a census
+   * derives its alphabet FROM those lists.
+   *
+   * The candidate pool deliberately does NOT come from the list under test.
+   * It is assembled from sources that know nothing about it: the void-element
+   * package, the raw-name list, a hand-written set of ordinary HTML elements
+   * that are NOT block names, and two names that are not elements at all. The
+   * list itself is unioned in last, so a name that does not belong reds too —
+   * but no name in the pool owes its presence to the list.
+   *
+   * Residual limit, stated rather than implied: a type-6 name that is missing
+   * from BOTH the pool and the list still escapes. The pool is the boundary of
+   * this claim.
+   */
+  test('the type6 list agrees with what micromark does', () => {
+    const lists = new Map(SCANNER_NAME_LISTS);
+    const type6List = lists.get('type6');
+    if (type6List === undefined) throw new Error('SCANNER_NAME_LISTS lost type6');
+
+    const pool = [
+      ...new Set([
+        ...HTML_VOID_ELEMENTS,
+        ...NON_BLOCK_HTML_ELEMENTS,
+        'pre',
+        'script',
+        'style',
+        'textarea',
+        'not-an-element',
+        'xyzzy',
+        ...type6List,
+      ]),
+    ].sort();
+
+    // Type 1 interrupts a paragraph as well, so it is subtracted by the other
+    // measurable difference: a blank line ends type 6 and does not end type 1.
+    const measured = pool.filter(
+      (n) => micromarkOpensType6(n, CFG) && !micromarkKeepsBlockOpenPastBlank(`<${n}>`, '', CFG)
+    );
+
+    expect({
+      poolSize: pool.length,
+      missingFromList: measured.filter((n) => !type6List.has(n)),
+      listedButNotType6: [...type6List].filter((n) => !measured.includes(n)),
+    }).toEqual({ poolSize: 134, missingFromList: [], listedButNotType6: [] });
+  });
+
+  /**
+   * `void` against parse5's own behaviour, pooled from `html-void-elements`
+   * (which the scanner does not use) plus the list plus controls.
+   *
+   * The two directions are NOT symmetric and are asserted separately:
+   *
+   * - `listedButNotVoid` is the DANGEROUS direction. The scanner would skip
+   *   pushing an element it believes void while parse5 leaves it open, so the
+   *   open-element count runs low and the boundary widens — an under-block.
+   * - `missingFromList` is the SAFE direction: the scanner pushes an element
+   *   parse5 never opened, over-counts, and over-blocks.
+   *
+   * The safe direction is expected to be non-empty and is pinned by name, so
+   * the set is a decision someone made rather than a set nobody looked at.
+   */
+  test('the void list agrees with what parse5 does, and its gaps are the safe ones', () => {
+    const lists = new Map(SCANNER_NAME_LISTS);
+    const voidList = lists.get('void');
+    if (voidList === undefined) throw new Error('SCANNER_NAME_LISTS lost void');
+
+    const pool = [...new Set([...HTML_VOID_ELEMENTS, ...NON_BLOCK_HTML_ELEMENTS, 'div', 'p', ...voidList])].sort();
+    const verdicts = new Map(pool.map((n) => [n, measureIsVoid(n, CFG)]));
+    const measuredVoid = pool.filter((n) => verdicts.get(n) === 'void');
+
+    expect({
+      // Not "everything the pool could not prove void" — only a DEFINITE
+      // contradiction counts here. Folding `unmeasurable` in was this test's
+      // first bug and it manufactured a dangerous-direction hit out of `col`,
+      // whose element parse5 never puts in the tree at all.
+      listedButNotVoid: [...voidList].filter((n) => verdicts.get(n) === 'holds-content'),
+      missingFromList: measuredVoid.filter((n) => !voidList.has(n)),
+      unmeasurable: pool.filter((n) => verdicts.get(n) === 'unmeasurable'),
+    }).toEqual({
+      listedButNotVoid: [],
+      // The safe direction, pinned by name so it stays a decision. parse5
+      // treats all three as void; the scanner does not list them, so it
+      // pushes an element parse5 never opened, over-counts, and over-blocks.
+      // Obsolete names a markdown stream is unlikely to carry, which is
+      // presumably why they were left out — recorded, not "fixed".
+      missingFromList: ['basefont', 'bgsound', 'keygen'],
+      // Void-ness is not observable for these four. `col` and `frame` are
+      // re-dispatched out of the tree outside a table/frameset, `image` is
+      // rewritten to `img` by parse5, and `template` hides its content on
+      // `.content`. All four would otherwise read as "holds nothing", which
+      // is indistinguishable from void — the same false positive the content
+      // -state adapter hit on its first run.
+      unmeasurable: ['col', 'frame', 'image', 'template'],
     });
   });
 

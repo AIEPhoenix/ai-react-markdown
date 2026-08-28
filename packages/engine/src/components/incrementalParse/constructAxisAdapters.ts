@@ -253,6 +253,86 @@ export function micromarkKeepsBlockOpenPastBlank(opener: string, closer: string,
   return mdBlockExtent(mdast, doc.lastIndexOf('y')) !== null;
 }
 
+/**
+ * Is there a FLOW html node covering `offset` — one whose parent is not a
+ * paragraph?
+ *
+ * The parent test is the whole point. mdast reuses the `html` node type for
+ * INLINE html, so `mdBlockExtent` alone cannot tell "this line opened an html
+ * block" from "this tag sits inside a paragraph". Asking the root's children
+ * only is the opposite mistake and is the one GRAMMAR-COVERAGE records: a
+ * container-held block hangs under its blockquote or list item, and a
+ * root-only oracle pinned four of seven container rows wrong.
+ */
+function flowHtmlCovers(node: NodeLike, offset: number, parentType: string | null): boolean {
+  for (const child of node.children ?? []) {
+    const s = child.position?.start?.offset;
+    const e = child.position?.end?.offset;
+    if (
+      child.type === 'html' &&
+      parentType !== 'paragraph' &&
+      s !== undefined &&
+      e !== undefined &&
+      s <= offset &&
+      offset < e
+    ) {
+      return true;
+    }
+    if (flowHtmlCovers(child, offset, child.type)) return true;
+  }
+  return false;
+}
+
+/**
+ * ADAPTER 5 — does `<name>` open a CommonMark type-6 block?
+ *
+ * Measured by the one property that separates type 6 from type 7: **type 6
+ * may interrupt a paragraph and type 7 may not** (§4.6). So the probe puts the
+ * tag on a paragraph continuation line and asks whether micromark ended the
+ * paragraph and opened a flow html block there.
+ *
+ * Type 1 interrupts too, so the type-1 names would answer yes; the caller
+ * subtracts them with `micromarkKeepsBlockOpenPastBlank`, which is the other
+ * measurable difference (a blank ends type 6, not type 1). Types 2-5 never
+ * enter a name-keyed comparison — their start conditions are punctuation.
+ */
+export function micromarkOpensType6(name: string, config: CatalogConfig): boolean {
+  const doc = `para text\n<${name}>\nafter\n`;
+  const { mdast } = runFull(doc, config) as { mdast: NodeLike };
+  return flowHtmlCovers(mdast, doc.indexOf(`<${name}>`), null);
+}
+
+/** What `measureIsVoid` could determine. `unmeasurable` covers an element
+ *  parse5 does not put in the tree at all (the document-structure names are
+ *  absorbed) — void-ness is not observable there, and saying so beats
+ *  guessing either way. */
+export type VoidVerdict = 'void' | 'holds-content' | 'unmeasurable';
+
+/**
+ * ADAPTER 6 — does parse5 treat `<name>` as a void element?
+ *
+ * A void element takes no children, so a marker written between its tags ends
+ * up as a SIBLING rather than inside it. That is the observable, and it needs
+ * no name list.
+ *
+ * `unmeasurable` is returned rather than a verdict when the element never
+ * reaches the tree (`<head>`, `<body>`, `<html>` are absorbed into document
+ * structure) or when its content is hidden (`<template>`). Both would
+ * otherwise read as "no content inside it" — which is exactly the shape of a
+ * void element, and exactly the false positive that made this adapter's
+ * sibling report three bogus names on its first run.
+ */
+export function measureIsVoid(name: string, config: CatalogConfig): VoidVerdict {
+  const raw = runToRawLayer(`<${name}>MARKER</${name}>\n`, config);
+  const swallows = elementSwallows(raw, name, 'MARKER');
+  if (swallows === 'absent') return 'unmeasurable';
+  if (swallows === 'runs-on') return 'holds-content';
+  // The element exists and does not hold the marker. Distinguish "void" from
+  // "the marker vanished with the element's content": the marker must still be
+  // SOMEWHERE, as a sibling.
+  return textContent(raw).includes('MARKER') ? 'void' : 'unmeasurable';
+}
+
 // ── the operator set ────────────────────────────────────────────────────
 
 export type OperatorName = 'identity' | 'slash' | 'space' | 'attr' | 'newline' | 'caseFold' | 'truncate' | 'elide';
