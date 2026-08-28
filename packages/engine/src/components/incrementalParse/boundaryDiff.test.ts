@@ -194,11 +194,12 @@ describe('boundary diff against the committed baseline', () => {
     // UNCONDITIONAL, including the zero cases. A line that appears only when
     // there is something to say cannot be told apart from a channel that is
     // broken — which is precisely how this histogram spent its silent months
-    // looking normal. Printing `compared` on every run also exposes the one
-    // way this net can pass while proving nothing: if a corpus regen changed
-    // every sample's bytes, every sample is exempt, `compared` is 0 and the
-    // red line is evaluated over an empty set. That is reported, not
-    // asserted — tightening it is a separate decision.
+    // looking normal.
+    //
+    // `compared` rides along because the assertion below only speaks once the
+    // net has ALREADY been narrowed to nothing. Seeing the count on a green
+    // run is what shows it shrinking on the way there: a gate reports the
+    // breach, a gauge reports the approach, and this file wants both.
     const rows = [...decreaseHistogram.entries()].sort().map(([b, n]) => `2^${b}≈${n}`);
     emit(
       `[boundaryDiff] compared=${compared} increases=${increases.length} decreases=${decreases}` +
