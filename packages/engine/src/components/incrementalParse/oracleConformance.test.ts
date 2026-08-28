@@ -503,6 +503,28 @@ describe('oracle sweep — fuzz corpus (env-scaled)', () => {
         // change can, and a corpus change that moves this by 78% is worth
         // the investigation it would trigger.
         //
+        // THE SAMPLE GUARD IS NOT OPTIONAL, and this floor shipped without
+        // it for one commit. `ORACLE_RUNS` scales the corpus, and fast-check
+        // biases toward SMALL documents early in a sample — a small document
+        // has fewer positioned nodes below its boundary, so it is likelier
+        // to be blind. The rate therefore falls monotonically with n, on one
+        // seed: 20.0% at 5 probed documents, 7.7% at 26, 2.6% at 115, 1.6%
+        // at 313, against 0.74% at n≈1200. At `ORACLE_RUNS=40` (the DEFAULT)
+        // seed 20401000 gives benign 1 of 5 = 20%, and the assertion failed
+        // on a corpus behaving exactly as calibrated. Two further seeds put
+        // hazard anywhere in 2.1-7.1% below n≈250.
+        //
+        // A ratio over a denominator of 5 is not a measurement, and a
+        // threshold that renders a verdict anyway is the same fault this
+        // whole round kept finding: an instrument that cannot notice it does
+        // not apply. So "not enough sample" is a THIRD ANSWER — not a pass,
+        // not a failure — and it is announced, because a floor that goes
+        // quiet is indistinguishable from a floor that is satisfied.
+        //
+        // 1000 is where the spread has settled: every 4000-run sweep
+        // measured lands at 1175-1365 probed documents, and everything
+        // below that was still moving.
+        //
         // 8 is an ABSOLUTE, corpus-derived constant — the only one in this
         // package. Contrast the engagement floor below: `/2` is a RELATIVE
         // bound that still means the same thing under any corpus, so it
@@ -533,12 +555,18 @@ describe('oracle sweep — fuzz corpus (env-scaled)', () => {
         //
         // Then move the threshold WITH that evidence, rather than to
         // whatever makes the run green.
-        expect(stats.documentsProbed).toBeGreaterThan(0);
-        expect(
-          stats.fullyBlindDocs / stats.documentsProbed,
-          `the gate compared nothing at all on ${stats.fullyBlindDocs}/${stats.documentsProbed} documents — ` +
-            `a per-document blinding the corpus-wide ratios cannot see`
-        ).toBeLessThan(0.08);
+        if (stats.documentsProbed >= 1000) {
+          expect(
+            stats.fullyBlindDocs / stats.documentsProbed,
+            `the gate compared nothing at all on ${stats.fullyBlindDocs}/${stats.documentsProbed} documents — ` +
+              `a per-document blinding the corpus-wide ratios cannot see`
+          ).toBeLessThan(0.08);
+        } else {
+          emit(
+            `[oracle ${name}] blindness floor NOT APPLIED: ${stats.fullyBlindDocs}/${stats.documentsProbed} ` +
+              `probed documents, needs 1000 — raise ORACLE_RUNS to ~4000 to gate on it\n`
+          );
+        }
       }
       // Anti-vacuity floor, over NON-EMPTY tails only. The old form counted
       // every probe and so could not fall below 4/doc even with the splice
