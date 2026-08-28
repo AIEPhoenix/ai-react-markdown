@@ -400,6 +400,57 @@ export type T2Micromark = 'md-live' | 'md-inert';
 /** Whether parse5 acts on a tag in those bytes, or reads it as text. */
 export type T2Parse5 = 'tag-live' | 'tag-inert';
 
+/**
+ * What a T1 verdict MEANS, once both sides are read as answers to the same
+ * question: does the construct end at the mutated closer's line, or run past
+ * it?
+ *
+ * The two enums this collapses are disjoint by spelling — micromark answers
+ * `at-closer`/`after`/`none`, parse5 answers `at-closer`/`runs-on`/`absent`,
+ * and only `at-closer` is spelled the same on both sides. Comparing them with
+ * `!==` therefore scored `('after', 'runs-on')` as a disagreement when it is
+ * the SAME answer twice: micromark's block extends past the closer line and
+ * parse5's element swallowed the byte past it. Eleven rows read that way
+ * (every `elide` cell plus all seven non-`elide` `plaintext` cells), ten of
+ * which also agreed on T2 — so a fifth of the "benign disagreement" bucket
+ * was not a disagreement at all, and its stated mechanism ("a type-6 block
+ * ending at a blank while its element ends at its own end tag") was false for
+ * every one of them: `plaintext` is not type 6 and ends in neither grammar.
+ *
+ * Found by adversarial review 2026-08-28. The direction was safe — only
+ * `at-closer`/`at-closer` ever scored `agree`, so nothing was wrongly
+ * exempted, and `claimed` never depended on this comparison — but a bucket
+ * exists to point a reviewer at real mechanisms, and noise wearing a
+ * mechanism label defeats it.
+ */
+export type T1Meaning = 'ends-at-closer' | 'runs-past' | 'no-construct';
+
+/** micromark's terminator as a meaning. */
+export const t1MicromarkMeaning = (v: T1Micromark): T1Meaning =>
+  v === 'at-closer' ? 'ends-at-closer' : v === 'after' ? 'runs-past' : 'no-construct';
+
+/** parse5's terminator as the same meaning. `absent` pairs with micromark's
+ *  `none`: neither grammar put a construct here at all. Unreached by the
+ *  current table — every measured cell answers `at-closer` or `runs-past` on
+ *  both sides — so it is defined for correctness rather than pinned. */
+export const t1Parse5Meaning = (v: T1Parse5): T1Meaning =>
+  v === 'at-closer' ? 'ends-at-closer' : v === 'runs-on' ? 'runs-past' : 'no-construct';
+
+/**
+ * The verdict, over MEANINGS on both axes rather than spellings.
+ *
+ * T2's two enums were already compared this way (`md-inert` against
+ * `tag-inert`, never by string identity), which is why only T1 was wrong.
+ */
+export function cellVerdict(
+  t1: readonly [T1Micromark, T1Parse5],
+  t2: readonly [T2Micromark, T2Parse5]
+): 'agree' | 'disagree' {
+  const t1Differs = t1MicromarkMeaning(t1[0]) !== t1Parse5Meaning(t1[1]);
+  const t2Differs = (t2[0] === 'md-inert') !== (t2[1] === 'tag-inert');
+  return t1Differs || t2Differs ? 'disagree' : 'agree';
+}
+
 export interface ConstructAxisCell {
   element: string;
   operator: OperatorName;
@@ -430,12 +481,17 @@ export interface ConstructAxisCell {
    * 2026-08-28; recorded here so it is not re-litigated). The constraint this
    * table exists to enforce was never "every disagreement must be explained".
    * It is "the scanner must not silently claim agreement where none exists".
-   * 49 of the 64 disagreeing cells are a type-6 html block ending at a blank
-   * while its parse5 element ends at its own end tag — a disagreement the
-   * scanner never claimed away, and one the pipeline is built on. Demanding a
-   * `coveredBy` string for those would manufacture exactly the ceremonial
-   * prose the constraint exists to prevent, and the F13/F20 history is that
-   * ceremonial prose is what fails.
+   * 39 of the 54 disagreeing cells are unclaimed, and the bulk of them are one
+   * mechanism: a type-6 html block ending at a blank while its parse5 element
+   * ends at its own end tag — a disagreement the scanner never claimed away,
+   * and one the pipeline is built on. Demanding a `coveredBy` string for those
+   * would manufacture exactly the ceremonial prose the constraint exists to
+   * prevent, and the F13/F20 history is that ceremonial prose is what fails.
+   *
+   * Those counts read 49 of 64 until the `cellVerdict` fix below, and the
+   * mechanism sentence was false for ten of them — `plaintext` rows and the
+   * `elide` cells, which are neither type 6 nor ending in either grammar.
+   * They were never disagreements at all; see `T1Meaning`.
    *
    * What keeps the narrowing sound is that `claimed` is MEASURED from the two
    * grammars and never read off `computeFreezeBoundary.ts`, so the test is not
@@ -587,7 +643,7 @@ export const CONSTRUCT_AXIS_ALPHABET: readonly ConstructAxisCell[] = ALPHABET_RO
     at,
     t1: [t1md, t1p5],
     t2: [t2md, t2p5],
-    verdict: t1md !== t1p5 || (t2md === 'md-inert') !== (t2p5 === 'tag-inert') ? 'disagree' : 'agree',
+    verdict: cellVerdict([t1md, t1p5], [t2md, t2p5]),
     claimed,
     coveredBy: claimed ? 'maskUnbacked' : null,
     boundary,

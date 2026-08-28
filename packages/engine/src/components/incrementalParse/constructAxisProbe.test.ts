@@ -31,6 +31,7 @@ import {
   CONSTRUCT_AXIS_ELEMENTS,
   cellDisagreementOffset,
   cellDocument,
+  cellVerdict,
   elementSwallows,
   findElement,
   mdBlockExtent,
@@ -179,7 +180,10 @@ function measureCell(element: string, operator: string, closer: string): Constru
   const p5AlreadyLeftThatState = t1p5 !== 'runs-on';
   const claimed = mdBlockStillOpen && p5GovernsAsRawText && p5AlreadyLeftThatState;
 
-  const disagrees = t1md !== t1p5 || (t2md === 'md-inert') !== (t2p5 === 'tag-inert');
+  // Meanings, not spellings — the two T1 enums are disjoint by wording, so
+  // `!==` scored `('after','runs-on')` as a disagreement when both sides are
+  // saying "runs past the closer". See `cellVerdict`.
+  const verdict = cellVerdict([t1md, t1p5], [t2md, t2p5]);
   return {
     element,
     operator: operator as ConstructAxisCell['operator'],
@@ -187,7 +191,7 @@ function measureCell(element: string, operator: string, closer: string): Constru
     at,
     t1: [t1md, t1p5],
     t2: [t2md, t2p5],
-    verdict: disagrees ? 'disagree' : 'agree',
+    verdict,
     claimed,
     coveredBy: claimed ? 'maskUnbacked' : null,
     boundary: boundaryOf(doc),
@@ -243,21 +247,18 @@ describe('construct axis: T1 terminators and T2 content governance', () => {
    * Adding a row here is not a defect by itself. It means: someone must
    * confirm that nothing claims agreement over those bytes, and say so.
    */
-  test('the unclaimed-disagreement bucket is exactly these 49 cells', () => {
+  test('the unclaimed-disagreement bucket is exactly these 39 cells', () => {
     const unclaimed = MEASURED.filter((c) => c.verdict === 'disagree' && !c.claimed).map(
       (c) => `${c.element}:${c.operator}`
     );
-    expect(unclaimed.length).toBe(49);
+    expect(unclaimed.length).toBe(39);
     expect(unclaimed).toEqual([
-      'script:elide',
       'pre:slash',
       'pre:space',
       'pre:attr',
       'pre:newline',
       'pre:truncate',
       'pre:elide',
-      'style:elide',
-      'textarea:elide',
       'title:identity',
       'title:slash',
       'title:space',
@@ -274,13 +275,6 @@ describe('construct axis: T1 terminators and T2 content governance', () => {
       'iframe:caseFold',
       'iframe:truncate',
       'iframe:elide',
-      'plaintext:identity',
-      'plaintext:slash',
-      'plaintext:space',
-      'plaintext:attr',
-      'plaintext:newline',
-      'plaintext:caseFold',
-      'plaintext:truncate',
       'plaintext:elide',
       'noscript:identity',
       'noscript:slash',
@@ -379,13 +373,24 @@ describe('construct axis: the facts the templates are derived from', () => {
    * catch it, which is the F13 shape one layer up. The lists are cheap to
    * falsify directly, so they are falsified directly.
    *
-   * The candidate set is deliberately WIDER than either list — the lists
-   * themselves plus every neighbour that has ever been argued about — so the
-   * check catches a name that is MISSING as well as one that does not belong.
-   * Only `type1` and `rawText` are covered: they are the two lists these
-   * adapters can measure. `void`, `type6`, `documentStructure`, `tablePart`,
-   * `scopeBarrier` and `foreignRoot` are NOT checked here and still rest on
-   * transcription.
+   * Residual limit, stated rather than implied — the same honesty the `type6`
+   * test below owes and pays. The candidate set is the two lists plus seven
+   * neighbours that have been argued about before, which is wide enough to
+   * catch a name that DOES NOT BELONG (every listed name is measured) but not
+   * wide enough to guarantee catching one that is MISSING: a type-1 or
+   * raw-text name absent from both the lists and those seven would never be
+   * probed. The pool is the boundary of this claim, and it is narrower than
+   * `type6`'s, which draws on an independent element universe.
+   *
+   * Risk today is nil rather than managed: CommonMark type 1 is exactly
+   * `pre`/`script`/`style`/`textarea` and cannot grow without a spec change,
+   * which is why the pool is left as it is instead of widened. If that ever
+   * stops being true, widen the pool — do not re-read this comment as
+   * coverage it does not provide.
+   *
+   * Only `type1` and `rawText` are covered here. `void` and `type6` have their
+   * own tests below; `documentStructure`, `tablePart`, `scopeBarrier` and
+   * `foreignRoot` are NOT checked anywhere and still rest on transcription.
    */
   test('the scanner name lists agree with the grammars they model', () => {
     const lists = new Map(SCANNER_NAME_LISTS);
@@ -594,7 +599,7 @@ describe('construct axis: how complete the operator set is', () => {
    *  deduped so a consumer importing them gets a token list rather than a
    *  surprise. */
   test('the alphabet exports a usable token list', () => {
-    expect(CONSTRUCT_AXIS_DISAGREEING_SHAPES.length).toBe(55);
+    expect(CONSTRUCT_AXIS_DISAGREEING_SHAPES.length).toBe(48);
     expect(CONSTRUCT_AXIS_CLAIMED_SHAPES).toEqual([
       '</script/>',
       '</script >',
