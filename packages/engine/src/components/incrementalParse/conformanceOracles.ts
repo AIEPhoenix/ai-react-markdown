@@ -188,7 +188,8 @@ function isFootnoteSection(node: NodeLike): boolean {
   // the conjunct: 24 source bytes reduced the snapshot gate to zero
   // compared nodes for the whole document, on all six configs, and a
   // planted under-block that fires without the wrapper went silent
-  // (`smuggles through the raw-mode gate` below pins it).
+  // (`a document cannot forge the footer exemption and silence the gate`
+  // in `oracleConformance.test.ts` pins it, with nine baits).
   //
   // Same defect class as F21, from the other side: F21 was a real footer
   // the parser ATE, this is a fake footer the document FED it. A key that
