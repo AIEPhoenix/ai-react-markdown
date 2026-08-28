@@ -214,14 +214,20 @@ const NAME_CLASS_REPS: readonly string[] = (() => {
  * cells against both grammars and publishes the result.
  *
  * `CLAIMED`, not `DISAGREEING`, and the difference is the point.
- * `CONSTRUCT_AXIS_DISAGREEING_SHAPES` is 55 shapes, of which 40 are type-6
+ * `CONSTRUCT_AXIS_DISAGREEING_SHAPES` is 48 shapes (measured 2026-08-28;
+ * it was 55 until seven `plaintext` closers were removed as a correctness
+ * fix, so do not treat any count here as stable), of which 33 are type-6
  * normality — micromark's html block ends at a blank line, parse5's
  * element ends at its own end tag, and the two disagreeing about that is
  * the design working. The 15 CLAIMED shapes are the ones a scanner member
  * asserts the grammars AGREE on when they do not, which is F20's family.
- * At 15 the alphabet grows 38 → 53 and the band costs ~1.9× at K=2; at 55
- * it would grow to 93 and cost ~14× at K=3, for tokens whose disagreement
- * is already understood. Weight, not volume.
+ * At 15 the alphabet grows 38 → 53 and the band costs ~1.9× at K=2; at 48
+ * it would grow to 86 and cost roughly ×10 at K=3, for tokens whose
+ * disagreement is already understood. Weight, not volume.
+ *
+ * Nothing here PINS either count — the import is by name and the alphabet
+ * size is derived — which is why the upstream shrink cost this file
+ * nothing but a stale sentence.
  *
  * Every token in this band is a WHOLE NUMBER OF LINES, which is what makes
  * the newline-carrying shapes (`'</script\n>'`, from the `newline`
@@ -923,6 +929,20 @@ function reportAndAssert(band: string, tokens: readonly string[], maxK: number, 
   // documents). Result on the name band — reach 12/2862 = 0.42%, RED; and
   // it was invisible to the other two, which improved: density 0.75
   // against a 0.03 floor, blindness 66.7% against a baseline of 90.6%.
+  //
+  // WHAT NONE OF THE THREE CAN CHECK, stated because three floors agreeing
+  // looks like corroboration and is not: density and floor 2 both derive
+  // from `snap.nodesCompared`, the instrument's OWN report of how much it
+  // compared. If that number were wrong they would be wrong together and
+  // agree, which is the shape that let a whole-table pin miss a verdict bug
+  // elsewhere this batch — the pin and the measurement shared one
+  // expression. Floor 1 is the only one whose denominator comes from
+  // somewhere else (the sweep's odometer, not P3's accounting), which is
+  // also why it caught what the others could not. An independent check on
+  // `nodesCompared` would mean re-deriving the frozen-node set outside
+  // `snapshotRawDisagreement`; that is not done here, and until it is, the
+  // honest reading of a green run is "the instrument says it looked",
+  // not "the instrument looked".
   if (RAW_FROZEN) {
     expect(s.rawFrozen.probes, `P3/${band} drove no probe tails — the raw-layer property never ran`).toBeGreaterThan(0);
     expect(
