@@ -136,6 +136,78 @@ describe('construct axis: T1 terminators and T2 content governance', () => {
   });
 
   /**
+   * The benign bucket is pinned by NAME, not just by size.
+   *
+   * A disagreement that nothing claims owes no member, which is right — and
+   * it is also the only silent path left in the table: a future element or
+   * operator whose disagreement lands here would join 49 existing rows
+   * without anyone looking at it once. The whole-table pin above already
+   * fails when the generator sets grow, but it fails in a way that invites
+   * pasting the regenerated rows back in; this one names the bucket, so
+   * growing it is a deliberate edit with a reviewer attached.
+   *
+   * Adding a row here is not a defect by itself. It means: someone must
+   * confirm that nothing claims agreement over those bytes, and say so.
+   */
+  test('the unclaimed-disagreement bucket is exactly these 49 cells', () => {
+    const unclaimed = MEASURED.filter((c) => c.verdict === 'disagree' && !c.claimed).map(
+      (c) => `${c.element}:${c.operator}`
+    );
+    expect(unclaimed.length).toBe(49);
+    expect(unclaimed).toEqual([
+      'script:elide',
+      'pre:slash',
+      'pre:space',
+      'pre:attr',
+      'pre:newline',
+      'pre:truncate',
+      'pre:elide',
+      'style:elide',
+      'textarea:elide',
+      'title:identity',
+      'title:slash',
+      'title:space',
+      'title:attr',
+      'title:newline',
+      'title:caseFold',
+      'title:truncate',
+      'title:elide',
+      'iframe:identity',
+      'iframe:slash',
+      'iframe:space',
+      'iframe:attr',
+      'iframe:newline',
+      'iframe:caseFold',
+      'iframe:truncate',
+      'iframe:elide',
+      'plaintext:identity',
+      'plaintext:slash',
+      'plaintext:space',
+      'plaintext:attr',
+      'plaintext:newline',
+      'plaintext:caseFold',
+      'plaintext:truncate',
+      'plaintext:elide',
+      'noscript:identity',
+      'noscript:slash',
+      'noscript:space',
+      'noscript:attr',
+      'noscript:newline',
+      'noscript:caseFold',
+      'noscript:truncate',
+      'noscript:elide',
+      'div:identity',
+      'div:slash',
+      'div:space',
+      'div:attr',
+      'div:newline',
+      'div:caseFold',
+      'div:truncate',
+      'div:elide',
+    ]);
+  });
+
+  /**
    * The retreat assertion above proves nothing on a document whose boundary
    * is 0 for unrelated reasons, so the control is measured rather than
    * assumed: with the CANONICAL closer, the scanner must freeze past the
