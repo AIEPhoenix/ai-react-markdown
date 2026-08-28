@@ -45,50 +45,29 @@
  * @module components/incrementalParse/constructAxisAdapters
  */
 
-import rehypeRaw from '@ai-markdown/rehype-raw';
-
-import { parseStage, transformStage } from '../markdown';
 import { runFull } from './spliceArbiterHarness';
-import { buildAdvanceOptions, type CatalogConfig } from './testPluginCatalog';
-
-interface PosPoint {
-  offset?: number;
-}
-
-interface NodeLike {
-  type: string;
-  value?: string;
-  tagName?: string;
-  children?: NodeLike[];
-  position?: { start?: PosPoint; end?: PosPoint };
-}
-
-// ── adapters ────────────────────────────────────────────────────────────
+import { type CatalogConfig } from './testPluginCatalog';
+import { runToRawLayer, type NodeLike } from './conformanceOracles';
 
 /**
- * The production chain truncated after `rehype-raw` — the layer the two
- * grammars actually meet at.
+ * The raw() layer — the production chain truncated after `rehype-raw`, which
+ * is the layer the two grammars actually meet at, and the one every adapter
+ * here reads. Sanitize is deliberately not applied: it masks real parse5
+ * divergences (`formElement` survives to the final hast as equal output only
+ * because `form` is lifted) and `sanitizeSchema` is a public prop, so a
+ * verdict taken after it would describe the default schema rather than the
+ * grammar.
  *
- * Sanitize is deliberately NOT applied. It masks real parse5 divergences (the
- * `formElement` counterexample survives to the final hast as equal output
- * only because `form` is lifted), and `sanitizeSchema` is a public prop, so a
- * verdict read after sanitize would be a verdict about the default schema
- * rather than about the grammar.
- *
- * This duplicates `conformanceOracles.ts`'s private `runToRawLayer`; that
- * file is owned elsewhere this cycle, so the four lines are copied rather
- * than exported. Worth collapsing to one export when both files are free.
+ * Re-exported from `conformanceOracles` rather than defined again. It was
+ * copied here for one cycle while that file was owned elsewhere, and the
+ * reason the copy had to go is sharper than "duplication": a copied
+ * `runToRawLayer` stops observing the layer it names. Production's assembly —
+ * the remark chain, the remark-rehype options, the `rehype-raw` config —
+ * moves under it, and the copy keeps returning a tree while quietly measuring
+ * something else. That is this module's own headline failure (a measurement
+ * that cannot notice it no longer applies) wearing different clothes.
  */
-export function runToRawLayer(content: string, config: CatalogConfig): NodeLike {
-  const options = buildAdvanceOptions(config);
-  const parsed = parseStage({
-    children: content,
-    remarkPlugins: options.remarkPlugins,
-    rehypePlugins: [[rehypeRaw, { passThrough: [] }]] as never,
-    remarkRehypeOptions: options.remarkRehypeOptions,
-  });
-  return transformStage(parsed) as unknown as NodeLike;
-}
+export { runToRawLayer, type NodeLike };
 
 /**
  * ADAPTER 1 — micromark's block extent: the widest `html` node covering
