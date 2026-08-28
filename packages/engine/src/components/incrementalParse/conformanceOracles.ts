@@ -1018,10 +1018,12 @@ export interface OracleFinding {
    *  sanitize-masked), never a pass/fail signal by itself. */
   severity: 'defect' | 'info';
   detail: string;
-  /** Raw-mode firings only: which allowlisted exemption family this
-   *  matched, or `null` for a family that has never been classified. The
-   *  ORACLE_RAW sweep fails on `null` — an unclassified firing is exactly
-   *  the thing the allowlist exists to surface. */
+  /** Raw-mode firings only: which exemption family this matched, or `null`
+   *  for one no family claims. Read by no assertion — it is a label in the
+   *  info log, for a human triaging. (It gated the sweep until 2026-08-26,
+   *  and this comment still said so until the 2026-08-28 audit; the
+   *  classifier had been demoted two days earlier when the gate moved to
+   *  `snapshotRawDisagreement`.) */
   rawFamily?: RawFamily | null;
 }
 
@@ -1045,6 +1047,39 @@ export interface OracleSweepStats {
   snapshotNodesCompared: number;
   /** Probe positions where the snapshot gate compared at least one node. */
   snapshotPositions: number;
+  /**
+   * Documents the sweep actually probed (boundary > 0), and of those, the
+   * ones where the gate compared nothing ANYWHERE — not at a single probe
+   * position, counting the zero-distance recursion too.
+   *
+   * These exist because the ratio floors above cannot see a document. They
+   * are corpus-wide, so one blind document moves them by a millionth, and a
+   * gate silently disabled on part of a corpus reads as healthy: the
+   * measured `snapshotPositions / spliceableProbes` is 0.974 against a 0.5
+   * threshold, so 48.7% of documents could be blind before the floor
+   * noticed. F22 is what made that concrete: a forged footer wrapper took
+   * a document's gate to zero compared nodes on all six configs while
+   * every corpus-wide ratio stayed comfortable.
+   *
+   * The per-document counter is the right shape because blindness IS
+   * per-document: measured over 1,263 probed documents, the count of
+   * documents blind at EVERY position and the count blind at ANY position
+   * are the same number (benign 4, hazard 24). Whether the gate can speak
+   * is a property of the document, not of the probe — so a document is
+   * either heard from or it is not, and counting the silent ones is the
+   * whole instrument.
+   *
+   * Only accumulated under `idealIdentity`, at depth 0, so the recursion
+   * does not double-count the document it was spawned from.
+   *
+   * Scope limit, stated because it is the obvious next question: a
+   * document the scanner grants NO boundary is never probed and never
+   * counted. That is correct — the gate cannot fail to check a claim that
+   * was never made — but it means a blinding that ALSO suppresses the
+   * boundary stays invisible to this counter.
+   */
+  documentsProbed: number;
+  fullyBlindDocs: number;
 }
 
 /**
@@ -1070,6 +1105,10 @@ export function oracleCheckDoc(
   const { defListEnabled } = buildAdvanceOptions(config);
   const boundary = computeFreezeBoundary(doc, { defListEnabled }).boundary;
   if (boundary <= 0) return [];
+  // Read BEFORE any probing, compared after the zero-distance recursion has
+  // also had its say: a document counts as blind only if nothing anywhere
+  // in it spoke.
+  const positionsOnEntry = stats?.snapshotPositions ?? 0;
   const prefix = doc.slice(0, boundary);
   const realTail = doc.slice(boundary);
   const probes = probeTailsFor(prefix);
@@ -1154,6 +1193,10 @@ export function oracleCheckDoc(
   // Zero-distance variant: the claimed prefix as its own document.
   if (depth === 0 && prefix.length < doc.length) {
     findings.push(...oracleCheckDoc(prefix, config, stats, 1, options));
+  }
+  if (stats && options?.idealIdentity && depth === 0) {
+    stats.documentsProbed += 1;
+    if (stats.snapshotPositions === positionsOnEntry) stats.fullyBlindDocs += 1;
   }
   return findings;
 }
