@@ -340,6 +340,25 @@ export interface ConstructAxisCell {
    * in `computeFreezeBoundary.ts`, restated as a measurement. A `disagree`
    * cell with `claimed: true` owes a named member and a boundary that
    * retreats; `constructAxisProbe.test.ts` fails when either is missing.
+   *
+   * WHY THE OBLIGATION IS NARROWED TO `claimed` (reviewed and approved
+   * 2026-08-28; recorded here so it is not re-litigated). The constraint this
+   * table exists to enforce was never "every disagreement must be explained".
+   * It is "the scanner must not silently claim agreement where none exists".
+   * 49 of the 64 disagreeing cells are a type-6 html block ending at a blank
+   * while its parse5 element ends at its own end tag — a disagreement the
+   * scanner never claimed away, and one the pipeline is built on. Demanding a
+   * `coveredBy` string for those would manufacture exactly the ceremonial
+   * prose the constraint exists to prevent, and the F13/F20 history is that
+   * ceremonial prose is what fails.
+   *
+   * What keeps the narrowing sound is that `claimed` is MEASURED from the two
+   * grammars and never read off `computeFreezeBoundary.ts`, so the test is not
+   * checking the scanner against itself. That the three measured conjuncts
+   * turn out to coincide with `maskUnbacked`'s semantics is therefore a
+   * finding — the member really does cover the danger condition — rather than
+   * a tautology. If the member's definition drifts away from the grammars,
+   * these conjuncts do not drift with it, and the cell fails.
    */
   claimed: boolean;
   /** The member that owns a claimed cell, or null when nothing claims
