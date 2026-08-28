@@ -187,6 +187,61 @@ describe('oracle self-tests (must fire / must stay quiet)', () => {
     }
   });
 
+  test('a document cannot forge the footer exemption and silence the gate', () => {
+    // F21 fixed a footer the PARSER ate. This is the same key read from the
+    // other end: `data-footnotes` is an attribute, and 24 bytes at column 0
+    // (`<section data-footnotes>`) make rehype-raw hand the gate an element
+    // the wrapper strip recognised as generated furniture — after which it
+    // removed the author's own content from BOTH sides. Measured on the
+    // shipped code before this changed: every bait below stayed quiet on
+    // every config, and the first four compared ZERO nodes for the whole
+    // document, so a real under-block inside the forged region was
+    // invisible while the sweep's anti-vacuity floors — which are ratios
+    // over a whole corpus — stayed comfortably satisfied.
+    //
+    // Each bait is a planted under-block (a deliberately wrong boundary
+    // plus a tail that demonstrably rewrites a node below it), shaped to
+    // look like the exemption it is aimed at. All of them must fire.
+    const baits: Array<{ id: string; doc: string; tail: string }> = [
+      // Controls: the byte-anchored exemption is what the gate keeps, and
+      // a real definition sitting above or abutting the bait must not
+      // extend to it.
+      { id: 'naked retarget', doc: 'uses [x] here\n\n', tail: '[x]: /u\n' },
+      { id: 'real definition above', doc: '[^n]: note\n\nuses [x] here\n\n', tail: '[x]: /u\n' },
+      { id: 'definition abuts the bait', doc: '[^n]: note\n\n[x] ref\n\n', tail: '[x]: /u\n' },
+      // Forged wrappers.
+      { id: 'forged wrapper', doc: '<section data-footnotes>\n\nuses [x] here\n\n', tail: '[x]: /u\n' },
+      {
+        id: 'forged wrapper with the class too',
+        doc: '<section data-footnotes class="footnotes">\n\nuses [x] here\n\n',
+        tail: '[x]: /u\n',
+      },
+      { id: 'forged wrapper nested', doc: '<div>\n\n<section data-footnotes>\n\nuses [x] here\n\n', tail: '[x]: /u\n' },
+      {
+        id: 'forged wrapper beside a real definition',
+        doc: '[^n]: note\n\n<section data-footnotes>\n\nuses [x] here\n\n',
+        tail: '[x]: /u\n',
+      },
+      // The forged wrapper carrying F10's raw-text swallow instead of a
+      // reference retarget — a different mechanism behind the same bait.
+      {
+        id: 'forged wrapper over F10',
+        doc: '<section data-footnotes>\n\n<iframe>\n\n<div>probe</div>\n\n',
+        tail: '</iframe>\n',
+      },
+      // The attribute is what is read, so any tag carries it.
+      { id: 'forged on a span', doc: '<span data-footnotes>\n\nuses [x] here\n\n', tail: '[x]: /u\n' },
+    ];
+    for (const bait of baits) {
+      for (const config of CATALOG) {
+        const r = snapshotRawDisagreement(bait.doc, bait.tail, bait.doc.length, config);
+        const at = `${bait.id} [${config.label}]`;
+        expect(r.nodesCompared, `${at} compared nothing`).toBeGreaterThan(0);
+        expect(r.detail, at).toMatch(/^P-snap/);
+      }
+    }
+  });
+
   test('the M oracle stays quiet on paragraph prefixes for every probe', () => {
     const prefix = 'para one with *emphasis*\n\npara two\n\n';
     for (const config of CATALOG) {
