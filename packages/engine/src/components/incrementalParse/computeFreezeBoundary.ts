@@ -1346,6 +1346,27 @@ function sealReleaseDerived(cp: FreezeScanCheckpointInternal, ln: LineRec, isBlo
 }
 
 /**
+ * How many times the containment assertion below has been EVALUATED, which
+ * is the number of times the derived predicate released a pending seam. Dev
+ * builds only, and it goes with the enumeration.
+ *
+ * It exists because the assertion cannot otherwise report that it applied.
+ * `sealReleaseContainment.test.ts` drives the whole pinned corpus and asserts
+ * that nothing was logged — a claim a corpus that never reaches the release
+ * path satisfies perfectly. That file already names the risk and answers it
+ * with a hand-written single-document pin, which catches the release path
+ * dying GLOBALLY and cannot catch this corpus drifting away from it: a
+ * regenerated corpus, or a guard moving earlier, leaves the pin green and the
+ * sweep vacuous. Measured 2026-08-29 before the floor went in: 862
+ * evaluations over 91 distinct line shapes on 6,060 scans, so the sweep is
+ * live today and the floor records what "live" was.
+ */
+let sealReleaseEvaluations = 0;
+
+/** TEST-ONLY (see above). Not re-exported by any barrel. */
+export const readSealReleaseEvaluations = (): number => sealReleaseEvaluations;
+
+/**
  * The RETIRED enumeration of node-less line classes, kept for one release
  * as the migration's containment assertion (design §8.4): the derived
  * predicate must release only where this one did. Deleted with its F-rows
@@ -1403,11 +1424,14 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       // defect direction, so it is reported rather than tolerated. Not a
       // hot path — the check runs on a non-blank line only while a seam is
       // actually pending.
-      if (process.env.NODE_ENV !== 'production' && !sealReleaseEnumerated(cp, ln, isBlockStart)) {
-        console.error(
-          `[ai-react-markdown] seal-release containment broken at offset ${ln.start}: the derived predicate ` +
-            `released a line the retired enumeration withheld (${JSON.stringify(ln.text.slice(0, 80))}).`
-        );
+      if (process.env.NODE_ENV !== 'production') {
+        sealReleaseEvaluations += 1;
+        if (!sealReleaseEnumerated(cp, ln, isBlockStart)) {
+          console.error(
+            `[ai-react-markdown] seal-release containment broken at offset ${ln.start}: the derived predicate ` +
+              `released a line the retired enumeration withheld (${JSON.stringify(ln.text.slice(0, 80))}).`
+          );
+        }
       }
     }
   }
