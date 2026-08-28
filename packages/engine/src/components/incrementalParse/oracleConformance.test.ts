@@ -6,6 +6,30 @@
  * Env knobs (same pattern as spliceFuzz):
  *   ORACLE_RUNS  fuzz docs per family (default 40; soak runs use thousands)
  *   ORACLE_SEED  fast-check seed for the fuzz slice (default 20260824)
+ *   ORACLE_RAW   adds the prefix-anchored instruments AND turns the gate on
+ *
+ * WHAT ONLY THE GATE COVERS. Almost everything this file exists for is
+ * behind `ORACLE_RAW=1`, which no CI job sets — only soak leg 5 does. A
+ * green `pnpm test` on this file therefore does NOT mean the raw-mode gate
+ * ran. Specifically, without `ORACLE_RAW`:
+ *
+ *   - `oracleCheckDoc` is called with `idealIdentity: false`, so
+ *     `snapshotRawDisagreement` never runs in the sweeps. The
+ *     `expect(snapFirings).toEqual([])` assertion still executes — over an
+ *     array that is unconditionally empty, which is a check of nothing.
+ *   - all three anti-vacuity floors and the per-document blindness counter
+ *     sit inside `if (RAW_MODE)` and do not execute.
+ *
+ * What DOES still run in CI, and is the reason this is coverage honesty
+ * rather than a live hole: the self-tests below call
+ * `snapshotRawDisagreement` DIRECTLY, and each asserts both `nodesCompared
+ * > 0` and a firing on planted defects. A total blinding of the gate — the
+ * failure mode the floors exist for — reddens CI through those, without
+ * `ORACLE_RAW`. What CI cannot see is the gate's verdict over a CORPUS:
+ * drift in blindness rate, a new firing family, an exemption widening.
+ *
+ * The engine probe, the (M) span oracle and the pinned-corpus sweep run
+ * unconditionally and are unaffected by any of this.
  *
  * The self-test group is the harness-validation half of §2.3: an oracle
  * that has only ever reported zero has not been tested, so the known
@@ -329,6 +353,15 @@ const emit = (line: string): void => {
 };
 
 describe('oracle sweep — pinned realistic corpus', () => {
+  // NO INFO DIAGNOSTICS HERE, deliberately. This sweep used to collect its
+  // `info` findings into a `classification log (informational)` test that
+  // printed them at the end. That test was DELETED rather than moved to the
+  // real stream when the dropped-console channel was fixed: its body was one
+  // `console.log` plus `expect(true).toBe(true)`, so it asserted nothing and,
+  // through the intercepted channel, printed nothing either — it had been
+  // silent for its whole life. The fuzz sweeps below keep their info buckets
+  // and now emit them for real. If you want the pinned corpus's info stream
+  // back, it needs building, not restoring: nothing was moved aside.
   for (const doc of REALISTIC_DOCS) {
     test(`${doc.id}`, () => {
       const config = CATALOG[doc.configIndex % CATALOG.length];
