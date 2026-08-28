@@ -1134,7 +1134,8 @@ function bfs(defListEnabled: boolean, depth: number): BfsResult {
 
         SIGNATURE_DOMAIN.forEach((field, i) => {
           const v = values[i];
-          if (!field.values.includes(v)) out.undeclared.push(`${field.name}=${JSON.stringify(v)} doc=${JSON.stringify(doc)}`);
+          if (!field.values.includes(v))
+            out.undeclared.push(`${field.name}=${JSON.stringify(v)} doc=${JSON.stringify(doc)}`);
           out.seenValues.get(field.name)!.add(v);
         });
         for (let a = 0; a < SIGNATURE_DOMAIN.length; a++) {

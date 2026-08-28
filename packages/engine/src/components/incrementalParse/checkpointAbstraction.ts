@@ -102,7 +102,11 @@ export const SIGNATURE_DOMAIN: readonly SignatureField[] = [
   { name: 'candidates', values: ['0', '1', '2', '3+'], of: (cp) => depthBucket(cp.candidates.length) },
   { name: 'defs', values: ['empty', 'some'], of: (cp) => (cp.defs.size === 0 ? 'empty' : 'some') },
   { name: 'footnoteDefs', values: ['empty', 'some'], of: (cp) => (cp.footnoteDefs.size === 0 ? 'empty' : 'some') },
-  { name: 'unresolvedRefs', values: ['empty', 'some'], of: (cp) => (cp.unresolvedRefs.length === 0 ? 'empty' : 'some') },
+  {
+    name: 'unresolvedRefs',
+    values: ['empty', 'some'],
+    of: (cp) => (cp.unresolvedRefs.length === 0 ? 'empty' : 'some'),
+  },
   { name: 'hazardVerdict', values: ['0', '1'], of: (cp) => (cp.hazardVerdict ? '1' : '0') },
   { name: 'prevLineBlank', values: ['0', '1'], of: (cp) => (cp.prevLineBlank ? '1' : '0') },
   { name: 'prevLineWasText', values: ['0', '1'], of: (cp) => (cp.prevLineWasText ? '1' : '0') },
@@ -118,7 +122,8 @@ export const SIGNATURE_DOMAIN: readonly SignatureField[] = [
   {
     name: 'phasePoisoned',
     values: ['none', 'from0', 'fromN'],
-    of: (cp) => (cp.phasePoisonedAt === Number.POSITIVE_INFINITY ? 'none' : cp.phasePoisonedAt === 0 ? 'from0' : 'fromN'),
+    of: (cp) =>
+      cp.phasePoisonedAt === Number.POSITIVE_INFINITY ? 'none' : cp.phasePoisonedAt === 0 ? 'from0' : 'fromN',
   },
   { name: 'pendingTag', values: ['0', '1'], of: (cp) => (cp.pendingTag === null ? '0' : '1') },
   {
@@ -181,7 +186,11 @@ export const F20_CHAIN: readonly { id: string; hit: (v: Record<string, string>) 
   { id: '1:type1-rawtext-open', hit: (v) => v.mdBlock === 'html1raw' },
   {
     id: '2:mask-unbacked',
-    hit: (v) => v.mdBlock === 'html1raw' && v.p5Tok !== 'rawText:inline' && v.p5Tok !== 'rawText:block' && !v.p5Tok.startsWith('script:'),
+    hit: (v) =>
+      v.mdBlock === 'html1raw' &&
+      v.p5Tok !== 'rawText:inline' &&
+      v.p5Tok !== 'rawText:block' &&
+      !v.p5Tok.startsWith('script:'),
   },
   {
     id: '3:bogus-under-mask',
