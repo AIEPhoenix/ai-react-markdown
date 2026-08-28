@@ -37,9 +37,19 @@
  *
  * If a future change makes the copied guard logic disagree with the real
  * `frozenSignatures`, the `POST` arm below stops modelling the shipped gate
- * and every number here is void without saying so. The cheap check when
- * that is a worry: run the raw-mode sweep on the same corpus and confirm
- * its `snapNodes` matches `POST`'s signature count.
+ * and every number here is void without saying so. So the harness checks
+ * that itself, every run: at EVERY probe position it also calls the real
+ * `snapshotRawDisagreement` and compares both the node count and the
+ * verdict, reporting `POST vs the shipped gate: N disagreements over M
+ * positions`. Anything but 0 voids the tables above and says so on the line.
+ *
+ * An earlier draft told the maintainer to compare `POST`'s signature count
+ * against the sweep's `snapNodes` instead. That is not executable: the
+ * sweep's totals also include the zero-distance recursion, which this
+ * harness does not run, so the two legitimately differ (measured: 689 vs
+ * 1177 benign) and the check cries wolf every time it is followed. A
+ * defence that false-alarms on a healthy system is followed once and then
+ * ignored — which is worse than no defence, because it looks like one.
  *
  * @module components/incrementalParse/gateExemptionEvidence.evidence
  */
@@ -50,7 +60,7 @@ import fc from 'fast-check';
 import { CATALOG, buildAdvanceOptions, type CatalogConfig } from './testPluginCatalog';
 import { computeFreezeBoundary } from './computeFreezeBoundary';
 import { runFull, testEnv } from './spliceArbiterHarness';
-import { probeTailsFor, runToRawLayer, type NodeLike } from './conformanceOracles';
+import { probeTailsFor, runToRawLayer, snapshotRawDisagreement, type NodeLike } from './conformanceOracles';
 import { benignDocArb, hazardDocArb, type FuzzDoc } from './fuzzGenerators';
 
 /** Test-only stdout access. The package's ambient `process` shim narrows to
@@ -189,6 +199,9 @@ function sweep(name: string, arb: fc.Arbitrary<FuzzDoc>, seed: number, runs: num
   const fires = new Map<string, number>();
   const compared = new Map<string, number>();
   const positions = new Map<string, number>();
+  // Faithfulness of the POST arm to the SHIPPED gate, per probe position.
+  let checked = 0;
+  let drifted = 0;
   for (const d of docs) {
     const config = CATALOG[d.configIndex % CATALOG.length];
     const { defListEnabled } = buildAdvanceOptions(config);
@@ -203,6 +216,16 @@ function sweep(name: string, arb: fc.Arbitrary<FuzzDoc>, seed: number, runs: num
         compared.set(arm.label, (compared.get(arm.label) ?? 0) + r.compared);
         if (r.compared > 0) positions.set(arm.label, (positions.get(arm.label) ?? 0) + 1);
         if (r.fired) fires.set(arm.label, (fires.get(arm.label) ?? 0) + 1);
+        if (arm.guards === POST) {
+          // The copied guard logic must agree with the real thing at EVERY
+          // position, on both the count and the verdict. Aggregates cannot
+          // do this job: `oracleCheckDoc` also runs the zero-distance
+          // recursion, so its totals are legitimately larger and comparing
+          // them cries wolf on a healthy harness.
+          const real = snapshotRawDisagreement(d.doc, probe.tail, boundary, config, mdast);
+          checked += 1;
+          if (real.nodesCompared !== r.compared || (real.detail !== null) !== r.fired) drifted += 1;
+        }
       }
     }
   }
@@ -214,6 +237,87 @@ function sweep(name: string, arb: fc.Arbitrary<FuzzDoc>, seed: number, runs: num
         `${String(compared.get(arm.label) ?? 0).padStart(12)} ${String(positions.get(arm.label) ?? 0).padStart(10)}\n`
     );
   }
+  out(
+    `    POST vs the shipped gate: ${drifted} disagreements over ${checked} positions` +
+      `${drifted === 0 ? '' : '  <-- THE NUMBERS ABOVE ARE VOID'}\n`
+  );
+}
+
+/**
+ * The two exemptions the fuzz sweeps never exercise, and an honest account
+ * of how far their justification reproduces.
+ *
+ * `no-inverted` and `no-zeroWidth` report counts identical to PRE/POST on
+ * every corpus measured, so by the rule that deleted `stripFurniture` — an
+ * exemption with no firing that needs it is unaudited surface — they look
+ * like the same case. Each was kept on a single measured node, recorded in
+ * prose, which is precisely the justification shape that decays.
+ *
+ * WHAT THIS REPRODUCES: that each guard removes exactly one node from the
+ * comparison, deterministically, on all six configs. Documents below.
+ *
+ * WHAT IT DOES NOT: the reason each was added was a FALSE POSITIVE — a
+ * firing the guard prevents. That half does not reproduce. Searching 2,400
+ * documents across both corpora and four seeds for any (document, probe)
+ * where the gate is quiet with the guard and FIRES without it returned
+ * **zero** for both guards (2026-08-28). So on everything reachable today,
+ * these two guards change what is compared and never change a verdict.
+ *
+ * That is deliberately not resolved in either direction here. It is not
+ * evidence the guards are needed, and not evidence they are safe to delete:
+ * the inverted-range case was recorded as this instrument's only false
+ * positive across ~346k probe positions, and a corpus that cannot reach a
+ * once-per-346k event is not a corpus that has refuted it. Deleting them on
+ * this evidence would be the same over-reading as keeping them on it.
+ */
+function singleNodeExemptions(): void {
+  const cases = [
+    {
+      label: 'inverted range',
+      // A `<div>` opened inside a blockquote: rehype-raw reserialisation
+      // hands the element the range 7-0. Nothing owns bytes [7,0) — the
+      // range is malformed, not a frozen-region fact.
+      doc: '> text <div>\n> more\n\nfollowing para\n\n',
+      tail: 'probe tail text\n',
+      boundary: (d: string) => d.length,
+      guard: 'invertedGuard' as const,
+    },
+    {
+      label: 'zero-width at boundary',
+      // The 281d artifact: the tail line collapses its own paragraph to a
+      // zero-width raw node sitting exactly AT the boundary. It owns no
+      // frozen byte, so it is not the scanner's claim.
+      doc: 'x\n\np<iframe> x </iframe a> y\nmore\n',
+      tail: 'probe tail text\n',
+      boundary: () => 3,
+      guard: 'zeroWidthGuard' as const,
+    },
+  ];
+  out('\n=== 3. THE TWO SINGLE-NODE EXEMPTIONS (invisible to the sweeps above) ===\n');
+  for (const c of cases) {
+    out(`\n  ${c.label}: ${JSON.stringify(c.doc)}\n`);
+    for (const config of CATALOG) {
+      const b = c.boundary(c.doc);
+      const mdast = runFull(c.doc, config).mdast as NodeLike;
+      const withGuard = gate(c.doc, c.tail, b, config, PRE, mdast);
+      const without = gate(c.doc, c.tail, b, config, { ...PRE, [c.guard]: false }, mdast);
+      const verdict =
+        withGuard.compared === without.compared
+          ? 'NO EFFECT — this document no longer reaches the exemption'
+          : `exempts ${without.compared - withGuard.compared} node(s): ` +
+            `${withGuard.compared} -> ${without.compared} signatures; ` +
+            `verdict ${withGuard.fired ? 'fires' : 'quiet'} -> ${without.fired ? 'fires' : 'quiet'}` +
+            `${withGuard.fired === without.fired ? ' (UNCHANGED — the node is removed, no false positive is prevented)' : ' (the guard prevents a firing)'}`;
+      out(`    [${config.label.padEnd(18)}] ${verdict}\n`);
+    }
+  }
+  out(
+    '\n  NO EFFECT means the document stopped reaching the exemption and its\n' +
+      '  justification is prose again: find one that reaches it, or retire the\n' +
+      '  guard. UNCHANGED means the guard removes the node but prevents no\n' +
+      '  false positive HERE — the state of both guards as of 2026-08-28, and\n' +
+      '  the open question recorded above rather than decided.\n'
+  );
 }
 
 describe('gate exemption evidence', () => {
@@ -238,6 +342,8 @@ describe('gate exemption evidence', () => {
     out('    preserved exactly, which is the claim "no recall lost" rests on.\n');
     sweep('benign', benignDocArb, seed, recallRuns, true);
     sweep('hazard', hazardDocArb, seed + 1, recallRuns, true);
+
+    singleNodeExemptions();
 
     out('\n  Sanity: PRE and POST must agree on RECALL and may differ only where a document\n');
     out('  forges the footer wrapper (F22). The fuzz generators emit no `data-footnotes`,\n');
