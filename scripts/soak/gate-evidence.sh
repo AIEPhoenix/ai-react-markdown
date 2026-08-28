@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Re-run the COMPARATIVE measurements that justify the raw-mode gate's
-# exemption set (2026-08-28 audit, commit 54c5151). Prints a table; asserts
+# exemption set (the 2026-08-28 audit, "the gate trusted a footer key any
+# document can write"). Prints a table; asserts
 # nothing.
 #
 # Why this is a script and not a test. The numbers here compare the gate
