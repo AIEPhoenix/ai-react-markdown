@@ -15,20 +15,30 @@
 #   label       log prefix, default "soak".
 #
 # Leg 5 is the P1 conformance sweep under ORACLE_RAW=1, added 2026-08-26.
-# It is the only leg that gates the (P) identity instruments: raw mode used
-# to be a log-only mode nobody ran in CI, and ORACLE_RUNS=800 was typed by
-# hand at release time — exactly the ad-hoc pattern the soak script exists
-# to end. A raw-mode firing outside the E1-E6 exemption allowlist FAILS it.
+# It is the only leg that gates the (P) identity instruments; raw mode used
+# to be a log-only mode nobody ran in CI.
+#
+# What FAILS leg 5, as of 2026-08-28: engine divergence, a snapshot-gate
+# firing, and the per-document BLINDNESS floor. What no longer fails it: a
+# raw-mode firing outside the E1-E6 allowlist. That classifier was demoted
+# this batch to a label read by zero assertions — 133 firings are
+# deliberately unlabelled — because the allowlist had been refuted twice.
+# The line that used to be here said otherwise, and a script describing a
+# gate the code stopped implementing is the same defect class this batch
+# spent itself on.
 #
 # Env overrides (defaults = the standard gate; the scaled release gate used
 # FUZZ1=33334 FUZZ2=50000 for 400k/600k legs):
-#   SHARDS (12)  FUZZ1 (12500)  FUZZ2 (30000)  FUZZ3 (8000)  ORACLE (800)
+#   SHARDS (12)  FUZZ1 (12500)  FUZZ2 (30000)  FUZZ3 (8000)  ORACLE (4000)
+#   CENSUS_STRIDE (3)  CENSUS_NAME_K (3)
 #
-# ORACLE default 800 = the level the v2.8.0 release run used by hand, and
-# the allowlist is verified clean to 4000 per shard (2026-08-26). Scaling
-# leg 5 up is a CLASSIFICATION exercise, not a pass/fail one: a wider slice
-# reaches divergence families the corpus has not sampled before, and each
-# one has to be named in `classifyRawFamily` before it can pass.
+# ORACLE default is 4000 because the blindness floor is STRUCTURALLY INERT
+# below it: the guard is `documentsProbed >= 1000`, `documentsProbed` is
+# bounded by ORACLE_RUNS, and the old default of 800 could therefore never
+# reach it — the leg ran, printed the number, and gated on nothing. 4000 is
+# also where the threshold was calibrated and what every gate run this week
+# already used by hand. Cost at 4000 is ~10 min across twelve shards
+# against a two-hour gate, so this is a correction, not a new spend.
 #
 # Logs land in .soak-logs/<label>-*.log (gitignored). The script re-execs
 # itself under `caffeinate -dimsu`; note that caffeinate does NOT survive a
@@ -50,8 +60,9 @@ SHARDS=${SHARDS:-12}
 FUZZ1=${FUZZ1:-12500}
 FUZZ2=${FUZZ2:-30000}
 FUZZ3=${FUZZ3:-8000}
-ORACLE=${ORACLE:-800}
-CENSUS_STRIDE=${CENSUS_STRIDE:-1}
+ORACLE=${ORACLE:-4000}
+CENSUS_STRIDE=${CENSUS_STRIDE:-3}
+CENSUS_NAME_K=${CENSUS_NAME_K:-3}
 
 ROOT=${0:a:h:h:h}
 cd "$ROOT/packages/engine"
@@ -79,8 +90,18 @@ run_leg dir src/components/incrementalParse/boundaryDirection.test.ts \
   'FUZZ_RUNS=$FUZZ2' 'FUZZ_SEED=$((SEED + 100 + i))'
 run_leg scanner src/components/collectDefLabels.fuzz.test.ts \
   'FUZZ_RUNS=$FUZZ3' 'FUZZ_SEED=$((SEED + 200 + i))'
+# The census leg's defaults are the CI ones — K=2, name band K=2, configs
+# ROTATED one per document. Every value below has to be passed, and until
+# 2026-08-28 two of them were not, so the "gate" ran a slightly larger CI
+# check: no run anywhere had put one document under more than one of the
+# six configs, and P3's only known finding class (the F24 family, which
+# needs three-line documents) was unreachable in every configuration the
+# repo actually executed. `EXHAUSTIVE_CONFIG_MODE=cross` is the one the
+# test file's own header calls load-bearing; it is worth nothing until it
+# is HERE.
 run_leg census src/components/incrementalParse/spliceExhaustive.test.ts \
-  'EXHAUSTIVE_K=4 EXHAUSTIVE_STRIDE=$CENSUS_STRIDE' 'EXHAUSTIVE_SHARD=$i/$SHARDS'
+  'EXHAUSTIVE_K=4 EXHAUSTIVE_STRIDE=$CENSUS_STRIDE EXHAUSTIVE_NAME_K=$CENSUS_NAME_K EXHAUSTIVE_CONFIG_MODE=cross' \
+  'EXHAUSTIVE_SHARD=$i/$SHARDS'
 run_leg oracle src/components/incrementalParse/oracleConformance.test.ts \
   'ORACLE_RAW=1 ORACLE_RUNS=$ORACLE' 'ORACLE_SEED=$((SEED + 300 + i))'
 
