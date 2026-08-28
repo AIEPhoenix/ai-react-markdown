@@ -318,9 +318,17 @@ const snapshotFirings = (findings: Array<{ probeId: string; detail: string }>): 
 
 const formatFindings = (findings: unknown): string => JSON.stringify(findings, null, 1)?.slice(0, 4000) ?? '';
 
-describe('oracle sweep — pinned realistic corpus', () => {
-  const infoLog: string[] = [];
+/**
+ * Diagnostics on the real stream. `console.*` is intercepted in this package
+ * and a PASSING test's output is dropped, which is every run this sweep's
+ * readout exists for. The cast mirrors `spliceExhaustive.test.ts`: the engine
+ * package takes no `@types/node` and its `process` shim exposes only `env`.
+ */
+const emit = (line: string): void => {
+  (process as unknown as { stdout?: { write(text: string): void } }).stdout?.write(line);
+};
 
+describe('oracle sweep — pinned realistic corpus', () => {
   for (const doc of REALISTIC_DOCS) {
     test(`${doc.id}`, () => {
       const config = CATALOG[doc.configIndex % CATALOG.length];
@@ -335,9 +343,6 @@ describe('oracle sweep — pinned realistic corpus', () => {
       };
       const findings = oracleCheckDoc(doc.doc, config, stats, 0, ORACLE_OPTS);
       const defects = findings.filter((f) => f.severity === 'defect');
-      for (const f of findings.filter((f) => f.severity === 'info')) {
-        infoLog.push(`${doc.id} [${config.label}] probe=${f.probeId} ${f.detail.slice(0, 160)}`);
-      }
       const snapFirings = snapshotFirings(findings);
       expect(
         snapFirings,
@@ -359,11 +364,6 @@ describe('oracle sweep — pinned realistic corpus', () => {
       ).toBeGreaterThanOrEqual(Math.ceil(stats.spliceableProbes / 2));
     });
   }
-
-  test('classification log (informational)', () => {
-    if (infoLog.length > 0) console.log(`[oracle info] ${infoLog.length} instrument firings:\n${infoLog.join('\n')}`);
-    expect(true).toBe(true);
-  });
 });
 
 describe('oracle sweep — fuzz corpus (env-scaled)', () => {
@@ -423,13 +423,22 @@ describe('oracle sweep — fuzz corpus (env-scaled)', () => {
         }
       });
       const buckets = [...infoBuckets.entries()].sort((a, b) => b[1] - a[1]);
-      console.log(
+      // Real stream, not `console.log`: this readout only ever speaks on a
+      // PASSING run, which is exactly the output vitest 4 drops here (see the
+      // channel note in `vitest.config.ts`). It is also the only place
+      // `fullyBlindDocs` is reported on a green run, and the 0.08 limit below
+      // is an absolute constant calibrated from observed ratios (hazard
+      // 3.70-5.54%) — so without this line nobody can watch that ratio drift
+      // toward its own threshold. An assertion is a gate, not a gauge: its
+      // message arrives only once the limit is already crossed.
+      emit(
         `[oracle ${name}] probes=${stats.probesRun} spliceable=${stats.spliceableProbes} incremental=${stats.incrementalProbes} ` +
           `snapNodes=${stats.snapshotNodesCompared} snapPositions=${stats.snapshotPositions} ` +
           `blindDocs=${stats.fullyBlindDocs}/${stats.documentsProbed} info=${buckets.reduce((a, [, n]) => a + n, 0)}\n` +
           buckets
             .map(([k, n]) => `  ${k} ×${n}\n${(infoExamples.get(k) ?? []).map((e) => `    ${e}`).join('\n')}`)
-            .join('\n')
+            .join('\n') +
+          '\n'
       );
       expect(failures, failures.join('\n---\n').slice(0, 6000)).toEqual([]);
       // Under ORACLE_RAW=1 the SNAPSHOT form gates: every firing is the
