@@ -169,17 +169,19 @@ export function elementSwallows(root: NodeLike, tagName: string, marker: string)
 /** The five parse5 tokenizer states that can govern an element's content —
  *  Table B's rows, and the domain the operator-completeness measurement is
  *  counted against. */
-export type P5ContentState = 'DATA' | 'RCDATA' | 'RAWTEXT' | 'SCRIPT_DATA' | 'PLAINTEXT';
+export type P5ContentState = 'DATA' | 'RCDATA' | 'RAWTEXT' | 'SCRIPT_DATA' | 'PLAINTEXT' | 'UNMEASURABLE';
 
 /**
  * ADAPTER 3 — which tokenizer state governs `element`'s content, measured
  * through the hast rather than read off a name list.
  *
- * Four discriminators, applied in this order because each later one assumes
- * the earlier answers:
+ * Discriminators, applied in this order because each later one assumes the
+ * earlier answers:
  *
- * 1. an inner `<i>` that comes back as an ELEMENT means markup was acted on —
- *    DATA, and nothing else;
+ * 0. an element whose content never reaches the tree at all is UNMEASURABLE —
+ *    see below, this guard is load-bearing;
+ * 1. an inner `<i>` that comes back as an ELEMENT ANYWHERE means markup was
+ *    acted on — DATA, and nothing else;
  * 2. otherwise, an element that swallows text past its own end tag never
  *    ends — PLAINTEXT;
  * 3. otherwise, `&amp;` arriving DECODED is character-reference handling —
@@ -192,10 +194,34 @@ export type P5ContentState = 'DATA' | 'RCDATA' | 'RAWTEXT' | 'SCRIPT_DATA' | 'PL
  * point. A mirrored constant agrees with the scanner for the same reason the
  * scanner is right or wrong; a measurement disagrees when the scanner is
  * wrong, which is what F13 needed and did not have.
+ *
+ * TWO PREMISE FAILURES, both found by pointing this at the scanner's own name
+ * lists (2026-08-28) and both of which it answered CONFIDENTLY AND WRONGLY
+ * before the guards existed — a measurement that cannot detect its own
+ * inapplicability is worse than a transcription, because it looks like
+ * evidence:
+ *
+ * - `<template>` puts its children on `.content`, which `hast-util-raw` never
+ *   surfaces (the F11 fact). The host came back empty, so step 1 saw no `<i>`
+ *   and step 3 saw no `&amp;` — and the empty string "decodes", so it was
+ *   reported RCDATA. Step 0 catches it: content went in and nothing came out.
+ * - `<svg>` / `<math>` switch namespace, and `<i>` is a BREAKOUT tag — it pops
+ *   the foreign root and lands as a SIBLING, so looking for it inside the host
+ *   found nothing and the decoded `&` again said RCDATA. Step 1 now asks
+ *   whether an `<i>` element exists ANYWHERE, which is the question that
+ *   actually distinguishes "markup was acted on" from "markup became text":
+ *   a raw-text element leaves no `<i>` element in the tree at all, wherever
+ *   the tree construction puts it.
  */
 export function measureP5ContentState(element: string, config: CatalogConfig): P5ContentState {
-  const inner = findElement(runToRawLayer(`<${element}>\n<i>i</i>\n</${element}>\n`, config), element);
-  if (inner !== null && findElement(inner, 'i') !== null) return 'DATA';
+  // Step 0. Did the element's content reach the tree at all? If the source
+  // carried a marker and no marker survives anywhere, this element's content
+  // is not observable here and every later discriminator is reading silence.
+  const probe = runToRawLayer(`<${element}>\nMARKER\n</${element}>\n`, config);
+  if (!textContent(probe).includes('MARKER')) return 'UNMEASURABLE';
+
+  const withInner = runToRawLayer(`<${element}>\n<i>i</i>\n</${element}>\n`, config);
+  if (findElement(withInner, 'i') !== null) return 'DATA';
   if (
     elementSwallows(runToRawLayer(`<${element}>\nx\n</${element}>\nAFTER\n`, config), element, 'AFTER') === 'runs-on'
   ) {
