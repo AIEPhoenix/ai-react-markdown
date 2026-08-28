@@ -94,7 +94,7 @@ interface PosPoint {
   offset?: number;
 }
 
-interface NodeLike {
+export interface NodeLike {
   type: string;
   value?: string;
   tagName?: string;
@@ -297,8 +297,14 @@ function rebaseNode(node: NodeLike, byOffset: number, byLine: number): NodeLike 
  *  `rehype-raw` — the raw() layer the identity is stated over. Everything
  *  before the truncation (remark chain, remark-rehype options, the
  *  `rehype-raw` config) is the production assembly, so a divergence here is
- *  a real parse5-layer divergence, merely one sanitize may later mask. */
-function runToRawLayer(content: string, config: CatalogConfig): NodeLike {
+ *  a real parse5-layer divergence, merely one sanitize may later mask.
+ *
+ *  Exported because the assembly is the load-bearing part: a caller that
+ *  rebuilds these four lines is not observing the same layer the moment
+ *  production's plugin list or `rehype-raw` config moves, and the copy goes
+ *  stale silently — it keeps parsing, just not the thing under test. One
+ *  definition, one layer. */
+export function runToRawLayer(content: string, config: CatalogConfig): NodeLike {
   const options = buildAdvanceOptions(config);
   const parsed = parseStage({
     children: content,
