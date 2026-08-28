@@ -368,7 +368,20 @@ const [SHARD_INDEX, SHARD_TOTAL] = (() => {
  * that changes underneath you cannot be bisected, and this leg is the one
  * whose whole value is being able to say exactly what it covered.
  */
-const CONFIG_MODE = testEnv('EXHAUSTIVE_CONFIG_MODE') ?? 'rotate';
+const CONFIG_MODE = (() => {
+  const raw = testEnv('EXHAUSTIVE_CONFIG_MODE') ?? 'rotate';
+  // THROW on anything else, because the failure is silent and one-directional:
+  // an unrecognised value falls through to rotate, which is the WEAKER mode,
+  // and the gate is where this variable is typed by hand. `Cross`, `crossed`
+  // or a stray space would downgrade a release gate to a CI run while every
+  // log line still said the leg passed. `EXHAUSTIVE_SHARD` and
+  // `EXHAUSTIVE_CONFIGS` have thrown on bad input since they were written;
+  // this one was the odd one out.
+  if (raw !== 'cross' && raw !== 'rotate') {
+    throw new Error(`EXHAUSTIVE_CONFIG_MODE must be 'cross' or 'rotate', got ${JSON.stringify(raw)}`);
+  }
+  return raw;
+})();
 const ROTATE_SALT = Number(testEnv('EXHAUSTIVE_ROTATE_SALT') ?? 0);
 const CONFIGS = (() => {
   const raw = testEnv('EXHAUSTIVE_CONFIGS');
@@ -539,6 +552,7 @@ function driveRawFrozen(doc: string, config: CatalogConfig, stats: RawFrozenStat
   const boundary = computeFreezeBoundary(doc, { defListEnabled }).boundary;
   if (boundary <= 0) return;
   stats.boundaries += 1;
+  const positionsOnEntry = stats.positions;
   const docMdast = runFull(doc, config).mdast as NodeLike;
   for (const probe of probeTailsFor(doc.slice(0, boundary))) {
     // An empty tail compares `raw(doc)` against itself: it cannot fire, and
@@ -596,6 +610,13 @@ function driveRawFrozen(doc: string, config: CatalogConfig, stats: RawFrozenStat
     stats.seen.add(key);
     stats.samples.push(line);
   }
+  // Per-DOCUMENT blindness, counted after every probe for this document.
+  // The corpus-wide density below cannot see a blinding that takes out
+  // whole documents while leaving others rich, which is the shape the
+  // oracle leg's `fullyBlindDocs` was added for; this leg runs the same
+  // gate over ~20× more documents and had only the corpus-wide form.
+  stats.documentsProbed += 1;
+  if (stats.positions === positionsOnEntry) stats.fullyBlindDocs += 1;
 }
 
 interface RawFrozenStats {
@@ -605,6 +626,15 @@ interface RawFrozenStats {
   probes: number;
   /** Probe positions where at least one frozen node was compared. */
   positions: number;
+  /** Documents P3 actually probed — i.e. the scanner granted a boundary. A
+   *  document with boundary 0 is not counted: the gate cannot fail to check
+   *  a claim that was never made. Same scope limit as the oracle leg's
+   *  counter, and it hides the same thing — a blinding that ALSO suppresses
+   *  the boundary. */
+  documentsProbed: number;
+  /** Of `documentsProbed`, the ones where NO probe position compared a
+   *  single node. See the floor in `reportAndAssert`. */
+  fullyBlindDocs: number;
   /** Frozen nodes compared, summed — a gate that compares nothing passes
    *  everything. */
   nodesCompared: number;
@@ -683,6 +713,8 @@ function sweep(tokens: readonly string[], maxK: number, stride: number): SweepSt
       boundaries: 0,
       probes: 0,
       positions: 0,
+      documentsProbed: 0,
+      fullyBlindDocs: 0,
       nodesCompared: 0,
       fired: 0,
       firedEngaged: 0,
@@ -782,6 +814,7 @@ function reportAndAssert(band: string, tokens: readonly string[], maxK: number, 
       `[census:${band}] P3 rawFrozen=${RAW_FROZEN ? 'on' : 'off'} boundaries=${s.rawFrozen.boundaries} ` +
       `probes=${s.rawFrozen.probes} positions=${s.rawFrozen.positions} ` +
       `nodesCompared=${s.rawFrozen.nodesCompared} ` +
+      `blindDocs=${s.rawFrozen.fullyBlindDocs}/${s.rawFrozen.documentsProbed} ` +
       `blind=${s.rawFrozen.probes === 0 ? 'n/a' : (100 - (100 * s.rawFrozen.positions) / s.rawFrozen.probes).toFixed(1)}%\n` +
       `[census:${band}] P3 fired=${s.rawFrozen.fired} ofWhichEngaged=${s.rawFrozen.firedEngaged} ` +
       `engineDefects=${s.rawFrozen.defects} distinctRawShapes=${s.rawFrozen.samples.length}\n` +
@@ -846,12 +879,69 @@ function reportAndAssert(band: string, tokens: readonly string[], maxK: number, 
   // has to catch is a total blinding (0/N — the shape a
   // root-children-only signature walk produced elsewhere in this
   // directory), and it catches anything within 3× of that.
+  //
+  // TWO PER-DOCUMENT FLOORS sit beside it, because the density above is
+  // corpus-wide and a corpus-wide ratio cannot see either of the two ways
+  // this instrument loses documents. Measured mutation it does not catch:
+  // cutting P3's document REACH twentyfold leaves density ≈0.09, still 3×
+  // over the floor, still green.
+  //
+  //  1. REACH — `documentsProbed` against the documents this shard swept.
+  //     Measured 2026-08-28: 11.0% at the K=2 rotate CI default (fragment)
+  //     and 2.24% (name), 14.3% at K=4 cross (fragment, shard 0/192) and
+  //     7.7% at name K=3 cross. The floor is 1%, set from the smallest
+  //     (2.24%) with margin; a twentyfold reach cut takes every one of
+  //     those to 0.11-0.72% and reds.
+  //  2. SIGHTED DOCUMENTS — documents where P3 compared at least one node,
+  //     against those it probed. This is the `fullyBlindDocs` shape the
+  //     oracle leg gates on, and its THRESHOLD DOES NOT TRANSFER: that leg
+  //     requires blindness under 8%, while this corpus is 70-95% blind by
+  //     construction (95.1% fragment / 90.6% name at the CI default, 76.9%
+  //     / 71.3% at the gate) because a two-token document rarely has a
+  //     positioned raw node lying wholly below its boundary. Copying 0.08
+  //     here would have produced a floor that reds on every honest run —
+  //     the mirror of the mistake it exists to prevent. Stated as its
+  //     complement instead: at least 2% of probed documents must SEE
+  //     something. Measured 4.9% / 9.4% at the CI default and 23.1% /
+  //     28.7% at the gate, so 2% clears the tightest by 2.45× and a
+  //     per-document blinding that takes the instrument to zero reds.
+  //
+  // Floor 2 is NEARLY REDUNDANT with the density floor on this corpus, and
+  // saying so is the point of measuring it. Density ≈ sightedFraction ×
+  // (nodes per sighted document ÷ probes per document), which is 2.04 ×
+  // sightedFraction at the gate and 1.83 × at the CI default. Density reds
+  // below a sighted fraction of ~1.6%, floor 2 below 2% — so floor 2 adds
+  // detection only in that sliver, and every mutation actually planted
+  // (2026-08-28) was caught by density first. It is kept because it states
+  // the per-document claim DIRECTLY rather than inferring it from an
+  // aggregate, and because the sliver widens as the corpus gets
+  // node-richer with K. It is not independent coverage today; do not count
+  // it twice.
+  //
+  // Floor 1, by contrast, is provably additive. Planted mutation: probe
+  // only documents with boundary ≥ 9 (a reach cut biased toward PRODUCTIVE
+  // documents). Result on the name band — reach 12/2862 = 0.42%, RED; and
+  // it was invisible to the other two, which improved: density 0.75
+  // against a 0.03 floor, blindness 66.7% against a baseline of 90.6%.
   if (RAW_FROZEN) {
     expect(s.rawFrozen.probes, `P3/${band} drove no probe tails — the raw-layer property never ran`).toBeGreaterThan(0);
     expect(
       s.rawFrozen.nodesCompared / s.rawFrozen.probes,
       `P3/${band} drove ${s.rawFrozen.probes} probes and compared ${s.rawFrozen.nodesCompared} frozen nodes — the instrument went blind`
     ).toBeGreaterThan(0.03);
+    // `s.docs` counts the WHOLE space walk; this process drove 1/SHARD_TOTAL
+    // of it, times one config per document under rotation and all of them
+    // under cross.
+    const docConfigsDriven = (s.docs / SHARD_TOTAL) * (CONFIG_MODE === 'cross' ? CONFIGS.length : 1);
+    expect(
+      s.rawFrozen.documentsProbed / docConfigsDriven,
+      `P3/${band} probed ${s.rawFrozen.documentsProbed} of ${Math.round(docConfigsDriven)} document-configs — its reach collapsed`
+    ).toBeGreaterThan(0.01);
+    expect(
+      (s.rawFrozen.documentsProbed - s.rawFrozen.fullyBlindDocs) / s.rawFrozen.documentsProbed,
+      `P3/${band} compared nothing at all on ${s.rawFrozen.fullyBlindDocs} of ${s.rawFrozen.documentsProbed} probed documents — ` +
+        `a per-document blinding the corpus-wide density cannot see`
+    ).toBeGreaterThan(0.02);
   }
 }
 
