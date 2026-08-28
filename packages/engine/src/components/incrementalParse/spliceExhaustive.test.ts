@@ -36,11 +36,13 @@
  * that want opposite knobs.
  *
  * TWO CONFIGURATIONS, and the defaults are the CI one: both bands at K=2,
- * all six configs crossed, P3 on. ~200 s here. A PR check costing half an
- * hour gets skipped, then disabled, then deleted, so depth is what pays
- * for the budget — the PROPERTY stays, because P3 is the part that sees
- * what the old leg structurally could not, and its cost is per DOCUMENT
- * rather than per schedule, so it survives the cut nearly intact.
+ * configs ROTATED one per document, P3 on. ~26 s here, ~1-1.5 min on a
+ * shared runner. A PR check costing half an hour gets skipped, then
+ * disabled, then deleted, so breadth is what pays for the budget — the
+ * PROPERTY stays, because P3 is the part that sees what the old leg
+ * structurally could not, and its cost is per DOCUMENT rather than per
+ * schedule, so it survives the cut nearly intact. CI is a regression NET;
+ * the gate is the PROOF.
  *
  * WHAT ONLY THE GATE COVERS — read this before treating a green CI as the
  * full claim:
@@ -51,23 +53,34 @@
  *   - K=3 in the name band, which is where P3 currently fires at all: the
  *     stray-end-tag class needs three lines, and CI's two-line documents
  *     produce `fired=0` every run. A green CI is silent about it.
+ *   - The CONFIG CROSS-PRODUCT. CI rotates, so each document is tried
+ *     under ONE of the six cells, and no green CI run has ever tried a
+ *     given document under the other five. Only the gate can say "every
+ *     document under every shipped configuration".
  *   - Full-stride cut schedules. CI runs stride 1 only because K=2
  *     documents are short; the gate's K=4 documents are strided.
+ *
+ * The rotation slice is FIXED, not a rolling sample: the same document
+ * gets the same config on every run, so CI's blind five-sixths does not
+ * shrink by running CI more often. `EXHAUSTIVE_ROTATE_SALT` moves it.
  *
  * The release gate passes the expensive values, sharded — one process per
  * shard, since a census is a single vitest test and therefore a single
  * core:
  *   for i in $(seq 0 11); do EXHAUSTIVE_K=4 EXHAUSTIVE_STRIDE=3 \
- *     EXHAUSTIVE_NAME_K=3 EXHAUSTIVE_SHARD=$i/12 \
+ *     EXHAUSTIVE_NAME_K=3 EXHAUSTIVE_CONFIG_MODE=cross \
+ *     EXHAUSTIVE_SHARD=$i/12 \
  *     ../../node_modules/.bin/vitest --run src/components/incrementalParse/spliceExhaustive.test.ts & done
- * Measured: ~27 min/shard for the fragment band plus ~6 min for the name
- * band, ~45 min on the worst shard at the recorded ×1.5 skew.
+ * `EXHAUSTIVE_CONFIG_MODE=cross` is the load-bearing one: without it the
+ * gate would inherit CI's rotation and quietly stop being the full
+ * cross-product the ledger claims it is. Measured: ~27 min/shard for the
+ * fragment band plus ~6 min for the name band, ~45 min on the worst shard
+ * at the recorded ×1.5 skew.
  * `EXHAUSTIVE_SHARD` scatters BOTH bands, so one set of shard processes
  * covers the whole leg. Knobs: `EXHAUSTIVE_CONFIGS` (label list) narrows
- * the catalog, `EXHAUSTIVE_CONFIG_MODE=rotate` spends one config per
- * document instead of all six, `EXHAUSTIVE_RAW_FROZEN=0` turns P3 off,
- * `EXHAUSTIVE_NAME_K=0` skips the name band, `EXHAUSTIVE_NAME_STRIDE` is
- * its own cut stride.
+ * the catalog, `EXHAUSTIVE_ROTATE_SALT` moves the rotation slice,
+ * `EXHAUSTIVE_RAW_FROZEN=0` turns P3 off, `EXHAUSTIVE_NAME_K=0` skips the
+ * name band, `EXHAUSTIVE_NAME_STRIDE` is its own cut stride.
  */
 
 import { describe, expect, test } from 'vitest';
@@ -248,14 +261,16 @@ const NAME_CLASS_TOKENS: readonly string[] = [
  * CI DEFAULT vs GATE, and the defaults here are the CI half.
  *
  * A PR check that costs half an hour gets skipped, then disabled, then
- * deleted. Six configs and P3 took the old K=3 default to 709 s, so the
- * default K comes down to 2 — ~200 s here.
+ * deleted, and the budget is RUNNER wall clock — ~3 minutes there, which
+ * is ~60-90 s here. Six configs and P3 took the old K=3 default to 709 s;
+ * K=2 crossed still cost 154 s local, i.e. 5-8 min on a runner. So the
+ * default is K=2 with the configs rotated: 26 s here.
  *
- * DEPTH is the only thing cut. The config cross-product stays and P3 stays,
- * because P3 is the part that sees what the old leg structurally could not
- * and its cost is per DOCUMENT rather than per schedule. See the header for
- * what that leaves to the gate alone, and read that list before treating a
- * green CI as the whole claim.
+ * DEPTH and BREADTH pay; the PROPERTY does not. P3 stays because it is the
+ * part that sees what the old leg structurally could not, and its cost is
+ * per DOCUMENT rather than per schedule, so it is the cheapest thing here
+ * to keep. See the header for what that leaves to the gate alone, and read
+ * that list before treating a green CI as the whole claim.
  */
 const MAX_K = Number(testEnv('EXHAUSTIVE_K') ?? 2);
 /** Cut-schedule stride: CI samples every 3rd cut at K=3; deep runs set
@@ -327,19 +342,34 @@ const [SHARD_INDEX, SHARD_TOTAL] = (() => {
  * cross-product. `rotate` runs each document against ONE, so the corpus
  * still covers all six at a sixth of the cost.
  *
- * `cross` is the DEFAULT everywhere, CI included (decided 2026-08-28). At
- * K=2 the corpus is small enough that the full cross-product fits the
- * budget, and a cross-product states something a sample cannot: every
- * document was tried under every shipped configuration. `rotate` exists
- * for the day that stops being affordable, and it is the right shape for
- * that day because the other way to fit a budget is picking two cells by
- * hand — the curation this whole change removes. It is a real reduction
- * and not a free lunch: a defect needing a SPECIFIC document under a
- * SPECIFIC config drops from certainty to a 1/6 chance per document.
- * F20's shape (100% of engaged frames on 3 of 6 cells) survives any 1/6
- * slice; a hand-picked pair can miss it outright.
+ * `rotate` is the CI DEFAULT; the gate passes `cross` (decided
+ * 2026-08-28, after measuring that the crossed K=2 corpus costs 154 s
+ * locally and so 5-8 minutes on a shared runner — over budget). The
+ * division of labour: CI is a regression NET, the gate is the PROOF.
+ * "Every document under every shipped configuration" is a claim worth
+ * making every release at full cross-product and not worth five
+ * runner-minutes on every push.
+ *
+ * Rotation is the right shape for a budget cut because the other way to
+ * fit one is picking two cells by hand — the curation this whole change
+ * removes. It is a real reduction and not a free lunch: a defect needing a
+ * SPECIFIC document under a SPECIFIC config drops from certainty to a 1/6
+ * chance per document. F20's shape (100% of engaged frames on 3 of 6
+ * cells) survives any 1/6 slice; a hand-picked pair can miss it outright.
+ *
+ * The slice is FIXED, not a sample that moves between runs. The assignment
+ * hashes the document counter, so the same corpus yields the same
+ * document→config map every time: CI's blind fifth-sixth is the SAME
+ * fifth-sixth on every push, and "eventually everything gets covered" is
+ * not true of it. `EXHAUSTIVE_ROTATE_SALT` shifts the map and is echoed in
+ * the readout, so setting it to the CI run number turns that fixed blind
+ * spot into a rotating one while a failure stays reproducible from the
+ * printed salt. It is a deployment choice rather than a default: a corpus
+ * that changes underneath you cannot be bisected, and this leg is the one
+ * whose whole value is being able to say exactly what it covered.
  */
-const CONFIG_MODE = testEnv('EXHAUSTIVE_CONFIG_MODE') ?? 'cross';
+const CONFIG_MODE = testEnv('EXHAUSTIVE_CONFIG_MODE') ?? 'rotate';
+const ROTATE_SALT = Number(testEnv('EXHAUSTIVE_ROTATE_SALT') ?? 0);
 const CONFIGS = (() => {
   const raw = testEnv('EXHAUSTIVE_CONFIGS');
   if (!raw) return CATALOG;
@@ -694,7 +724,7 @@ function sweep(tokens: readonly string[], maxK: number, stride: number): SweepSt
       const configs =
         CONFIG_MODE === 'cross'
           ? CONFIGS
-          : [CONFIGS[(Math.imul(out.docs, 0x85ebca6b) >>> 13) % CONFIGS.length]];
+          : [CONFIGS[(Math.imul(out.docs + ROTATE_SALT, 0x85ebca6b) >>> 13) % CONFIGS.length]];
       for (const config of configs) {
         // P3 first: it is per-document, not per-schedule, and it does not
         // care whether anything below engages.
@@ -745,7 +775,8 @@ function reportAndAssert(band: string, tokens: readonly string[], maxK: number, 
   expect(s.schedules * SHARD_TOTAL).toBeGreaterThan(s.docs);
   emit(
     `\n[census:${band}] K=${maxK} stride=${stride} alphabet=${tokens.length} ` +
-      `shard=${SHARD_INDEX}/${SHARD_TOTAL} configs=${CONFIGS.length}/${CONFIG_MODE} docs=${s.docs} ` +
+      `shard=${SHARD_INDEX}/${SHARD_TOTAL} configs=${CONFIGS.length}/${CONFIG_MODE}` +
+      `${CONFIG_MODE === 'rotate' ? `+salt${ROTATE_SALT}` : ''} docs=${s.docs} ` +
       `schedules=${s.schedules} frames=${s.frames} incremental=${s.incrementalFrames} ` +
       `ratio=${(s.incrementalFrames / s.frames).toFixed(4)}\n` +
       `[census:${band}] P3 rawFrozen=${RAW_FROZEN ? 'on' : 'off'} boundaries=${s.rawFrozen.boundaries} ` +
@@ -793,14 +824,22 @@ function reportAndAssert(band: string, tokens: readonly string[], maxK: number, 
   // tripped by an alphabet change instead.
   //
   // Measured 2026-08-28, fragment band: 0.319 nodes per probe at K=3
-  // cross, 0.127 at the K=2 cross CI default, and 0.0896 at K=2 rotate —
+  // cross, 0.127 at K=2 cross, and 0.0896 at the K=2 ROTATE CI default —
   // rotation lowers the density because each document contributes one
-  // config's boundaries instead of six. The floor has to clear the
-  // SMALLEST configuration anyone runs, which is the rotate one even
-  // though it is not the default, so 0.05 is set from 0.0896: 1.8× there,
-  // 2.5× at the default, 6.4× at K=3. A total blinding (0/N, the shape a
-  // root-children-only signature walk produced elsewhere in this
+  // config's boundaries instead of six. The floor clears the SMALLEST
+  // configuration anyone runs, which is now also the default, so 0.05 is
+  // set from 0.0896: 1.8× there, 2.5× at K=2 cross, 6.4× at K=3. Do not
+  // read 0.05 against the 0.319 figure and conclude it is slack — it is
+  // the tightest of the three that matters. A total blinding (0/N, the
+  // shape a root-children-only signature walk produced elsewhere in this
   // directory) stays unmissable at any of them.
+  //
+  // Checked across ROTATION SALTS, because a per-run salt would otherwise
+  // be a flake source rather than a coverage gain: salts 0/1/2 give
+  // 0.0896, 0.136 and 0.103, so the floor holds on all three and the
+  // margin is set from the worst. Anyone wiring `EXHAUSTIVE_ROTATE_SALT`
+  // to a CI run number is varying the corpus's boundary population, and
+  // this is the assertion that would notice.
   if (RAW_FROZEN) {
     expect(s.rawFrozen.probes, `P3/${band} drove no probe tails — the raw-layer property never ran`).toBeGreaterThan(0);
     expect(
