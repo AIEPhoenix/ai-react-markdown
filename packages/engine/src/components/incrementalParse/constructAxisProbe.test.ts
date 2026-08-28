@@ -41,6 +41,7 @@ import {
   nodeCovers,
   runToRawLayer,
   type ConstructAxisCell,
+  type NodeLike,
   type P5ContentState,
 } from './constructAxisAdapters';
 import { runFull } from './spliceArbiterHarness';
@@ -144,12 +145,6 @@ const NON_BLOCK_HTML_ELEMENTS = [
   'custom-element',
 ];
 const boundaryOf = (doc: string): number => computeFreezeBoundary(doc, { defListEnabled: false }).boundary;
-
-interface NodeLike {
-  type: string;
-  children?: NodeLike[];
-  position?: { start?: { offset?: number }; end?: { offset?: number } };
-}
 
 /** Measure one cell from the two grammars. Nothing in here reads the
  *  scanner except `boundary`, which is its only published output. */
