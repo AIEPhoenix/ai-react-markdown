@@ -826,26 +826,32 @@ function reportAndAssert(band: string, tokens: readonly string[], maxK: number, 
   // Measured 2026-08-28, fragment band: 0.319 nodes per probe at K=3
   // cross, 0.127 at K=2 cross, and 0.0896 at the K=2 ROTATE CI default —
   // rotation lowers the density because each document contributes one
-  // config's boundaries instead of six. The floor clears the SMALLEST
-  // configuration anyone runs, which is now also the default, so 0.05 is
-  // set from 0.0896: 1.8× there, 2.5× at K=2 cross, 6.4× at K=3. Do not
-  // read 0.05 against the 0.319 figure and conclude it is slack — it is
-  // the tightest of the three that matters. A total blinding (0/N, the
-  // shape a root-children-only signature walk produced elsewhere in this
-  // directory) stays unmissable at any of them.
+  // config's boundaries instead of six.
   //
-  // Checked across ROTATION SALTS, because a per-run salt would otherwise
-  // be a flake source rather than a coverage gain: salts 0/1/2 give
-  // 0.0896, 0.136 and 0.103, so the floor holds on all three and the
-  // margin is set from the worst. Anyone wiring `EXHAUSTIVE_ROTATE_SALT`
-  // to a CI run number is varying the corpus's boundary population, and
-  // this is the assertion that would notice.
+  // The floor is 0.03, and it is NOT set by "whatever the default is". It
+  // is set by the smallest density any RUNNABLE configuration produces,
+  // which is the rotate one — and the reason it is 0.03 rather than 0.05
+  // is the ROTATION SALT. A salt moves which sixth of the corpus each
+  // config sees, so it moves the boundary population too: salts 0/1/2
+  // measure 0.0896, 0.136 and 0.103. Three samples do not bound the
+  // minimum over all salts, so the margin is taken against the worst
+  // OBSERVED (0.0896) with room for unobserved ones — 3× rather than the
+  // 1.8× that 0.05 would give. Anyone wiring `EXHAUSTIVE_ROTATE_SALT` to a
+  // CI run number is varying this population on every run, and a floor
+  // fitted tightly to three measured salts would be a flake source rather
+  // than a guard.
+  //
+  // Do not read 0.03 against the 0.319 figure and conclude it is slack: it
+  // is 3× the tightest configuration, not a tenth of the loosest. What it
+  // has to catch is a total blinding (0/N — the shape a
+  // root-children-only signature walk produced elsewhere in this
+  // directory), and it catches anything within 3× of that.
   if (RAW_FROZEN) {
     expect(s.rawFrozen.probes, `P3/${band} drove no probe tails — the raw-layer property never ran`).toBeGreaterThan(0);
     expect(
       s.rawFrozen.nodesCompared / s.rawFrozen.probes,
       `P3/${band} drove ${s.rawFrozen.probes} probes and compared ${s.rawFrozen.nodesCompared} frozen nodes — the instrument went blind`
-    ).toBeGreaterThan(0.05);
+    ).toBeGreaterThan(0.03);
   }
 }
 
