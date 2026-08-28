@@ -21,7 +21,7 @@
 
 import { describe, expect, test } from 'vitest';
 
-import { computeFreezeBoundary } from './computeFreezeBoundary';
+import { computeFreezeBoundary, SCANNER_NAME_LISTS } from './computeFreezeBoundary';
 import { CATALOG } from './testPluginCatalog';
 import {
   CLOSER_OPERATORS,
@@ -271,6 +271,74 @@ describe('construct axis: the facts the templates are derived from', () => {
       type1: ['script', 'pre', 'style', 'textarea'],
       type1ButNotRawText: ['pre'],
       rawTextButNotType1: ['title', 'iframe', 'plaintext'],
+    });
+  });
+
+  /**
+   * The two name lists the scanner keys its raw-text mask on, checked against
+   * what the grammars actually do — F13's set difference performed against
+   * the scanner's OWN taxonomy rather than against a transcription of it.
+   *
+   * This is the check that must not be skipped once `SCANNER_NAME_LISTS`
+   * exists. A derived alphabet built FROM those lists inherits their blind
+   * spots: a name wrong in the list is also absent from the alphabet meant to
+   * catch it, which is the F13 shape one layer up. The lists are cheap to
+   * falsify directly, so they are falsified directly.
+   *
+   * The candidate set is deliberately WIDER than either list — the lists
+   * themselves plus every neighbour that has ever been argued about — so the
+   * check catches a name that is MISSING as well as one that does not belong.
+   * Only `type1` and `rawText` are covered: they are the two lists these
+   * adapters can measure. `void`, `type6`, `documentStructure`, `tablePart`,
+   * `scopeBarrier` and `foreignRoot` are NOT checked here and still rest on
+   * transcription.
+   */
+  test('the scanner name lists agree with the grammars they model', () => {
+    const lists = new Map(SCANNER_NAME_LISTS);
+    const type1List = lists.get('type1');
+    const rawTextList = lists.get('rawText');
+    if (type1List === undefined || rawTextList === undefined) throw new Error('SCANNER_NAME_LISTS lost a list');
+
+    const candidates = [
+      ...new Set([
+        ...type1List,
+        ...rawTextList,
+        // Neighbours with a history: `pre` (type 1, DATA — F13), `noscript`
+        // (raw text only with scripting ON), `template` (erased whole, F11),
+        // the foreign roots, and two ordinary controls.
+        'pre',
+        'noscript',
+        'template',
+        'svg',
+        'math',
+        'div',
+        'b',
+      ]),
+    ].sort();
+
+    const states = new Map(candidates.map((e) => [e, measureP5ContentState(e, CFG)]));
+    // Names whose content never reaches the tree cannot be judged either way,
+    // and are listed rather than silently folded into one side. `template` is
+    // the only one, because `hast-util-raw` does not surface `.content`; the
+    // scanner leaves it out of RAW_TEXT_ELEMENTS and covers it by the F11
+    // document-wide erasure poison instead, which this adapter cannot see.
+    const unmeasurable = candidates.filter((e) => states.get(e) === 'UNMEASURABLE');
+    const measuredType1 = candidates.filter((e) => micromarkKeepsBlockOpenPastBlank(`<${e}>`, '', CFG));
+    const judgeable = candidates.filter((e) => !unmeasurable.includes(e));
+    const measuredRawText = judgeable.filter((e) => states.get(e) !== 'DATA');
+
+    expect({
+      unmeasurable,
+      type1MissingFromList: measuredType1.filter((e) => !type1List.has(e)),
+      type1ListedButNotType1: [...type1List].filter((e) => !measuredType1.includes(e)),
+      rawTextMissingFromList: measuredRawText.filter((e) => !rawTextList.has(e)),
+      rawTextListedButNotRaw: [...rawTextList].filter((e) => !measuredRawText.includes(e)),
+    }).toEqual({
+      unmeasurable: ['template'],
+      type1MissingFromList: [],
+      type1ListedButNotType1: [],
+      rawTextMissingFromList: [],
+      rawTextListedButNotRaw: [],
     });
   });
 
