@@ -287,11 +287,25 @@ const CONFIGS = (() => {
  * gate. `EXHAUSTIVE_RAW_FROZEN=0` turns it off.
  */
 const RAW_FROZEN = (testEnv('EXHAUSTIVE_RAW_FROZEN') ?? '1') !== '0';
-/** Scale the vitest timeout with K — K=4 is ~24× K=3. The floor carries a
- *  generous margin over the ~50 s local strided K=3 run: GitHub's shared
- *  runners are 2-3× slower (a 150 s run tripped a 120 s floor in CI while
- *  two earlier runs squeaked under — flaky by margin, not by content). */
-const TIMEOUT_MS = Math.max(600_000, 90_000 * 24 ** Math.max(0, MAX_K - 3));
+/**
+ * Scale the vitest timeout with K — K=4 is ~24× K=3.
+ *
+ * The floor was 600 s against a ~50 s strided K=3 run. Six configs and P3
+ * took that same run to 616 s local and 668 s on a loaded machine, so the
+ * floor started failing the band BY MARGIN — caught 2026-08-28 on a
+ * contended run, which is the same failure this comment already recorded
+ * once ("a 150 s run tripped a 120 s floor in CI while two earlier runs
+ * squeaked under"), reintroduced by growing the work and leaving the
+ * backstop alone. A timeout is a backstop, not a budget: it must clear the
+ * SLOWEST honest run, and GitHub's shared runners are 2-3× slower than
+ * this machine. 3600 s at K=3 is ~6× the local measurement, restoring the
+ * margin the original floor had.
+ *
+ * The formula ignores `EXHAUSTIVE_SHARD`, which divides the real work by
+ * up to 12 — deliberately, since a shard that hangs should still be killed
+ * by something.
+ */
+const TIMEOUT_MS = Math.max(3_600_000, 900_000 * 24 ** Math.max(0, MAX_K - 3));
 
 /**
  * The NAME band's own depth. It defaults to 2, not 3, and the reason is
@@ -303,7 +317,10 @@ const TIMEOUT_MS = Math.max(600_000, 90_000 * 24 ** Math.max(0, MAX_K - 3));
  */
 const NAME_K = Number(testEnv('EXHAUSTIVE_NAME_K') ?? 2);
 const NAME_STRIDE = Number(testEnv('EXHAUSTIVE_NAME_STRIDE') ?? (NAME_K >= 3 ? 3 : 1));
-const NAME_TIMEOUT_MS = Math.max(600_000, 90_000 * 40 ** Math.max(0, NAME_K - 2));
+/** Same doctrine as `TIMEOUT_MS`, from this band's own measurements: 161 s
+ *  at K=2 and 2919 s at K=3 (contended, unsharded). 1800 s at K=2 is ~11×
+ *  the measurement; the ×40 step per K is the alphabet growth. */
+const NAME_TIMEOUT_MS = Math.max(1_800_000, 900_000 * 40 ** Math.max(0, NAME_K - 2));
 
 /**
  * The census readout, on the real stream.
@@ -372,14 +389,29 @@ const alignCut = (doc: string, at: number): number => {
  * name is open, so "any other end tag" walks the stack and drops it — and
  * the text on either side merges, BELOW the boundary. `</table>`,
  * `</script>`, `</b>` and `</d>` all do it; a single stray end tag does
- * not, and neither does the balanced `<address>…</address>` control. The
- * mechanism is the one `DOCUMENT_STRUCTURE_NAMES` poisons for, which is
- * keyed on four names while parse5 discards every unmatched end tag.
- * Shipped output does NOT diverge: 13 of 14 probe tails fire under
- * `baseline`, `display-only` and `no-orphan`, the engine diverges on 0 of
- * 14, and the splice refused all 14 (inc=false) — the stray-tag bail. The
- * other three configs grant boundary 0. Reported to the scanner's owner
- * rather than fixed here; a scanner change needs the five-leg gate.
+ * not, and neither does the balanced `<address>…</address>` control.
+ *
+ * The defect is in the KEYING, not in `</address>`. parse5 discards every
+ * end tag with no matching open element, by one rule; the scanner poisons
+ * for the resulting retroactive text-merge on four NAMES
+ * (`DOCUMENT_STRUCTURE_NAMES`), which are four instances of an unbounded
+ * class. That is the third defect of this shape after F19 and F20.
+ *
+ * Shipped output does not diverge, and the reason is worth stating
+ * precisely, because the obvious reading of it is wrong. `inc=false` on
+ * all 14 probe tails does NOT mean the splice cannot engage on documents
+ * carrying this ingredient: `"x\n\n</address>\n</address>\n\n"` engages
+ * 10-11 of 26 byte-by-byte frames on every config, and
+ * `"</address>\n</address>\n\nx\n\ny\n"` engages 20 of 20 tail frames —
+ * both with zero divergence. What holds across a 28-document × 6-config ×
+ * 20-tail battery is that engagement and firing are DISJOINT: the gate
+ * fires only while the boundary sits at EOF with a trailing blank whose
+ * text node can still grow, and the splice engages only once settled
+ * content follows that blank. The edit that gives the splice something to
+ * reuse is the edit that settles the node. So the narrowness is a property
+ * of the splice's current appetite, not of the scanner's claim — which is
+ * why this is recorded rather than dismissed. Reported to the scanner's
+ * owner rather than fixed here; a scanner change needs the five-leg gate.
  *
  * NOT done here, and why: `oracleCheckDoc` follows each document with a
  * ZERO-DISTANCE variant — the claimed prefix re-run as a document of its
