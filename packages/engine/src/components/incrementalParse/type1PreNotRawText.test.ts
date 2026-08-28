@@ -98,7 +98,7 @@ describe('type 1 vs parse5 raw text (`<pre>`)', () => {
  * three of the six configs (the other three never engage — an aggregate over
  * all six reads 2 of 12 and looks like noise, which is why engagement is
  * counted per config). Pre-existing and byte-identical through v2.8.1 and
- * db9f091; found by the v2.8.2 release gate's oracle leg, shards 5 and 6.
+ * the 22.23.2 corpus regen; found by the v2.8.2 release gate's oracle leg, shards 5 and 6.
  *
  * F17 fixed the INLINE-opened case of exactly this and exempted the
  * block-opened one, on the ground that "their close is tracked exactly

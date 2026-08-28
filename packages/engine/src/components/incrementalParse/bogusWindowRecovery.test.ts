@@ -58,7 +58,7 @@ describe('PI/CDATA first-`>` window recovery (P3b batch 3)', () => {
   });
 
   test('a 2-5 opener inside a 6/7 run does not steal the member — DIRECT boundary pin', () => {
-    // The pin that MOVES when 96901ff is reverted. The stream harness above
+    // The pin that MOVES when the two-soak-holes fix is reverted. The stream harness above
     // drives the ENGINE profile, where this document poisons to 0 either
     // way — so it never saw the fix (2026-08-26 review: the whole schedule
     // set ran at incrementalFrames=0). The steal is only visible on the

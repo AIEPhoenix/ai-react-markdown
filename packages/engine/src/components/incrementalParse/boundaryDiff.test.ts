@@ -35,14 +35,14 @@
  * deterministically — on ANY node version — so it must regenerate
  * boundaryBaseline.json in the SAME commit, with the resulting increases
  * attributed in that commit's message. (The v2.8.0 release run failed
- * exactly here: 35f7593 grew a generator without regenerating; the drift
+ * exactly here: the type-7 sticky-residue fix grew a generator without regenerating; the drift
  * was misread as node V8 behaviour. A fast-check upgrade is the other
  * trigger.)
  *
  * The fingerprint is a REGEN TRIGGER, not an escape hatch — v-4 of the
  * 2026-08-26 review: it used to be asserted BEFORE the increases check, so
  * any generator edit tripped regeneration and the red line was never
- * evaluated (f93148d absorbed 645 unattributed increases that way). It no
+ * evaluated (the type-7 attribute corpus family absorbed 645 unattributed increases that way). It no
  * longer disables the net. Each sample carries its own content hash, so on
  * a fingerprint mismatch the BYTE-UNCHANGED subset is still diffed and
  * still fails on increases; only genuinely new or changed samples are

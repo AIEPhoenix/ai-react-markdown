@@ -224,7 +224,7 @@ describe('type-7 interrupt: prevLineOpenContent vs micromark', () => {
     expect(computeFreezeBoundary(doc, OPTS).boundary).toBe(0);
   });
 
-  test('the sticky marker survives a pipe-less row — DIRECT flip pin (35f7593)', () => {
+  test('the sticky marker survives a pipe-less row — DIRECT flip pin (the type-7 sticky-residue fix)', () => {
     // The discriminating shape the soak counterexample above is NOT: that
     // one poisons for several independent reasons (CR line endings, the
     // quoted `>` on the tag line, math), so reverting the stickiness leaves
@@ -232,7 +232,8 @@ describe('type-7 interrupt: prevLineOpenContent vs micromark', () => {
     // holding the boundary down is `tableMaybeOpen` surviving the pipe-less
     // continuation row: `row continuation prose` is still a table ROW to
     // micromark, so type 7 opens at `<br/>` while the content model reads
-    // an open paragraph and refuses. Under the pre-35f7593 per-line design
+    // an open paragraph and refuses. Under the per-line design that preceded
+    // the type-7 sticky-residue fix
     // ("did THIS line hold a pipe") the marker cleared on the pipe-less row
     // and the boundary rose to 88 — freezing across the undecidable line.
     const doc =

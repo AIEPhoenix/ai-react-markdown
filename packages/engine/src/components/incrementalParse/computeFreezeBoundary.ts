@@ -2122,7 +2122,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   // corpus carries the shapes that would catch it if that ever stops.)
   //
   // `type >= 3` also matches the 6/7 members, and has since the member
-  // overwrite rule tightened (96901ff): a mid-line `<?…?>` or `<!X…>`
+  // overwrite rule tightened (the two-soak-holes fix): a mid-line `<?…?>` or `<!X…>`
   // INSIDE an open type 6/7 run no longer takes the member, so the run's
   // own 6/7 survives to this test and the opener poisons document-wide.
   // That is KEPT deliberately, not an accident of the member surviving —
@@ -2704,7 +2704,7 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
   // really acts on — `<script>` + `</script/>` + `<pre>` + `</3` + `</pre>`
   // froze 39 of 41 bytes while the bogus comment ate the `>` of the `</pre>`
   // line and left the `pre` open swallowing the tail (100% of engaged frames
-  // diverged on three of six configs; pre-existing through db9f091). F17 fixed
+  // diverged on three of six configs; pre-existing through the 22.23.2 corpus regen). F17 fixed
   // the inline-opened case and exempted this one because "their close is
   // tracked exactly" — true of parse5's close, false of micromark's.
   //
