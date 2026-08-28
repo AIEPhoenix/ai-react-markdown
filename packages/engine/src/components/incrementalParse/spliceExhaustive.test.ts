@@ -693,6 +693,24 @@ function drive(doc: string, cuts: number[], config: CatalogConfig): { frames: nu
   );
 
   // P2 — resumed scan ≡ fresh scan, own lineage.
+  //
+  // WHAT P2 DOES NOT LICENSE, written here because this is where anyone
+  // looking for the licence will land. The loop below is LINEAR: one
+  // checkpoint, one successor, the shape a stream has. A checkpoint is
+  // CONSUMED by the call it is passed to — `computeFreezeBoundary` returns
+  // the very object it was handed, with `confirmedOffset` advanced in
+  // place — so passing one checkpoint to two calls resumes the second from
+  // a state the first already moved. P2 says nothing about that, and
+  // saying "resumed equals fresh" without the word LINEAR invites exactly
+  // the reading that it does.
+  //
+  // The state-directed search below hit it: one node, 83 children, one
+  // checkpoint. It scans fresh now. Anyone building a second search, a
+  // speculative parse, or a retry that re-passes a checkpoint it already
+  // passed needs to clone first, and the shape to clone is documented as
+  // changing between minor versions. Audited 2026-08-28 — every other
+  // resume in the repo is a linear loop, and `MarkdownContent`'s catch
+  // already nulls its state ref for this exact reason.
   const { defListEnabled } = buildAdvanceOptions(config);
   let checkpoint: FreezeScanCheckpoint | null = null;
   for (const snapshot of snapshots) {
