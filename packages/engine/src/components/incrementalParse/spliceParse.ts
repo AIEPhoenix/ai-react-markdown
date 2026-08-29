@@ -882,7 +882,21 @@ function isWrapInvisible(node: MdastContent): boolean {
  * Returns null whenever the observed layout contradicts the model — the
  * caller falls back to a full parse (safe, one-frame cost).
  */
-function alignPrefixCut(
+/**
+ * TEST-ONLY export (not re-exported by any barrel).
+ *
+ * The block-final/interior classifier below is reachable from a document
+ * only through a FIRST FREEZE, and a sound blocker-6 seal refuses every
+ * first freeze that could carry a positioned block-final literal — so each
+ * seal fix has cost `spliceBlockFinalLiteralMerge.test.ts` another witness,
+ * and after the derived-seal batch the `litEnd === litOwnerEnd` case had
+ * none left. Harvesting is the wrong instrument now: a document that killed
+ * the mutant would mean the seal had a hole, not that the guard was healthy.
+ *
+ * So the guard is applied HERE instead, to the classifier's own contract.
+ * See that file for what this does and does not claim.
+ */
+export function alignPrefixCut(
   prefixMdast: MdastContent[],
   cutRegion: HastContent[],
   tailWrapVisible: boolean
