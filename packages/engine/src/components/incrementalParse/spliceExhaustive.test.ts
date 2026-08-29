@@ -172,23 +172,34 @@ const FRAGMENT_TOKENS = [
  * inherits the blind spots of the list it derives from: a name that is
  * WRONG in `TYPE1_NAMES` is equally absent from the corpus meant to catch
  * it. That is F13 moved up one level, and it is worse than transcription
- * error in one specific way — it looks rigorous. So, as of 2026-08-28:
+ * error in one specific way — it looks rigorous. So, as of 2026-08-29:
  *
  *   FALSIFIED against measured grammar behaviour by `constructAxisProbe`,
  *   over candidate pools WIDER than the lists themselves, so a missing
  *   name reds and not only an extra one — `type1`, `rawText`, `type6`,
- *   `void`. Deriving from these four is safe. `void` has three known
- *   omissions pinned by name (`basefont`, `bgsound`, `keygen` are void to
- *   parse5), all in the over-blocking direction; they sit in the type-6
- *   class here until the omission is closed, at which point the partition
- *   moves with it.
+ *   `void`, `noElement`. Deriving from these five is safe. Both directions
+ *   are empty on all five: `void`'s three known omissions (`basefont`,
+ *   `bgsound`, `keygen`) joined the list with the derived-seal batch, and
+ *   this paragraph went on describing them as open for a release — the
+ *   probe's own assertion had already moved to `missingFromList: []`.
  *
- *   NOT FALSIFIED BY ANYTHING — `documentStructure`, `tablePart`,
- *   `scopeBarrier`, `foreignRoot`. The classes those four separate are
- *   self-certified: this corpus covers the distinctions the scanner
- *   BELIEVES it makes on them, and cannot cover a distinction it has
- *   wrongly failed to make. F19 lived on `scopeBarrier`. A green run over
- *   those cells is evidence about the splice, not about the list.
+ *   NOT FALSIFIED BY ANYTHING — `tablePart`, `scopeBarrier`, `foreignRoot`.
+ *   The classes those three separate are self-certified: this corpus covers
+ *   the distinctions the scanner BELIEVES it makes on them, and cannot
+ *   cover a distinction it has wrongly failed to make. F19 lived on
+ *   `scopeBarrier`. A green run over those cells is evidence about the
+ *   splice, not about the list.
+ *
+ *   `documentStructure` left that group with F28, in the only way a list
+ *   can: every one of its members is now asserted, by measurement, to be a
+ *   member of `noElement` — which is the property the scanner actually acts
+ *   on. What stays unfalsified is its INTERNAL boundary, i.e. which
+ *   no-element names arrive through "in template" rather than through the
+ *   other two mechanisms. Nothing reads that distinction any more; since
+ *   F28 the list has no behavioural use at all beyond seeding `noElement`,
+ *   and it stays in `SCANNER_NAME_LISTS` only because dropping it would
+ *   COARSEN this partition, which is the wrong direction to move a corpus
+ *   for tidiness.
  *
  * LIMIT, stated because it bounds what a green run means: this equivalence
  * is the SCANNER's, not parse5's. `address` and `form` share a class here
