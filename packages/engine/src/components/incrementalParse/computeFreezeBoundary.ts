@@ -809,6 +809,36 @@ export interface FreezeScanCheckpointInternal extends FreezeScanCheckpoint {
    *  tag's effect depends on what sits BETWEEN it and its match, which a
    *  name→count bag cannot represent (see SCOPE_BARRIER_NAMES). */
   openStack: string[];
+  /**
+   * parse5's `formElement` pointer, modelled as "may be non-null".
+   *
+   * The pointer is set by a `<form>` start tag and cleared ONLY by
+   * `</form>`; a form closed implicitly (its container's end tag pops it)
+   * leaves the pointer set, and a later `<form>` is then IGNORED. That is
+   * the standing proof that enumerating (P) conditions cannot be made
+   * complete — `<div><form></div>` ++ `<form>b</form>` diverges with every
+   * enumerated condition clean (see `formElementLatent.test.ts`).
+   *
+   * It was latent without this field, and latent for a reason that had
+   * nothing to do with forms: the end-tag walk removes only the MATCHED
+   * element, so the implicitly-closed `<form>` stayed on `openStack` and
+   * `openTotal > 0` refused every candidate. A defence that happens to
+   * point at the hazard is the second-mechanism cover this ledger has now
+   * recorded four times, and it came with a written note that implied-end-
+   * tag modelling "must bring an explicit formElement field with it" —
+   * a condition on a future change is not a guard, it is a hope with a
+   * deadline nobody owns.
+   *
+   * So the rule is modelled directly. Cost measured at zero: every shape
+   * this rejects, `openTotal` was already rejecting, so no boundary moves
+   * (0 of 6060) — what changes is that the guarantee no longer depends on
+   * an unrelated modelling choice staying unchanged.
+   *
+   * Direction: parse5 clears the pointer on `</form>` BEFORE the in-scope
+   * check, so it clears at least as often as this does. Staying set longer
+   * than parse5 over-blocks, which is the safe side.
+   */
+  formPointerMaybeSet: boolean;
 }
 
 /** Elements parse5 inserts WITHOUT pushing them on the open-element stack.
@@ -1034,6 +1064,7 @@ function freshCheckpoint(
     tagBalance: new Map(),
     openTotal: 0,
     p5Tok: { kind: 'data' },
+    formPointerMaybeSet: false,
     openStack: [],
     mdBlock: { kind: 'none' },
     blankRun: 0,
@@ -1591,19 +1622,29 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       // fixtures as fresh under-blocks. Leaving them counted over-blocks,
       // which is the side this scanner is allowed to be wrong on.
       //
-      // LOAD-BEARING beyond the counts: the formElement latent divergence
-      // (design §2.1 — parse5's form pointer survives an IMPLICIT close and
-      // eats a later <form>) is guarded exactly by this rule keeping the
-      // implicitly-closed form on `openStack`. Modelling implied end tags
-      // here needs an explicit formElement guard shipped WITH it —
-      // `formElementLatent.test.ts` is the tripwire.
+      // This rule USED to be the whole mitigation for the formElement latent
+      // divergence (design §2.1) — keeping the implicitly-closed form on
+      // `openStack` is what held `openTotal` positive and refused the
+      // candidates. That cover is no longer load-bearing: the pointer is
+      // modelled directly in `formPointerMaybeSet`, so implied-end-tag
+      // modelling can land here without carrying a form guard in with it.
+      // `formElementLatent.test.ts` pins both halves.
       cp.openStack.splice(idx, 1);
+      // parse5 clears the pointer on `</form>`; a form popped by SOMETHING
+      // ELSE'S end tag never reaches this line with `tag === 'form'`, which
+      // is exactly the implicit close that leaves the pointer set.
+      if (tag === 'form') cp.formPointerMaybeSet = false;
       const count = cp.tagBalance.get(tag) ?? 0;
       if (count > 0) {
         cp.tagBalance.set(tag, count - 1);
         cp.openTotal -= 1;
       }
     } else {
+      // `<form>` sets parse5's form pointer (see `formPointerMaybeSet`). A
+      // second `<form>` while the pointer is set is IGNORED by parse5 — not
+      // modelled, and it does not need to be: the flag is already set, so
+      // every candidate past it is already refused.
+      if (tag === 'form') cp.formPointerMaybeSet = true;
       cp.openStack.push(tag);
       cp.tagBalance.set(tag, (cp.tagBalance.get(tag) ?? 0) + 1);
       cp.openTotal += 1;
@@ -1863,7 +1904,15 @@ function processConfirmedLine(cp: FreezeScanCheckpointInternal, ln: LineRec, tex
       // mask suppresses them — which is exactly why `openTotal` reads 0
       // and the candidate looked safe), and the 2-5 interiors are the
       // same construct to both grammars.
-      htmlBalanced: cp.openTotal === 0 && cp.mdBlock.kind !== 'html' && (cp.p5Tok.kind as P5Tok['kind']) !== 'bogus',
+      htmlBalanced:
+        cp.openTotal === 0 &&
+        cp.mdBlock.kind !== 'html' &&
+        (cp.p5Tok.kind as P5Tok['kind']) !== 'bogus' &&
+        // A form pointer parse5 may still be holding makes a LATER `<form>`
+        // in the tail vanish from the full parse while a split parse opens
+        // it — forward independence fails with every other condition clean.
+        // See the field doc.
+        !cp.formPointerMaybeSet,
       hazard: cp.hazardVerdict,
       seamRisk: cp.p5SealPending,
       defListSettled: null,

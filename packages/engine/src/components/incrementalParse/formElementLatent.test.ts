@@ -17,21 +17,37 @@
  * (two-model design §2.1), and `oracleConformance.test.ts` pins that the
  * identity oracles fire on it.
  *
- * The scanner does NOT model the pointer — there is no `formElement` field
- * and no poison, so nothing detects this at RUNTIME. What keeps it latent
- * is ONE guard, plus a schema tripwire that is not a second one:
+ * The scanner MODELS the pointer since 2026-08-29 (`formPointerMaybeSet`), and
+ * the paragraph this replaces is worth keeping in view because it was the
+ * fourth recorded instance of one shape:
  *
- *  1. **The guard.** The end-tag walk in `computeFreezeBoundary` removes
- *     ONLY the matched element — implied end tags are deliberately not
- *     modelled — so the implicitly-closed `<form>` stays on `openStack`,
- *     `openTotal` stays positive, and every candidate past it is rejected.
- *     The pointer can only be non-null while the scanner is already
- *     refusing to freeze. Mutation-verified (2026-08-26): removing the
- *     "matched element only" restriction moves the pinned boundary 0 → 39
- *     and produces real engineProbe hast mismatches on four of the five
- *     class members. If implied-end-tag modelling ever ships, the first
- *     test below goes red, and that change must bring an explicit P-tree
- *     `formElement` field (or poison) with it.
+ *  > What keeps it latent is ONE guard … the end-tag walk removes ONLY the
+ *  > matched element, so the implicitly-closed `<form>` stays on `openStack`
+ *  > … If implied-end-tag modelling ever ships, that change must bring an
+ *  > explicit `formElement` field with it.
+ *
+ * Every sentence of that was true. The defence was still keyed on something
+ * other than the hazard — a modelling choice about implied end tags, which
+ * points at forms by coincidence — and the mitigation for the coincidence
+ * failing was a CONDITION ON A FUTURE CHANGE, owned by nobody and checked by
+ * nothing. A note saying "whoever does X must also do Y" is not a guard; it
+ * is a hope with a deadline.
+ *
+ * So the two are now separate:
+ *
+ *  1. **The direct guard.** `<form>` sets `formPointerMaybeSet`, `</form>`
+ *     clears it, and a candidate is refused while it is set. Cost measured
+ *     at zero — every shape it rejects, `openTotal` was already rejecting,
+ *     and the pinned corpus moves 0 of 6060. Independence measured too:
+ *     with implied end tags modelled the boundary goes 0 → 39 without this
+ *     guard and stays 0 with it (`formElementGuard.evidence.ts`; the 39 is
+ *     the same number the 2026-08-26 mutation recorded, which is what makes
+ *     it a reproduction).
+ *  2. **The old cover, now just a fact.** The end-tag walk still removes
+ *     only the matched element, for its own reasons — modelling implied end
+ *     tags would under-count the adoption agency. That is no longer part of
+ *     the form argument, and implied-end-tag modelling can now land without
+ *     bringing a form guard in with it.
  *
  *  2. **Not a guard — a schema-drift tripwire.** `form` is absent from the
  *     sanitize schema's `tagNames`, and the design once cited that as
