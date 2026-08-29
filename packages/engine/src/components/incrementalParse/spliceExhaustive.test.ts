@@ -145,6 +145,22 @@ const FRAGMENT_TOKENS = [
   '    ',
   '> ',
   '---',
+  // The three states the BFS coverage report named as never reached, each
+  // of which turned out to be an ALPHABET gap rather than an impossible
+  // state — and the report says in its own output that it cannot tell those
+  // apart, so the only way to find out was to add the token and look.
+  //
+  // These are not BFS-only: `FRAGMENT_TOKENS` is the fragment census's
+  // alphabet too, so before this the GATE had never built a GFM table, and
+  // `tableMaybeOpen` — a conjunct of the seal-release predicate — was
+  // reached by nothing in the repo. A bare declaration and a bare CDATA
+  // opener are the same story one layer down: the complete
+  // `<![CDATA[<d>]]>` above closes on its own line, so its block state never
+  // survives into a checkpoint and `mdBlock=html5` was unreachable by
+  // construction.
+  '<!A',
+  '<![CDATA[',
+  '| a |',
 ] as const;
 
 /**
@@ -1047,6 +1063,22 @@ describe.skipIf(NAME_K === 0)(
  * representatives of each NOVEL signature. Cost becomes linear in
  * REACHABLE ABSTRACT STATES instead of exponential in depth, so depth 8-12
  * costs about what K=4 costs the fragment band.
+ *
+ * DOMAIN COVERAGE, measured 2026-08-29 and worth stating because the
+ * report's own caveat is that it cannot tell an alphabet gap from an
+ * impossible state. At the default depth 2 the run leaves five declared
+ * values unreached; at depth 3 it reaches **all 78**. So nothing in
+ * `SIGNATURE_DOMAIN` is unreachable — the domain was written from the
+ * scanner's type declarations rather than from any run, and it turns out
+ * to contain no dead cells at all.
+ *
+ * Getting there took closing three ALPHABET gaps the report had named for
+ * two releases (`mdBlock=html4`, `mdBlock=html5`, `tableMaybeOpen=1`); the
+ * remaining two, both the `script` escape ladder and the three `3+` depth
+ * buckets, were DEPTH gaps and needed no new token. Those are different
+ * findings with different fixes, and the only way to tell them apart was to
+ * add the token and look. A depth-2 run's unreached list should be read as
+ * "not at this depth", not as a coverage claim.
  *
  * WHAT IT IS: a directed search. WHAT IT IS NOT: soundness-preserving.
  * Two prefixes with the same abstract signature can produce different
