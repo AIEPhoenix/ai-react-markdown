@@ -49,6 +49,18 @@
 # already used by hand. Cost at 4000 is ~10 min across twelve shards
 # against a two-hour gate, so this is a correction, not a new spend.
 #
+# SHARDS is 12, which is tuned for a small machine, and nothing here used to
+# say that it is per-machine. Check what the box has before a run (`nproc`,
+# and whether anything else is on it); if it is free, raise SHARDS toward the
+# core count. A vitest shard is about one busy core plus a mostly-idle main
+# thread, so leaving it at 12 on a much larger box idles most of the machine
+# and stretches the census leg to several times the wall clock it needs.
+#
+# When you do raise it, expect MEMORY to bind before the CPU does — bandwidth
+# and DIMM thermals, not core count. Whatever limits that is, it is a
+# property of the machine rather than of this script, so check the machine's
+# own monitoring rather than adding a watchdog here.
+#
 # Logs land in .soak-logs/<label>-*.log (gitignored). On macOS the script
 # re-execs itself under `caffeinate -dimsu`; note that caffeinate does NOT
 # survive a lid close — an overnight run on a closed laptop dies to
