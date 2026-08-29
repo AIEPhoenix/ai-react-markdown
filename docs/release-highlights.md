@@ -28,6 +28,20 @@ The splice's block-final/interior classifier had lost its last deterministic kil
 
 And the name band turned out to have a second cut stride the gate never passed either, found by auditing the first. Passing it costs 2.7x on that band — about 8% of the census leg — for 2.8x the cut schedules on the band that reaches tag names, where F13, F19 and F28 all lived.
 
+**Two more came out of the same audit, both in the safe direction and both free.** parse5 carries a `formElement` pointer that only `</form>` clears, so an implicitly-closed form leaves it set and a later `<form>` is ignored — the standing proof that enumerating parser conditions cannot be made complete. The scanner never modelled it. What kept it latent was an unrelated modelling choice pointing at the hazard by coincidence, and the mitigation for that coincidence failing was a comment asking whoever changed it next to also add a guard: **a condition on a future change, owned by nobody and checked by nothing.** The rule is modelled directly now, at a measured cost of zero. Verifying that it is load-bearing took two attempts — popping the open-element stack without decrementing the counts is not implied-end-tag modelling, and it reports exactly the boundary a working guard would.
+
+And the snapshot gate compared sets where it meant multisets, which is one gap wearing two descriptions: a subset check cannot see a swap between duplicate signatures, and cannot see an addition at all. Both directions now count. Said plainly because a free tightening is the kind that gets believed without evidence — no verdict moves anywhere, and no document was found where the old check is quiet and the new one fires. That is a gap coded around, not a gap witnessed.
+
+### What is NOT outstanding
+
+Four items stay recorded after this release, and none of them is a deferral. They are listed here so the next person does not read the ledger as unpaid debt:
+
+- `annotation-xml` is treated as an HTML integration point unconditionally, where the spec conditions it on `encoding`. **Fixing this would widen boundaries** — the current reading over-blocks, which is the safe side. It is a precision item that trades safety for freeze rate, not a defect.
+- The retired seal-release enumeration stays one more version. It is the live half of the containment tripwire that just gained a coverage floor; deleting it now would remove the net immediately after measuring it.
+- Three items are **limits of a measurement, not work items**: an SVG `title` really is a scope barrier but the adapter's raw-text guard is measured in the HTML namespace; `caption`, `td` and `th` need a `<table>` ancestor that answers the scope walk before they can; and the splice classifier's position-less sibling case is not a legal shape to build synthetically. Deleting these entries would not remove the limits, only the record of them.
+
+That last group is the point of the discipline rather than an exception to it. F28 was found because a probe had honestly recorded `frame` and `image` as names it could not decide — **an empty "cannot decide" list is not a repository without blind spots, it is one that stopped asking.**
+
 Three smaller corrections ride along, all of the same family. The release gate had quietly stopped running the full census — `CENSUS_STRIDE` went from 1 to 3 in the commit that fixed two _other_ knobs for running CI's values, while three comments went on describing full-stride as a gate property; it is back to 1. The seal-release containment sweep asserted that a dev-build tripwire stayed silent without ever reporting that it had applied, so it now counts its own evaluations (862 over 6,060 scans) and holds them over a floor. And the gate script itself turned out not to run on one of the two machines the gate runs on — the second one has no zsh, which is the real reason every split release gate since 2.8.1 was hand-assembled from the script's env lines rather than run from it.
 
 ### 2.9.0 — The enumeration that leaked five times is replaced by a derivation
