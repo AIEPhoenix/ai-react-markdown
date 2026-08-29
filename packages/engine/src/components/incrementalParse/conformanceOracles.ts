@@ -432,11 +432,34 @@ export function snapshotRawDisagreement(
   // can spell (see `isFootnoteSection`). The prefix-anchored instruments
   // keep the wrapper strip, where its need IS measured (the `htmlKeepOpen`
   // bucket); they gate nothing.
-  // Two further gaps are theoretical and unreachable in this corpus, so
-  // they are recorded rather than coded around: two frozen nodes sharing
-  // an identical signature would mask one being replaced by a copy of the
-  // other, and an append that only ADDS a node below the boundary is
-  // invisible to a subset check (the added node is simply not in `frozen`).
+  // The comparison is a MULTISET equality, not a subset check, and the
+  // difference is the two gaps this used to record as theoretical.
+  //
+  // A `frozen ⊆ appended` test cannot see either half of a swap between
+  // DUPLICATE signatures: with `frozen = [A, A]` and `appended = [A, B]`
+  // the surviving A answers for both, so a frozen node really did change
+  // and the gate stays quiet. Counting closes it. The same count, read in
+  // the other direction, closes the second gap for free — an append that
+  // ADDS a node wholly below the boundary is a frozen region that gained
+  // something, which no subset check can express because the addition is
+  // simply absent from `frozen`.
+  //
+  // WHAT IS AND IS NOT SHOWN, because the tightening is free and a free
+  // tightening is the kind that gets believed without evidence. Measured
+  // 2026-08-29: no verdict moves, on 2 x 1500 raw-mode documents (~110k
+  // compared nodes per seed) or on the unit fixtures. The counting itself
+  // is exercised — a changed frozen node now reports `(1 fewer)` — but no
+  // document was found where the OLD subset check is quiet and this one
+  // fires, and both gaps are the kind that may be genuinely unreachable
+  // here: a definition retargets every reference alike, so duplicate
+  // frozen siblings tend to change together, and an append that adds a
+  // node wholly below the boundary without touching any existing one is
+  // not a shape this domain produces readily.
+  //
+  // So this is a gap CODED AROUND rather than a gap WITNESSED, and that is
+  // the honest claim. It is still the right direction: "unreachable in
+  // this corpus" is a fact about the corpus, and the corpus is what gets
+  // replaced every time the generators grow.
   //
   // The exempt ranges come from `doc` and are applied to BOTH sides. Taking
   // the appended side's own ranges would let a definition that GREW under
@@ -444,16 +467,24 @@ export function snapshotRawDisagreement(
   // that hides things.
   const footnoteBytes = footnoteDefinitionRanges(docMdast ?? (runFull(doc, config).mdast as NodeLike));
   const frozen = frozenSignatures((runToRawLayer(doc, config) as NodeLike).children ?? [], boundary, footnoteBytes);
-  const appended = new Set(
-    frozenSignatures((runToRawLayer(doc + tail, config) as NodeLike).children ?? [], boundary, footnoteBytes)
+  const appended = frozenSignatures(
+    (runToRawLayer(doc + tail, config) as NodeLike).children ?? [],
+    boundary,
+    footnoteBytes
   );
-  for (const signature of frozen) {
-    if (!appended.has(signature)) {
-      return {
-        detail: `P-snap: frozen node ${signature.slice(0, 220)} did not survive the append (boundary ${boundary})`,
-        nodesCompared: frozen.length,
-      };
-    }
+  const counts = new Map<string, number>();
+  for (const signature of frozen) counts.set(signature, (counts.get(signature) ?? 0) + 1);
+  for (const signature of appended) counts.set(signature, (counts.get(signature) ?? 0) - 1);
+  for (const [signature, delta] of counts) {
+    if (delta === 0) continue;
+    const how =
+      delta > 0
+        ? `did not survive the append (${delta} fewer)`
+        : `appeared below the boundary that the append added (${-delta} more)`;
+    return {
+      detail: `P-snap: frozen node ${signature.slice(0, 220)} ${how} (boundary ${boundary})`,
+      nodesCompared: frozen.length,
+    };
   }
   return { detail: null, nodesCompared: frozen.length };
 }
