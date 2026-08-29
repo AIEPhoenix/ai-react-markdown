@@ -1,5 +1,14 @@
 packages:
   - 'packages/*'
+  # Benchmark apps and their kit. All private, none published. They are in the
+  # workspace so they resolve `@ai-react-markdown/*` through the same `exports`
+  # a user gets from npm — a benchmark that imported our `src` would measure a
+  # build no one ships. `build`/`packcheck` filter `./packages/*`, so these do
+  # not join either; `pnpm -r typecheck` DOES pick them up, deliberately: an
+  # app that mirrors the README integration is also a smoke test that the
+  # README integration still typechecks.
+  - 'benchmarks/kit'
+  - 'benchmarks/react-*'
 
 # Dependency install scripts, allowed one by one (pnpm 11 replaced
 # onlyBuiltDependencies / neverBuiltDependencies / ignoredBuiltDependencies

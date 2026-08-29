@@ -1,0 +1,217 @@
+# Browser benchmarks
+
+What a user's browser actually does with this renderer: frame pacing while a
+long answer streams in, how much of the main thread a code-dense answer
+blocks, how big the DOM gets across a conversation, whether the page moves
+under a scroll.
+
+Every other performance number in this repo stops at the parse layer. Those
+answer "how long did the engine take"; none of them answers "does a user's
+scroll stutter". This directory is the second question, and it exists mostly
+so that optimisations aimed at it (workers, viewport priority) have something
+to be accepted against — without it, doing that work and claiming a win is
+guesswork.
+
+## Running
+
+```bash
+pnpm bench:web                     # every app x every scenario, 3 repeats
+pnpm bench:web --app react-core    # one app
+pnpm bench:web --scenario code-dense --repeats 5
+pnpm bench:web --headed            # watch it
+pnpm bench:web:selftest            # does the harness notice a slowdown?
+```
+
+Results land in `benchmarks/results/<timestamp>.json` (gitignored). Compare
+two runs with `node benchmarks/runner/compare.mjs <before.json> <after.json>`.
+
+**It gates nothing.** That is a decision, not an omission: a budget wired
+into CI before anyone knows the noise band goes red on the third honest run
+and is muted by the fifth. Collect baselines across several releases first,
+then decide what a real regression looks like.
+
+## Layout
+
+| Path             | What lives there                                                   |
+| ---------------- | ------------------------------------------------------------------ |
+| `kit/`           | Scenarios and the measurement harness. Framework-agnostic.         |
+| `react-core/`    | The `@ai-react-markdown/core` README integration, instrumented.    |
+| `react-mantine/` | The `@ai-react-markdown/mantine` README integration, instrumented. |
+| `runner/`        | Playwright driver, self-test, comparison.                          |
+
+Three rules hold this apart, and each of them was a decision:
+
+**Scenarios never import a renderer.** A scenario is content plus a delivery
+schedule. That is what lets the same scenario run under every app and be
+compared, and what will let a future framework adapter join without touching
+`kit/scenarios.ts`. An app that knows a scenario by name has already broken
+the split.
+
+**Each framework is its own app, not a prop.** The mantine variant pulls in a
+provider tree, a highlight.js adapter and three more stylesheets. Sharing one
+app and branching inside it would put both dependency graphs into both
+bundles, and each measurement would describe the other.
+
+**The integration is the README's, verbatim.** The imports and the JSX in
+each `main.tsx` are copied from the package README's quick start; the
+instrumentation is placed around them, never between them and React. The
+moment an app memoises the content or batches the updates, it stops
+describing the library and starts describing our cleverness — and the
+regression it then fails to catch is exactly the one a user hits.
+
+The apps depend on `@ai-react-markdown/*` as `workspace:*`, which resolves
+through each package's own `exports` to its built `dist` — the same entry
+point npm hands a user. It is not a source-level import and must not become
+one.
+
+## Why not Storybook
+
+The cheap route was to point Playwright at the existing `storybook-static`;
+41 stories already build, and the plan originally said to do exactly that.
+Rejected: Storybook ships its own runtime, router and preview iframe into the
+page, and every number collected here — LCP, long tasks, DOM node counts, rAF
+gaps — would count that runtime too. A baseline that includes a harness the
+user never installs cannot answer "is our renderer fast", only "is our
+renderer plus Storybook fast", and the two drift apart silently as Storybook
+upgrades.
+
+## The self-test is the load-bearing part
+
+`pnpm bench:web:selftest` injects a known amount of main-thread work per chunk
+and requires the metrics to respond where they can and stay flat where they
+should. Run it before trusting any number out of `bench:web`, and after
+touching the harness.
+
+It has two arms because the metrics do not all answer at the same magnitude:
+
+- **6 ms/chunk** is below the browser's 50 ms long-task threshold and inside a
+  16 ms frame budget, so long tasks and frame pacing are _expected_ to stay
+  flat. What must move is stream time. Asserting anything else here would fail
+  an honest harness.
+- **60 ms/chunk** puts every chunk over the threshold, and blocking time
+  becomes arithmetic: `chunks x (handicap - 50)` is the definition of Total
+  Blocking Time. Measured 2026-08-30: 4620 ms predicted, 4610 ms observed.
+
+That 0.3% is why the tolerances are tight. The first version of the self-test
+allowed blocking time to arrive at 40% of budget, and the loose floor was not
+caution — it was not knowing the formula. It also failed on its first run, for
+a real reason: it injected 6 ms and asserted that long tasks would appear.
+They correctly did not.
+
+## Cross-app numbers are not comparable, cross-time ones are
+
+The two apps do not render the same DOM for the same scenario, by design.
+Measured 2026-08-30 on `code-dense`: `react-core` produces 24 `<pre><code>`
+blocks and zero spans, because core ships no highlighter; `react-mantine`
+produces thousands of nodes because highlight.js emits a span per token. On
+`mermaid-dense`, core leaves 40 code fences as text while mantine renders
+diagrams into SVG.
+
+So a node count of 74 against 4275 is not core "winning" — it is the two
+packages doing different amounts of work, which is the whole reason both are
+measured. Compare a cell against ITSELF over time. `compare.mjs` keys on
+`app/scenario` and will never put two apps side by side; keep it that way.
+
+## Reading a result
+
+`outcome` is the first column to look at. A row that is not `settled` never
+went quiet, and its settle-derived numbers are lower bounds rather than
+measurements.
+
+`frames` is the second. A p95 over a handful of frames is not a p95, and only
+the sample count says so.
+
+Null is not zero anywhere in the output. A metric the browser never reported
+comes back null on purpose — "this page had no layout shift" and "this engine
+does not report layout shift" are different facts, and a zero blurs them.
+
+## Visual verification uses a different browser than the numbers
+
+The runner drives a clean Playwright Chromium: no profile, no extensions.
+Looking at a scenario through a normal browser (or an agent driving your real
+profile) does **not** show the same page.
+
+Measured while building this: a translation extension injected 55 nodes into
+the render container and rewrote text between two consecutive queries, taking
+the element count from 271 to 166 while the document only grew. Any count
+taken there is contaminated.
+
+`foreignNodes` in each result row is the check — it counts nodes inside the
+container carrying known extension markers. Non-zero means the row is dirty.
+It should be zero in every runner-produced row; if it is not, something is
+injecting into the supposedly clean browser and that is worth chasing before
+reading anything else.
+
+## Pacing decides what a scenario can even see
+
+A `timer`-paced scenario delivers on a fixed `tickMs`. It models an arrival
+rate — a server dripping tokens — and answers "can the renderer keep up".
+On current hardware the answer is trivially yes, and the number it produces
+is mostly the schedule restated: `code-dense` is 1251 chunks x 16 ms, so it
+takes ~20 s no matter what the renderer does.
+
+Measured 2026-08-30, and it is the sharpest result of building this: the same
+scenario took **21.2 s unthrottled and 20.6 s under a 4x CPU throttle**. The
+throttle was verified working in the same session (a pure busy-loop went
+5 ms → 20 ms → 48 ms at 1x/4x/10x, exactly linear). The scenario simply could
+not see it, because the renderer had a whole frame to do very little and
+still fit after being slowed fourfold.
+
+A `frame`-paced scenario hands the next chunk over on the next animation
+frame. That was the obvious fix and it was not enough: measured on the same
+scenario, **10.4 s at 1x and 10.4 s at 4x**. Frame pacing swaps one clock for
+another — 1250 chunks at a 120 Hz refresh is 10.4 s whatever the renderer
+does, because this renderer finishes a chunk in about a millisecond and still
+fits in the 8.3 ms gap after being slowed four times.
+
+An `immediate`-paced scenario waits for nothing: the next chunk is queued on
+a MessageChannel port, which yields to the event loop without the 4 ms clamp
+that `setTimeout(0)` picks up. `streamMs` is then the renderer's own cost and
+nothing else. Same scenario, same machine:
+
+| pacing                |     1x |     4x | ratio | bounded by     |
+| --------------------- | -----: | -----: | ----: | -------------- |
+| `timer` (16 ms/chunk) | 21.2 s | 20.6 s | 0.97x | its schedule   |
+| `frame` (1 chunk/rAF) | 10.4 s | 10.4 s | 1.00x | 120 Hz refresh |
+| `immediate` (unpaced) | 0.33 s | 1.46 s | 4.44x | the renderer   |
+
+**Compare releases on the `throughput-*` scenarios.** The other two are kept
+because "does it keep up with a realistic drip" and "does it stay smooth" are
+real questions — but a suite with only those would look thorough while being
+structurally unable to detect the regressions it exists for, and the numbers
+it produced would be restatements of a clock.
+
+The self-test asserts this directly (arm 3): if `immediate` pacing ever
+regresses into waiting for something, the 4x ratio collapses toward 1.0 and
+the run fails.
+
+## Throttle, or measure your own laptop
+
+`--throttle 4` applies a CPU multiplier through CDP before navigation, so the
+app's startup is throttled too.
+
+The default of 1 is honest and nearly useless for comparison. The first
+baseline taken on this machine came back with zero long tasks and zero
+blocking time in 12 of 14 cells, and every frame p95 within a millisecond of
+the display's floor — a renderer could get several times slower and most of
+the table would not move. That is a fact about the hardware, not about the
+renderer.
+
+Throttling does not simulate a particular device and must not be described as
+if it did; what it does is push the work far enough above the frame budget
+that the metrics have somewhere to move. The multiplier is recorded in every
+row, and `compare.mjs` refuses to compare runs taken at different ones — a 4x
+row beside a 1x row differs by the throttle long before it differs by
+anything worth reading.
+
+## Adding a scenario
+
+Add a row to `SCENARIOS` in `kit/scenarios.ts`. Nothing else needs to change —
+the apps expose the list, and the runner reads its work list from the app
+rather than keeping a copy, so a new scenario is picked up on the next run.
+
+Content is generated from a seed rather than pasted, so a scenario can be
+scaled without hand-editing and two runs are byte-identical. Keep it big
+enough to measure: `mermaid-dense` and `math-dense` were originally 1.2 s and
+5.2 s of streaming, which is not long enough for steady-state cost to show
+over startup noise.

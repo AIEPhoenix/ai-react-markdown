@@ -1,0 +1,92 @@
+name: Browser benchmark
+
+# Manual, plus a nudge before a release. NOT on push, and NOT a required
+# check.
+#
+# The reason is recorded in benchmarks/README.md and worth repeating where
+# someone would be tempted to add `on: push`: a performance budget wired into
+# CI before anyone knows the noise band goes red on the third honest run and
+# is muted by the fifth. Shared runners are also 2-3x slower than a laptop and
+# vary between jobs, so an absolute threshold is not comparable across runs
+# even in principle.
+#
+# What this job IS for: collecting comparable-ish baselines over several
+# releases, as an artifact, until there is enough data to say what a real
+# regression looks like on this hardware. Until then the numbers are read by
+# a person.
+#
+# The self-test is different, and it DOES fail the job. It asserts the
+# instrument rather than the renderer — that injected main-thread work shows
+# up in the metrics — and its assertions are arithmetic rather than
+# thresholds, so runner speed does not move them. An instrument that has
+# stopped observing is worth a red build; a page that got 8% slower on a
+# noisy runner is not.
+
+on:
+  workflow_dispatch:
+    inputs:
+      repeats:
+        description: Repeats per cell
+        required: false
+        default: '3'
+  push:
+    tags:
+      # One baseline per release, which is what "collect data over several
+      # releases" needs. Note that force-pushing a tag re-triggers this, as
+      # the 2026-08-29 history rewrite demonstrated on the release workflow;
+      # harmless here (it only collects), but it will produce a duplicate
+      # artifact for the same version.
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          # Same exact pin as ci.yml. Not for determinism of the numbers —
+          # they are not deterministic — but so that a baseline recorded here
+          # is at least comparable to the next one.
+          node-version: 22.23.2
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build the packages the apps consume
+        # The apps resolve `@ai-react-markdown/*` through `exports` to `dist`,
+        # exactly as a user's install would. Without this they would resolve
+        # to nothing.
+        run: pnpm build
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Self-test the harness
+        # Runs first and fails the job: every number below is worthless if the
+        # instrument is not observing.
+        run: pnpm bench:web:selftest
+
+      - name: Collect baselines
+        # Through env, not interpolated into the command line. `inputs` is
+        # only settable by someone who can already dispatch this workflow, so
+        # this is hygiene rather than a live hole — but a run: line that
+        # splices `${{ }}` into a shell string is the shape to never get in
+        # the habit of writing.
+        env:
+          REPEATS: ${{ inputs.repeats || '3' }}
+        run: pnpm bench:web --repeats "$REPEATS"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-${{ github.sha }}
+          path: benchmarks/results/*.json
+          if-no-files-found: error
+          retention-days: 90

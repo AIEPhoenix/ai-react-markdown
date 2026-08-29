@@ -45,5 +45,26 @@ export default defineConfig(
       ],
     },
   },
+  {
+    // The benchmark runner is plain Node ESM, not TypeScript, so `no-undef`
+    // applies to it (typescript-eslint turns that rule off for `.ts`, where
+    // the compiler already answers it). These scripts legitimately use Node
+    // and browser globals: `page.evaluate` bodies run in the page, so
+    // `window` and `document` appear in source that Node never executes.
+    files: ['benchmarks/runner/*.mjs'],
+    languageOptions: {
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+        fetch: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+        Date: 'readonly',
+        window: 'readonly',
+        document: 'readonly',
+        AbortSignal: 'readonly',
+      },
+    },
+  },
   eslintConfigPrettier
 );

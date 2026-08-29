@@ -15,3 +15,8 @@ storybook-static/
 **/.claude/scheduled_tasks.lock
 **/.impeccable/
 .soak-logs/
+
+# Benchmark run output — one JSON per run, kept locally until the baseline
+# format settles. Committing them before then would bake a schema nobody has
+# had to read twice yet.
+benchmarks/results/
