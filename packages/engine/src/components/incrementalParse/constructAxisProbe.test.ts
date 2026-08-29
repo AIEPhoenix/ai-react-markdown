@@ -36,6 +36,9 @@ import {
   findElement,
   mdBlockExtent,
   measureBuildsElement,
+  measureForeignRoot,
+  measureScopeBarrier,
+  measureTablePartRoutes,
   measureP5ContentState,
   measureIsVoid,
   micromarkKeepsBlockOpenPastBlank,
@@ -45,6 +48,7 @@ import {
   type ConstructAxisCell,
   type NodeLike,
   type P5ContentState,
+  type ScopeContext,
 } from './constructAxisAdapters';
 import { runFull } from './spliceArbiterHarness';
 
@@ -620,6 +624,178 @@ describe('construct axis: the facts the templates are derived from', () => {
       contextSplit: [],
       renamed: ['body', 'frame', 'frameset', 'head', 'html', 'image'],
       erased: [],
+    });
+  });
+
+  /**
+   * `scopeBarrier` against parse5's own scope walk — the last of the three
+   * lists F19 lived among, and the one it actually lived ON.
+   *
+   * DIRECTIONS, which are not symmetric:
+   *  - `barrierButNotListed` is the DANGEROUS one. A real barrier the scanner
+   *    does not know about means it walks past an element parse5 stopped at,
+   *    reports balance, and freezes across a host that leaks — F19 and the
+   *    2026-08-24 `<div><table></div></table>` under-block, both.
+   *  - `listedButTransparent` over-blocks and is pinned by name.
+   *
+   * ANTI-VACUITY PER CONTEXT, and it is not decoration. The dangerous set
+   * being empty is only evidence if each context can still produce a
+   * `barrier` at all; a context that silently stopped working contributes
+   * nothing and leaves the set empty for the wrong reason. Three earlier
+   * versions of this probe were broken in exactly that way and every one of
+   * them printed an empty dangerous set.
+   */
+  test('the scope-barrier list agrees with parse5, in every namespace it models', () => {
+    const lists = new Map(SCANNER_NAME_LISTS);
+    const scopeList = lists.get('scopeBarrier');
+    if (scopeList === undefined) throw new Error('SCANNER_NAME_LISTS lost scopeBarrier');
+
+    const pool = [
+      ...new Set([
+        ...NON_BLOCK_HTML_ELEMENTS,
+        ...scopeList,
+        'div',
+        'section',
+        'p',
+        'ol',
+        'ul',
+        'li',
+        'h1',
+        'blockquote',
+        'pre',
+        'form',
+        'button',
+        'nobr',
+        'tbody',
+        'tr',
+        'colgroup',
+        'g',
+        'rect',
+        'xyzzy',
+      ]),
+    ].sort();
+
+    const CONTEXTS: ScopeContext[] = ['plain', 'math', 'svg'];
+    const seen = new Map(pool.map((n) => [n, CONTEXTS.map((c) => measureScopeBarrier(n, CFG, c))]));
+    const isBarrier = (n: string): boolean => (seen.get(n) ?? []).includes('barrier');
+    const decided = (n: string): boolean => (seen.get(n) ?? []).some((v) => v !== 'unmeasurable');
+    const perContext = (c: ScopeContext): string[] =>
+      pool.filter((n) => (seen.get(n) ?? [])[CONTEXTS.indexOf(c)] === 'barrier');
+
+    expect({
+      poolSize: pool.length,
+      barrierButNotListed: pool.filter((n) => isBarrier(n) && !scopeList.has(n)),
+      listedButTransparent: pool.filter((n) => decided(n) && !isBarrier(n) && scopeList.has(n)),
+      undecidable: pool.filter((n) => !decided(n)),
+      // One control per context: the probe can see a barrier through each of
+      // the three, so an empty dangerous set above means "none found" rather
+      // than "nothing asked".
+      plainSees: perContext('plain'),
+      mathSees: perContext('math'),
+      svgSees: perContext('svg'),
+    }).toEqual({
+      poolSize: 85,
+      barrierButNotListed: [],
+      // Over-blocking, and every one of them is a name whose barrier role
+      // needs an ancestor this observable cannot supply: `caption`, `td` and
+      // `th` need a `<table>`, which is itself a barrier and answers the walk
+      // before they can. Listing them costs a boundary and buys the scanner
+      // nothing here; it also costs nothing, because the scanner only reads
+      // this list for names it has actually pushed.
+      listedButTransparent: ['caption', 'html', 'td', 'th'],
+      // `select`, `template` and `title` swallow the end tag as raw text, so
+      // the walk never runs. `table` hides the marker through foster
+      // parenting. All four are listed, all four are the safe direction.
+      //
+      // `title` is the interesting one and its reason is a LIMIT of this
+      // adapter rather than a fact about `title`: the raw-text guard is
+      // measured in the HTML namespace and applied to every context, so a
+      // name that is RCDATA as HTML and DATA in foreign content is refused
+      // before the SVG question is asked. An SVG `title` really is a
+      // barrier. Undecidable is the safe answer and the honest one; making
+      // it decidable needs a namespace-aware content-state measurement,
+      // which is a bigger adapter than this list is worth.
+      undecidable: ['select', 'table', 'template', 'title'],
+      plainSees: ['applet', 'marquee', 'object'],
+      mathSees: ['annotation-xml', 'mi', 'mn', 'mo', 'ms', 'mtext'],
+      svgSees: ['desc', 'foreignobject'],
+    });
+  });
+
+  /** `foreignRoot` is two names and the smallest list here, which is exactly
+   *  why it was worth measuring rather than reading: a two-name list looks
+   *  too obvious to check. The observable is the self-closing rule — in
+   *  foreign content `<g/>` really closes, in HTML the slash is ignored. */
+  test('the foreign-root list agrees with what parse5 puts in a foreign namespace', () => {
+    const lists = new Map(SCANNER_NAME_LISTS);
+    const rootList = lists.get('foreignRoot');
+    if (rootList === undefined) throw new Error('SCANNER_NAME_LISTS lost foreignRoot');
+
+    const pool = [
+      ...new Set([...NON_BLOCK_HTML_ELEMENTS, ...rootList, 'div', 'p', 'table', 'desc', 'mtext', 'xyzzy']),
+    ].sort();
+    const verdicts = new Map(pool.map((n) => [n, measureForeignRoot(n, CFG)]));
+
+    expect({
+      poolSize: pool.length,
+      foreignButNotListed: pool.filter((n) => verdicts.get(n) === 'foreign' && !rootList.has(n)),
+      listedButHtml: [...rootList].filter((n) => verdicts.get(n) === 'html'),
+      // Non-vacuous: the two members are seen AS foreign, so an empty
+      // dangerous set is a measurement rather than a dead probe.
+      measuredForeign: pool.filter((n) => verdicts.get(n) === 'foreign'),
+    }).toEqual({
+      poolSize: 60,
+      foreignButNotListed: [],
+      listedButHtml: [],
+      measuredForeign: ['math', 'svg'],
+    });
+  });
+
+  /** `tablePart`'s claim is a RE-ROUTE, not a shape: a stray part outside a
+   *  table changes how parse5 builds the next one. Measured as such. */
+  test('the table-part list agrees with what re-routes a later table', () => {
+    const lists = new Map(SCANNER_NAME_LISTS);
+    const partList = lists.get('tablePart');
+    if (partList === undefined) throw new Error('SCANNER_NAME_LISTS lost tablePart');
+
+    const pool = [
+      ...new Set([
+        ...NON_BLOCK_HTML_ELEMENTS,
+        ...partList,
+        'div',
+        'p',
+        'section',
+        'h1',
+        'li',
+        'ul',
+        'pre',
+        'form',
+        'button',
+        'option',
+        'optgroup',
+        'br',
+        'hr',
+        'img',
+        'table',
+        'xyzzy',
+      ]),
+    ].sort();
+    const verdicts = new Map(pool.map((n) => [n, measureTablePartRoutes(n, CFG)]));
+
+    expect({
+      poolSize: pool.length,
+      routesButNotListed: pool.filter((n) => verdicts.get(n) === 'routes' && !partList.has(n)),
+      listedButInert: [...partList].filter((n) => verdicts.get(n) === 'inert'),
+      undecidable: pool.filter((n) => verdicts.get(n) === 'unmeasurable'),
+      routing: pool.filter((n) => verdicts.get(n) === 'routes'),
+    }).toEqual({
+      poolSize: 78,
+      routesButNotListed: [],
+      listedButInert: [],
+      undecidable: [],
+      // All nine, and nothing else — so the list is tight in both directions
+      // rather than merely sufficient.
+      routing: ['caption', 'col', 'colgroup', 'tbody', 'td', 'tfoot', 'th', 'thead', 'tr'],
     });
   });
 

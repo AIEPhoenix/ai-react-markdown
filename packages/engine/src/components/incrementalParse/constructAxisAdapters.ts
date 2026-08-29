@@ -355,6 +355,131 @@ export function measureBuildsElement(name: string, config: CatalogConfig, contex
   return textContent(raw).includes('MARKER') ? 'renamed' : 'no-element';
 }
 
+/** The first element whose tag name matches case-INSENSITIVELY. parse5
+ *  case-corrects SVG tag names on the way into the tree (`foreignobject` in
+ *  the source becomes `foreignObject` in the DOM), and a probe that searches
+ *  for the source spelling reports "no element" for exactly the names whose
+ *  namespace makes them interesting. That false negative read as a refuted
+ *  list entry on this adapter's first run. */
+function findElementLoose(root: NodeLike, tagName: string): NodeLike | null {
+  const want = tagName.toLowerCase();
+  for (const child of root.children ?? []) {
+    if (child.type === 'element' && (child.tagName ?? '').toLowerCase() === want) return child;
+    const deeper = findElementLoose(child, tagName);
+    if (deeper !== null) return deeper;
+  }
+  return null;
+}
+
+/** Where `measureScopeBarrier` asks its question. The property is
+ *  NAMESPACE-dependent and the scanner's list is flat, so every context the
+ *  scanner can be in has to be asked separately. */
+export type ScopeContext = 'plain' | 'math' | 'svg';
+
+/** `unmeasurable` carries its reason: the three are different facts and
+ *  collapsing them is what made this adapter's first three runs wrong. */
+export type ScopeVerdict = 'barrier' | 'transparent' | 'unmeasurable';
+
+/**
+ * ADAPTER 8 — is `<name>` a barrier to parse5's "has an element in scope"
+ * walk?
+ *
+ * `<W><name>INNER</W>MARKER`. The walk for `</W>` runs DOWN the open-element
+ * stack and stops at a barrier, so a barrier makes W "not in scope", `</W>`
+ * is DISCARDED, W stays open, and MARKER lands INSIDE it. A transparent name
+ * lets the walk through, W is popped, and MARKER is a sibling. That is the
+ * whole observable, and it needs no name list.
+ *
+ * Three construction traps, each of which produced a confidently wrong
+ * reading before it was found, and all three are the same mistake — asking a
+ * question whose answer was already fixed by something other than `name`:
+ *
+ *  - **The end tag decides which scope.** `</table>` asks "in table scope"
+ *    and `</math>` uses the foreign-content algorithm; only an ordinary HTML
+ *    end tag asks the plain "in scope" question this list models. W is
+ *    therefore always `section` (or `div` when the probe IS `section`).
+ *  - **A host on the stack can answer first.** Running the probe inside
+ *    `<table>` reported BARRIER for every name in the pool — including
+ *    `xyzzy`, which is not an element at all — because `table` is itself a
+ *    barrier and the walk stopped there. The control is what caught it. No
+ *    context may put a barrier between W and `name`.
+ *  - **Raw text swallows the end tag.** Inside `script`, `title`, `select`
+ *    or `template` the `</section>` never reaches tree construction, so the
+ *    question is not asked at all — `unmeasurable`, not `transparent`.
+ */
+export function measureScopeBarrier(name: string, config: CatalogConfig, context: ScopeContext): ScopeVerdict {
+  const wrapper = name === 'section' ? 'div' : 'section';
+  if (name === wrapper || (context !== 'plain' && name === context)) return 'unmeasurable';
+  if (measureP5ContentState(name, config) !== 'DATA') return 'unmeasurable';
+  const open = context === 'plain' ? `<${name}>` : `<${context}><${name}>`;
+  const raw = runToRawLayer(`<${wrapper}>${open}INNER</${wrapper}>MARKER\n`, config);
+  if (findElementLoose(raw, name) === null) return 'unmeasurable';
+  const host = findElementLoose(raw, wrapper);
+  if (host === null) return 'unmeasurable';
+  if (!textContent(raw).includes('MARKER')) return 'unmeasurable';
+  return textContent(host).includes('MARKER') ? 'barrier' : 'transparent';
+}
+
+/** `unmeasurable` covers a name whose element never reaches the tree, or
+ *  one that hides the marker. */
+export type ForeignVerdict = 'foreign' | 'html' | 'unmeasurable';
+
+/**
+ * ADAPTER 9 — does `<name>` open a FOREIGN-namespace subtree?
+ *
+ * The observable is the self-closing rule, which is one of the few places
+ * the two namespaces differ in a way the tree records: in foreign content a
+ * `<g/>` start tag really closes itself, so a marker after it is a SIBLING;
+ * in HTML the slash is ignored, `g` stays open, and the marker is its child.
+ * Namespace is not otherwise readable off hast.
+ */
+export function measureForeignRoot(name: string, config: CatalogConfig): ForeignVerdict {
+  const raw = runToRawLayer(`<${name}><g/>MARKER</${name}>\n`, config);
+  const g = findElementLoose(raw, 'g');
+  if (g === null || !textContent(raw).includes('MARKER')) return 'unmeasurable';
+  return textContent(g).includes('MARKER') ? 'html' : 'foreign';
+}
+
+/** `unmeasurable` covers a name that eats the table it is supposed to
+ *  re-route (raw text, or an unclosed type-1 block). */
+export type TableRouteVerdict = 'routes' | 'inert' | 'unmeasurable';
+
+/**
+ * ADAPTER 10 — does a STRAY `<name>` outside a table change how parse5
+ * builds a LATER table?
+ *
+ * The scanner's claim for `TABLE_PART_NAMES` is exactly that: a stray part
+ * puts parse5 in an "in table" mode and the next table's character data is
+ * foster-parented out of the element it belongs to. So the observable is a
+ * markdown table's own cell text, compared against a baseline where the
+ * stray tag is absent.
+ *
+ * The tag is written CLOSED. Left open, `pre`, `script` and `style` swallow
+ * the whole table as their own content and the probe reported a re-route for
+ * every one of them — a micromark effect scored as a parse5 one. And the
+ * cell text is looked for in ANY table, not the first: a stray `<table>`
+ * contributes an element of its own, and searching the first match reported
+ * `table` as an unlisted re-router when the markdown table beside it was
+ * built perfectly.
+ */
+export function measureTablePartRoutes(name: string, config: CatalogConfig): TableRouteVerdict {
+  const table = '| a | b |\n| - | - |\n| CELLTEXT | d |\n';
+  const cellTextIsInATable = (doc: string): boolean => {
+    const root = runToRawLayer(doc, config);
+    const seen: NodeLike[] = [];
+    const walk = (n: NodeLike): void => {
+      for (const c of n.children ?? []) {
+        if (c.type === 'element' && c.tagName === 'table') seen.push(c);
+        walk(c);
+      }
+    };
+    walk(root);
+    return seen.some((t) => textContent(t).includes('CELLTEXT'));
+  };
+  if (!cellTextIsInATable(`para\n\n${table}`)) return 'unmeasurable';
+  return cellTextIsInATable(`<${name}></${name}>\n\n${table}`) ? 'inert' : 'routes';
+}
+
 // ── the operator set ────────────────────────────────────────────────────
 
 export type OperatorName = 'identity' | 'slash' | 'space' | 'attr' | 'newline' | 'caseFold' | 'truncate' | 'elide';

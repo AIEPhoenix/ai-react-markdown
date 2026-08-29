@@ -176,19 +176,28 @@ const FRAGMENT_TOKENS = [
  *
  *   FALSIFIED against measured grammar behaviour by `constructAxisProbe`,
  *   over candidate pools WIDER than the lists themselves, so a missing
- *   name reds and not only an extra one — `type1`, `rawText`, `type6`,
- *   `void`, `noElement`. Deriving from these five is safe. Both directions
- *   are empty on all five: `void`'s three known omissions (`basefont`,
- *   `bgsound`, `keygen`) joined the list with the derived-seal batch, and
- *   this paragraph went on describing them as open for a release — the
- *   probe's own assertion had already moved to `missingFromList: []`.
+ *   name reds and not only an extra one. As of 2026-08-29 that is ALL EIGHT
+ *   — `type1`, `rawText`, `type6`, `void`, `noElement`, `tablePart`,
+ *   `scopeBarrier`, `foreignRoot` — and the dangerous direction is empty on
+ *   every one of them. Deriving the alphabet from these lists is therefore
+ *   no longer self-certifying, which was this paragraph's standing caveat
+ *   for two releases.
  *
- *   NOT FALSIFIED BY ANYTHING — `tablePart`, `scopeBarrier`, `foreignRoot`.
- *   The classes those three separate are self-certified: this corpus covers
- *   the distinctions the scanner BELIEVES it makes on them, and cannot
- *   cover a distinction it has wrongly failed to make. F19 lived on
- *   `scopeBarrier`. A green run over those cells is evidence about the
- *   splice, not about the list.
+ *   `void`'s three known omissions (`basefont`, `bgsound`, `keygen`) joined
+ *   the list with the derived-seal batch, and this paragraph went on
+ *   describing them as open for a release — the probe's own assertion had
+ *   already moved to `missingFromList: []`.
+ *
+ *   What each probe CANNOT decide is named in its own assertion rather than
+ *   folded into a pass: `scopeBarrier` leaves four names undecidable
+ *   (`select`, `table`, `template`, `title`) because raw text swallows the
+ *   end tag or foster parenting hides the marker, and three more measured
+ *   transparent whose barrier role needs a `<table>` ancestor that answers
+ *   the scope walk before they can. All of those are the over-blocking
+ *   direction. F19 lived on `scopeBarrier`, and the probe that would have
+ *   caught it now sees a barrier through each of the three namespaces it
+ *   models — asserted per context, so an empty dangerous set means "none
+ *   found" rather than "nothing asked".
  *
  *   `documentStructure` left that group with F28, in the only way a list
  *   can: every one of its members is now asserted, by measurement, to be a
