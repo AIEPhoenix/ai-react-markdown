@@ -490,6 +490,17 @@ const TIMEOUT_MS = Math.max(3_600_000, 900_000 * 24 ** Math.max(0, MAX_K - 3));
  * `EXHAUSTIVE_NAME_K=3` is the deep setting; `0` skips the band.
  */
 const NAME_K = Number(testEnv('EXHAUSTIVE_NAME_K') ?? 2);
+/** The name band's own cut stride. The DEFAULT thins to every third cut at
+ *  K>=3 because that is CI's budget; the release gate passes 1 explicitly
+ *  (`CENSUS_NAME_STRIDE` in `fiveleg.sh`) and has since 2026-08-29. Measured
+ *  on one shard at K=3 cross: 397 s at stride 3 against 1077 s at stride 1,
+ *  for 936k against 2.62M cut schedules.
+ *
+ *  Note the shape of that sentence, because the file got it wrong once about
+ *  the OTHER stride: this describes the default and names the script that
+ *  overrides it. A comment here cannot know what the gate passes — only the
+ *  script does — so it may say what the default is and where to look, never
+ *  what the gate runs. */
 const NAME_STRIDE = Number(testEnv('EXHAUSTIVE_NAME_STRIDE') ?? (NAME_K >= 3 ? 3 : 1));
 /** Same doctrine as `TIMEOUT_MS`, from this band's own measurements: 161 s
  *  at K=2 and 2919 s at K=3 (contended, unsharded). 1800 s at K=2 is ~11×
@@ -1035,11 +1046,20 @@ function reportAndAssert(band: string, tokens: readonly string[], maxK: number, 
   }
 }
 
-describe(`splice exhaustive sweep (fragment band K=${MAX_K}, alphabet=${FRAGMENT_TOKENS.length})`, () => {
-  test('all sequences × all 2-cuts (+ sampled 3-cuts)', { timeout: TIMEOUT_MS }, () => {
-    reportAndAssert('fragment', FRAGMENT_TOKENS, MAX_K, CUT_STRIDE, sweep(FRAGMENT_TOKENS, MAX_K, CUT_STRIDE));
-  });
-});
+// `EXHAUSTIVE_K=0` skips the band, symmetric with `EXHAUSTIVE_NAME_K=0` and
+// `EXHAUSTIVE_BFS_DEPTH=0`. It did not, and the asymmetry was not documented
+// anywhere: a cost experiment that set it got `expected 0 to be greater than
+// or equal to 1` out of an anti-vacuity floor — a red that names neither the
+// knob nor the cause, on a leg where a red is supposed to mean a defect.
+// Found 2026-08-29 by walking into it while measuring the name band.
+describe.skipIf(MAX_K === 0)(
+  `splice exhaustive sweep (fragment band K=${MAX_K}, alphabet=${FRAGMENT_TOKENS.length})`,
+  () => {
+    test('all sequences × all 2-cuts (+ sampled 3-cuts)', { timeout: TIMEOUT_MS }, () => {
+      reportAndAssert('fragment', FRAGMENT_TOKENS, MAX_K, CUT_STRIDE, sweep(FRAGMENT_TOKENS, MAX_K, CUT_STRIDE));
+    });
+  }
+);
 
 describe.skipIf(NAME_K === 0)(
   `name-class census (K=${NAME_K}, alphabet=${NAME_CLASS_TOKENS.length} from ${NAME_CLASS_REPS.length} classes)`,

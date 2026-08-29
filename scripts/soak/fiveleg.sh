@@ -30,7 +30,7 @@
 # Env overrides (defaults = the standard gate; the scaled release gate used
 # FUZZ1=33334 FUZZ2=50000 for 400k/600k legs):
 #   SHARDS (12)  FUZZ1 (12500)  FUZZ2 (30000)  FUZZ3 (8000)  ORACLE (4000)
-#   CENSUS_STRIDE (1)  CENSUS_NAME_K (3)
+#   CENSUS_STRIDE (1)  CENSUS_NAME_K (3)  CENSUS_NAME_STRIDE (1)
 #
 # CENSUS_STRIDE is 1, which is FULL cut schedules — the value it had before
 # 2026-08-28 and the value `spliceExhaustive.test.ts` has always described as
@@ -80,6 +80,16 @@ FUZZ3=${FUZZ3:-8000}
 ORACLE=${ORACLE:-4000}
 CENSUS_STRIDE=${CENSUS_STRIDE:-1}
 CENSUS_NAME_K=${CENSUS_NAME_K:-3}
+# The name band has its OWN cut stride, defaulting to 3 at K>=3, and the gate
+# never passed it either — a second value behind the same door as
+# EXHAUSTIVE_CONFIG_MODE, found while auditing the first. Unlike
+# CENSUS_STRIDE nothing had ever claimed the gate ran it at 1, so this is a
+# coverage decision rather than a correction. Measured 2026-08-29 on one
+# shard at K=3 cross: 397 s at stride 3, 1077 s at stride 1 — 2.7x the time
+# for 2.8x the cut schedules (936k -> 2.62M), about +11 min on a ~140 min
+# shard. Worth it on the band that reaches tag names, which is where F13,
+# F19 and F28 all lived.
+CENSUS_NAME_STRIDE=${CENSUS_NAME_STRIDE:-1}
 # Comma-separated leg subset; default is all five. `LEGS=census` on the
 # larger box and `LEGS=fuzz,dir,scanner,oracle` on the other is the standard
 # split.
@@ -139,7 +149,7 @@ run_leg scanner src/components/collectDefLabels.fuzz.test.ts \
 # test file's own header calls load-bearing; it is worth nothing until it
 # is HERE.
 run_leg census src/components/incrementalParse/spliceExhaustive.test.ts \
-  'EXHAUSTIVE_K=4 EXHAUSTIVE_STRIDE=$CENSUS_STRIDE EXHAUSTIVE_NAME_K=$CENSUS_NAME_K EXHAUSTIVE_CONFIG_MODE=cross' \
+  'EXHAUSTIVE_K=4 EXHAUSTIVE_STRIDE=$CENSUS_STRIDE EXHAUSTIVE_NAME_K=$CENSUS_NAME_K EXHAUSTIVE_NAME_STRIDE=$CENSUS_NAME_STRIDE EXHAUSTIVE_CONFIG_MODE=cross' \
   'EXHAUSTIVE_SHARD=$i/$SHARDS'
 run_leg oracle src/components/incrementalParse/oracleConformance.test.ts \
   'ORACLE_RAW=1 ORACLE_RUNS=$ORACLE' 'ORACLE_SEED=$((SEED + 300 + i))'
