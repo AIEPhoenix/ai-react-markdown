@@ -34,6 +34,12 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '../..');
 
 const APPS = [
+  // `react-null` is the CONTROL, not a competitor: it runs the same harness
+  // over the same scenarios and renders into a `<pre>`. Its row is the cost
+  // of everything that is not the renderer — string slicing, dispatch,
+  // React's commit for one text node, the browser's rendering pipeline —
+  // and the `throughput-*` numbers are only readable against it.
+  { name: 'react-null', dir: 'benchmarks/react-null', port: 4319, control: true },
   { name: 'react-core', dir: 'benchmarks/react-core', port: 4317 },
   { name: 'react-mantine', dir: 'benchmarks/react-mantine', port: 4318 },
 ];
@@ -170,10 +176,28 @@ async function main() {
             if (!window.__bench) throw new Error('harness never installed');
             return await window.__bench.result();
           });
+          // A run that rendered nothing is a FAILED run, not a fast one.
+          // Every timing here rewards doing less work, so this is the one
+          // shape that would post record numbers while being worthless — and
+          // the control app is the only row allowed to be near-empty.
+          if (m.renderedNodes === null || m.renderedNodes === 0) {
+            throw new Error(
+              `${app.name}/${scenario}: rendered ${m.renderedNodes === null ? 'no container' : '0 nodes'} — ` +
+                'refusing to record timings for a page that produced nothing'
+            );
+          }
           samples.push(m);
           await context.close();
         }
         const pick = (k) => median(samples.map((s) => s[k]));
+        // Per-metric spread. The first version banded every metric with the
+        // spread of `settleMs`, which has a one-frame floor and wobbles by
+        // where the drain landed relative to vsync — so a 15 s cell was
+        // compared with a +-5 ms band (0.03% called a regression) while a
+        // cell whose settle happened to jitter absorbed real 15 ms changes.
+        // A metric's own repeat-to-repeat range is the only honest band for
+        // it.
+        const spreadOf = (k) => spread(samples.map((s) => s[k]));
         const row = {
           app: app.name,
           scenario,
@@ -194,7 +218,15 @@ async function main() {
           frames: pick('frames'),
           streamMs: pick('streamMs'),
           settleMs: pick('settleMs'),
-          settleSpreadMs: spread(samples.map((s) => s.settleMs)),
+          settleSpreadMs: spreadOf('settleMs'),
+          spreads: {
+            streamMs: spreadOf('streamMs'),
+            settleMs: spreadOf('settleMs'),
+            rafP95Ms: spreadOf('rafP95Ms'),
+            totalBlockingMs: spreadOf('totalBlockingMs'),
+            longTasks: spreadOf('longTasks'),
+            renderedNodes: spreadOf('renderedNodes'),
+          },
           rafP95Ms: pick('rafP95Ms'),
           longTasks: pick('longTasks'),
           longestTaskMs: pick('longestTaskMs'),
@@ -212,7 +244,7 @@ async function main() {
         process.stdout.write(
           `[bench] ${app.name.padEnd(14)} ${scenario.padEnd(19)}` +
             ` stream=${ms(row.streamMs)}ms settle=${ms(row.settleMs)}ms(±${Math.round(row.settleSpreadMs ?? 0)})` +
-            ` rafP95=${row.rafP95Ms === null ? ' n/a' : row.rafP95Ms.toFixed(1)}ms/${row.frames}f` +
+            ` rafP95=${row.rafP95Ms === null ? '  n/a  ' : `${row.rafP95Ms.toFixed(1)}ms`}/${row.frames}f` +
             ` LT=${row.longTasks} TBT=${ms(row.totalBlockingMs)}ms nodes=${row.renderedNodes}` +
             `${row.outcome === 'settled' ? '' : `  ⚠ ${row.outcome}`}` +
             `${row.foreignNodes > 0 ? `  ⚠ ${row.foreignNodes} foreign nodes — extension contamination` : ''}\n`

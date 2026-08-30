@@ -54,8 +54,20 @@ export type AfterStream = 'none' | 'scroll';
  *
  * `immediate` does not wait for anything: the next chunk is queued on a
  * MessageChannel port, which yields to the event loop without the 4 ms clamp
- * `setTimeout(0)` picks up and without waiting for a frame. `streamMs` then
- * measures the renderer's own processing time and nothing else.
+ * `setTimeout(0)` picks up and without waiting for a frame. `streamMs` is
+ * then the renderer's JS cost **with the browser's rendering pipeline
+ * amortized across far fewer passes than chunks** — not "the renderer's own
+ * cost and nothing else", which is what this comment used to claim.
+ *
+ * The amortization is large and uneven, which is the caveat that matters:
+ * style, layout and paint run once per rendering opportunity, so core's
+ * `throughput-code` did 38 of them for 1251 chunks (33:1) while mantine's
+ * did 1074 (1.2:1). A regression that lives in LAYOUT is therefore
+ * compressed by up to 33x in exactly the cells this file recommends for
+ * comparison, and the same content reads core:mantine as 1:52 here against
+ * 1:1.8 under frame pacing. Both are true measurements of different things.
+ * Read `throughput-*` as a JS-headroom probe and `burst-*` as the one closer
+ * to a user.
  *
  * That third mode exists because the first two both turned out to be bounded
  * by something other than the renderer. Measured 2026-08-30 on `code-dense`,
@@ -64,11 +76,18 @@ export type AfterStream = 'none' | 'scroll';
  *   timer pacing (16 ms/chunk):  21.2 s → 20.6 s   (bounded by the schedule)
  *   frame pacing (1 chunk/rAF):  10.4 s → 10.4 s   (bounded by 120 Hz refresh)
  *
- * Neither could see a fourfold CPU slowdown, because this renderer finishes a
- * chunk in about a millisecond and still fits in the gap after being slowed
- * four times. That is a good result about the renderer and a bad one about
- * the instrument: a suite whose every scenario is bounded by a clock cannot
- * detect the renderer getting slower until it gets 8 ms/chunk slower.
+ * Neither could see a fourfold CPU slowdown of THIS renderer, because it
+ * finishes a chunk in about a millisecond and still fits in the gap after
+ * being slowed four times.
+ *
+ * State that as a DEAD ZONE rather than as blindness, because the stronger
+ * claim is refuted by this suite's own output: frame-paced `burst-code`
+ * separates core from mantine 10.4 s to 18.7 s (1.8x), cleanly, because
+ * mantine's per-chunk cost is above one refresh interval. The honest version
+ * is that a regression keeping per-chunk cost under one refresh interval —
+ * 8.3 ms here, 16.7 ms on a 60 Hz runner — is invisible to `timer` and
+ * `frame` pacing, and `immediate` is the only mode with no dead zone, at the
+ * price of the amortization described below.
  */
 export type Pacing = 'timer' | 'frame' | 'immediate';
 

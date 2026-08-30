@@ -57,8 +57,13 @@ const METRICS = [
   ['renderedNodes', 'up'],
   ['scrollJankFrames', 'up'],
   ['scrollDriftPx', 'up'],
-  ['heapBytes', 'up'],
 ];
+
+/** `heapBytes` is deliberately absent. It measures allocation churn rather
+ *  than retention and is not comparable even between two runs of the same
+ *  cell — measured 40/77/123 MB for three pacings converging on a
+ *  byte-identical DOM. Comparing it would report a regression on nearly
+ *  every run. See its field doc in `harness.ts`. */
 
 const cells = [...new Set([...before.byCell.keys(), ...after.byCell.keys()])].sort();
 process.stdout.write(`before: ${before.stamp}\nafter:  ${after.stamp}\nthrottle: ${before.throttle}x\n\n`);
@@ -82,7 +87,6 @@ for (const cell of cells) {
     continue;
   }
 
-  const noise = Math.max(b.settleSpreadMs ?? 0, a.settleSpreadMs ?? 0);
   const lines = [];
   for (const [k, worse] of METRICS) {
     const bv = b[k];
@@ -91,19 +95,27 @@ for (const cell of cells) {
     const d = av - bv;
     if (d === 0) continue;
     const pct = bv === 0 ? null : (100 * d) / bv;
-    // Timing metrics get the noise band; counts are exact and do not.
-    const timed = k.endsWith('Ms');
-    const indistinguishable = timed && Math.abs(d) <= noise;
+    // EACH metric is banded by ITS OWN repeat-to-repeat spread, taken from
+    // whichever run varied more. Older files carry only `settleSpreadMs`;
+    // for those, timing metrics fall back to it and the readout says so,
+    // because banding a 15 s stream with a settle jitter is how a 0.03%
+    // change gets called a regression.
+    const ownSpread = Math.max(b.spreads?.[k] ?? 0, a.spreads?.[k] ?? 0);
+    const legacy = b.spreads === undefined || a.spreads === undefined;
+    const noise = legacy && k.endsWith('Ms') ? Math.max(b.settleSpreadMs ?? 0, a.settleSpreadMs ?? 0) : ownSpread;
+    const indistinguishable = Math.abs(d) <= noise;
     const bad = (worse === 'up' && d > 0) || (worse === 'down' && d < 0);
     const mark = indistinguishable ? '~' : bad ? '▲' : '▼';
     if (bad && !indistinguishable) regressions += 1;
     lines.push(
       `  ${mark} ${k.padEnd(17)} ${String(Math.round(bv)).padStart(9)} → ${String(Math.round(av)).padStart(9)}` +
         `  ${d > 0 ? '+' : ''}${Math.round(d)}${pct === null ? '' : ` (${pct > 0 ? '+' : ''}${pct.toFixed(1)}%)`}` +
-        `${indistinguishable ? '  within noise' : ''}`
+        `${indistinguishable ? `  within noise (±${Math.round(noise)})` : ''}`
     );
   }
-  process.stdout.write(`${cell}${noise > 0 ? `   [noise band ±${Math.round(noise)}ms]` : ''}\n`);
+  process.stdout.write(
+    `${cell}${b.spreads === undefined || a.spreads === undefined ? '   [legacy file: bands fall back to settle spread]' : ''}\n`
+  );
   process.stdout.write(lines.length > 0 ? `${lines.join('\n')}\n\n` : '  no change\n\n');
 }
 

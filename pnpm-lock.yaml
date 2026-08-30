@@ -190,6 +190,34 @@ importers:
         specifier: ^7.2.2
         version: 7.3.6(@types/node@25.9.5)(jiti@2.7.0)(lightningcss@1.33.0)(sass-embedded@1.98.0)(sass@1.102.0)(yaml@2.9.0)
 
+  benchmarks/react-null:
+    dependencies:
+      react:
+        specifier: ^19.2.0
+        version: 19.2.8
+      react-dom:
+        specifier: ^19.2.0
+        version: 19.2.8(react@19.2.8)
+    devDependencies:
+      '@bench/kit':
+        specifier: workspace:*
+        version: link:../kit
+      '@types/react':
+        specifier: ^19.2.18
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: ^19.2.4
+        version: 19.2.4(@types/react@19.2.18)
+      '@vitejs/plugin-react':
+        specifier: ^5.1.0
+        version: 5.2.0(supports-color@8.1.1)(vite@7.3.6(@types/node@25.9.5)(jiti@2.7.0)(lightningcss@1.33.0)(sass-embedded@1.98.0)(sass@1.102.0)(yaml@2.9.0))
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vite:
+        specifier: ^7.2.2
+        version: 7.3.6(@types/node@25.9.5)(jiti@2.7.0)(lightningcss@1.33.0)(sass-embedded@1.98.0)(sass@1.102.0)(yaml@2.9.0)
+
   packages/core:
     dependencies:
       '@ai-react-markdown/engine':

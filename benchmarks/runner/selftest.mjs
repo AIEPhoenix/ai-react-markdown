@@ -74,6 +74,9 @@ const REPEATS = 3;
 /** An `immediate`-paced scenario, which is the only kind whose duration is
  *  the renderer's own cost. See arm 3. */
 const THROUGHPUT_SCENARIO = 'throughput-code';
+/** The control app — same harness, same scenarios, renders into a `<pre>`.
+ *  Arm 4 measures the app against it. */
+const NULL_APP = { name: 'react-null', dir: 'benchmarks/react-null', port: 4319 };
 
 const sh = (cmd, args) =>
   new Promise((res, rej) => {
@@ -87,20 +90,51 @@ const median = (xs) => {
   return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
 };
 
-async function serve() {
-  const p = spawn('pnpm', ['--filter', `./${APP.dir}`, 'run', 'preview'], { cwd: ROOT, stdio: 'ignore' });
+/** Same stale-port refusal and teardown wait as `run.mjs`. This file lacked
+ *  both for a day, which mattered more here than there: the workflow runs the
+ *  self-test FIRST and then `bench:web`, so a port left held by this script
+ *  is a port the collection run then measures a stale build on. */
+async function serve(app = APP) {
+  try {
+    const probe = await fetch(`http://localhost:${app.port}/`, { signal: AbortSignal.timeout(1500) });
+    if (probe.ok) {
+      throw new Error(`port ${app.port} is already serving something — kill it first (pkill -f 'vite preview')`);
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message.startsWith('port ')) throw e;
+  }
+  const p = spawn('pnpm', ['--filter', `./${app.dir}`, 'run', 'preview'], { cwd: ROOT, stdio: 'ignore' });
+  let exited = false;
+  p.on('exit', () => {
+    exited = true;
+  });
   const deadline = Date.now() + 60_000;
   for (;;) {
+    if (exited) throw new Error(`${app.dir}: preview exited before serving (port ${app.port} taken?)`);
     if (Date.now() > deadline) {
-      p.kill();
+      p.kill('SIGKILL');
       throw new Error('preview server never came up');
     }
     try {
-      if ((await fetch(`http://localhost:${APP.port}/`)).ok) return p;
+      if ((await fetch(`http://localhost:${app.port}/`)).ok) return p;
     } catch {
       /* not up yet */
     }
     await new Promise((r) => setTimeout(r, 250));
+  }
+}
+
+async function stopServer(server, port) {
+  server.kill('SIGKILL');
+  const freeBy = Date.now() + 10_000;
+  for (;;) {
+    try {
+      await fetch(`http://localhost:${port}/`, { signal: AbortSignal.timeout(500) });
+    } catch {
+      return;
+    }
+    if (Date.now() > freeBy) return;
+    await new Promise((r) => setTimeout(r, 200));
   }
 }
 
@@ -133,14 +167,14 @@ async function measure(browser, handicap) {
 
 /** One run of `scenario` at a given CPU multiplier. Separate from `measure`
  *  because that one is fixed to the handicap scenario and to no throttle. */
-async function measureThrottled(browser, scenario, rate) {
+async function measureThrottled(browser, app, scenario, rate) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const page = await ctx.newPage();
   if (rate > 1) {
     const cdp = await ctx.newCDPSession(page);
     await cdp.send('Emulation.setCPUThrottlingRate', { rate });
   }
-  await page.goto(`http://localhost:${APP.port}/?scenario=${scenario}`, { waitUntil: 'load' });
+  await page.goto(`http://localhost:${app.port}/?scenario=${scenario}`, { waitUntil: 'load' });
   const m = await page.evaluate(async () => {
     const deadline = Date.now() + 240_000;
     while (!window.__bench && Date.now() < deadline) await new Promise((r) => setTimeout(r, 20));
@@ -163,6 +197,7 @@ const fmt = (v) => (v === null || v === undefined ? '    n/a' : String(Math.roun
 
 async function main() {
   await sh('pnpm', ['--filter', `./${APP.dir}`, 'run', 'build']);
+  await sh('pnpm', ['--filter', `./${NULL_APP.dir}`, 'run', 'build']);
   const server = await serve();
   const browser = await chromium.launch({ headless: true });
   const failures = [];
@@ -210,10 +245,22 @@ async function main() {
       `[selftest] large arm: predicted TBT ${tbtBudget}ms (= ${chunks} x (${LARGE_MS} - ${LONG_TASK_MS})), ` +
         `observed ${Math.round(tbtObserved)}ms (${(100 * ratio).toFixed(1)}%)\n`
     );
-    if (ratio < 0.85 || ratio > 1.15) {
+    // The prediction is a LOWER bound, not an identity: each task is the
+    // handicap PLUS that chunk's real render cost, and only the part above
+    // 50 ms counts. On this laptop per-chunk render is under a millisecond
+    // and Chrome's millisecond flooring swallows it, which is why the first
+    // measurement landed at 99.8% — an agreement of two errors cancelling,
+    // not evidence of precision. On a runner three times slower the render
+    // cost stops being swallowed and the honest ratio exceeds 1.15, so a
+    // fixed upper band would red the build for being slow. The upper bound
+    // is therefore derived from this run's own measured per-chunk cost.
+    const baseRenderPerChunk = Math.max(0, (base.streamMs - chunks * 16) / chunks);
+    const upper = 1.15 + (chunks * baseRenderPerChunk) / tbtBudget;
+    if (ratio < 0.85 || ratio > upper) {
       failures.push(
         `blocking time came in at ${(100 * ratio).toFixed(0)}% of the arithmetic prediction ` +
-          `(${Math.round(tbtObserved)}ms vs ${tbtBudget}ms) — the long-task observer is mis-scoped`
+          `(${Math.round(tbtObserved)}ms vs ${tbtBudget}ms, band 85%-${(100 * upper).toFixed(0)}%) — ` +
+          'the long-task observer is mis-scoped'
       );
     }
     if (large.longTasks < chunks * 0.8) {
@@ -244,8 +291,8 @@ async function main() {
     // fixed costs the throttle does not scale (page setup, the final paint),
     // but a pacing bound would collapse it to ~1.0, which no honest band
     // contains.
-    const cpuBound = await measureThrottled(browser, THROUGHPUT_SCENARIO, 4);
-    const cpuFree = await measureThrottled(browser, THROUGHPUT_SCENARIO, 1);
+    const cpuBound = await measureThrottled(browser, APP, THROUGHPUT_SCENARIO, 4);
+    const cpuFree = await measureThrottled(browser, APP, THROUGHPUT_SCENARIO, 1);
     const ratio4x = cpuBound.streamMs / cpuFree.streamMs;
     process.stdout.write(
       `[selftest] throughput arm: ${THROUGHPUT_SCENARIO} ${Math.round(cpuFree.streamMs)}ms at 1x, ` +
@@ -255,6 +302,45 @@ async function main() {
       failures.push(
         `${THROUGHPUT_SCENARIO} only slowed ${ratio4x.toFixed(2)}x under a 4x CPU throttle — ` +
           'it is bounded by a clock rather than by the renderer, so its numbers measure pacing, not throughput'
+      );
+    }
+
+    // --- ARM 4: the app is doing more than the control ---
+    //
+    // Arm 3 alone would pass with a renderer that renders NOTHING: the
+    // `immediate` loop is itself CPU-bound (1251 dispatches plus the
+    // scenario's own string slicing), so it throttles 4x on its own merits.
+    // What that arm proves is "the scenario is not clock-bound"; it says
+    // nothing about `streamMs` being the renderer's cost, which is what the
+    // README claims.
+    //
+    // The null app closes it. It runs the same harness over the same
+    // scenario into a `<pre>`, so its duration IS the harness floor. A real
+    // renderer must be meaningfully above it, and its node count must be
+    // meaningfully above one.
+    const nullServer = await serve(NULL_APP);
+    let floor;
+    try {
+      floor = await measureThrottled(browser, NULL_APP, THROUGHPUT_SCENARIO, 1);
+    } finally {
+      await stopServer(nullServer, NULL_APP.port);
+    }
+    const overFloor = cpuFree.streamMs / Math.max(floor.streamMs, 0.001);
+    process.stdout.write(
+      `[selftest] control arm: null renderer ${Math.round(floor.streamMs)}ms / ${floor.renderedNodes} nodes, ` +
+        `app ${Math.round(cpuFree.streamMs)}ms / ${cpuFree.renderedNodes} nodes — app is ${overFloor.toFixed(2)}x the floor\n`
+    );
+    if (!(cpuFree.renderedNodes > floor.renderedNodes)) {
+      failures.push(
+        `the app rendered ${cpuFree.renderedNodes} nodes against the control's ${floor.renderedNodes} — ` +
+          'it is not rendering more than a <pre>, so every timing below is measuring nothing'
+      );
+    }
+    if (overFloor < 1.2) {
+      failures.push(
+        `the app's throughput stream (${Math.round(cpuFree.streamMs)}ms) is within 20% of the harness floor ` +
+          `(${Math.round(floor.streamMs)}ms) — ` +
+          'the number is dominated by scenario overhead, not by rendering'
       );
     }
 
@@ -279,7 +365,7 @@ async function main() {
     }
   } finally {
     await browser.close();
-    server.kill();
+    await stopServer(server, APP.port);
   }
 
   if (failures.length > 0) {

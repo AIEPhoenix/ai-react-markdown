@@ -136,6 +136,21 @@ the render container and rewrote text between two consecutive queries, taking
 the element count from 271 to 166 while the document only grew. Any count
 taken there is contaminated.
 
+### The control row
+
+`react-null` runs the same harness over the same scenarios into a `<pre>`.
+Its row is the harness floor — string slicing, dispatch, one React commit,
+the browser's rendering pipeline — and `throughput-*` is only readable
+against it, since a share of those durations is overhead rather than
+rendering. It is a control, not a target: optimising toward it would end its
+usefulness.
+
+It also closes the worst failure this suite can have. Every timing metric
+rewards doing less work, so a renderer that silently rendered nothing would
+post the best numbers in the table. The runner now refuses to record a run
+with zero rendered nodes, and the self-test asserts the app is above the
+control on both node count and time.
+
 `foreignNodes` in each result row is the check — it counts nodes inside the
 container carrying known extension markers. Non-zero means the row is dirty.
 It should be zero in every runner-produced row; if it is not, something is
@@ -175,11 +190,20 @@ nothing else. Same scenario, same machine:
 | `frame` (1 chunk/rAF) | 10.4 s | 10.4 s | 1.00x | 120 Hz refresh |
 | `immediate` (unpaced) | 0.33 s | 1.46 s | 4.44x | the renderer   |
 
-**Compare releases on the `throughput-*` scenarios.** The other two are kept
-because "does it keep up with a realistic drip" and "does it stay smooth" are
-real questions — but a suite with only those would look thorough while being
-structurally unable to detect the regressions it exists for, and the numbers
-it produced would be restatements of a clock.
+Read `throughput-*` as a **JS-headroom probe** and `burst-*` as the cell
+closer to what a user feels. Neither alone is enough, and the earlier version
+of this section overclaimed in a way this suite's own output refutes:
+frame-paced `burst-code` separates core from mantine 10.4 s to 18.7 s,
+cleanly, because mantine's per-chunk cost is above one refresh interval.
+
+The precise statement is a **dead zone**, not blindness. A regression that
+keeps per-chunk cost under one refresh interval — 8.3 ms here, 16.7 ms on a
+60 Hz runner — is invisible to `timer` and `frame` pacing. `immediate` has no
+dead zone, and pays for it: style, layout and paint run once per rendering
+opportunity, so core's `throughput-code` performed 38 of them for 1251 chunks
+while mantine's performed 1074. A regression that lives in LAYOUT is
+compressed by up to 33x there, and the same content reads 1:52 under
+`immediate` against 1:1.8 under `frame`.
 
 The self-test asserts this directly (arm 3): if `immediate` pacing ever
 regresses into waiting for something, the 4x ratio collapses toward 1.0 and

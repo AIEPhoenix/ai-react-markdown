@@ -39,8 +39,13 @@ export interface BenchMetrics {
    *  did, which is what `outcome` is for. */
   settleMs: number | null;
   /** Frame pacing DURING the stream. p95 is the one that shows jank; mean
-   *  hides it, which is why both are kept. `frames` is the sample size —
-   *  a p95 over four frames is not a p95, and only the count says so. */
+   *  hides it, which is why both are kept.
+   *
+   *  `rafP95Ms` is null below 60 samples rather than computed from too few:
+   *  at 38 frames the 95th percentile is index 36, i.e. the third largest
+   *  value, and printing that in a column beside a p95 over 3100 frames
+   *  invites a comparison that is not one. `frames` is always reported so a
+   *  reader can see which cells are thin. */
   rafMeanMs: number | null;
   rafP95Ms: number | null;
   frames: number;
@@ -54,15 +59,33 @@ export interface BenchMetrics {
   /** DOM size once settled. `renderedNodes` counts inside the renderer's own
    *  container so the app shell is not credited to the library. */
   domNodes: number;
-  renderedNodes: number;
+  /** Null when the container was not found — see the note at the assignment.
+   *  The runner treats null as a failed run rather than as a fast one. */
+  renderedNodes: number | null;
   /** Nodes inside the container that no renderer put there. Non-zero means a
    *  browser extension is writing into the page and every count in this row
    *  is contaminated — see the README's note on visual verification. */
-  foreignNodes: number;
+  foreignNodes: number | null;
   /** Post-stream scripted scroll, when the scenario asks for one. */
   scrollJankFrames: number | null;
   scrollDriftPx: number | null;
-  /** Best-effort, Chrome only, and reported as null elsewhere rather than 0. */
+  /**
+   * V8 heap in use at the moment the run finished. **Allocation churn, not
+   * retention, and not comparable between cells.**
+   *
+   * Kept because it is free and occasionally suggestive, but it must never
+   * be read as memory cost, and `compare.mjs` ignores it. Three reasons,
+   * each sufficient: nothing forces a GC before the read, so the number is
+   * "allocated and not yet collected"; `performance.memory` covers the V8
+   * heap only, while the DOM this suite is mostly about lives in Blink's
+   * C++ heap and is invisible here; and Chrome quantizes the value.
+   *
+   * Measured 2026-08-30, three pacings converging on a byte-identical DOM
+   * (11432 nodes) in one run: 40 MB, 77 MB, 123 MB. Across two runs of the
+   * same cell, core-vs-mantine went 103/45 and then 77/92 — the sign of the
+   * difference flipped. A "core uses twice the memory" finding was read off
+   * the first of those before this note existed.
+   */
   heapBytes: number | null;
 }
 
@@ -86,6 +109,10 @@ const LONG_TASK_MS = 50;
  *  the middle of heavy work all the time, and calling that "settled" was the
  *  first version's bug — every scenario reported a settle time of one frame. */
 const SETTLE_CONSECUTIVE = 2;
+
+/** Fewest frame samples that make a 95th percentile meaningful. See where it
+ *  is used. */
+const P95_MIN_SAMPLES = 60;
 
 /** Hard caps, because a harness that can hang has no failure mode — it has a
  *  timeout somewhere else, reported as something else. A page that never
@@ -120,6 +147,9 @@ export function installHarness(init: HarnessInit): void {
   let longestEventMs: number | null = null;
   let resolveResult: ((m: BenchMetrics) => void) | null = null;
   const observers: PerformanceObserver[] = [];
+
+  const supports = (type: string): boolean =>
+    (PerformanceObserver.supportedEntryTypes as readonly string[] | undefined)?.includes(type) ?? false;
 
   const observe = (init2: PerformanceObserverInit, fn: (list: PerformanceObserverEntryList) => void): void => {
     try {
@@ -158,7 +188,12 @@ export function installHarness(init: HarnessInit): void {
     if (last?.startTime !== undefined) lcp = last.startTime;
   });
 
+  // Zero shifts means the callback never fires, which would leave `cls` null
+  // and indistinguishable from "this engine does not report layout shift" —
+  // the exact distinction this file's header promises to keep. Seed it to 0
+  // only if the observer actually registered.
   let clsSum = 0;
+  if (supports('layout-shift')) cls = 0;
   observe({ type: 'layout-shift', buffered: true }, (list) => {
     for (const e of list.getEntries() as Array<PerformanceEntry & { value?: number; hadRecentInput?: boolean }>) {
       if (e.hadRecentInput) continue;
@@ -185,10 +220,17 @@ export function installHarness(init: HarnessInit): void {
       if (drainedAt === 0) frameGaps.push(gap);
       else if (settledAt === null) {
         underThreshold = gap <= SETTLE_FRAME_MS ? underThreshold + 1 : 0;
-        if (underThreshold >= SETTLE_CONSECUTIVE) settledAt = now;
-        else if (now - drainedAt > SETTLE_TIMEOUT_MS) {
+        // `performance.now()`, NOT the rAF timestamp. A frame callback is
+        // handed the time the FRAME began, which can precede work that ran
+        // in the same task — including `onDrained()`. Subtracting the two
+        // clocks produced negative settle times on the fastest scenarios
+        // (measured -3 ms on `throughput-math`), i.e. exactly the cells whose
+        // numbers matter most. The gap arithmetic above keeps using `now`,
+        // because frame-to-frame spacing is what it means.
+        if (underThreshold >= SETTLE_CONSECUTIVE) settledAt = performance.now();
+        else if (performance.now() - drainedAt > SETTLE_TIMEOUT_MS) {
           outcome = 'settle-timeout';
-          settledAt = now;
+          settledAt = performance.now();
         }
       }
     }
@@ -214,7 +256,15 @@ export function installHarness(init: HarnessInit): void {
     }
 
     const sorted = [...frameGaps].sort((a, b) => a - b);
-    const p95 = sorted.length > 0 ? sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] : null;
+    // A p95 needs enough samples for the 95th percentile to be a percentile
+    // rather than "the third largest value". At 38 frames — which is what a
+    // 328 ms unpaced stream produces — index 36 of 38 is nearly the maximum,
+    // and reporting it beside a p95 taken over 3100 frames invites a
+    // comparison that is not one. Below the floor the field is null, and
+    // `frames` says why. 60 is the point where the top 5% is at least three
+    // samples wide.
+    const p95 =
+      sorted.length >= P95_MIN_SAMPLES ? sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] : null;
     const mean = sorted.length > 0 ? sorted.reduce((a, b) => a + b, 0) / sorted.length : null;
     const container = init.container();
     const heap = (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory;
@@ -235,8 +285,12 @@ export function installHarness(init: HarnessInit): void {
       longestTaskMs,
       totalBlockingMs,
       domNodes: document.getElementsByTagName('*').length,
-      renderedNodes: container === null ? 0 : container.getElementsByTagName('*').length,
-      foreignNodes: container === null ? 0 : container.querySelectorAll(FOREIGN_SELECTOR).length,
+      // NULL, not 0, when the container is missing. A renderer that rendered
+      // nothing is the best score this suite can produce on every timing
+      // metric, so "0 nodes" must not be a value that compares favourably —
+      // it has to be an absence the runner refuses.
+      renderedNodes: container === null ? null : container.getElementsByTagName('*').length,
+      foreignNodes: container === null ? null : container.querySelectorAll(FOREIGN_SELECTOR).length,
       scrollJankFrames,
       scrollDriftPx,
       heapBytes: heap === undefined ? null : heap.usedJSHeapSize,
@@ -272,15 +326,30 @@ export function installHarness(init: HarnessInit): void {
  *
  * DRIFT is the interesting number, not smoothness: a renderer that grows a
  * node above the viewport moves the content under the user's eyes, and that
- * is invisible to frame timing. Measured as where we asked to be minus where
- * we ended up.
+ * is invisible to frame timing.
+ *
+ * THE CLAMP IS THE WHOLE MEASUREMENT, and getting it wrong made this metric
+ * report a constant for its first day. `window.scrollTo` clamps to
+ * `scrollHeight - innerHeight`; clamping the target to `scrollHeight`
+ * instead compares two different maxima, so the "drift" came out as exactly
+ * the viewport height on any document shorter than `steps x stepPx`
+ * (measured: 884 and 900 against a 900px viewport — a binary indicator of
+ * document height with no drift content at all).
+ *
+ * WHAT IT STILL CANNOT SEE, stated because the docstring above describes the
+ * ambition rather than the code: this runs AFTER the stream has drained, so
+ * the case it names — content landing above the viewport while the user
+ * reads — is never exercised. It measures drift on a static document, which
+ * is nearly always zero. Scrolling during the stream is the version worth
+ * having and is not built.
  */
 export async function scriptedScroll(steps = 30, stepPx = 400): Promise<{ jankFrames: number; driftPx: number }> {
   let jankFrames = 0;
   let last = performance.now();
   let target = 0;
+  const maxScroll = (): number => Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
   for (let i = 0; i < steps; i++) {
-    target = Math.min(document.body.scrollHeight, target + stepPx);
+    target = Math.min(maxScroll(), target + stepPx);
     window.scrollTo(0, target);
     await new Promise<void>((r) =>
       requestAnimationFrame((now) => {
@@ -290,5 +359,7 @@ export async function scriptedScroll(steps = 30, stepPx = 400): Promise<{ jankFr
       })
     );
   }
-  return { jankFrames, driftPx: Math.abs(window.scrollY - Math.min(target, document.body.scrollHeight)) };
+  // Rounded: fractional device-pixel positions make an exact comparison
+  // report sub-pixel "drift" that no user could see.
+  return { jankFrames, driftPx: Math.round(Math.abs(window.scrollY - Math.min(target, maxScroll()))) };
 }
