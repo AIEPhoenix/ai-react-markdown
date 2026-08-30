@@ -222,7 +222,7 @@ export const PacingCalibration: Story = {
         <StreamingReplay
           text={STREAMING_DEMO_CONTENT}
           // Server-buffer-like flushes: large clumps, irregular multi-hundred-ms
-          // gaps — the arrival pattern the adaptive law exists to absorb.
+          // gaps — the arrival pattern the pacing law exists to absorb.
           options={{ chunkSizeMin: 40, chunkSizeMax: 120, chunkDelayMin: 150, chunkDelayMax: 450 }}
           style={{ color: getStreamingTheme(colorScheme).text }}
           renderButton={(streaming, restart) => <ThemedReplayButton streaming={streaming} onRestart={restart} />}
@@ -238,4 +238,97 @@ export const PacingCalibration: Story = {
       )}
     </WithScheme>
   ),
+};
+
+/**
+ * Coarse-delivery calibration arm (v2.10 deadline law): ~2s lumps, the
+ * proxy-buffered SSE shape the redesign exists for. balanced/smooth
+ * should read as an even typewriter about half a period behind;
+ * responsive accepts pauses by contract.
+ */
+export const PacingCalibrationCoarse: Story = {
+  render: () => (
+    <WithScheme>
+      {(colorScheme) => (
+        <StreamingReplay
+          text={STREAMING_DEMO_CONTENT}
+          options={{ chunkSizeMin: 300, chunkSizeMax: 400, chunkDelayMin: 1900, chunkDelayMax: 2400 }}
+          style={{ color: getStreamingTheme(colorScheme).text }}
+          renderButton={(streaming, restart) => <ThemedReplayButton streaming={streaming} onRestart={restart} />}
+        >
+          {(content, streaming) => (
+            <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
+              {PACING_PRESETS.map((pacing) => (
+                <PresetLane key={pacing} pacing={pacing} content={content} streaming={streaming} theme={colorScheme} />
+              ))}
+            </div>
+          )}
+        </StreamingReplay>
+      )}
+    </WithScheme>
+  ),
+};
+
+/**
+ * Two-phase feed for the transition calibration arm: fine per-token
+ * delivery for the first ~third of the text, then abrupt ~2.2s lumps —
+ * the changeover is where the redesign differs most from steady grids
+ * (expected: one larger pop, then even pacing within two lumps). Restart
+ * is a key-remount from the parent — no reset effect needed.
+ */
+const useTwoPhaseStream = (text: string) => {
+  const [state, setState] = useState({ content: '', streaming: true });
+  useEffect(() => {
+    let pos = 0;
+    let alive = true;
+    const timers: number[] = [];
+    const push = (chars: number) => {
+      pos = Math.min(text.length, pos + chars);
+      setState({ content: text.slice(0, pos), streaming: pos < text.length });
+    };
+    const coarse = () => {
+      if (!alive || pos >= text.length) return;
+      timers.push(
+        window.setTimeout(() => {
+          push(352);
+          coarse();
+        }, 2200)
+      );
+    };
+    const fine = () => {
+      if (!alive) return;
+      push(8);
+      if (pos < text.length / 3) timers.push(window.setTimeout(fine, 25));
+      else coarse();
+    };
+    timers.push(window.setTimeout(fine, 25));
+    return () => {
+      alive = false;
+      timers.forEach((id) => window.clearTimeout(id));
+    };
+  }, [text]);
+  return state;
+};
+
+const TransitionLanes = ({ theme, onRestart }: { theme: 'light' | 'dark'; onRestart: () => void }) => {
+  const { content, streaming } = useTwoPhaseStream(STREAMING_DEMO_CONTENT);
+  return (
+    <div style={{ color: getStreamingTheme(theme).text }}>
+      <ThemedReplayButton streaming={streaming} onRestart={onRestart} />
+      <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', marginTop: 12 }}>
+        {PACING_PRESETS.map((pacing) => (
+          <PresetLane key={pacing} pacing={pacing} content={content} streaming={streaming} theme={theme} />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const TransitionCalibration = ({ theme }: { theme: 'light' | 'dark' }) => {
+  const [epoch, setEpoch] = useState(0);
+  return <TransitionLanes key={epoch} theme={theme} onRestart={() => setEpoch((value) => value + 1)} />;
+};
+
+export const PacingCalibrationTransition: Story = {
+  render: () => <WithScheme>{(colorScheme) => <TransitionCalibration theme={colorScheme} />}</WithScheme>,
 };
