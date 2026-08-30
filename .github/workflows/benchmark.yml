@@ -29,6 +29,10 @@ on:
         description: Repeats per cell
         required: false
         default: '3'
+      throttle:
+        description: CPU throttle multiplier (1 = none; 4 is the comparison setting)
+        required: false
+        default: '4'
   push:
     tags:
       # One baseline per release, which is what "collect data over several
@@ -44,7 +48,12 @@ permissions:
 jobs:
   benchmark:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Generous, and measured rather than guessed: pure stream time across the
+    # 39 cells is ~10 min per repeat on a laptop, the frame-paced cells roughly
+    # double on a 60Hz runner, and the throttled throughput cells scale with
+    # the multiplier. Three repeats plus 117 page loads plus three builds does
+    # not fit in 45.
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v5
 
@@ -60,6 +69,19 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Record the environment
+        # `compare.mjs` guards the throttle, and nothing else. A CI artifact
+        # and a laptop run differ by refresh rate, CPU and Chromium build,
+        # any of which reads as a 2x regression to someone comparing them.
+        # Recorded beside the results so that mistake is at least visible.
+        run: |
+          {
+            echo "runner=${RUNNER_OS}/${RUNNER_ARCH}"
+            echo "node=$(node -v)"
+            echo "chromium=$(pnpm exec playwright --version)"
+            nproc | sed 's/^/cpus=/'
+          } | tee benchmarks/results-env.txt
+
       - name: Build the packages the apps consume
         # The apps resolve `@ai-react-markdown/*` through `exports` to `dist`,
         # exactly as a user's install would. Without this they would resolve
@@ -74,7 +96,13 @@ jobs:
         # instrument is not observing.
         run: pnpm bench:web:selftest
 
-      - name: Collect baselines
+      - name: Collect baselines (throttled)
+        # THROTTLED, because 1x on a runner collects the useless kind of
+        # honest number: the first unthrottled baseline had zero long tasks
+        # and zero blocking time in 12 of 14 cells, with every frame p95
+        # within a millisecond of the display floor. Ninety days of artifacts
+        # in which nothing can move is worse than none.
+        #
         # Through env, not interpolated into the command line. `inputs` is
         # only settable by someone who can already dispatch this workflow, so
         # this is hygiene rather than a live hole — but a run: line that
@@ -82,11 +110,14 @@ jobs:
         # the habit of writing.
         env:
           REPEATS: ${{ inputs.repeats || '3' }}
-        run: pnpm bench:web --repeats "$REPEATS"
+          THROTTLE: ${{ inputs.throttle || '4' }}
+        run: pnpm bench:web --repeats "$REPEATS" --throttle "$THROTTLE"
 
       - uses: actions/upload-artifact@v4
         with:
           name: benchmark-${{ github.sha }}
-          path: benchmarks/results/*.json
+          path: |
+            benchmarks/results/*.json
+            benchmarks/results-env.txt
           if-no-files-found: error
           retention-days: 90

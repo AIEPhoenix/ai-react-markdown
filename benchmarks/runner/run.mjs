@@ -216,6 +216,14 @@ async function main() {
               : 'settled',
           foreignNodes: Math.max(...samples.map((x) => x.foreignNodes)),
           frames: pick('frames'),
+          commits: pick('commits'),
+          chunks: pick('chunks'),
+          // Below 1.0 means React coalesced deliveries: `streamMs` is then a
+          // per-COMMIT cost, not per-chunk, and dividing by chunks
+          // under-states the per-update work. The ratio falls as the
+          // renderer slows, so a suite that ignored it would under-report
+          // large regressions specifically.
+          commitRatio: pick('chunks') > 0 ? pick('commits') / pick('chunks') : null,
           streamMs: pick('streamMs'),
           settleMs: pick('settleMs'),
           settleSpreadMs: spreadOf('settleMs'),
@@ -231,7 +239,10 @@ async function main() {
           longTasks: pick('longTasks'),
           longestTaskMs: pick('longestTaskMs'),
           totalBlockingMs: pick('totalBlockingMs'),
-          lcp: pick('lcp'),
+          // Named for what it measures: the shell's paint, which is the
+          // same in every cell because streamed content grows below the
+          // fold. Not a streaming metric; see its field doc.
+          shellPaintMs: pick('shellPaintMs'),
           cls: pick('cls'),
           domNodes: pick('domNodes'),
           renderedNodes: pick('renderedNodes'),
@@ -246,6 +257,7 @@ async function main() {
             ` stream=${ms(row.streamMs)}ms settle=${ms(row.settleMs)}ms(±${Math.round(row.settleSpreadMs ?? 0)})` +
             ` rafP95=${row.rafP95Ms === null ? '  n/a  ' : `${row.rafP95Ms.toFixed(1)}ms`}/${row.frames}f` +
             ` LT=${row.longTasks} TBT=${ms(row.totalBlockingMs)}ms nodes=${row.renderedNodes}` +
+            ` commits=${row.commits}/${row.chunks}` +
             `${row.outcome === 'settled' ? '' : `  ⚠ ${row.outcome}`}` +
             `${row.foreignNodes > 0 ? `  ⚠ ${row.foreignNodes} foreign nodes — extension contamination` : ''}\n`
         );

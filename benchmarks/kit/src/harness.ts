@@ -28,7 +28,22 @@ export interface BenchMetrics {
    *  never went quiet, and its settle-derived numbers must be read as
    *  lower bounds rather than measurements. The runner prints it. */
   outcome: Outcome;
-  lcp: number | null;
+  /**
+   * Largest contentful paint — of the APP SHELL, not of the stream.
+   *
+   * Kept and renamed in the readout rather than deleted, because it is not
+   * meaningless, only easy to misread: every cell lands at 104-120 ms
+   * regardless of what the renderer then does, since the largest in-viewport
+   * text block is painted from the first chunk. The exception proves the
+   * rule — `turn-taking` reads ~1140 ms in both apps purely because its
+   * content emits no `#` heading, so a bigger block is reached later. That
+   * is a fact about the scenario's markdown, not about performance.
+   *
+   * Streamed content grows BELOW the fold, so LCP structurally cannot
+   * describe the streaming path. Read it as "did the shell paint promptly",
+   * and nothing else.
+   */
+  shellPaintMs: number | null;
   cls: number | null;
   /** Longest event-handler duration seen. Not INP — there is no real user
    *  input here — but it catches a scenario whose scroll handler blocks. */
@@ -66,6 +81,34 @@ export interface BenchMetrics {
    *  browser extension is writing into the page and every count in this row
    *  is contaminated — see the README's note on visual verification. */
   foreignNodes: number | null;
+  /**
+   * How many times the container's DOM actually changed during the stream,
+   * against how many chunks were delivered.
+   *
+   * These are NOT the same number and the gap decides how `streamMs` reads.
+   * React yields every few milliseconds; when one chunk's render overruns a
+   * slice, the next delivery can land first and the in-progress render
+   * restarts against the newer string — the intermediate commit never
+   * happens. `streamMs` is then a per-COMMIT cost wearing a per-chunk label,
+   * and the effect grows with slowness, which would make this suite
+   * systematically under-report exactly the large regressions it exists to
+   * catch.
+   *
+   * Counted with a MutationObserver on the container rather than from
+   * React internals: what matters is whether the DOM moved, and an observer
+   * cannot be wrong about that in the way a framework hook could.
+   *
+   * MEASURED 2026-08-30, and the coalescing worry does not reproduce:
+   * `throughput-code` gives 1250/1251 on all three apps, including
+   * `react-mantine` at ~14 ms per chunk — well past React's ~5 ms slice,
+   * which is where coalescing would have to appear if it happened at all.
+   * So `streamMs` on these cells is a per-chunk cost and dividing by chunks
+   * is sound. Keep the counter anyway: the property is a fact about the
+   * current React scheduler and the current renderer, not a guarantee, and
+   * it is cheap to keep watching.
+   */
+  commits: number;
+  chunks: number;
   /** Post-stream scripted scroll, when the scenario asks for one. */
   scrollJankFrames: number | null;
   scrollDriftPx: number | null;
@@ -130,6 +173,8 @@ export interface HarnessInit {
   app: string;
   scenario: string;
   container: () => Element | null;
+  /** Chunk count of this scenario, so the readout can put commits beside it. */
+  chunks: number;
   onScroll?: () => Promise<{ jankFrames: number; driftPx: number }>;
 }
 
@@ -206,6 +251,24 @@ export function installHarness(init: HarnessInit): void {
     for (const e of list.getEntries()) longestEventMs = Math.max(longestEventMs ?? 0, e.duration);
   });
 
+  // Mutation counting. Attached lazily: the container does not exist until
+  // React's first commit, and observing the document instead would count the
+  // app shell's own mutations as renderer work.
+  let commits = 0;
+  let mutationObserver: MutationObserver | null = null;
+  const attachMutationObserver = (): void => {
+    if (mutationObserver !== null) return;
+    const target = init.container();
+    if (target === null) return;
+    mutationObserver = new MutationObserver((records) => {
+      // One batch of records is one delivery of work to the DOM, however
+      // many nodes it touched — counting records would count node churn,
+      // which is a different question and one `renderedNodes` answers.
+      if (records.length > 0) commits += 1;
+    });
+    mutationObserver.observe(target, { childList: true, subtree: true, characterData: true });
+  };
+
   let rafHandle = 0;
   let lastFrame = 0;
   let underThreshold = 0;
@@ -246,6 +309,13 @@ export function installHarness(init: HarnessInit): void {
     cancelAnimationFrame(rafHandle);
     if (streamTimer !== undefined) clearTimeout(streamTimer);
     for (const po of observers) po.disconnect();
+    // Drain the queue before disconnecting: records delivered in the same
+    // task as the final commit would otherwise be dropped and the last
+    // chunk would look uncommitted.
+    if (mutationObserver !== null) {
+      if (mutationObserver.takeRecords().length > 0) commits += 1;
+      mutationObserver.disconnect();
+    }
 
     let scrollJankFrames: number | null = null;
     let scrollDriftPx: number | null = null;
@@ -273,7 +343,7 @@ export function installHarness(init: HarnessInit): void {
       scenario: init.scenario,
       app: init.app,
       outcome,
-      lcp,
+      shellPaintMs: lcp,
       cls,
       longestEventMs,
       streamMs: (drainedAt === 0 ? performance.now() : drainedAt) - startedAt,
@@ -291,6 +361,8 @@ export function installHarness(init: HarnessInit): void {
       // it has to be an absence the runner refuses.
       renderedNodes: container === null ? null : container.getElementsByTagName('*').length,
       foreignNodes: container === null ? null : container.querySelectorAll(FOREIGN_SELECTOR).length,
+      commits,
+      chunks: init.chunks,
       scrollJankFrames,
       scrollDriftPx,
       heapBytes: heap === undefined ? null : heap.usedJSHeapSize,
@@ -305,6 +377,10 @@ export function installHarness(init: HarnessInit): void {
     ready: true,
     start(): void {
       startedAt = performance.now();
+      attachMutationObserver();
+      // The container may not exist yet on the very first frame; retry once
+      // the first commit has produced it.
+      requestAnimationFrame(() => attachMutationObserver());
       rafHandle = requestAnimationFrame(frame);
       // A scenario that never drains would otherwise sit in the raf loop
       // until the runner's own deadline and be reported as a dead page.

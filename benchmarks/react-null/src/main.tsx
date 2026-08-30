@@ -44,6 +44,7 @@ function Bench({ scenarioId }: { scenarioId: string }): React.ReactElement {
       app: APP,
       scenario: scenario.id,
       container: () => document.getElementById(CONTAINER_ID),
+      chunks: scenario.chunks.length,
       onScroll: scenario.after === 'scroll' ? () => scriptedScroll() : undefined,
     });
     window.__bench?.start();

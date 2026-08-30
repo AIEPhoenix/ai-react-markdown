@@ -136,6 +136,20 @@ the render container and rewrote text between two consecutive queries, taking
 the element count from 271 to 166 while the document only grew. Any count
 taken there is contaminated.
 
+### commits vs chunks
+
+Each row reports `commits=N/M`: how many times the container's DOM actually
+changed against how many chunks were delivered. If N were meaningfully below
+M, React would be coalescing deliveries, `streamMs` would be a per-_commit_
+cost wearing a per-chunk label, and — because coalescing grows with slowness
+— the suite would systematically under-report exactly the large regressions
+it exists to catch.
+
+Measured 2026-08-30: **1250/1251 on all three apps**, `react-mantine`
+included, where a chunk takes ~14 ms and comfortably exceeds React's work
+slice. So the per-chunk reading is sound. The counter stays because that is
+a property of today's scheduler rather than a guarantee.
+
 ### The control row
 
 `react-null` runs the same harness over the same scenarios into a `<pre>`.
