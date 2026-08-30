@@ -49,7 +49,43 @@ const flag = (name, fallback) => {
   const i = args.indexOf(`--${name}`);
   return i === -1 ? fallback : args[i + 1];
 };
-const REPEATS = Number(flag('repeats', '3'));
+/**
+ * Kept samples per cell. Five, not three: the shortest cells vary by ~5%
+ * after warm-up, and a 3-sample median over that is itself unstable. Five is
+ * where the median stops moving between runs on the measurements above.
+ */
+const REPEATS = Number(flag('repeats', '5'));
+/**
+ * Samples taken and DISCARDED before the ones that count.
+ *
+ * MEASURED rather than assumed, and the effect is smaller and narrower than
+ * the folklore. Twelve consecutive runs per cell:
+ *
+ *   throughput-code   341 331 318 317 329 324 318 316 320 314 318 315
+ *                     all 12: spread 8%   dropping 4: spread 5%
+ *   throughput-long   649 648 665 654 664 649 642 645 669 660 670 649
+ *                     all 12: spread 4%   dropping 4: spread 4%  (no gain)
+ *   burst-code        10422 10423 10424 ... spread 0% either way
+ *
+ * Only the SHORTEST cell warms up, and only for about two runs — 341 and 331
+ * against a steady ~317. `throughput-long` gains nothing from discarding
+ * because its 4% is genuine run-to-run noise, not warm-up, and the
+ * frame-paced cells are pinned to the refresh rate and do not vary at all.
+ *
+ * So the default is 2, not the 3 an earlier draft of this comment claimed
+ * from a smaller sample. Discarding is not free — a dropped sample costs the
+ * same wall clock as a kept one, and on a 10 s cell that is 20 s of nothing.
+ */
+const WARMUP = Number(flag('warmup', '2'));
+/**
+ * Quiet time between samples, ms.
+ *
+ * The tail of one run — the page context closing, its GC, the renderer's
+ * teardown — lands inside the next one otherwise. Cheap insurance against a
+ * class of contamination that shows up as unexplained variance rather than
+ * as an obvious failure.
+ */
+const SETTLE_BETWEEN_MS = Number(flag('settle-between', '400'));
 const ONLY_APP = flag('app', null);
 const ONLY_SCENARIO = flag('scenario', null);
 const HEADED = args.includes('--headed');
@@ -161,7 +197,9 @@ async function main() {
 
       for (const scenario of wanted) {
         const samples = [];
-        for (let i = 0; i < REPEATS; i++) {
+        // Warm-up rounds run identically and are thrown away — see `WARMUP`.
+        for (let i = 0; i < WARMUP + REPEATS; i++) {
+          if (i > 0 && SETTLE_BETWEEN_MS > 0) await new Promise((r) => setTimeout(r, SETTLE_BETWEEN_MS));
           const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
           const page = await context.newPage();
           if (THROTTLE > 1) {
@@ -186,8 +224,8 @@ async function main() {
                 'refusing to record timings for a page that produced nothing'
             );
           }
-          samples.push(m);
           await context.close();
+          if (i >= WARMUP) samples.push(m);
         }
         const pick = (k) => median(samples.map((s) => s[k]));
         // Per-metric spread. The first version banded every metric with the
@@ -202,6 +240,7 @@ async function main() {
           app: app.name,
           scenario,
           repeats: REPEATS,
+          warmup: WARMUP,
           // Recorded per row, not just in the file header: a row is what gets
           // quoted, and a number from a 4x run quoted beside an unthrottled
           // one is a false comparison that nothing else here would catch.
@@ -294,7 +333,10 @@ async function main() {
   mkdirSync(resolve(ROOT, 'benchmarks/results'), { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const out = resolve(ROOT, `benchmarks/results/${stamp}.json`);
-  writeFileSync(out, `${JSON.stringify({ stamp, throttle: THROTTLE, repeats: REPEATS, rows }, null, 2)}\n`);
+  writeFileSync(
+    out,
+    `${JSON.stringify({ stamp, throttle: THROTTLE, repeats: REPEATS, warmup: WARMUP, rows }, null, 2)}\n`
+  );
   process.stdout.write(`\n[bench] wrote ${out}\n`);
 }
 

@@ -93,6 +93,18 @@ for (const cell of cells) {
     continue;
   }
 
+  // A cell whose own repeats disagree by more than the difference being
+  // chased has not measured that difference. Printed per cell rather than
+  // buried, because the reader's next move depends on it: raise `--repeats`
+  // rather than believe the delta.
+  const relNoise = (r, k) => {
+    const sp = r.spreads?.[k];
+    const v = r[k];
+    return sp === undefined || sp === null || !v ? null : sp / Math.abs(v);
+  };
+  const worst = METRICS.map(([k]) => relNoise(b, k)).filter((x) => x !== null);
+  const worstPct = worst.length > 0 ? Math.max(...worst) * 100 : null;
+
   const lines = [];
   for (const [k, worse] of METRICS) {
     const bv = b[k];
@@ -120,7 +132,10 @@ for (const cell of cells) {
     );
   }
   process.stdout.write(
-    `${cell}${b.spreads === undefined || a.spreads === undefined ? '   [legacy file: bands fall back to settle spread]' : ''}\n`
+    `${cell}` +
+      `${b.repeats ? `   [n=${b.repeats}${b.warmup ? `+${b.warmup} warmup` : ''}` : '   ['}` +
+      `${worstPct === null ? '' : `, widest spread ${worstPct.toFixed(0)}%`}]` +
+      `${b.spreads === undefined || a.spreads === undefined ? '   [legacy file: bands fall back to settle spread]' : ''}\n`
   );
   process.stdout.write(lines.length > 0 ? `${lines.join('\n')}\n\n` : '  no change\n\n');
 }

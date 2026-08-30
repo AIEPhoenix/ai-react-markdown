@@ -112,6 +112,41 @@ packages doing different amounts of work, which is the whole reason both are
 measured. Compare a cell against ITSELF over time. `compare.mjs` keys on
 `app/scenario` and will never put two apps side by side; keep it that way.
 
+## How small a difference this can resolve
+
+Measured 2026-08-30, twelve consecutive runs of each cell on an idle laptop:
+
+| cell              | run-to-run spread | what it is                    |
+| ----------------- | ----------------: | ----------------------------- |
+| `burst-code`      |                0% | pinned to the display refresh |
+| `throughput-long` |                4% | genuine noise                 |
+| `throughput-code` |      8% → 5% warm | the shortest cell; warms up   |
+
+So **a change under ~5% is not resolvable** on the fast cells and should not
+be reported as one. `compare.mjs` enforces this per metric using each run's
+own spread, and prints the sample size and the widest spread beside every
+cell — if that number is larger than the delta you are chasing, raise
+`--repeats` instead of believing the delta.
+
+Three settings exist to keep that band tight, and each was measured rather
+than copied from folklore:
+
+- `--warmup 2` discards the first samples. Only the shortest cell warms up,
+  and only for about two runs (341, 331 against a steady ~317).
+  `throughput-long` gains nothing from discarding — its 4% is real noise —
+  and the frame-paced cells do not vary at all. Discarding is not free, so
+  the default is the smallest number the measurement supports.
+- `--repeats 5`, because a 3-sample median over a 5% spread is itself
+  unstable.
+- `--settle-between 400` leaves quiet time between samples, so one run's
+  teardown and GC do not land inside the next.
+
+Measurement is strictly serial — one app, one scenario, one repeat at a time.
+Running cells in parallel was tried and is worse in the way that matters:
+three concurrent pages gave 357/358/358 against a serial median of 323. The
+spread collapses to 0% because every page is equally starved, which looks
+like precision and is a systematic 11% offset.
+
 ## Reading a result
 
 `outcome` is the first column to look at. A row that is not `settled` never
