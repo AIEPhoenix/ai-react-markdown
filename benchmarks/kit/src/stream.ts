@@ -69,6 +69,8 @@ export function driveScenario(
     at += scenario.chunks[i];
     i += 1;
     if (options.handicapMs !== undefined && options.handicapMs > 0) burn(options.handicapMs);
+    // Backwards: take the LAST `at` characters, so each chunk prepends and
+    // everything already on screen is pushed down.
     onContent(scenario.content.slice(0, at));
     // `frame` pacing hands the next chunk over on the next animation frame,
     // so a renderer that takes longer to paint is fed more slowly and the

@@ -109,9 +109,55 @@ export interface BenchMetrics {
    */
   commits: number;
   chunks: number;
-  /** Post-stream scripted scroll, when the scenario asks for one. */
+  /** Post-stream scripted scroll, when the scenario asks for one. Measures a
+   *  STATIC document and is ~0 by construction; `anchorDriftPx` is the
+   *  version that measures the complaint. */
   scrollJankFrames: number | null;
   scrollDriftPx: number | null;
+  /**
+   * How far content already on screen moved IN THE VIEWPORT while the stream
+   * was still arriving — "the page jumped while I was reading".
+   *
+   * READ THE NAME CAREFULLY: this is what the reader SAW move, not what the
+   * layout moved. Chrome's scroll anchoring silently adjusts `scrollY` when
+   * content grows above the viewport, precisely so the visible text stays
+   * put; measured here, a document growing from 900px to 57,753px with 1,200
+   * paragraphs inserted ABOVE the anchor moved it 0px, because the browser
+   * compensated the entire way (`scrollY` pinned at 930 throughout).
+   *
+   * That makes the metric MORE useful than the layout-motion version, not
+   * less — a jump the browser absorbs is a jump the user never had — but it
+   * means a zero here is a statement about the browser plus the renderer
+   * together. A renderer can only defeat scroll anchoring by doing something
+   * it cannot follow: replacing the anchored subtree, or changing sizes
+   * below the anchor in the same frame.
+   *
+   * Null means the anchor never armed, reported rather than folded into 0:
+   * an anchor that never armed reports no movement, which is
+   * indistinguishable from a well-behaved renderer. It spent its first hour
+   * doing exactly that, having armed on elapsed FRAMES rather than on
+   * document height — at which point the document was 900px against a 900px
+   * viewport, `scrollIntoView` had nowhere to go, and the anchor sat at the
+   * top with nothing above it.
+   */
+  anchorDriftPx: number | null;
+  /** Largest single-frame jump. 40px of creep and 40px in one frame read
+   *  very differently, and only the second is a visible jolt. */
+  anchorMaxJumpPx: number | null;
+  /**
+   * The anchored element was removed from the document mid-stream, so
+   * tracking stopped early and `anchorDriftPx` covers only the frames before
+   * that.
+   *
+   * Reported because a detached run's zero means something completely
+   * different from a clean run's zero, and the two are otherwise identical
+   * on screen. Measured while building the control: a version that grew
+   * content by prepending to the MARKDOWN detached on its first sample —
+   * one sample against 1032 on a normal run — and reported 0px, which read
+   * exactly like "nothing moved". A true drift of zero is a fact about the
+   * renderer; a detached zero is the absence of a measurement.
+   */
+  anchorDetached: boolean;
   /**
    * V8 heap in use at the moment the run finished. **Allocation churn, not
    * retention, and not comparable between cells.**
@@ -157,6 +203,10 @@ const SETTLE_CONSECUTIVE = 2;
  *  is used. */
 const P95_MIN_SAMPLES = 60;
 
+/** How far the page must already have scrolled before an anchor means
+ *  anything: at `scrollY` 0 there is nothing above it to move it. */
+const MIN_SCROLL_TO_ARM = 200;
+
 /** Hard caps, because a harness that can hang has no failure mode — it has a
  *  timeout somewhere else, reported as something else. A page that never
  *  settles is a RESULT (`outcome: 'settle-timeout'`), and one that never
@@ -173,8 +223,30 @@ export interface HarnessInit {
   app: string;
   scenario: string;
   container: () => Element | null;
+  /**
+   * Disable the browser's scroll anchoring for this run.
+   *
+   * ONLY the drift control sets this. Chrome compensates for content
+   * inserted above the viewport by moving `scrollY`, so a stream that grows
+   * upward leaves visible content perfectly still — measured on a minimal
+   * repro: inserting 20 paragraphs above an anchor moved it 0px with
+   * anchoring on (`scrollY` 927 -> 1607, the browser absorbing all 680px)
+   * and 680px with it off (`scrollY` unchanged).
+   *
+   * That is why a normal run reading 0 is a real result and not a broken
+   * instrument — but it is also why the control has to switch the feature
+   * off, or it cannot demonstrate that the tracker responds to anything.
+   * Setting it on `documentElement` alone is not enough; the property is
+   * per-element, so the tracker applies it to the anchored subtree.
+   */
+  disableScrollAnchoring?: boolean;
+  /** Grow a DOM block above the renderer's container, outside React's tree.
+   *  The drift control — see the note where it is used. */
+  growAboveControl?: boolean;
   /** Chunk count of this scenario, so the readout can put commits beside it. */
   chunks: number;
+  /** Track mid-stream content movement. See `anchorDriftPx`. */
+  trackAnchor?: boolean;
   onScroll?: () => Promise<{ jankFrames: number; driftPx: number }>;
 }
 
@@ -269,6 +341,74 @@ export function installHarness(init: HarnessInit): void {
     mutationObserver.observe(target, { childList: true, subtree: true, characterData: true });
   };
 
+  // --- mid-stream anchor ---
+  //
+  // Scroll a rendered element to the middle of the viewport once the page is
+  // genuinely scrollable, then never touch the scroll position again and
+  // watch that element's viewport offset. Movement is content growing or
+  // reflowing above it.
+  //
+  // MEASURED while building this, and both facts shaped the code: arming on
+  // frame count armed at the top of a 900px document and reported a
+  // permanent 0; and delivering the document backwards (the obvious control)
+  // does not push the anchor down, it REPLACES the tree, so the anchor
+  // detaches and tracking correctly stops. A control for this metric has to
+  // grow content above a node that survives.
+  let anchorEl: Element | null = null;
+  let anchorLastTop = 0;
+  let anchorDrift = 0;
+  let anchorMaxJump = 0;
+  let anchorArmed = false;
+  let controlFiller: HTMLElement | null = null;
+  /** Reported so a zero can be told from a run that stopped after one
+   *  sample — see the control's note in `HarnessInit`. */
+  let anchorDetached = false;
+
+  const armAnchor = (): void => {
+    if (anchorArmed || init.trackAnchor !== true) return;
+    const host = init.container();
+    if (host === null) return;
+    // Document height, not elapsed frames: "a third of the way through the
+    // stream" is not "a third of the way down the page", and the difference
+    // is the whole bug this metric started with.
+    if (document.documentElement.scrollHeight - window.innerHeight < window.innerHeight) return;
+    const candidates: Element[] = [];
+    const walk = (n: Element): void => {
+      for (const c of n.children) {
+        if (c.getBoundingClientRect().height > 0) candidates.push(c);
+        if (candidates.length < 400) walk(c);
+      }
+    };
+    walk(host);
+    if (candidates.length < 2) return;
+    const pick = candidates[Math.floor(candidates.length / 2)];
+    pick.scrollIntoView({ block: 'center' });
+    // The scroll must have actually happened, or the anchor is at the top
+    // with nothing above it and will report zero forever.
+    if (window.scrollY < MIN_SCROLL_TO_ARM) return;
+    anchorEl = pick;
+    anchorLastTop = pick.getBoundingClientRect().top;
+    anchorArmed = true;
+  };
+
+  const sampleAnchor = (): void => {
+    if (!anchorArmed || anchorEl === null) return;
+    // A detached anchor is a drift event of unknown size. Stop and keep what
+    // was measured rather than report a number that changed meaning.
+    if (!anchorEl.isConnected) {
+      anchorDetached = true;
+      anchorEl = null;
+      return;
+    }
+    const top = anchorEl.getBoundingClientRect().top;
+    const jump = Math.abs(top - anchorLastTop);
+    if (jump > 0.5) {
+      anchorDrift += jump;
+      anchorMaxJump = Math.max(anchorMaxJump, jump);
+    }
+    anchorLastTop = top;
+  };
+
   let rafHandle = 0;
   let lastFrame = 0;
   let underThreshold = 0;
@@ -280,8 +420,18 @@ export function installHarness(init: HarnessInit): void {
       // Only frames during the stream describe streaming cost; frames after
       // the drain belong to settle, and mixing them flattened p95 to
       // uselessness in the first version.
-      if (drainedAt === 0) frameGaps.push(gap);
-      else if (settledAt === null) {
+      if (drainedAt === 0) {
+        frameGaps.push(gap);
+        if (!anchorArmed) armAnchor();
+        if (controlFiller !== null && anchorArmed) {
+          // One paragraph per frame, above everything the renderer owns.
+          const p = document.createElement('p');
+          p.textContent = 'control filler';
+          p.style.overflowAnchor = 'none';
+          controlFiller.appendChild(p);
+        }
+        sampleAnchor();
+      } else if (settledAt === null) {
         underThreshold = gap <= SETTLE_FRAME_MS ? underThreshold + 1 : 0;
         // `performance.now()`, NOT the rAF timestamp. A frame callback is
         // handed the time the FRAME began, which can precede work that ran
@@ -363,6 +513,9 @@ export function installHarness(init: HarnessInit): void {
       foreignNodes: container === null ? null : container.querySelectorAll(FOREIGN_SELECTOR).length,
       commits,
       chunks: init.chunks,
+      anchorDriftPx: anchorArmed ? Math.round(anchorDrift) : null,
+      anchorDetached,
+      anchorMaxJumpPx: anchorArmed ? Math.round(anchorMaxJump) : null,
       scrollJankFrames,
       scrollDriftPx,
       heapBytes: heap === undefined ? null : heap.usedJSHeapSize,
@@ -376,6 +529,46 @@ export function installHarness(init: HarnessInit): void {
   window.__bench = {
     ready: true,
     start(): void {
+      if (init.growAboveControl === true) {
+        // THE CONTROL, and it must not touch the markdown.
+        //
+        // Two earlier versions prepended text to the document — first
+        // backwards, then as filler paragraphs. Both changed the START of
+        // the string, so the markdown re-parsed into a different tree,
+        // React replaced the nodes, and the anchor detached on its FIRST
+        // sample: `detached=true samples=1` against 1032 samples on a
+        // normal run. The control reported 0 not because nothing moved but
+        // because it measured one frame.
+        //
+        // This version inserts a plain DOM node ABOVE the renderer's
+        // container, outside anything React owns. The rendered tree is
+        // untouched, the anchor survives, and it is genuinely displaced.
+        const filler = document.createElement('div');
+        filler.id = 'bench-filler';
+        const host = init.container();
+        host?.parentElement?.insertBefore(filler, host);
+        controlFiller = filler;
+      }
+      if (init.disableScrollAnchoring === true) {
+        // A STYLESHEET, injected at stream start.
+        //
+        // Both earlier attempts failed for timing/scope reasons worth
+        // recording. Setting `.style` inside `armAnchor` ran only once the
+        // anchor armed — by which point the browser had already been
+        // compensating for hundreds of frames and had the scroll position
+        // pinned. Re-applying inside `sampleAnchor` never ran at all: that
+        // function returns early until the anchor exists. And iterating
+        // elements misses every node React inserts afterwards.
+        //
+        // A rule covers the whole subtree, current and future, from before
+        // the first chunk. Measured on a minimal repro: with anchoring on,
+        // inserting 20 paragraphs above an anchor moves it 0px while
+        // `scrollY` jumps 927 -> 1607; with it off, the anchor moves the
+        // full 680px.
+        const style = document.createElement('style');
+        style.textContent = 'html,body,#bench-container,#bench-container *{overflow-anchor:none!important}';
+        document.head.appendChild(style);
+      }
       startedAt = performance.now();
       attachMutationObserver();
       // The container may not exist yet on the very first frame; retry once

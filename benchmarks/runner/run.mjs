@@ -246,6 +246,11 @@ async function main() {
           cls: pick('cls'),
           domNodes: pick('domNodes'),
           renderedNodes: pick('renderedNodes'),
+          anchorDriftPx: pick('anchorDriftPx'),
+          // Any repeat detaching taints the cell: a detached run stops
+          // measuring, so its zero is an absence rather than a result.
+          anchorDetached: samples.some((x) => x.anchorDetached === true),
+          anchorMaxJumpPx: pick('anchorMaxJumpPx'),
           scrollJankFrames: pick('scrollJankFrames'),
           scrollDriftPx: pick('scrollDriftPx'),
           heapBytes: pick('heapBytes'),
@@ -258,6 +263,7 @@ async function main() {
             ` rafP95=${row.rafP95Ms === null ? '  n/a  ' : `${row.rafP95Ms.toFixed(1)}ms`}/${row.frames}f` +
             ` LT=${row.longTasks} TBT=${ms(row.totalBlockingMs)}ms nodes=${row.renderedNodes}` +
             ` commits=${row.commits}/${row.chunks}` +
+            `${row.anchorDriftPx === null ? '' : ` drift=${row.anchorDriftPx}px/max${row.anchorMaxJumpPx}${row.anchorDetached ? '⚠detached' : ''}`}` +
             `${row.outcome === 'settled' ? '' : `  ⚠ ${row.outcome}`}` +
             `${row.foreignNodes > 0 ? `  ⚠ ${row.foreignNodes} foreign nodes — extension contamination` : ''}\n`
         );

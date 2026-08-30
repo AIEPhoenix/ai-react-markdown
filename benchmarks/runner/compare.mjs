@@ -55,6 +55,8 @@ const METRICS = [
   ['longTasks', 'up'],
   ['totalBlockingMs', 'up'],
   ['renderedNodes', 'up'],
+  ['anchorDriftPx', 'up'],
+  ['anchorMaxJumpPx', 'up'],
   ['scrollJankFrames', 'up'],
   ['scrollDriftPx', 'up'],
 ];
@@ -80,6 +82,10 @@ for (const cell of cells) {
   // beats printing a delta between two lower bounds.
   if (b.outcome !== 'settled' || a.outcome !== 'settled') {
     process.stdout.write(`${cell}\n  outcome ${b.outcome} → ${a.outcome} — not compared\n\n`);
+    continue;
+  }
+  if (b.anchorDetached === true || a.anchorDetached === true) {
+    process.stdout.write(`${cell}\n  ⚠ anchor detached mid-stream in one of the runs — drift not compared\n\n`);
     continue;
   }
   if ((b.foreignNodes ?? 0) > 0 || (a.foreignNodes ?? 0) > 0) {

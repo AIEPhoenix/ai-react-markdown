@@ -45,6 +45,9 @@ function Bench({ scenarioId }: { scenarioId: string }): React.ReactElement {
       scenario: scenario.id,
       container: () => document.getElementById(CONTAINER_ID),
       chunks: scenario.chunks.length,
+      trackAnchor: scenario.trackAnchor === true,
+      disableScrollAnchoring: new URLSearchParams(window.location.search).get('grow') === 'above',
+      growAboveControl: new URLSearchParams(window.location.search).get('grow') === 'above',
       onScroll: scenario.after === 'scroll' ? () => scriptedScroll() : undefined,
     });
     window.__bench?.start();
@@ -52,7 +55,9 @@ function Bench({ scenarioId }: { scenarioId: string }): React.ReactElement {
       scenario,
       (next) => setContent(next),
       () => window.__bench?.onDrained(),
-      { handicapMs: Number(new URLSearchParams(window.location.search).get('handicap') ?? 0) }
+      {
+        handicapMs: Number(new URLSearchParams(window.location.search).get('handicap') ?? 0),
+      }
     );
     return () => handle.cancel();
   }, [scenario]);

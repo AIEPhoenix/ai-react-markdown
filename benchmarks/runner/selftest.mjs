@@ -77,6 +77,9 @@ const THROUGHPUT_SCENARIO = 'throughput-code';
 /** The control app — same harness, same scenarios, renders into a `<pre>`.
  *  Arm 4 measures the app against it. */
 const NULL_APP = { name: 'react-null', dir: 'benchmarks/react-null', port: 4319 };
+/** A `trackAnchor` scenario, for arm 5. Frame-paced and short enough to run
+ *  twice inside the self-test's budget. */
+const ANCHOR_SCENARIO = 'anchor-long';
 
 const sh = (cmd, args) =>
   new Promise((res, rej) => {
@@ -167,14 +170,17 @@ async function measure(browser, handicap) {
 
 /** One run of `scenario` at a given CPU multiplier. Separate from `measure`
  *  because that one is fixed to the handicap scenario and to no throttle. */
-async function measureThrottled(browser, app, scenario, rate) {
+async function measureThrottled(browser, app, scenario, rate, query = {}) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const page = await ctx.newPage();
   if (rate > 1) {
     const cdp = await ctx.newCDPSession(page);
     await cdp.send('Emulation.setCPUThrottlingRate', { rate });
   }
-  await page.goto(`http://localhost:${app.port}/?scenario=${scenario}`, { waitUntil: 'load' });
+  const extra = Object.entries(query)
+    .map(([k, v]) => `&${k}=${v}`)
+    .join('');
+  await page.goto(`http://localhost:${app.port}/?scenario=${scenario}${extra}`, { waitUntil: 'load' });
   const m = await page.evaluate(async () => {
     const deadline = Date.now() + 240_000;
     while (!window.__bench && Date.now() < deadline) await new Promise((r) => setTimeout(r, 20));
@@ -341,6 +347,43 @@ async function main() {
         `the app's throughput stream (${Math.round(cpuFree.streamMs)}ms) is within 20% of the harness floor ` +
           `(${Math.round(floor.streamMs)}ms) — ` +
           'the number is dominated by scenario overhead, not by rendering'
+      );
+    }
+
+    // --- ARM 5: anchor drift responds to content growing above ---
+    //
+    // Same shape as the handicap arms: introduce the thing the metric claims
+    // to detect and require it to be detected. A drift of 0 everywhere is
+    // otherwise ambiguous between "this renderer is well behaved" (which is
+    // the expected and desirable result) and "the tracking never armed",
+    // and this suite has already shipped one metric that reported a constant
+    // for a day.
+    //
+    // `?grow=up` delivers the document backwards, so every chunk prepends
+    // and everything on screen is pushed down. Drift must be large. The
+    // normal direction is asserted to stay small in the same breath, because
+    // a tracker that reported huge numbers for everything would also pass
+    // the first half.
+    const driftUp = await measureThrottled(browser, APP, ANCHOR_SCENARIO, 1, { grow: 'above' });
+    const driftDown = await measureThrottled(browser, APP, ANCHOR_SCENARIO, 1);
+    process.stdout.write(
+      `[selftest] anchor arm: ${ANCHOR_SCENARIO} drift ${driftDown.anchorDriftPx}px normal, ` +
+        `${driftUp.anchorDriftPx}px with content growing above\n`
+    );
+    if (driftDown.anchorDriftPx === null || driftUp.anchorDriftPx === null) {
+      failures.push(
+        `anchor tracking never armed (down=${driftDown.anchorDriftPx}, up=${driftUp.anchorDriftPx}) — ` +
+          'the drift column is null rather than measured, so a zero elsewhere would mean nothing'
+      );
+    } else if (driftUp.anchorDriftPx < 500) {
+      failures.push(
+        `content growing ABOVE the anchor moved it only ${driftUp.anchorDriftPx}px — ` +
+          'the drift metric is not observing what it claims to'
+      );
+    } else if (driftUp.anchorDriftPx < driftDown.anchorDriftPx * 4) {
+      failures.push(
+        `growing above (${driftUp.anchorDriftPx}px) is not clearly worse than normal ` +
+          `(${driftDown.anchorDriftPx}px) — the tracker is reporting noise rather than drift`
       );
     }
 

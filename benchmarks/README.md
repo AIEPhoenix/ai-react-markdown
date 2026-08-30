@@ -136,6 +136,63 @@ the render container and rewrote text between two consecutive queries, taking
 the element count from 271 to 166 while the document only grew. Any count
 taken there is contaminated.
 
+### Anchor drift — the complaint nothing else here can see
+
+`anchor-*` scenarios scroll to a rendered element part-way through delivery,
+then stop touching the scroll position and watch that element's viewport
+offset for the rest of the stream. Every pixel it moves is content growing or
+reflowing ABOVE it — "the page jumped while I was reading", which is the most
+common complaint about streaming renderers and which no timing metric can
+detect.
+
+Two numbers: `anchorDriftPx` totals the movement, `anchorMaxJumpPx` is the
+largest single-frame jump. They read differently on purpose — 40px spread
+across a long stream is a slow creep, 40px in one frame is a jolt, and only
+the second is what a reader notices.
+
+This is NOT the same thing as `after: 'scroll'`. That arm runs once the
+stream has drained, on a document that has stopped changing, so it reports
+approximately zero by construction and always did. It is kept because "does a
+settled document scroll smoothly" is a fair question, but it was never the
+question its own docstring claimed.
+
+The anchor is picked from what the renderer has already produced rather than
+planted by the scenario. A planted marker is a node the renderer would have
+to preserve, and the shapes that drift are precisely the ones where nodes get
+replaced instead of appended — a marker would have papered over the case
+worth catching. If the anchor is replaced mid-stream, tracking stops rather
+than reporting a number that quietly means something else.
+
+Two things make a zero here readable rather than ambiguous.
+
+**The self-test forces it non-zero.** Arm 5 grows a DOM block above the
+renderer's container and requires the drift to be large — measured 35,096px
+against 0px on a normal run. Without that, `0px` is equally consistent with
+"the renderer is well behaved" and "the tracker is broken", and it took seven
+independent failures to learn that the second is the likelier reading. Each
+of them produced exactly `drift=0px`: arming on frame count instead of
+document height (so the anchor sat at the top with nothing above it), a
+diagnostic script that reimplemented the arm logic instead of calling it, a
+probe that served a stale build, an anchor placed inside the control's own
+filler, a scroll-anchoring opt-out that covered one wrapper instead of the
+subtree, the same opt-out applied after the browser had already pinned the
+scroll position, and finally a control that prepended to the MARKDOWN — which
+re-parses into a different tree, so React replaced the nodes and the anchor
+detached on its first sample.
+
+**`anchorDetached` is reported.** A detached anchor stops the measurement, so
+its zero is the absence of a result rather than a result. The runner prints
+`⚠detached` and `compare.mjs` refuses to compare such a row.
+
+Scroll anchoring is the other half of why a zero is not trivial. Chrome moves
+`scrollY` to absorb content inserted above the viewport, so what this metric
+reports is what the READER SAW move, not what the layout moved — measured on
+a minimal repro, inserting 20 paragraphs above an anchor moves it 0px while
+`scrollY` jumps 927 → 1607, and 680px with `overflow-anchor: none`. A jump the
+browser absorbs is a jump the user never had, which makes this the more useful
+of the two questions; it also means the control has to switch the feature off
+or it cannot demonstrate anything.
+
 ### commits vs chunks
 
 Each row reports `commits=N/M`: how many times the container's DOM actually
@@ -145,10 +202,23 @@ cost wearing a per-chunk label, and — because coalescing grows with slowness
 — the suite would systematically under-report exactly the large regressions
 it exists to catch.
 
-Measured 2026-08-30: **1250/1251 on all three apps**, `react-mantine`
-included, where a chunk takes ~14 ms and comfortably exceeds React's work
-slice. So the per-chunk reading is sound. The counter stays because that is
-a property of today's scheduler rather than a guarantee.
+Measured 2026-08-30, and **the answer depends on pacing**, which is why this
+is a reported column rather than something checked once:
+
+| cell                        | pacing      | commits/chunks | ratio |
+| --------------------------- | ----------- | -------------- | ----: |
+| `throughput-code`, all apps | `immediate` | 1250/1251      |  1.00 |
+| `anchor-math`, core+mantine | `frame`     | 1417/1540      |  0.92 |
+
+Under `immediate` there is no coalescing even on `react-mantine` at ~14 ms
+per chunk — several times React's work slice — so per-chunk arithmetic on the
+`throughput-*` cells is sound. Under `frame` pacing roughly 8% of deliveries
+land in a frame that already has one pending and get folded in, so per-chunk
+numbers on those cells are off by that much.
+
+The first of those two measurements was briefly written up here as a settled
+fact about the renderer. It was a fact about one pacing, and it survived
+exactly one more scenario.
 
 ### The control row
 
@@ -241,6 +311,47 @@ that the metrics have somewhere to move. The multiplier is recorded in every
 row, and `compare.mjs` refuses to compare runs taken at different ones — a 4x
 row beside a 1x row differs by the throttle long before it differs by
 anything worth reading.
+
+## What this suite structurally cannot see
+
+Not a to-do list — a boundary. Each of these is something a user could
+notice and this design, as built, cannot report. Written down because a
+benchmark's silence is otherwise indistinguishable from good news.
+
+- **Input during the stream.** Nothing types, clicks or selects text while
+  content arrives. "My selection was blown away mid-answer" and "the copy
+  button didn't respond" are common complaints about streaming renderers, and
+  `longestEventMs` has no events to observe. The biggest hole.
+- **Real scrolling during the stream.** The `anchor-*` scenarios cover
+  content moving under a stationary reader, which was the larger half. What
+  is still missing is wheel/touch scrolling _while_ content arrives —
+  compositor-driven scroll, scroll anchoring, and the interaction between the
+  two. `scriptedScroll` uses instant `window.scrollTo` in a rAF loop, so no
+  compositor scroll happens anywhere in this suite.
+- **Staleness.** Nothing measures chunk-arrival to pixels. A renderer that
+  batches many chunks before painting and one that paints each chunk can post
+  the same `streamMs` and feel completely different.
+- **The library's own streaming features.** `smoothStream`,
+  `AIMarkdownDocuments` / turn-taking and `streamingCursor` are all off in
+  every app. The scenario named `turn-taking` is a single growing string and
+  does not exercise the coordinator at all — the name is aspirational.
+- **Viewport priority.** One viewport, no on-screen/off-screen split, no
+  measurement of work spent on content nobody is looking at. An optimisation
+  in that direction cannot be accepted or rejected against this suite as
+  built, which is worth knowing since that was part of the motivation.
+- **Worker offload.** Its benefit shows up in `longTasks` and
+  `totalBlockingMs`, both ~0 in most cells at 1x — so it is only evaluable
+  under throttle.
+- **Paint and raster cost.** The page never scrolls during the stream and
+  most of the document is below the fold.
+- **Memory retention.** `heapBytes` is allocation churn (see its field doc),
+  and there is no unmount/remount leak scenario.
+- **Font loading.** KaTeX ships web fonts; FOUT and the shifts it causes are
+  invisible because CLS is ~0 for below-fold growth.
+- **Anything non-Chromium.** `performance.memory`, `longtask` and
+  `layout-shift` are Chrome-only. On WebKit or Gecko the suite degrades to
+  `streamMs` plus frame counts — and says so through nulls rather than
+  zeroes, but it does degrade.
 
 ## Adding a scenario
 

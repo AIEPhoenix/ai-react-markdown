@@ -33,6 +33,18 @@
 export type AfterStream = 'none' | 'scroll';
 
 /**
+ * Whether to watch a rendered element for movement WHILE the stream is still
+ * arriving.
+ *
+ * This is the "the page jumped while I was reading" check, and it is not the
+ * same as `after: 'scroll'` — that one runs once the stream has drained, on
+ * a document that is no longer changing, and therefore reports ~0 by
+ * construction. The complaint it was meant to cover happens mid-stream, and
+ * before this flag existed nothing in the suite could see it.
+ */
+export type TrackAnchor = boolean;
+
+/**
  * How chunks are paced.
  *
  * `timer` delivers on a fixed `tickMs`, which models an arrival rate: a
@@ -105,6 +117,9 @@ export interface Scenario {
   pacing: Pacing;
   /** Scripted interaction once the stream has drained. */
   after: AfterStream;
+  /** Watch a rendered element for mid-stream movement. Off unless asked:
+   *  it forces layout on every frame, which the cheap cells would notice. */
+  trackAnchor?: TrackAnchor;
 }
 
 /** Deterministic PRNG — scenarios must be byte-identical between runs, and
@@ -298,6 +313,44 @@ export const SCENARIOS: readonly Scenario[] = [
     tickMs: 0,
     pacing: 'frame',
     after: 'none',
+  },
+  // Anchor-drift scenarios. Same content and pacing as their `stream-*`
+  // siblings, with mid-stream tracking on — the pairing is deliberate, so a
+  // drift number can be read against a cell whose other metrics are known.
+  // Frame pacing, because drift is about what a READER sees and a reader is
+  // watching frames, not an unpaced firehose.
+  {
+    id: 'anchor-long',
+    title: 'Long answer, watching a paragraph mid-stream',
+    probes: 'does prose already on screen stay put while more arrives below',
+    content: LONG,
+    chunks: evenChunks(LONG.length, 24),
+    tickMs: 0,
+    pacing: 'frame',
+    after: 'none',
+    trackAnchor: true,
+  },
+  {
+    id: 'anchor-math',
+    title: 'Math-dense answer, watching a block mid-stream',
+    probes: 'KaTeX re-layout of an open display block shifting settled content',
+    content: MATH,
+    chunks: evenChunks(MATH.length, 24),
+    tickMs: 0,
+    pacing: 'frame',
+    after: 'none',
+    trackAnchor: true,
+  },
+  {
+    id: 'anchor-code',
+    title: 'Code-dense answer, watching a block mid-stream',
+    probes: 'a highlighter replacing a fence under the reader',
+    content: CODE,
+    chunks: evenChunks(CODE.length, 24),
+    tickMs: 0,
+    pacing: 'frame',
+    after: 'none',
+    trackAnchor: true,
   },
   // Throughput scenarios: delivery waits for nothing, so `streamMs` is the
   // renderer's own cost. These are the cells a release comparison should
