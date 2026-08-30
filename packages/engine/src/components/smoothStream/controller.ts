@@ -7,22 +7,29 @@
  * exactly the incremental-parse engine's fast path — the controller sits
  * upstream of the renderer and never touches the parse pipeline.
  *
- * Pacing model — an adaptive jitter buffer (audio-playout style):
- * - The controller estimates the source's arrival rate and burst interval
- *   with irregular-sampling EMAs (recorded on every append), and derives a
- *   target buffer B* ≈ bufferFactor × one burst's worth of text — the
- *   causality floor for smoothing bursts of that period.
- * - Streaming: rate = max(floor, rateEma + (backlog − B*) / correctionTau).
- *   Feedforward tracks the source speed (bounded lag at any model speed);
- *   the feedback term pins the backlog near B*, dipping BELOW the source
- *   rate on purpose when the buffer runs low so it can refill instead of
- *   running dry between bursts. The floor is a tiny anti-freeze trickle,
- *   deliberately smaller than any realistic arrival rate.
- * - Pre-stats (first burst after construction/snap): no estimate exists
- *   yet, so the backlog reveals over roughly one correction window.
+ * Pacing model — a completion-deadline law over a gap-quantile estimator
+ * (v2.10 redesign; the prior water-level jitter buffer's rationale and the
+ * falsified alternatives live in the archived design plan):
+ * - Every inter-arrival gap enters a small sliding window — there is NO
+ *   pause classifier. The target interval Î is a high quantile of that
+ *   window: two slow-gap confirmations flip the controller into a slower
+ *   mode, while leaving it takes the window turning over ("cautious
+ *   fast, aggressive slow").
+ * - Streaming: everything on hand should be on screen by the time the
+ *   next lump is expected. The horizon H = clamp(bufferFactor × Î + pad,
+ *   16, maxLagMs) stamps a deadline at the last arrival + H, and
+ *   rate = backlog / time-to-deadline — constant within a period, so a
+ *   coarse feed reads as an even typewriter, not pour-then-crawl. The
+ *   floor is a tiny anti-freeze trickle. `maxLagMs` is the preset's
+ *   max-lag promise AND the pause handler: a gap beyond it saturates H
+ *   and cannot change any further decision.
+ * - Pre-stats (first lump after construction/snap — no gap sample yet):
+ *   the backlog reveals over roughly one correction window.
  * - Finished: rate = backlog / time-to-deadline, deadline stamped at
- *   `finish() + drainMs` — the backlog empties BY the deadline instead of
- *   decaying toward it forever.
+ *   `finish()` + a rate-continuity window — the tail reveals at most
+ *   ~2× the stream's measured throughput, clamped to [drainMs, 3×drainMs]
+ *   — so the backlog empties BY the deadline without an end-of-message
+ *   pour.
  * - A deadline credit accumulator converts elapsed time (injectable
  *   `now()`) into whole-grapheme reveals per scheduled frame — timers
  *   carry no state between frames, so throttled/paused schedulers
@@ -48,40 +55,64 @@
  * latency-vs-smoothness axis (the audio-plugin buffer-preset convention —
  * perceptual parameters resist meaningful numeric tuning).
  *
- * - `'smooth'` — target ~1.7 bursts of buffer: almost never runs dry
- *   between server flushes, at the cost of a little extra lag.
- * - `'balanced'` (default) — ~1 burst of buffer, the causality floor for
- *   smoothing: minimal lag that can still bridge a typical gap.
- * - `'responsive'` — sub-burst buffer: lowest lag, accepts an occasional
- *   visible pause between bursts.
+ * - `'smooth'` — ~1.7 delivery intervals of runway (max lag 3.5s): extra
+ *   slack between server flushes, the most delivery coarseness absorbed.
+ * - `'balanced'` (default) — ~1 interval of runway (max lag 2.5s): even
+ *   pacing for delivery intervals up to ~2.5s at minimal lag.
+ * - `'responsive'` — ~0.45 of an interval (max lag 0.8s): lowest lag,
+ *   accepts visible pauses on coarse or bursty delivery.
  */
 export type SmoothStreamPacing = 'smooth' | 'balanced' | 'responsive';
 
 /** The numeric parameter bundle a {@link SmoothStreamPacing} preset names. */
 export interface SmoothStreamPacingParams {
-  /** Target buffer as a multiple of one estimated burst's worth of text. */
+  /**
+   * Horizon multiple — "periods of runway": the reveal deadline sits this
+   * many expected delivery intervals after the last arrival. 1.0 means
+   * everything on hand is on screen just as the next chunk is expected.
+   */
   bufferFactor: number;
   /**
-   * Feedback time constant (ms): how fast the backlog is steered toward
-   * the target buffer. Also the pre-stats reveal window for the first
-   * burst, before any arrival estimate exists.
+   * Pre-stats reveal window (ms) for the FIRST lump of a stream, before
+   * any inter-arrival sample exists. The streaming path no longer reads
+   * it — the v2.10 deadline law replaced the old feedback term it used to
+   * time-constant.
    */
   correctionTauMs: number;
-  /** Smoothing horizon (ms) for the arrival-rate / burst-interval EMAs. */
+  /**
+   * @deprecated Read by nothing since the v2.10 deadline-law redesign (it
+   * used to be the EMA horizon AND, harmfully, the pause-classifier
+   * threshold — the "1.8s cliff"). Kept in the preset objects so their
+   * exported shape is unchanged; setting it has no effect.
+   */
   emaTauMs: number;
   /**
+   * The preset's max-lag promise (ms): the reveal DEADLINE never targets
+   * more than this far behind the live source (a throttled scheduler can
+   * transiently exceed it; the next tick self-corrects). It is also the
+   * whole pause story —
+   * a gap longer than `maxLagMs / bufferFactor` saturates the horizon and
+   * cannot change any further decision. Pay-per-use: a fine-grained
+   * stream's horizon tracks its own (small) cadence and never approaches
+   * this cap. Full smoothing of a coarse feed requires
+   * delivery-interval ≤ maxLagMs (bufferFactor ≥ 1 presets); steady mean
+   * lag there is about half the delivery period.
+   */
+  maxLagMs?: number;
+  /**
    * Anti-freeze floor (grapheme clusters/s). Deliberately tiny — smaller
-   * than any realistic arrival rate — so the feedback term can slow the
-   * reveal below the source rate to refill the buffer, without ever
-   * freezing visible progress entirely.
+   * than any realistic arrival rate — a last-resort trickle so visible
+   * progress never freezes entirely while anything is pending.
    */
   minCharsPerSecond: number;
   /**
-   * Hard drain budget after {@link SmoothStreamController.finish}: a
-   * deadline is stamped at `finish() + drainMs` and the rate scales with
-   * remaining-backlog / remaining-time, so the backlog empties BY the
-   * deadline (not asymptotically). Consumed when the deadline is stamped —
-   * changing it affects the next drain, not one in progress.
+   * Drain-budget FLOOR after {@link SmoothStreamController.finish}: the
+   * drain deadline is stamped at `finish()` plus a rate-continuity window
+   * — enough time that the tail reveals at ~2× the stream's measured
+   * throughput — clamped to `[drainMs, 3 × drainMs]`. Short backlogs
+   * behave exactly as the pre-v2.10 fixed window did. Consumed when the
+   * deadline is stamped — changing it affects the next drain, not one in
+   * progress.
    */
   drainMs: number;
 }
@@ -122,8 +153,9 @@ export interface SmoothStreamController {
   update(source: string): void;
   /**
    * Signals end of stream: confirms the held-back trailing grapheme and
-   * switches the control law to the `drainMs` window. Not terminal —
-   * a later {@link update} resumes animation.
+   * switches the control law to the rate-continuity drain window (floored
+   * at `drainMs`). Not terminal — a later {@link update} resumes
+   * animation.
    */
   finish(): void;
   /** Jumps to `source` instantly, no animation, and clears any backlog.
@@ -170,6 +202,7 @@ export const SMOOTH_STREAM_PACING_PRESETS: Readonly<Record<SmoothStreamPacing, R
       emaTauMs: 2600,
       minCharsPerSecond: 4,
       drainMs: 320,
+      maxLagMs: 3500,
     }),
     balanced: Object.freeze({
       bufferFactor: 1.0,
@@ -177,6 +210,7 @@ export const SMOOTH_STREAM_PACING_PRESETS: Readonly<Record<SmoothStreamPacing, R
       emaTauMs: 1800,
       minCharsPerSecond: 6,
       drainMs: 240,
+      maxLagMs: 2500,
     }),
     responsive: Object.freeze({
       bufferFactor: 0.45,
@@ -184,16 +218,53 @@ export const SMOOTH_STREAM_PACING_PRESETS: Readonly<Record<SmoothStreamPacing, R
       emaTauMs: 1100,
       minCharsPerSecond: 10,
       drainMs: 150,
+      maxLagMs: 800,
     }),
   });
 
 /**
- * Absolute ceiling on the target buffer, expressed as milliseconds of lag
- * at the estimated rate. Guards against a skewed interval estimate (one
- * pathological gap) demanding seconds of buffered text. Internal — not a
- * preset field because no preset should ever want to move it.
+ * Estimator constants. Internal, not preset fields — their derivation is
+ * the documentation:
+ * - `k = GAP_WINDOW − floor(GAP_WINDOW × INTERVAL_QUANTILE) = 2`: the
+ *   horizon follows the 2nd-largest gap in the window, so TWO slow-gap
+ *   confirmations enter a slower mode ("one slow gap is a hiccup, two are
+ *   a cadence"), while leaving it takes the window turning over. Below 11
+ *   samples the quantile is the window max — strictly more conservative.
+ * - W=8 (k=1 always) measured too twitchy (pause-resume wobble); W=24
+ *   (k=3) adapts one lump slower on every regime change. 12–16 plateau.
  */
-const MAX_TARGET_BUFFER_MS = 1200;
+const GAP_WINDOW = 16;
+const INTERVAL_QUANTILE = 0.9;
+
+/**
+ * Horizon slack (ms), ~3 frames. With the horizon exactly equal to the
+ * delivery period, a reveal must finish precisely when the next lump
+ * lands — frame quantization turns that into recurring misses (measured:
+ * 16% low-rate windows on alternating lump sizes; 0% with the pad). Any
+ * value ≥ ~2 frames clears it; 50 keeps margin for 60→30Hz throttling.
+ * A constant, not a preset field, until eye calibration produces
+ * per-preset values.
+ */
+const HORIZON_PAD_MS = 50;
+
+/**
+ * Deadline floor (ms), ~2 frames: `deadline = max(lastArrival + H, now +
+ * DEADLINE_FLOOR_MS)`. Pure guard against `deadline − t ≤ 0` — mutation
+ * testing (floor 0, floor deleted, frames throttled to 600ms) changed no
+ * output in any measured scenario, because the law has already streamed
+ * H−floor milliseconds of the backlog by the time it could engage.
+ */
+const DEADLINE_FLOOR_MS = 33;
+
+/**
+ * Rate-continuity drain: the post-finish tail reveals at most about
+ * DRAIN_CATCHUP_FACTOR × the stream's measured throughput, with the
+ * window clamped to [drainMs, DRAIN_MAX_FACTOR × drainMs]. The reader has
+ * been watching the stream's real rate; the ending may be brisker, not a
+ * pour.
+ */
+const DRAIN_CATCHUP_FACTOR = 2;
+const DRAIN_MAX_FACTOR = 3;
 
 const defaultNow: () => number =
   typeof performance !== 'undefined' && typeof performance.now === 'function'
@@ -309,35 +380,47 @@ export const createSmoothStreamController = (options: SmoothStreamOptions = {}):
   let cancelFrame: (() => void) | undefined;
   let disposed = false;
 
-  // Arrival statistics for the adaptive law. Reset by snap(): a content
-  // replacement is a new stream whose cadence the old estimates don't
-  // describe. `undefined` = pre-stats regime (first burst).
-  let rateEma: number | undefined;
-  let intervalEma: number | undefined;
+  // Arrival statistics for the deadline law: a sliding window of every
+  // inter-arrival gap, pauses included — classification happens at READ
+  // time against the window's own distribution, never at record time
+  // against a constant (the old `gap > emaTauMs` epoch guard was the
+  // "1.8s cliff": the samples it dropped were exactly the ones carrying a
+  // coarse cadence). Reset by snap(): a content replacement is a new
+  // stream whose cadence the old samples don't describe. Empty window =
+  // pre-stats regime (first lump).
+  let gapWindow: { gap: number; added: number }[] = [];
   let lastArrivalAt: number | undefined;
 
   const listeners = new Set<() => void>();
 
   /** Live-resolves preset + per-field overrides, sanitizing every number. */
-  const resolveParams = (): SmoothStreamPacingParams => {
-    const preset =
-      SMOOTH_STREAM_PACING_PRESETS[options.pacing as SmoothStreamPacing] ?? SMOOTH_STREAM_PACING_PRESETS.balanced;
+  const resolveParams = (): SmoothStreamPacingParams & { maxLagMs: number } => {
+    // Own-key lookup, not bare indexing: a prototype key as `pacing`
+    // ('toString', 'constructor') would otherwise dodge the `??` fallback
+    // and hand back a Function whose fields resolve to NaN — a frozen
+    // reveal in a permanent frame loop.
+    const preset = Object.hasOwn(SMOOTH_STREAM_PACING_PRESETS, options.pacing as string)
+      ? SMOOTH_STREAM_PACING_PRESETS[options.pacing as SmoothStreamPacing]
+      : SMOOTH_STREAM_PACING_PRESETS.balanced;
     return {
       bufferFactor: finiteOr(options.bufferFactor, preset.bufferFactor),
       correctionTauMs: finiteOr(options.correctionTauMs, preset.correctionTauMs),
       emaTauMs: finiteOr(options.emaTauMs, preset.emaTauMs),
       minCharsPerSecond: finiteOr(options.minCharsPerSecond, preset.minCharsPerSecond),
       drainMs: finiteOr(options.drainMs, preset.drainMs),
+      maxLagMs: finiteOr(options.maxLagMs, preset.maxLagMs ?? 2500),
     };
   };
 
   /**
-   * Irregular-sampling EMA update: α = 1 − e^(−gap/τ) weighs each sample
-   * by the time it spans, so bursty arrival timing doesn't bias the
-   * estimates the way a fixed-α EMA would. `added` is in UTF-16 units —
-   * close enough to the grapheme-denominated backlog for control purposes
-   * (emoji-heavy text mildly over-estimates the rate, which only pads the
-   * buffer).
+   * Records one inter-arrival sample. Every gap enters the window —
+   * pauses included; the streaming law reads a high quantile (pauses are
+   * right-tail entries a bounded quantile ignores) and the drain law
+   * reads a throughput mean (pauses SHOULD slow the ending — the reader
+   * has been watching that slower stream). Different questions, both
+   * deliberate — this asymmetry is not a bug. `added` is in UTF-16 units
+   * and never enters the streaming-rate math (which is grapheme ÷ ms);
+   * it only sizes the drain, where UTF-16 ÷ UTF-16 is consistent.
    */
   const recordArrival = (t: number, added: number) => {
     if (added <= 0) return;
@@ -347,23 +430,8 @@ export const createSmoothStreamController = (options: SmoothStreamOptions = {}):
     }
     const gap = Math.max(1, t - lastArrivalAt);
     lastArrivalAt = t;
-    const tau = Math.max(1, resolveParams().emaTauMs);
-    // A gap longer than the smoothing horizon is a PAUSE, not cadence: at
-    // that length α → 1 and this one sample would rewrite both estimates
-    // (R̂ → ~0, Î → the pause), making the resume crawl at the floor while
-    // B* pegs at its cap, then whoosh when Î decays. Start a new epoch
-    // instead — keep the pre-pause estimates and let normal samples adapt.
-    if (gap > tau) return;
-    const alpha = 1 - Math.exp(-gap / tau);
-    const instantRate = (added * 1000) / gap;
-    // Zero-prior blend, no assignment special case: the FIRST sample also
-    // enters at weight α, so a connect-flush pair ~1ms apart seeds a
-    // bounded estimate instead of `added × 1000` chars/s (which would
-    // track a phantom rate and disable smoothing for seconds). Early
-    // under-estimation is harmless — with small R̂ the adaptive law
-    // algebraically coincides with the pre-stats reveal.
-    rateEma = (rateEma ?? 0) + alpha * (instantRate - (rateEma ?? 0));
-    intervalEma = (intervalEma ?? 0) + alpha * (gap - (intervalEma ?? 0));
+    gapWindow.push({ gap, added });
+    if (gapWindow.length > GAP_WINDOW) gapWindow.shift();
   };
 
   const notify = () => {
@@ -396,22 +464,16 @@ export const createSmoothStreamController = (options: SmoothStreamOptions = {}):
       // Drain regime: remaining backlog over remaining time-to-deadline —
       // reaches zero BY the deadline instead of decaying asymptotically.
       rate = Math.max(params.minCharsPerSecond, (pending.length * 1000) / Math.max(1, drainDeadlineAt - t));
-    } else if (rateEma !== undefined && intervalEma !== undefined) {
-      // Adaptive regime: feedforward on the estimated source rate,
-      // feedback steering the backlog toward the target buffer. The
-      // feedback dips below the source rate on purpose when the buffer
-      // runs low — that is how it refills instead of running dry.
-      // Clamp order matters: the "at least one grapheme" floor applies
-      // AFTER the lag cap, so a tiny-R̂ stream cannot end up with a
-      // sub-1 target.
-      const targetBuffer = Math.max(
-        1,
-        Math.min(params.bufferFactor * rateEma * (intervalEma / 1000), (rateEma * MAX_TARGET_BUFFER_MS) / 1000)
-      );
-      rate = Math.max(
-        params.minCharsPerSecond,
-        rateEma + ((pending.length - targetBuffer) * 1000) / Math.max(1, params.correctionTauMs)
-      );
+    } else if (gapWindow.length > 0 && lastArrivalAt !== undefined) {
+      // Deadline regime: everything on hand should be on screen by the
+      // time the next lump is expected. Backlog and time-to-deadline
+      // shrink together, so the rate is constant within a period — an
+      // even typewriter at any delivery coarseness the horizon covers.
+      const gaps = gapWindow.map((s) => s.gap).sort((a, b) => a - b);
+      const intervalQ = gaps[Math.min(gaps.length - 1, Math.floor(gaps.length * INTERVAL_QUANTILE))];
+      const horizon = Math.max(16, Math.min(params.bufferFactor * intervalQ + HORIZON_PAD_MS, params.maxLagMs));
+      const deadline = Math.max(lastArrivalAt + horizon, t + DEADLINE_FLOOR_MS);
+      rate = Math.max(params.minCharsPerSecond, (pending.length * 1000) / Math.max(1, deadline - t));
     } else {
       // Pre-stats regime (first burst after construction/snap): no
       // arrival estimate yet — reveal over roughly one correction window.
@@ -505,9 +567,8 @@ export const createSmoothStreamController = (options: SmoothStreamOptions = {}):
     initialized = true;
     finished = false;
     drainDeadlineAt = undefined;
-    // A replacement is a new stream: the old cadence estimates are noise.
-    rateEma = undefined;
-    intervalEma = undefined;
+    // A replacement is a new stream: the old cadence samples are noise.
+    gapWindow = [];
     lastArrivalAt = undefined;
     source = next;
     visibleEnd = next.length;
@@ -555,12 +616,36 @@ export const createSmoothStreamController = (options: SmoothStreamOptions = {}):
       finished = true;
       // The pause between rounds (tool call, user turn) must never become
       // a gap sample: drop the arrival clock so the resume's first update
-      // re-seeds it. The EMAs persist — same stream, likely same cadence.
+      // re-seeds it. The gap WINDOW persists — same stream, likely same
+      // cadence (measured: retention keeps a same-cadence resume seamless;
+      // clearing it here was ablated and rejected — it degraded that
+      // common case far more than it helped the rare cross-cadence one).
       lastArrivalAt = undefined;
-      drainDeadlineAt = now() + resolveParams().drainMs;
       if (tentativeEnd > (pending.length > 0 ? pending[pending.length - 1] : visibleEnd)) {
         pending.push(tentativeEnd);
       }
+      // Rate-continuity drain window. R̂ EXCLUDES the newest sample: the
+      // closing flush this drain is being sized FOR would otherwise
+      // inflate its own budget and disable the protection (measured
+      // 15.2× source with it in, 5.3× with it out). Fewer than two
+      // samples → no throughput estimate → today's fixed drainMs.
+      const params = resolveParams();
+      let drainWin = params.drainMs;
+      let chars = 0;
+      let ms = 0;
+      for (let i = 0; i < gapWindow.length - 1; i += 1) {
+        chars += gapWindow[i].added;
+        ms += gapWindow[i].gap;
+      }
+      const backlog = source.length - visibleEnd;
+      if (chars > 0 && ms > 0 && backlog > 0) {
+        const throughput = (chars * 1000) / ms;
+        drainWin = Math.min(
+          Math.max((backlog * 1000) / (DRAIN_CATCHUP_FACTOR * throughput), params.drainMs),
+          DRAIN_MAX_FACTOR * params.drainMs
+        );
+      }
+      drainDeadlineAt = now() + drainWin;
       seam = source.length;
       ensureScheduled();
     },
