@@ -1,18 +1,24 @@
 /**
  * Controller contract on an injected clock/scheduler (never the wall
  * clock): the update/finish/snap state machine (incl. StrictMode replay
- * revival), grapheme integrity across chunk seams, and the ADAPTIVE
- * pacing law — arrival-rate tracking, target-buffer convergence, and the
- * deadline drain.
+ * revival), grapheme integrity across chunk seams, and the pacing law —
+ * since v2.10 a completion-deadline law over a gap-quantile window (the
+ * dedicated pins live in the "deadline law" describe; the older
+ * adaptive-law tests are kept as behavior bands the new law also clears).
  *
  * Determinism recipe for mechanics tests: `minCharsPerSecond` high plus
- * `correctionTauMs` huge pins the reveal to a constant rate (the floor
- * dominates both the pre-stats and the adaptive regime), reproducing
- * fixed-rate traces exactly. Law tests instead feed timed arrival
- * patterns and assert convergence bands.
+ * `correctionTauMs` huge pins the reveal to a constant rate. The floor
+ * dominates BOTH regimes — pre-stats trivially (huge tau), and the
+ * deadline regime because these tests' backlogs over their horizons never
+ * demand more than the floor. (A third update DOES record a gap sample
+ * and enter the deadline regime — determinism comes from floor dominance,
+ * not from staying in pre-stats.) Law tests instead feed timed arrival
+ * patterns and assert windowed-rate bands on both axes (too slow AND too
+ * fast).
  */
 import { describe, expect, test } from 'vitest';
 import { createSmoothStreamController, type SmoothStreamOptions } from './controller';
+import { testEnv } from '../incrementalParse/spliceArbiterHarness';
 
 /**
  * Manual clock + frame QUEUE: advance(ms) moves time then runs ONE frame.
@@ -311,9 +317,10 @@ describe('smoothStream controller — mechanics', () => {
   });
 
   test('banked credit does not dump the next chunk instantly', () => {
-    // Recipe margin note: the second append records one arrival sample
-    // (zero-prior blended, R̂ ≈ 4 « floor 10), so the floor still
-    // dominates every tick. Keep any edits to these numbers on that side.
+    // Recipe margin note: the second append records one gap sample, so
+    // the deadline regime is live — but its demanded rate (a few chars
+    // over a ~1s horizon) stays below the floor, which keeps dominating
+    // every tick. Keep any edits to these numbers on that side.
     const { controller, advance } = makeHarness(fixedRate(10));
     controller.update('');
     controller.update('abc');
@@ -521,10 +528,10 @@ describe('smoothStream controller — adaptive law', () => {
   };
 
   test('fast stream: lag converges to ~one burst instead of a fixed window', () => {
-    // 50 chars / 100ms = 500 chars/s. Target buffer (balanced) ≈ one burst
-    // = 50 chars ≈ 100ms of lag. The upper bound is deliberately tight:
-    // a feedback-only law (feedforward deleted) settles near ~120 here,
-    // and the old fixed 600ms window held ~300 — both must FAIL this band.
+    // 50 chars / 100ms = 500 chars/s. Horizon (balanced) ≈ one interval
+    // + pad ≈ 150ms → sawtooth lag well under one burst by each interval's
+    // end. The upper bound is deliberately tight: the old fixed 600ms
+    // catch-up window held ~300 here and must FAIL this band.
     const harness = makeHarness({ pacing: 'balanced' });
     const { lag } = runPattern(harness, { burst: 50, intervalMs: 100, bursts: 40 });
     expect(lag).toBeGreaterThanOrEqual(10);
@@ -532,11 +539,11 @@ describe('smoothStream controller — adaptive law', () => {
   });
 
   test('mid-stream stall then resume: no crawl, no lag balloon, no whoosh', () => {
-    // A 30s stall is a PAUSE, not cadence. Feeding that gap into the EMAs
-    // at α≈1 would rewrite R̂≈1/s and Î≈30s in one sample: the resume then
-    // crawls at the anti-freeze floor while B* pegs at the 1.2s cap, and
-    // finally dumps the excess in a whoosh when Î decays. The epoch guard
-    // must discard pause-length gaps instead.
+    // A 30s stall must not poison pacing. The stall gap DOES enter the
+    // gap window (there is no pause classifier since v2.10), but it lands
+    // in the right tail where the interval quantile ignores it — and even
+    // where it briefly IS the quantile, maxLagMs caps the horizon. The
+    // resume must neither crawl nor balloon its lag nor whoosh.
     const harness = makeHarness({ pacing: 'balanced' });
     const { controller, advance } = harness;
     controller.update('');
@@ -578,9 +585,10 @@ describe('smoothStream controller — adaptive law', () => {
 
   test('connect-flush seeding: two near-simultaneous appends do not disable smoothing', () => {
     // A socket buffer flushing queued events on connect delivers two big
-    // appends ~1ms apart. An UNBLENDED first sample would seed R̂ at
-    // added×1000 chars/s — the reveal then tracks that phantom rate and
-    // every later burst dumps on arrival (smoothing off for seconds).
+    // appends ~1ms apart. That 1ms gap must not define the pacing: below
+    // 11 samples the interval quantile is the window MAX, so one tiny gap
+    // cannot drag the horizon down and turn every later burst into an
+    // on-arrival dump (smoothing off for seconds).
     const harness = makeHarness({ pacing: 'balanced' });
     const { controller, advance } = harness;
     controller.update('');
@@ -652,6 +660,7 @@ describe('smoothStream controller — adaptive law', () => {
       emaTauMs: Number.NaN,
       minCharsPerSecond: Number.NaN,
       drainMs: Number.NaN,
+      maxLagMs: Number.NaN,
     });
     const { controller, advance } = harness;
     controller.update('');
@@ -674,4 +683,458 @@ describe('smoothStream controller — adaptive law', () => {
     for (let i = 0; i < 10; i += 1) advance(100);
     expect(controller.getVisible()).toBe('abcdef');
   });
+});
+
+describe('smoothStream controller — deadline law (v2.10 pins)', () => {
+  /**
+   * The shared harness couples time-advance with frame-run, which suits
+   * frame-only tests; the deadline-law pins need arrivals BETWEEN frames
+   * (and a finish() landing 1ms after an arrival, the hook's real shape:
+   * update + finish in the same commit, no frame in between). This
+   * standalone driver owns its clock and frame queue directly.
+   */
+  const drive = (options: SmoothStreamOptions = {}) => {
+    let t = 0;
+    const frames: Array<() => void> = [];
+    const controller = createSmoothStreamController({
+      now: () => t,
+      schedule: (cb) => {
+        frames.push(cb);
+        return () => {
+          const index = frames.indexOf(cb);
+          if (index !== -1) frames.splice(index, 1);
+        };
+      },
+      ...options,
+    });
+    return {
+      controller,
+      setTime: (ms: number) => {
+        t = ms;
+      },
+      runFrame: () => frames.shift()?.(),
+      now: () => t,
+    };
+  };
+
+  interface Sample {
+    t: number;
+    len: number;
+    fedLen: number;
+    drained: boolean;
+  }
+
+  /** Feeds arrivals + 16ms frames, sampling visible length per frame. */
+  const feed = (
+    d: ReturnType<typeof drive>,
+    arrivals: Array<{ at: number; chars: number }>,
+    untilMs: number,
+    finishAt?: number
+  ): Sample[] => {
+    d.controller.update('');
+    let fed = '';
+    let ai = 0;
+    let finished = false;
+    let nextFrameAt = 16;
+    const samples: Sample[] = [];
+    let clock = 0;
+    while (clock < untilMs) {
+      const nextArrival = ai < arrivals.length ? arrivals[ai].at : Number.POSITIVE_INFINITY;
+      const nextFinish = finishAt !== undefined && !finished ? finishAt : Number.POSITIVE_INFINITY;
+      clock = Math.min(nextArrival, nextFinish, nextFrameAt);
+      d.setTime(clock);
+      if (clock === nextArrival) {
+        fed += 'x'.repeat(arrivals[ai].chars);
+        ai += 1;
+        d.controller.update(fed);
+        continue;
+      }
+      if (clock === nextFinish) {
+        finished = true;
+        d.controller.finish();
+        continue;
+      }
+      nextFrameAt += 16;
+      d.runFrame();
+      samples.push({
+        t: clock,
+        len: d.controller.getVisible().length,
+        fedLen: fed.length,
+        drained: d.controller.isDrained(),
+      });
+    }
+    return samples;
+  };
+
+  const coarseArrivals = (gapMs: number, chars: number, untilMs: number, from = gapMs) => {
+    const a: Array<{ at: number; chars: number }> = [];
+    for (let t = from; t <= untilMs; t += gapMs) a.push({ at: t, chars });
+    return a;
+  };
+  const fineArrivals = (untilMs: number, from = 25) => {
+    const a: Array<{ at: number; chars: number }> = [];
+    for (let t = from; t <= untilMs; t += 25) a.push({ at: t, chars: 4 });
+    return a;
+  };
+
+  /** Longest gap (ms) between visible-growth events within [from, to]. */
+  const maxGrowthGap = (samples: Sample[], from: number, to: number) => {
+    let last = from;
+    let worst = 0;
+    let prevLen = -1;
+    for (const s of samples) {
+      if (s.t < from || s.t > to) continue;
+      if (prevLen === -1) prevLen = s.len;
+      if (s.len > prevLen) {
+        worst = Math.max(worst, s.t - last);
+        last = s.t;
+        prevLen = s.len;
+      }
+    }
+    return Math.max(worst, to - last);
+  };
+
+  /** Largest single-frame reveal within [from, to]. */
+  const maxStep = (samples: Sample[], from: number, to: number) => {
+    let worst = 0;
+    let prevLen: number | undefined;
+    for (const s of samples) {
+      if (s.t < from || s.t > to) {
+        prevLen = s.len;
+        continue;
+      }
+      if (prevLen !== undefined) worst = Math.max(worst, s.len - prevLen);
+      prevLen = s.len;
+    }
+    return worst;
+  };
+
+  /** Fewest chars revealed in any sliding 250ms window within [from, to]. */
+  const minWindowChars = (samples: Sample[], from: number, to: number) => {
+    let min = Number.POSITIVE_INFINITY;
+    let lo = 0;
+    for (let i = 0; i < samples.length; i += 1) {
+      if (samples[i].t < from + 250 || samples[i].t > to) continue;
+      while (samples[lo].t < samples[i].t - 250) lo += 1;
+      min = Math.min(min, samples[i].len - samples[lo].len);
+    }
+    return min;
+  };
+
+  test('the 1.8s cliff is gone: 2.2s coarse lumps reveal continuously (fails on the water-level law)', () => {
+    const d = drive({ pacing: 'balanced' });
+    const samples = feed(d, coarseArrivals(2200, 352, 30_000), 30_000);
+    // Steady state: the reveal never pauses longer than 250ms — the old
+    // law poured each lump in ~180ms and then sat dead for ~2s.
+    expect(maxGrowthGap(samples, 6000, 29_000)).toBeLessThanOrEqual(250);
+    // And the rate is period-constant, not pour-then-crawl: every sliding
+    // 250ms window reveals a healthy share of the 160 chars/s source.
+    expect(minWindowChars(samples, 6000, 29_000)).toBeGreaterThanOrEqual(25);
+  });
+
+  test('regime adaptation: fine->coarse engages within two coarse lumps; coarse->fine catches up within a second', () => {
+    // fine -> coarse
+    {
+      const d = drive({ pacing: 'balanced' });
+      const arrivals = [...fineArrivals(8000), ...coarseArrivals(2500, 400, 30_000, 10_500)];
+      const samples = feed(d, arrivals, 30_000);
+      // After two coarse lumps (k=2) the reveal is continuous.
+      expect(maxGrowthGap(samples, 15_500, 29_000)).toBeLessThanOrEqual(250);
+    }
+    // coarse -> fine
+    {
+      const d = drive({ pacing: 'balanced' });
+      const arrivals = [...coarseArrivals(2500, 400, 10_000), ...fineArrivals(30_000, 12_525)];
+      const samples = feed(d, arrivals, 30_000);
+      // One second into the fine phase the lag is back to fine-stream size.
+      const late = samples.filter((s) => s.t > 13_525 && s.t < 14_000);
+      for (const s of late) expect(s.fedLen - s.len).toBeLessThanOrEqual(30);
+    }
+  });
+
+  test('horizon pad: alternating 8/88 lump sizes at a steady 300ms cadence never crawl (balanced & smooth)', () => {
+    for (const pacing of ['balanced', 'smooth'] as const) {
+      const d = drive({ pacing });
+      const arrivals: Array<{ at: number; chars: number }> = [];
+      let big = false;
+      for (let t = 300; t <= 30_000; t += 300) {
+        arrivals.push({ at: t, chars: big ? 88 : 8 });
+        big = !big;
+      }
+      const samples = feed(d, arrivals, 30_000);
+      // 160 chars/s source: any sliding 250ms window below 10 chars is a
+      // sub-quarter-rate crawl. Without the pad the horizon equals the
+      // period exactly and frame quantization produces recurring misses.
+      expect(minWindowChars(samples, 6000, 29_000)).toBeGreaterThanOrEqual(10);
+    }
+  });
+
+  test('too-fast axis: pause resume, in-stream switch, and cross-round resume stay under their recorded ceilings', () => {
+    // (a) 8s mid-stream pause: resume must not whoosh.
+    {
+      const d = drive({ pacing: 'balanced' });
+      const arrivals = [...coarseArrivals(100, 16, 6000, 100), ...coarseArrivals(100, 16, 22_000, 14_000)];
+      const samples = feed(d, arrivals, 22_000);
+      expect(maxStep(samples, 14_000, 22_000)).toBeLessThanOrEqual(8);
+    }
+    // (b) in-stream fine->coarse switch: recorded 114, ceiling 120.
+    {
+      const d = drive({ pacing: 'balanced' });
+      const arrivals = [...fineArrivals(8000), ...coarseArrivals(2500, 400, 20_000, 10_500)];
+      const samples = feed(d, arrivals, 20_000);
+      expect(maxStep(samples, 1000, 20_000)).toBeLessThanOrEqual(120);
+    }
+    // (c) cross-round fine->coarse resume: recorded 101, ceiling 110.
+    {
+      const d = drive({ pacing: 'balanced' });
+      const arrivals = [...fineArrivals(11_000), ...coarseArrivals(2200, 352, 26_000, 13_100)];
+      const samples = feed(d, arrivals, 26_000, 11_100);
+      expect(maxStep(samples, 13_100, 26_000)).toBeLessThanOrEqual(110);
+    }
+  });
+
+  test('rate-continuity drain: scales for real backlogs, floors at drainMs, and survives the closing-flush shape', () => {
+    const drainOf = (arrivals: Array<{ at: number; chars: number }>, finishAt: number) => {
+      const d = drive({ pacing: 'balanced' });
+      const samples = feed(d, arrivals, finishAt + 2000, finishAt);
+      let drainedAt: number | undefined;
+      let peakWindow = 0;
+      let lo = 0;
+      const post = samples.filter((s) => s.t >= finishAt - 250);
+      for (let i = 0; i < post.length; i += 1) {
+        while (post[lo].t < post[i].t - 250) lo += 1;
+        if (post[i].t >= finishAt) peakWindow = Math.max(peakWindow, post[i].len - post[lo].len);
+        if (drainedAt === undefined && post[i].t >= finishAt && post[i].drained) drainedAt = post[i].t;
+      }
+      return { duration: (drainedAt ?? Number.NaN) - finishAt, peakWindow };
+    };
+    // Coarse stream, finish right after a lump: big backlog stretches the
+    // window (was 223ms / 9× source before the redesign).
+    {
+      const { duration, peakWindow } = drainOf(coarseArrivals(2200, 352, 8810), 8810.5);
+      expect(duration).toBeGreaterThanOrEqual(500);
+      expect(duration).toBeLessThanOrEqual(3 * 240 + 40);
+      // ≤ 3.5× the 160 chars/s throughput, per 250ms window (recorded
+      // ~121). Tight enough to kill a DRAIN_CATCHUP_FACTOR=4 mutant
+      // (~156, terminal review m-NEW-2) — the fast direction was
+      // otherwise only covered by the 3× clamp.
+      expect(peakWindow).toBeLessThanOrEqual(140);
+    }
+    // Closing flush IN THE SAME COMMIT as finish (the hook's real shape):
+    // the flush must not inflate its own drain budget.
+    {
+      const arrivals = [...fineArrivals(9990), { at: 10_010, chars: 600 }];
+      const { duration, peakWindow } = drainOf(arrivals, 10_011);
+      expect(duration).toBeGreaterThanOrEqual(500);
+      expect(duration).toBeLessThanOrEqual(3 * 240 + 40);
+      expect(peakWindow).toBeLessThanOrEqual(6 * 40);
+    }
+    // Tiny tail: identical to the fixed drainMs window of old.
+    {
+      const { duration } = drainOf(fineArrivals(10_000), 10_012);
+      expect(duration).toBeGreaterThanOrEqual(100);
+      expect(duration).toBeLessThanOrEqual(240 + 40);
+    }
+  });
+
+  test('gap-window retention across finish(): a same-cadence resume animates from the FIRST lump', () => {
+    // The ablation-sensitive pin: clear the window in finish() and the
+    // first resumed lump falls back to pre-stats (a ~180ms pour, then
+    // ~2s dead) — this growth-gap assertion then fails. Retention was
+    // measured 0% dead on this shape vs 35% for the clearing variant.
+    const d = drive({ pacing: 'balanced' });
+    const arrivals = [...coarseArrivals(2200, 352, 11_000), ...coarseArrivals(2200, 352, 26_000, 13_100)];
+    const samples = feed(d, arrivals, 26_000, 11_100);
+    expect(maxGrowthGap(samples, 13_100, 25_000)).toBeLessThanOrEqual(2200 - 1500);
+  });
+
+  test('preset lag ordering under a 250ms burst feed: responsive < balanced < smooth', () => {
+    const lagOf = (pacing: 'responsive' | 'balanced' | 'smooth') => {
+      const d = drive({ pacing });
+      const samples = feed(d, coarseArrivals(250, 40, 20_000), 20_000);
+      let sum = 0;
+      let n = 0;
+      for (const s of samples) {
+        if (s.t < 6000) continue;
+        sum += s.fedLen - s.len;
+        n += 1;
+      }
+      return sum / n;
+    };
+    const r = lagOf('responsive');
+    const b = lagOf('balanced');
+    const s = lagOf('smooth');
+    // Ratio floors, not bare ordering: a mutant that disconnects
+    // bufferFactor from the horizon still "orders" the three lags by
+    // ~0.001 chars of pre-stats residue. Real spacing is ~2× per step
+    // (recorded 13.3 / 26.6 / 54.6).
+    expect(b).toBeGreaterThan(1.5 * r);
+    expect(s).toBeGreaterThan(1.5 * b);
+  });
+
+  test('maxLagMs override caps the horizon (the field the presets ship)', () => {
+    // Default balanced holds ~183 chars of mean lag on a 2.2s coarse feed
+    // (its 2500ms cap never binds); overriding maxLagMs to 300 must pull
+    // the mean lag under 60 (recorded 24.7). This is the only behavioral
+    // coverage of the cap term AND of the per-field override path — a
+    // mutant that deletes the cap passes every other pin.
+    const meanLag = (options: SmoothStreamOptions) => {
+      const d = drive(options);
+      const samples = feed(d, coarseArrivals(2200, 352, 20_000), 20_000);
+      let sum = 0;
+      let n = 0;
+      for (const s of samples) {
+        if (s.t < 6000) continue;
+        sum += s.fedLen - s.len;
+        n += 1;
+      }
+      return sum / n;
+    };
+    expect(meanLag({ pacing: 'balanced', maxLagMs: 300 })).toBeLessThanOrEqual(60);
+    expect(meanLag({ pacing: 'balanced' })).toBeGreaterThan(120);
+  });
+
+  test('finish() drops the arrival clock: tool-call pauses never become gap samples', () => {
+    // Short rounds are the load-bearing shape: 2 lumps per round, a 6s
+    // tool-call pause between rounds. If finish() kept lastArrivalAt,
+    // every resume would push a ~6s pause sample into the window; from
+    // round 2 the k=2 quantile lands on the pauses, the horizon saturates
+    // at maxLagMs, and each round is withheld until its drain (measured:
+    // finish→drained 230ms → 710ms; long fine-grained rounds mask this
+    // entirely, so this pin must stay short-round).
+    const d = drive({ pacing: 'balanced' });
+    d.controller.update('');
+    let fed = '';
+    let nextFrameAt = 16;
+    const stepFramesTo = (target: number) => {
+      while (nextFrameAt <= target) {
+        d.setTime(nextFrameAt);
+        d.runFrame();
+        nextFrameAt += 16;
+      }
+    };
+    for (let round = 0; round < 3; round += 1) {
+      const t0 = round * 6810;
+      d.setTime(t0);
+      fed += 'x'.repeat(200);
+      d.controller.update(fed);
+      stepFramesTo(t0 + 800);
+      d.setTime(t0 + 800);
+      fed += 'x'.repeat(200);
+      d.controller.update(fed);
+      d.setTime(t0 + 810);
+      d.controller.finish();
+      let drainedAt: number | undefined;
+      while (nextFrameAt <= t0 + 6810) {
+        d.setTime(nextFrameAt);
+        d.runFrame();
+        if (drainedAt === undefined && d.controller.isDrained()) drainedAt = nextFrameAt;
+        nextFrameAt += 16;
+      }
+      expect(drainedAt, `round ${round} never drained`).toBeDefined();
+      if (round >= 1) {
+        expect((drainedAt ?? Infinity) - (t0 + 810), `round ${round} drain`).toBeLessThanOrEqual(500);
+      }
+    }
+  });
+
+  test('snap() resets the cadence window: a replacement does not inherit coarse pacing', () => {
+    const d = drive({ pacing: 'balanced' });
+    feed(d, coarseArrivals(2200, 352, 9000), 9000); // builds a coarse gap window
+    d.controller.snap('replacement seed');
+    const base = 'replacement seed'.length;
+    let fed = 'replacement seed';
+    d.setTime(9100);
+    fed += 'x'.repeat(200);
+    d.controller.update(fed);
+    d.setTime(9200);
+    fed += 'x'.repeat(200);
+    d.controller.update(fed);
+    for (let t = 9216; t <= 9800; t += 16) {
+      d.setTime(t);
+      d.runFrame();
+    }
+    // Fresh window: one 100ms sample → horizon ≈ 150ms → both post-snap
+    // lumps are on screen well before 9800. A stale coarse window would
+    // keep a ~2.2s horizon and reveal only ~100 chars in this span.
+    expect(d.controller.getVisible().length).toBeGreaterThanOrEqual(base + 350);
+  });
+
+  const FUZZ_RUNS = Number(testEnv('FUZZ_RUNS') ?? 60);
+  const FUZZ_TIMEOUT_MS = Math.max(30_000, FUZZ_RUNS * 30);
+
+  test(
+    'invariant fuzz: monotone, bounded, held-back, drains on time, never a giant step',
+    { timeout: FUZZ_TIMEOUT_MS },
+    () => {
+      const runs = FUZZ_RUNS;
+      const mkRng = (seed: number) => () => {
+        seed |= 0;
+        seed = (seed + 0x6d2b79f5) | 0;
+        let z = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+        z = (z + Math.imul(z ^ (z >>> 7), 61 | z)) ^ z;
+        return ((z ^ (z >>> 14)) >>> 0) / 4294967296;
+      };
+      const failures: string[] = [];
+      for (let seed = 1; seed <= runs; seed += 1) {
+        const rng = mkRng(seed * 7919);
+        const pacing = (['responsive', 'balanced', 'smooth'] as const)[Math.floor(rng() * 3)];
+        const d = drive({ pacing });
+        const arrivals: Array<{ at: number; chars: number }> = [];
+        let t = 0;
+        const dur = 8000 + rng() * 12_000;
+        while (t < dur) {
+          const mode = rng();
+          const gap =
+            mode < 0.3
+              ? 25
+              : mode < 0.55
+                ? 250
+                : mode < 0.75
+                  ? 80 + rng() * 400
+                  : mode < 0.92
+                    ? 1500 + rng() * 1500
+                    : 2000 + rng() * 6000;
+          t += gap;
+          arrivals.push({ at: t, chars: 1 + Math.floor(rng() * 1000) });
+        }
+        const maxChunk = arrivals.reduce((worst, a) => Math.max(worst, a.chars), 0);
+        // I5 ceiling is CORPUS-RELATIVE, not a law invariant: a single-frame
+        // reveal scales linearly with the largest burst chunk (a fine stream
+        // hit by one big flush pours it over its small horizon — steady
+        // forms measure ≈0.57 × chunk; a 100k-seed sweep of this corpus
+        // tops out at 0.83 × ceiling, so the 0.75+40 formula holds there).
+        // SCALE LIMIT: safe to ~50k seeds; do NOT run this at the repo's
+        // 300k-soak scale — an adversarial corpus shape (quantile pinned
+        // at the cap + stacked 25ms big chunks collapsing the horizon on
+        // window turnover, ~1-in-400k runs) can legitimately reach ~4 ×
+        // the ceiling. A fixed 100 falsely reds healthy code once
+        // FUZZ_RUNS grows (seed 313 at the old 200-char corpus cap).
+        const stepCeiling = Math.max(100, 0.75 * maxChunk + 40);
+        const finishAt = t + 50;
+        const samples = feed(d, arrivals, finishAt + 4000, finishAt);
+        let prev = 0;
+        let drainedAt: number | undefined;
+        for (const s of samples) {
+          // I1 monotone; I2 never beyond source.
+          if (s.len < prev) failures.push(`seed ${seed}: visible shrank`);
+          if (s.len > s.fedLen) failures.push(`seed ${seed}: visible beyond source`);
+          // I3 ASCII holdback while live.
+          if (s.t < finishAt && s.fedLen > 0 && s.len > s.fedLen - 1) failures.push(`seed ${seed}: tail not held`);
+          // I5 the too-fast axis (corpus-relative, see stepCeiling above).
+          if (s.len - prev > stepCeiling) failures.push(`seed ${seed}: step ${s.len - prev} > ${stepCeiling}`);
+          prev = s.len;
+          if (drainedAt === undefined && s.t >= finishAt && s.drained) drainedAt = s.t;
+        }
+        // I4 drains within 3×drainMs (+ frame slack) of finish.
+        if (drainedAt === undefined || drainedAt - finishAt > 3 * 320 + 100) {
+          failures.push(
+            `seed ${seed}: drain overran (${drainedAt === undefined ? 'never' : Math.round(drainedAt - finishAt)}ms)`
+          );
+        }
+        if (failures.length > 5) break;
+      }
+      expect(failures).toEqual([]);
+    }
+  );
 });
