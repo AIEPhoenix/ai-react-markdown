@@ -102,12 +102,15 @@ declare global {
      *  per-chunk handicap into a total budget, and reading it from the app
      *  keeps `kit/scenarios.ts` the only place that knows. */
     __benchChunks?: number | null;
+    /** Byte length of this scenario's document, for the scale fit. */
+    __benchBytes?: number | null;
   }
 }
 window.__benchScenarios = SCENARIOS.map((s) => s.id);
 
 const scenarioId = new URLSearchParams(window.location.search).get('scenario') ?? '';
 window.__benchChunks = scenarioById(scenarioId)?.chunks.length ?? null;
+window.__benchBytes = scenarioById(scenarioId)?.content.length ?? null;
 const root = createRoot(document.getElementById('root') as HTMLElement);
 
 if (scenarioId === '') {

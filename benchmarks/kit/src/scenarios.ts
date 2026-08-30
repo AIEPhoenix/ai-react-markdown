@@ -157,10 +157,10 @@ function evenChunks(total: number, size: number): number[] {
   return out;
 }
 
-function longProse(): string {
+function longProse(sections = 40): string {
   const rand = rng(1);
   let doc = '# Streaming a long answer\n\n';
-  for (let i = 0; i < 40; i++) {
+  for (let i = 0; i < sections; i++) {
     doc += `## Section ${i + 1}\n\n${prose(rand, 90)}\n`;
     if (i % 4 === 3) doc += `> ${prose(rand, 24)}\n`;
     if (i % 5 === 4) doc += `- ${prose(rand, 8)}- ${prose(rand, 8)}- ${prose(rand, 8)}\n`;
@@ -210,7 +210,39 @@ function turnTaking(): string {
   return doc;
 }
 
+/**
+ * THE SCALE AXIS — one content shape at four sizes, an order of magnitude
+ * apart.
+ *
+ * Every other scenario here is between 11 KB and 36 KB: one size wearing
+ * five names. That leaves the suite unable to answer the question a
+ * streaming renderer most needs answered — **is the cost per token constant
+ * as the document grows?** A renderer quadratic in document length looks
+ * healthy at 30 KB and dies at 300 KB, and every existing cell would report
+ * it as fine.
+ *
+ * There is already a hint that it is not constant: sampling the DOM through
+ * one `throughput-math` run, the four quarters of the document cost 1245 ms,
+ * 2935 ms, 4825 ms and 6420 ms — each quarter markedly dearer than the last,
+ * which is superlinear growth rather than noise.
+ *
+ * Sizes are GEOMETRIC (~8x apart) because the output is an exponent, not a
+ * set of readings: fitting log(size) against log(time) needs spread, and
+ * four points 8x apart give 512x of it. Linear cost puts the exponent at
+ * 1.0, quadratic at 2.0.
+ *
+ * `scale-xlong` is deliberately large enough to hurt. If it cannot finish,
+ * that is the most useful thing this suite can say about scale.
+ */
+const SCALE_SECTIONS = { short: 3, medium: 24, long: 190, xlong: 1520 } as const;
+
 const LONG = longProse();
+const SCALE = {
+  short: longProse(SCALE_SECTIONS.short),
+  medium: longProse(SCALE_SECTIONS.medium),
+  long: longProse(SCALE_SECTIONS.long),
+  xlong: longProse(SCALE_SECTIONS.xlong),
+};
 const CODE = codeDense();
 const MERMAID = mermaidDense();
 const MATH = mathDense();
@@ -314,6 +346,19 @@ export const SCENARIOS: readonly Scenario[] = [
     pacing: 'frame',
     after: 'none',
   },
+  // Scale axis. `immediate` pacing throughout: a growth exponent has to be
+  // measured where the renderer is the bottleneck, and both timed pacings
+  // would report the schedule's own linearity instead of the renderer's.
+  ...(['short', 'medium', 'long', 'xlong'] as const).map((size) => ({
+    id: `scale-${size}`,
+    title: `Prose at ${size} scale`,
+    probes: 'cost per token as the document grows — linear, or something worse',
+    content: SCALE[size],
+    chunks: evenChunks(SCALE[size].length, 24),
+    tickMs: 0,
+    pacing: 'immediate' as const,
+    after: 'none' as const,
+  })),
   // Anchor-drift scenarios. Same content and pacing as their `stream-*`
   // siblings, with mid-stream tracking on — the pairing is deliberate, so a
   // drift number can be read against a cell whose other metrics are known.

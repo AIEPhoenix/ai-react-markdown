@@ -112,6 +112,41 @@ packages doing different amounts of work, which is the whole reason both are
 measured. Compare a cell against ITSELF over time. `compare.mjs` keys on
 `app/scenario` and will never put two apps side by side; keep it that way.
 
+## Scale — the axis on which a defect hides completely
+
+`pnpm bench:web:scale` runs the `scale-*` cells and fits log(bytes) against
+log(streamMs). The output is one number, the growth exponent: ~1.0 linear,
+~1.5 superlinear, ~2.0 quadratic.
+
+It deserves its own tool because every other cell in this suite is between
+11 KB and 36 KB — one size wearing several names — and a renderer that is
+quadratic in document length posts healthy numbers at that size. Scale is
+the only axis where a defect hides entirely rather than partially.
+
+Measured 2026-08-30, `react-core` unthrottled:
+
+| cell           |    size |  stream |     ms/KB |
+| -------------- | ------: | ------: | --------: |
+| `scale-short`  |  2.1 KB |   52 ms |     25.06 |
+| `scale-medium` | 18.4 KB |  355 ms | **19.24** |
+| `scale-long`   |  148 KB | 9404 ms |     63.71 |
+| `scale-xlong`  | 1.15 MB |       — |         — |
+
+**Two findings, and the first needs no fit at all: at 1.15 MB the renderer
+does not finish within three minutes.** The cell hits the harness cap and is
+excluded from the exponent, which is the honest treatment — a timeout is a
+deadline, not a duration.
+
+Across the sizes that did finish the exponent is **1.22**, and cost per KB
+rises 3.3x from the 18 KB optimum to 148 KB. That is corroborated
+independently: sampling the DOM through a `throughput-math` run gave quarter
+costs of 1245, 2935, 4825 and 6420 ms — same shape, different scenario,
+different method.
+
+Note where the existing scenarios sit: 11–36 KB, straddling the optimum. The
+suite reported health for as long as it did partly because it only ever
+measured the size this renderer is best at.
+
 ## How small a difference this can resolve
 
 Measured 2026-08-30, twelve consecutive runs of each cell on an idle laptop:
