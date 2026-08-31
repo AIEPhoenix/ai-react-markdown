@@ -7,6 +7,7 @@ packages:
   # not join either; `pnpm -r typecheck` DOES pick them up, deliberately: an
   # app that mirrors the README integration is also a smoke test that the
   # README integration still typechecks.
+  - 'corpus'
   - 'benchmarks/kit'
   - 'benchmarks/react-*'
 
