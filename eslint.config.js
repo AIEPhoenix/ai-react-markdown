@@ -46,12 +46,13 @@ export default defineConfig(
     },
   },
   {
-    // The benchmark runner is plain Node ESM, not TypeScript, so `no-undef`
-    // applies to it (typescript-eslint turns that rule off for `.ts`, where
-    // the compiler already answers it). These scripts legitimately use Node
-    // and browser globals: `page.evaluate` bodies run in the page, so
-    // `window` and `document` appear in source that Node never executes.
-    files: ['benchmarks/runner/*.mjs'],
+    // The benchmark runner and corpus scripts are plain Node ESM, not
+    // TypeScript, so `no-undef` applies to them (typescript-eslint turns
+    // that rule off for `.ts`, where the compiler already answers it).
+    // These scripts legitimately use Node and browser globals:
+    // `page.evaluate` bodies run in the page, so `window` and `document`
+    // appear in source that Node never executes.
+    files: ['benchmarks/runner/*.mjs', 'corpus/scripts/*.mjs'],
     languageOptions: {
       globals: {
         process: 'readonly',

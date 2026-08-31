@@ -79,7 +79,8 @@ const SOURCES = allSources();
  *  and an `accent-token` takes an argument. */
 function readSymbols() {
   const out = [];
-  const re = /defineSymbol\(\s*(math|text)\s*,\s*\w+\s*,\s*([\w-]+)\s*,\s*(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|null)\s*,\s*"((?:[^"\\]|\\.)*)"/g;
+  const re =
+    /defineSymbol\(\s*(math|text)\s*,\s*\w+\s*,\s*([\w-]+)\s*,\s*(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|null)\s*,\s*"((?:[^"\\]|\\.)*)"/g;
   for (const src of SOURCES) {
     for (const m of src.matchAll(re)) {
       const [, mode, group, rawName] = m;
@@ -223,15 +224,32 @@ const EXPLICIT = {
  */
 const INTERNALS = new Set([
   // Definition and expansion control.
-  '\\def', '\\edef', '\\gdef', '\\xdef', '\\let', '\\futurelet', '\\global', '\\long',
-  '\\expandafter', '\\noexpand', '\\newcommand', '\\renewcommand', '\\providecommand',
+  '\\def',
+  '\\edef',
+  '\\gdef',
+  '\\xdef',
+  '\\let',
+  '\\futurelet',
+  '\\global',
+  '\\long',
+  '\\expandafter',
+  '\\noexpand',
+  '\\newcommand',
+  '\\renewcommand',
+  '\\providecommand',
   // Grouping and environment delimiters — half of a construct, never a
   // fragment on their own.
-  '\\bgroup', '\\egroup', '\\begin', '\\end', '\\relax',
+  '\\bgroup',
+  '\\egroup',
+  '\\begin',
+  '\\end',
+  '\\relax',
   // KaTeX's own `// terminal (console) tools`. These typeset the empty string
   // and write to the console instead, so including them put stray lines in
   // this script's output and would have put invisible no-ops in the corpus.
-  '\\message', '\\errmessage', '\\show',
+  '\\message',
+  '\\errmessage',
+  '\\show',
 ]);
 
 /** TeX's private namespace. Identifiers containing `@` are internal helpers
@@ -290,7 +308,9 @@ function renders(tex) {
       katex.renderToString(tex, { throwOnError: true, displayMode });
       return { displayMode };
     } catch (e) {
-      firstError ??= String(e.message ?? e).replace(/\s+/g, ' ').slice(0, 160);
+      firstError ??= String(e.message ?? e)
+        .replace(/\s+/g, ' ')
+        .slice(0, 160);
     }
   }
   return { error: firstError };
@@ -356,7 +376,12 @@ function pack(items, perLine) {
     // infix operator per group" rule fires as soon as two of `\\over`,
     // `\\choose`, `\\atop`, `\\brace` or `\\brack` land on the same packed
     // line — which they did, and the corpus shipped a line that threw.
-    lines.push(items.slice(i, i + perLine).map((it) => `{${it.tex}}`).join(' \\quad '));
+    lines.push(
+      items
+        .slice(i, i + perLine)
+        .map((it) => `{${it.tex}}`)
+        .join(' \\quad ')
+    );
   }
   return lines;
 }

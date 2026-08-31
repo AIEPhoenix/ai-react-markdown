@@ -75,7 +75,11 @@ for (const c of MERMAID_CASES) {
   try {
     await mermaid.parse(c.src);
   } catch (e) {
-    fail(`mermaid ${c.id} (${c.type}): ${String(e.message ?? e).split('\n')[0].slice(0, 120)}`);
+    fail(
+      `mermaid ${c.id} (${c.type}): ${String(e.message ?? e)
+        .split('\n')[0]
+        .slice(0, 120)}`
+    );
   }
 }
 process.stdout.write(

@@ -605,7 +605,7 @@ Reparsed tail,Commit,2163`,
   {
     id: 'swimlane-basic',
     type: 'swimlane',
-    exercises: 'lane-partitioned flow — flowchart layout with lanes, and the one diagram that reuses another\'s parser',
+    exercises: "lane-partitioned flow — flowchart layout with lanes, and the one diagram that reuses another's parser",
     src: `swimlane-beta
   subgraph Client
     ask[send prompt] --> read[render chunk]
