@@ -17,8 +17,9 @@
  *   instantly instead of replaying the typewriter from empty.
  * - While `streaming` is true, content growth animates.
  * - On the `streaming` true→false transition the controller drains the
- *   remaining backlog within `drainMs`; the RETURNED `streaming` stays
- *   true until drained so the cursor slot doesn't unmount mid-animation.
+ *   remaining backlog within its rate-continuity drain window (at most
+ *   `3 × drainMs`); the RETURNED `streaming` stays true until drained so
+ *   the cursor slot doesn't unmount mid-animation.
  * - Content changes while not streaming snap (no animation).
  *
  * @module components/smoothStream/useSmoothStream

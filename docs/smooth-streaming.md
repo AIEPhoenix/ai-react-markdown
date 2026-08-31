@@ -45,35 +45,47 @@ consideration is registry fanout — see Footguns.
 
 ## How pacing works
 
-The controller is an adaptive jitter buffer — the same shape as an audio
-playout buffer. It continuously estimates the source's arrival rate and
-burst interval (exponential moving averages recorded on every append) and
-derives a **target buffer**: roughly one burst's worth of text, the
-causality floor for smoothing bursts of that period (you cannot bridge a
-300 ms gap with less than ~300 ms of buffered text).
+The controller runs a **completion-deadline law**: everything on hand
+should be on screen by the time the next chunk is expected. It watches the
+gaps between arrivals (a small sliding window — every gap enters, pauses
+included) and takes a high quantile as the expected delivery interval; two
+slow gaps in a row are enough to adapt to a coarser feed.
 
-- **While streaming** — `rate = sourceRate + (backlog − target) / correctionTau`.
-  The feedforward term tracks the source's measured speed, so lag stays
-  bounded at any model speed — a fast model doesn't accumulate a growing
-  backlog, a slow model isn't outrun. The feedback term steers the backlog
-  toward the target: above target it speeds up; below target it slows
-  _below_ the source rate on purpose so the buffer refills instead of
-  running dry between bursts. A tiny anti-freeze floor keeps visible
-  progress whenever anything is pending.
-- **After the stream ends** — a deadline is stamped `drainMs` in the
-  future, and the rate becomes `remaining backlog / time to deadline`. The
-  backlog empties _by_ the deadline — a hard bound, not an asymptotic
-  decay — so the message never dribbles on long after the model finished.
+- **While streaming** — a deadline is stamped one **horizon** after the
+  last arrival (`horizon = bufferFactor × expected interval`, plus a few
+  frames of slack, capped at the preset's `maxLagMs`), and
+  `rate = backlog / time to deadline`. Backlog and remaining time shrink
+  together, so the rate is _constant within a period_: a coarse feed
+  (proxy-buffered SSE delivering 2-second lumps) reads as an even
+  typewriter running about half a period behind — not pour-then-crawl. A
+  tiny anti-freeze floor keeps visible progress whenever anything is
+  pending.
+- **Pauses need no special case.** A gap longer than the lag cap saturates
+  the horizon and cannot change any further decision — `maxLagMs` is both
+  the max-lag promise and the whole pause story. The cap is pay-per-use: a
+  fine-grained stream's horizon tracks its own small cadence and never
+  goes near it.
+- **After the stream ends** — the deadline window is sized for rate
+  continuity: the tail reveals at roughly twice the stream's measured
+  throughput, clamped to `[drainMs, 3 × drainMs]`. The backlog empties
+  _by_ the deadline — a hard bound, not an asymptotic decay — and the
+  ending is brisker than the body, never a pour.
 
 The tuning surface is three named presets (`smoothPacing`), a deliberate
 echo of audio-plugin buffer settings — perceptual trade-offs resist
 meaningful numeric tuning:
 
-| Preset               | Target buffer    | Trade-off                                                            |
-| -------------------- | ---------------- | -------------------------------------------------------------------- |
-| `smooth`             | ~1.7 bursts      | Almost never runs dry between server flushes; a little extra lag     |
-| `balanced` (default) | ~1 burst         | The causality floor: minimal lag that can still bridge a typical gap |
-| `responsive`         | ~0.45 of a burst | Lowest lag; accepts an occasional visible pause between bursts       |
+| Preset               | Horizon              | Max lag | Trade-off                                                                  |
+| -------------------- | -------------------- | ------- | -------------------------------------------------------------------------- |
+| `smooth`             | ~1.7 × the interval  | 3.5 s   | Extra runway between server flushes; the most delivery coarseness absorbed |
+| `balanced` (default) | ~1 × the interval    | 2.5 s   | Even pacing for delivery intervals up to ~2.5 s at minimal lag             |
+| `responsive`         | ~0.45 × the interval | 0.8 s   | Lowest lag; accepts visible pauses on coarse or bursty delivery            |
+
+Rule of thumb for the smoothing domain: with `balanced` or `smooth`
+(bufferFactor ≥ 1), delivery intervals up to the preset's `maxLagMs` play
+back fully smoothly, at a steady lag of about half the interval. Coarser
+than that, the reveal walks each chunk evenly and then waits — and the
+honest fix is flushing the transport more often, not more buffering.
 
 Numeric parameters (buffer factor, time constants, drain budget) live on
 `createSmoothStreamController` for advanced hosts — see
@@ -242,13 +254,15 @@ source stream ended.
 
 `createSmoothStreamController(options)` accepts, besides `pacing`, every
 field of `SmoothStreamPacingParams` as a per-field override on top of the
-chosen preset: `bufferFactor`, `correctionTauMs`, `emaTauMs`,
-`minCharsPerSecond`, and `drainMs`. The preset bundles themselves are
-exported as `SMOOTH_STREAM_PACING_PRESETS`. All numbers are sanitized —
-NaN or Infinity (e.g. `parseInt` of a missing setting) falls back to the
-preset value instead of poisoning the control law. `drainMs` is consumed
-when the stream ends (the deadline is stamped at that moment), so changing
-it affects the next drain, not one already in progress.
+chosen preset: `bufferFactor`, `correctionTauMs`, `minCharsPerSecond`,
+`drainMs`, and `maxLagMs`. (`emaTauMs` is still accepted but deprecated
+and read by nothing since the v2.10 deadline-law redesign.) The preset
+bundles themselves are exported as `SMOOTH_STREAM_PACING_PRESETS`. All
+numbers are sanitized — NaN or Infinity (e.g. `parseInt` of a missing
+setting) falls back to the preset value instead of poisoning the control
+law. `drainMs` is consumed when the stream ends (the deadline is stamped
+at that moment), so changing it affects the next drain, not one already in
+progress.
 
 ## Behavior details
 
@@ -267,12 +281,18 @@ it affects the next drain, not one already in progress.
   exhibit this (the paced prefix is by definition behind the source); it
   only matters if you interleave regeneration with same-frame screenshots
   or DOM assertions.
-- **Stall behavior.** If the source stalls mid-stream, the reveal eases its
-  remaining backlog out (decaying toward the anti-freeze floor) and then
-  waits; a pause never enters the cadence estimates, so pacing resumes at
-  the pre-stall rhythm instead of adapting to the silence. The built-in
-  cursor's stall indicator takes over from there, exactly as without
-  smoothing.
+- **Stall behavior.** If the source stalls mid-stream, the reveal walks
+  its remaining backlog to the current deadline and then waits; the pause
+  lands in the far tail of the gap window, where the interval quantile
+  ignores it, so pacing resumes at the pre-stall rhythm instead of
+  adapting to the silence. The built-in cursor's stall indicator takes
+  over from there, exactly as without smoothing.
+- **A sudden oversized chunk reveals fast.** The single-frame reveal
+  scales with the burst's size: a fine-grained stream hit by one huge
+  flush (a proxy dumping its backlog on reconnect) pours that chunk over
+  the stream's short horizon rather than stretching it out — the deadline
+  law keeps its promise to stay current. Steady streams of any coarseness
+  never exhibit this; it is a one-frame event on a pathological delivery.
 - **`onSmoothDrained` fires at end-of-stream, once per stream round.** The
   held-back trailing grapheme keeps the reveal one step short of the source
   for as long as the stream is live, so mid-stream catch-ups (during source

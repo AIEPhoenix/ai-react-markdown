@@ -6,6 +6,52 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 ---
 
+## 2.10.0 — The typewriter stops classifying pauses
+
+**One behavior change reaches every host, tuned or not: `balanced`'s
+maximum reveal lag moves from an internal 1.2s to a preset-level 2.5s
+promise** (`maxLagMs`, a new optional field on `SmoothStreamPacingParams`;
+smooth 3.5s, responsive 0.8s). The lag is pay-per-use — a fine-grained
+stream never comes near it — but a coarse feed that used to stall now
+buffers up to 1.3 seconds deeper and plays through. If your product depended
+on the old ceiling, override `maxLagMs`.
+
+The smooth-stream controller's pacing law is rebuilt. The old adaptive
+jitter buffer carried a hidden cliff: its EMA horizon doubled as a pause
+classifier, so a stream whose chunks arrived more than ~1.8s apart — a
+dev-server or proxy buffering an SSE feed into two-second lumps — never
+formed a cadence estimate at all. Each lump poured out in ~180ms and the
+screen sat dead until the next one: the exact "chunky typewriter" the
+feature exists to prevent, produced by the feature. The water-level
+control law compounded it: its steady state hoards the buffer and
+releases a fixed dribble per period, so raising the buffer ceiling added
+lag without adding smoothness.
+
+The replacement is a completion-deadline law over a gap-quantile window:
+every inter-arrival gap is kept (there is no pause classifier — a pause
+is just a gap the lag cap makes irrelevant), the expected delivery
+interval is a high quantile of the recent window, and everything on hand
+is revealed at constant rate so it lands just as the next chunk is
+expected. Two slow gaps are enough to adapt to a coarser feed; a 2.2s
+lump train now reads as an even typewriter about a second behind, where
+it used to spend half its time frozen. End-of-stream drains are sized for
+rate continuity — at most about twice the stream's measured throughput,
+clamped to `[drainMs, 3 × drainMs]` — so a server that flushes its
+remainder in one closing lump no longer ends the message with a 15×
+pour.
+
+`emaTauMs` is deprecated and read by nothing (kept in the exported preset
+objects so their shape is unchanged); `correctionTauMs` now times only
+the very first lump of a stream. Known boundary, documented rather than
+patched: a single oversized chunk landing in a fine-grained stream
+reveals in one fast frame proportional to its size — the law keeping its
+promise to stay current — and a fine stream punctuated by frequent
+multi-second pauses remains unsmoothing physics (bridging a 2s hole
+requires 2s of stock). Presets were re-approved by eye against coarse and
+transition calibration arms added to the Storybook lane.
+
+---
+
 ## 2.9.x — Enumeration gives way to derivation
 
 ### 2.9.1 — The name list the fix was keyed on was the scanner's own belief
