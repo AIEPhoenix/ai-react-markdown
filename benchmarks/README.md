@@ -130,22 +130,22 @@ the only axis where a defect hides entirely rather than partially.
 A streamed document costs what its CONTENT costs plus what its UPDATE COUNT
 costs, and one family cannot separate them. Three can:
 
-| family     | updates per document | what its exponent means         |
-| ---------- | -------------------- | ------------------------------- |
-| `cold-*`   | 1                    | rendering N bytes, once         |
-| `steps-*`  | exactly 100          | one update, as N grows under it |
-| `scale-*`  | one per 24 chars     | both at once — count follows N  |
+| family    | updates per document | what its exponent means         |
+| --------- | -------------------- | ------------------------------- |
+| `cold-*`  | 1                    | rendering N bytes, once         |
+| `steps-*` | exactly 100          | one update, as N grows under it |
+| `scale-*` | one per 24 chars     | both at once — count follows N  |
 
 Measured 2026-08-31, `react-core` unthrottled, four kept samples per cell.
 Times are stream plus settle, because the families put the cost in different
 columns and `streamMs` alone reports every cold cell as free:
 
-| size    | `cold-` (1) | `steps-` (100) |    `scale-` (N/24) |
-| ------- | ----------: | -------------: | -----------------: |
-| 2.1 KB  |       18 ms |          73 ms |              69 ms |
-| 18.4 KB |       41 ms |         106 ms |             384 ms |
-| 148 KB  |      229 ms |         324 ms |           10315 ms |
-| 1.15 MB |     5009 ms |        2285 ms | did not finish |
+| size    | `cold-` (1) | `steps-` (100) | `scale-` (N/24) |
+| ------- | ----------: | -------------: | --------------: |
+| 2.1 KB  |       18 ms |          73 ms |           69 ms |
+| 18.4 KB |       41 ms |         106 ms |          384 ms |
+| 148 KB  |      229 ms |         324 ms |        10315 ms |
+| 1.15 MB |     5009 ms |        2285 ms |  did not finish |
 
 **The headline this section used to carry — "at 1.15 MB the renderer does not
 finish within three minutes" — was wrong, and wrong in an instructive way.**
@@ -156,11 +156,11 @@ being measured moved both at once.
 
 ### Read the local slopes, not the fit
 
-| interval        | `cold-` | `steps-` |
-| --------------- | ------: | -------: |
-| 2.1 → 18.4 KB   |    0.37 |     0.17 |
-| 18.4 → 148 KB   |    0.82 |     0.54 |
-| 148 KB → 1.15 MB |   **1.48** | **0.94** |
+| interval         |  `cold-` | `steps-` |
+| ---------------- | -------: | -------: |
+| 2.1 → 18.4 KB    |     0.37 |     0.17 |
+| 18.4 → 148 KB    |     0.82 |     0.54 |
+| 148 KB → 1.15 MB | **1.48** | **0.94** |
 
 Every cell carries the same fixed cost — mount, stylesheet, first paint — and
 on the smallest cell that fixed cost is most of the reading. A constant added

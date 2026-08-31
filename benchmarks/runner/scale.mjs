@@ -236,10 +236,7 @@ async function main() {
   process.stdout.write(
     `\n[scale] local slope between adjacent sizes (fixed costs dominate the first):\n` +
       locals
-        .map(
-          (l) =>
-            `[scale]   ${l.from.scenario.padEnd(14)} -> ${l.to.scenario.padEnd(14)} ${l.slope.toFixed(2)}\n`
-        )
+        .map((l) => `[scale]   ${l.from.scenario.padEnd(14)} -> ${l.to.scenario.padEnd(14)} ${l.slope.toFixed(2)}\n`)
         .join('')
   );
   const top = locals[locals.length - 1];
