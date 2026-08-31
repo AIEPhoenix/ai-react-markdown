@@ -112,40 +112,104 @@ packages doing different amounts of work, which is the whole reason both are
 measured. Compare a cell against ITSELF over time. `compare.mjs` keys on
 `app/scenario` and will never put two apps side by side; keep it that way.
 
-## Scale — the axis on which a defect hides completely
+## Scale — one size axis, three families, and why one of them lies
 
-`pnpm bench:web:scale` runs the `scale-*` cells and fits log(bytes) against
-log(streamMs). The output is one number, the growth exponent: ~1.0 linear,
-~1.5 superlinear, ~2.0 quadratic.
+`pnpm bench:web:scale` runs one scale family and fits log(bytes) against
+log(streamMs + settleMs). The output is one number, the growth exponent:
+~1.0 linear, ~1.5 superlinear, ~2.0 quadratic. Its two siblings,
+`bench:web:scale:cold` and `bench:web:scale:steps`, run the other two
+families described below; the default alone cannot be read safely.
 
 It deserves its own tool because every other cell in this suite is between
 11 KB and 36 KB — one size wearing several names — and a renderer that is
 quadratic in document length posts healthy numbers at that size. Scale is
 the only axis where a defect hides entirely rather than partially.
 
-Measured 2026-08-30, `react-core` unthrottled:
+### The same four documents, delivered three ways
 
-| cell           |    size |  stream |     ms/KB |
-| -------------- | ------: | ------: | --------: |
-| `scale-short`  |  2.1 KB |   52 ms |     25.06 |
-| `scale-medium` | 18.4 KB |  355 ms | **19.24** |
-| `scale-long`   |  148 KB | 9404 ms |     63.71 |
-| `scale-xlong`  | 1.15 MB |       — |         — |
+A streamed document costs what its CONTENT costs plus what its UPDATE COUNT
+costs, and one family cannot separate them. Three can:
 
-**Two findings, and the first needs no fit at all: at 1.15 MB the renderer
-does not finish within three minutes.** The cell hits the harness cap and is
-excluded from the exponent, which is the honest treatment — a timeout is a
-deadline, not a duration.
+| family     | updates per document | what its exponent means         |
+| ---------- | -------------------- | ------------------------------- |
+| `cold-*`   | 1                    | rendering N bytes, once         |
+| `steps-*`  | exactly 100          | one update, as N grows under it |
+| `scale-*`  | one per 24 chars     | both at once — count follows N  |
 
-Across the sizes that did finish the exponent is **1.22**, and cost per KB
-rises 3.3x from the 18 KB optimum to 148 KB. That is corroborated
-independently: sampling the DOM through a `throughput-math` run gave quarter
-costs of 1245, 2935, 4825 and 6420 ms — same shape, different scenario,
-different method.
+Measured 2026-08-31, `react-core` unthrottled, four kept samples per cell.
+Times are stream plus settle, because the families put the cost in different
+columns and `streamMs` alone reports every cold cell as free:
 
-Note where the existing scenarios sit: 11–36 KB, straddling the optimum. The
-suite reported health for as long as it did partly because it only ever
-measured the size this renderer is best at.
+| size    | `cold-` (1) | `steps-` (100) |    `scale-` (N/24) |
+| ------- | ----------: | -------------: | -----------------: |
+| 2.1 KB  |       18 ms |          73 ms |              69 ms |
+| 18.4 KB |       41 ms |         106 ms |             384 ms |
+| 148 KB  |      229 ms |         324 ms |           10315 ms |
+| 1.15 MB |     5009 ms |        2285 ms | did not finish |
+
+**The headline this section used to carry — "at 1.15 MB the renderer does not
+finish within three minutes" — was wrong, and wrong in an instructive way.**
+That document renders in 5.0 s as one update and 2.3 s as a hundred. What
+does not finish in three minutes is 50,283 updates. The reading conflated the
+cost of the content with the cost of the schedule, because the only family
+being measured moved both at once.
+
+### Read the local slopes, not the fit
+
+| interval        | `cold-` | `steps-` |
+| --------------- | ------: | -------: |
+| 2.1 → 18.4 KB   |    0.37 |     0.17 |
+| 18.4 → 148 KB   |    0.82 |     0.54 |
+| 148 KB → 1.15 MB |   **1.48** | **0.94** |
+
+Every cell carries the same fixed cost — mount, stylesheet, first paint — and
+on the smallest cell that fixed cost is most of the reading. A constant added
+to a linear curve looks sublinear in log-log, so the small cell drags the
+least-squares slope down: the cold family fits **0.88** globally while its top
+interval runs at **1.48**. The tool now prints both and says which to believe.
+
+### What the three families actually establish
+
+**Hold the update count still and cost is linear in size.** `steps-*` runs at
+0.94 across the top interval. The incremental parser earns its keep: each
+update costs roughly what its delta costs, not what the document costs.
+
+**A single giant mount is the worse path.** `cold-*` is superlinear at the top
+(1.48), and at 1.15 MB one update (5009 ms) is slower than a hundred
+(2285 ms). Delivering a large document in pieces is an optimisation here, not
+an overhead.
+
+**There is a per-update floor, and it grows with the document.** Two families
+at one size give two equations in two unknowns. At 148 KB a `steps` update
+costs 3.24 ms for 1512 characters and a `scale` update costs 1.64 ms for 24,
+so content runs about 1.1 ms/KB and the floor is about **1.6 ms per update
+before a single character is processed** — 98% of the cost of a 24-character
+update at that size. Solved the same way the floor is 0.41 ms at 18 KB, and
+at 1.15 MB at least 3.6 ms. That is what makes `scale-*` superlinear: a floor
+that grows with N, multiplied by a count that also grows with N. Treat these
+as an order of magnitude — they are medians of separate runs and carry the
+noise of both.
+
+The 2.1 KB size cannot be solved, and the reason is a check on the method:
+2.1 KB at 24 characters per chunk is 89 updates, so `scale-short` and
+`steps-short` are very nearly the same schedule. The two equations degenerate
+— and the two measurements agree, 69 ms against 73 ms, which is what the same
+quantity measured down two code paths should do.
+
+A second method agrees, and it is worth being precise about what it agrees
+with. Sampling the DOM through a single `throughput-math` run gave quarter
+costs of 1245, 2935, 4825 and 6420 ms. Every quarter of that stream carries
+the SAME number of updates, so this is a `steps`-shaped measurement taken
+inside one document: 5.2x the cost for 7x the prefix beneath it. Different
+scenario, different method, same floor.
+
+The floor is not the freeze scanner, which resumes from a checkpoint and
+advances only over newly-confirmed lines. Attributing it to a layer is open
+work.
+
+Note where the existing scenarios sit: 11–36 KB. The suite reported health for
+as long as it did partly because it only ever measured one size, delivered one
+way.
 
 ## How small a difference this can resolve
 
@@ -409,6 +473,12 @@ benchmark's silence is otherwise indistinguishable from good news.
   measurement of work spent on content nobody is looking at. An optimisation
   in that direction cannot be accepted or rejected against this suite as
   built, which is worth knowing since that was part of the motivation.
+- **Which layer a cost belongs to.** Everything here is measured from
+  outside, so the suite can establish that a per-update floor exists and how
+  it grows, and cannot say whether it is parse, hast conversion, React
+  reconciliation or layout. Attribution needs instrumentation inside the
+  renderer, and the scale families' job ends at proving there is something to
+  attribute.
 - **Worker offload.** Its benefit shows up in `longTasks` and
   `totalBlockingMs`, both ~0 in most cells at 1x — so it is only evaluable
   under throttle.

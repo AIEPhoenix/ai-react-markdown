@@ -157,6 +157,20 @@ function evenChunks(total: number, size: number): number[] {
   return out;
 }
 
+/** Split into exactly `count` chunks of near-equal size — the complement of
+ *  `evenChunks`, which fixes the chunk SIZE and lets the count follow the
+ *  document. Holding the count still is the only way to ask what a single
+ *  update costs at a given document length, because it is the one schedule
+ *  where "more content" arrives without "more updates" tagging along. The
+ *  remainder is spread across the leading chunks rather than dumped on the
+ *  tail, so no single update is an outlier. */
+function countedChunks(total: number, count: number): number[] {
+  const n = Math.max(1, Math.min(count, total));
+  const base = Math.floor(total / n);
+  const extra = total - base * n;
+  return Array.from({ length: n }, (_, i) => base + (i < extra ? 1 : 0));
+}
+
 function longProse(sections = 40): string {
   const rand = rng(1);
   let doc = '# Streaming a long answer\n\n';
@@ -235,6 +249,10 @@ function turnTaking(): string {
  * that is the most useful thing this suite can say about scale.
  */
 const SCALE_SECTIONS = { short: 3, medium: 24, long: 190, xlong: 1520 } as const;
+/** Updates per document in the `steps-*` family, held constant across every
+ *  size. 100 is large enough that per-update cost dominates the one-off
+ *  mount, and small enough that the largest cell finishes. */
+const STEPS_PER_DOC = 100;
 
 const LONG = longProse();
 const SCALE = {
@@ -382,6 +400,36 @@ export const SCENARIOS: readonly Scenario[] = [
     probes: 'render cost for a document of this size, with no incremental updates',
     content: SCALE[size],
     chunks: [SCALE[size].length],
+    tickMs: 0,
+    pacing: 'immediate' as const,
+    after: 'none' as const,
+  })),
+  // The third family, and the one that decides the question the other two
+  // only bracket. `cold-*` does one update, `scale-*` does one per 24
+  // characters; between them the update count moves by four orders of
+  // magnitude at the same time as the content, so neither family can say
+  // which of the two the cost follows.
+  //
+  // `steps-*` holds the update count at STEPS_PER_DOC across every size, so
+  // the only thing that varies is how much document each update lands on.
+  // The exponent across these is therefore the growth of a SINGLE update's
+  // cost with document length, which is the number the incremental parser
+  // exists to hold down:
+  //
+  //   ~0.0  each update costs what its delta costs. The parser is doing
+  //         its whole job and stream length is free.
+  //   ~1.0  each update costs what the document costs. The parser is not
+  //         helping at all and every chunk re-renders the world.
+  //
+  // Anything between is the fraction of the document each update still
+  // touches. Read it beside `cold-*`: the ratio of a steps cell to its cold
+  // sibling is what STEPS_PER_DOC updates cost over rendering once.
+  ...(['short', 'medium', 'long', 'xlong'] as const).map((size) => ({
+    id: `steps-${size}`,
+    title: `Prose at ${size} scale, in a fixed number of updates`,
+    probes: 'how much one incremental update costs as the document under it grows',
+    content: SCALE[size],
+    chunks: countedChunks(SCALE[size].length, STEPS_PER_DOC),
     tickMs: 0,
     pacing: 'immediate' as const,
     after: 'none' as const,

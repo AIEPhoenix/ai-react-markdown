@@ -2,13 +2,24 @@
 /**
  * Is the renderer's cost linear in document length?
  *
- * Four readings do not answer that; a slope does. This runs the `scale-*`
- * cells and fits log(bytes) against log(streamMs), which turns the set into
- * one number — the growth exponent:
+ * Four readings do not answer that; a slope does. This runs one scale family
+ * and fits log(bytes) against log(streamMs + settleMs), which turns the set
+ * into one number — the growth exponent:
  *
  *   ~1.0  linear. Twice the document costs twice the time.
  *   ~1.5  superlinear. Tolerable at chat sizes, painful at document sizes.
  *   ~2.0  quadratic. Fine at 30 KB, unusable at 300 KB.
+ *
+ * WHICH FAMILY, AND WHY IT IS A `--prefix`. The same four documents are
+ * delivered three ways, and the exponent means something different in each:
+ *
+ *   --prefix cold-    one update.        Cost of rendering N bytes, once.
+ *   --prefix steps-   exactly 100.       Cost of ONE update as N grows.
+ *   --prefix scale-   one per 24 chars.  Both at once — count follows N.
+ *
+ * Only `scale-*` resembles a token stream, so it is the default; but on its
+ * own it cannot say which of the two costs it measured, and reading it alone
+ * produced a wrong headline once. Run at least `cold-` beside it.
  *
  * WHY THIS DESERVES ITS OWN TOOL. Every other cell in the suite is between
  * 11 KB and 36 KB — one size wearing several names — so a quadratic renderer
@@ -167,7 +178,22 @@ async function main() {
     }
   } finally {
     await browser.close();
+    // Same teardown as `run.mjs`: `pnpm run preview` spawns vite as a
+    // grandchild, so killing the shim can leave the port held. Exiting while
+    // it is still held makes the NEXT invocation of this tool refuse to start
+    // — which is how a back-to-back `cold-` then `steps-` run silently
+    // produced one family's numbers and none of the other's.
     server.kill('SIGKILL');
+    const freeBy = Date.now() + 10_000;
+    for (;;) {
+      try {
+        await fetch(`http://localhost:${app.port}/`, { signal: AbortSignal.timeout(500) });
+      } catch {
+        break; // refused — the port is free
+      }
+      if (Date.now() > freeBy) break;
+      await new Promise((r) => setTimeout(r, 200));
+    }
   }
 
   if (timedOut.length > 0) {
@@ -190,12 +216,41 @@ async function main() {
   const slope = logSlope(points);
   const first = points[0];
   const last = points[points.length - 1];
+  // Adjacent-pair slopes, printed BEFORE the fit, because the fit can lie in
+  // a specific way that this suite has already been caught by. Every cell
+  // carries the same fixed cost — mount, stylesheet, first paint — and on the
+  // smallest cell that fixed cost IS most of the reading. A constant added to
+  // a linear curve looks sublinear in log-log, so the small cell drags the
+  // least-squares slope down and can report "linear" over a set whose top end
+  // is clearly not. Measured once: the cold family fitted 0.85 globally while
+  // its last interval ran at 1.49.
+  //
+  // The local slopes have the opposite weakness — two points each, so they
+  // carry the full run-to-run noise of both. Read them as shape, not as
+  // values, and trust the last interval most: it is the one where fixed costs
+  // have amortised away.
+  const locals = points.slice(1).map((p, i) => {
+    const prev = points[i];
+    return { from: prev, to: p, slope: Math.log(p.ms / prev.ms) / Math.log(p.bytes / prev.bytes) };
+  });
+  process.stdout.write(
+    `\n[scale] local slope between adjacent sizes (fixed costs dominate the first):\n` +
+      locals
+        .map(
+          (l) =>
+            `[scale]   ${l.from.scenario.padEnd(14)} -> ${l.to.scenario.padEnd(14)} ${l.slope.toFixed(2)}\n`
+        )
+        .join('')
+  );
+  const top = locals[locals.length - 1];
   process.stdout.write(
     `\n[scale] ${APP_NAME} @ ${THROTTLE}x (${PREFIX}*) — growth exponent ${slope.toFixed(2)}` +
       ` over ${(last.bytes / first.bytes).toFixed(0)}x of document size\n` +
       `[scale] cost per KB went ${first.perKb.toFixed(2)} -> ${last.perKb.toFixed(2)} ms/KB` +
       ` (${(last.perKb / first.perKb).toFixed(1)}x)\n` +
-      `[scale] ${slope < 1.15 ? 'linear' : slope < 1.6 ? 'SUPERLINEAR — cost per token grows with the document' : 'QUADRATIC or worse'}\n`
+      `[scale] ${slope < 1.15 ? 'linear' : slope < 1.6 ? 'SUPERLINEAR — cost per token grows with the document' : 'QUADRATIC or worse'}` +
+      ` overall; ${top.slope.toFixed(2)} across the largest interval` +
+      `${top.slope > slope + 0.25 ? ' — the fit understates the top end, believe the interval' : ''}\n`
   );
 }
 

@@ -17,6 +17,9 @@
     "bench": "vitest bench --run --project unit",
     "bench:web": "node benchmarks/runner/run.mjs",
     "bench:web:selftest": "node benchmarks/runner/selftest.mjs",
+    "bench:web:scale": "node benchmarks/runner/scale.mjs --prefix scale-",
+    "bench:web:scale:cold": "node benchmarks/runner/scale.mjs --prefix cold-",
+    "bench:web:scale:steps": "node benchmarks/runner/scale.mjs --prefix steps-",
     "preflight": "pnpm check:overrides && pnpm lint && pnpm format:check && pnpm build && pnpm packcheck && pnpm -r typecheck && pnpm typecheck && pnpm vitest run",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build"
