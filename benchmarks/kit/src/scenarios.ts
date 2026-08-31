@@ -359,6 +359,33 @@ export const SCENARIOS: readonly Scenario[] = [
     pacing: 'immediate' as const,
     after: 'none' as const,
   })),
+  // COLD variants of the scale axis: identical content, ONE chunk.
+  //
+  // These exist to separate two costs the paced cells conflate, a confusion
+  // that produced a wrong headline before it was caught. `scale-*` delivers
+  // 24 characters per chunk, so chunk COUNT grows with document size —
+  // 89 chunks at 2 KB against 50,283 at 1.15 MB. If each incremental update
+  // costs something proportional to the document so far, the total is O(n^2)
+  // by construction, and that is a fact about the update COUNT rather than
+  // about rendering a large document.
+  //
+  // The hint was already in the data: `restore-large` renders 30.9 KB in one
+  // chunk and settles in 58 ms, while `throughput-long` renders the same
+  // 30.9 KB in 1320 chunks and takes 671 ms — 11.6x for the same output.
+  //
+  // Cold cells answer "what does rendering this much content cost, once".
+  // The exponent across THESE is the renderer's own scaling; the difference
+  // between the two exponents is what incremental delivery adds.
+  ...(['short', 'medium', 'long', 'xlong'] as const).map((size) => ({
+    id: `cold-${size}`,
+    title: `Prose at ${size} scale, delivered whole`,
+    probes: 'render cost for a document of this size, with no incremental updates',
+    content: SCALE[size],
+    chunks: [SCALE[size].length],
+    tickMs: 0,
+    pacing: 'immediate' as const,
+    after: 'none' as const,
+  })),
   // Anchor-drift scenarios. Same content and pacing as their `stream-*`
   // siblings, with mid-stream tracking on — the pairing is deliberate, so a
   // drift number can be read against a cell whose other metrics are known.

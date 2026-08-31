@@ -39,6 +39,9 @@ const flag = (name, fallback) => {
 const APP_NAME = flag('app', 'react-core');
 const REPEATS = Number(flag('repeats', '3'));
 const THROTTLE = Number(flag('throttle', '1'));
+/** Which scenario family to fit. `scale-` is incremental delivery, `cold-`
+ *  is the same content in one chunk — see the note in `scenarios.ts`. */
+const PREFIX = flag('prefix', 'scale-');
 
 const APPS = {
   'react-null': { dir: 'benchmarks/react-null', port: 4319 },
@@ -111,8 +114,8 @@ async function main() {
     await index.goto(`http://localhost:${app.port}/`, { waitUntil: 'load' });
     const all = await index.evaluate(() => window.__benchScenarios ?? []);
     await index.close();
-    const cells = all.filter((s) => s.startsWith('scale-'));
-    if (cells.length < 3) throw new Error('need at least three scale-* scenarios to fit a slope');
+    const cells = all.filter((s) => s.startsWith(PREFIX));
+    if (cells.length < 3) throw new Error(`need at least three ${PREFIX}* scenarios to fit a slope`);
 
     for (const scenario of cells) {
       const samples = [];
@@ -138,7 +141,11 @@ async function main() {
         await ctx.close();
         if (i > 0) samples.push(m);
       }
-      const ms = median(samples.map((s) => s.streamMs));
+      // Stream PLUS settle: the two families put the cost in different
+      // columns. A paced cell spends it during delivery; a cold cell
+      // delivers instantly and spends it settling, so `streamMs` alone
+      // would report every cold cell as free.
+      const ms = median(samples.map((s) => s.streamMs + (s.settleMs ?? 0)));
       const nodes = median(samples.map((s) => s.renderedNodes));
       // A cell that timed out did not produce a duration, it produced a
       // deadline. Feeding one into the fit reports the harness's own
@@ -184,7 +191,7 @@ async function main() {
   const first = points[0];
   const last = points[points.length - 1];
   process.stdout.write(
-    `\n[scale] ${APP_NAME} @ ${THROTTLE}x — growth exponent ${slope.toFixed(2)}` +
+    `\n[scale] ${APP_NAME} @ ${THROTTLE}x (${PREFIX}*) — growth exponent ${slope.toFixed(2)}` +
       ` over ${(last.bytes / first.bytes).toFixed(0)}x of document size\n` +
       `[scale] cost per KB went ${first.perKb.toFixed(2)} -> ${last.perKb.toFixed(2)} ms/KB` +
       ` (${(last.perKb / first.perKb).toFixed(1)}x)\n` +
