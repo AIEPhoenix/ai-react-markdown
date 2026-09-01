@@ -38,6 +38,16 @@ import {
   TEXT_SYMBOLS,
   KATEX_VERSION,
 } from './math/generated.ts';
+import {
+  MARKDOWN_BLOCKS,
+  MARKDOWN_CASES,
+  MARKDOWN_CJK,
+  MARKDOWN_GFM,
+  MARKDOWN_HTML,
+  MARKDOWN_INLINE,
+  MARKDOWN_LINKS,
+  type MarkdownCase,
+} from './markdown/constructs.ts';
 import { MERMAID_CASES, MERMAID_TYPES } from './mermaid/diagrams.ts';
 
 const section = (title: string, body: string) => `## ${title}\n\n${body}\n`;
@@ -185,11 +195,56 @@ types are beta and their grammar moves between minors.
 
 ${MERMAID_CASES.map((c) => case_(c, fence('mermaid', c.src))).join('\n')}`;
 
+// ── markdown ──────────────────────────────────────────────────────────────
+
+const mdSection = (title: string, note: string, cases: readonly MarkdownCase[]) =>
+  section(title, `${note}\n\n${openCases(cases).map((c) => case_(c, c.src)).join('\n')}`);
+
+export const MARKDOWN_DOCUMENT = `# Markdown corpus
+
+The engine enables fourteen remark and rehype plugins and the previous corpus
+exercised none of them. ${MARKDOWN_CASES.length} cases, roughly half of them
+negative: a rewriter is only as good as what it declines to touch, so a colon
+in a URL, a \`--\` in code and a \`~~\` in a file path are all here to stay
+unchanged.
+
+${mdSection(
+  'GFM',
+  'Tables, task lists, strikethrough, autolinks and footnotes.',
+  MARKDOWN_GFM
+)}
+${mdSection(
+  'Inline constructs',
+  'Emphasis, ==mark==, emoji shortcodes, smart punctuation, entities and hard breaks.',
+  MARKDOWN_INLINE
+)}
+${mdSection(
+  'Links and images',
+  'Every link form, and images from a real endpoint so they decode and lay out — a 1x1 pixel cannot shift a page under a reader.',
+  MARKDOWN_LINKS
+)}
+${mdSection(
+  'Block structure',
+  'Headings, nested lists, definition lists, quotes and thematic breaks.',
+  MARKDOWN_BLOCKS
+)}
+${mdSection(
+  'Raw HTML',
+  'The rehype-raw path, including what rehype-sanitize is expected to strip.',
+  MARKDOWN_HTML
+)}
+${mdSection(
+  'CJK',
+  'Three of the fourteen plugins exist for this, and the old corpus was pure ASCII.',
+  MARKDOWN_CJK
+)}`;
+
 /** Every document, keyed by the file name the emit script writes. */
 export const DOCUMENTS: Readonly<Record<string, string>> = {
   'math.md': MATH_DOCUMENT,
   'code.md': CODE_DOCUMENT,
   'mermaid.md': MERMAID_DOCUMENT,
+  'markdown.md': MARKDOWN_DOCUMENT,
   'code-unclosed-fence.md': CODE_UNCLOSED_DOCUMENT,
   ...Object.fromEntries(terminalCases(MATH_SEAM_CASES).map((c) => [`math-${c.id}.md`, terminalDocument(c)])),
 };

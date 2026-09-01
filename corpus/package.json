@@ -22,6 +22,9 @@
     "jsdom": "^30.0.1",
     "katex": "^0.16.25",
     "mermaid": "^11.16.1",
-    "typescript": "^6.0.3"
+    "remark-math": "^6.0.0",
+    "remark-parse": "^11.0.0",
+    "typescript": "^6.0.3",
+    "unified": "^11.0.5"
   }
 }

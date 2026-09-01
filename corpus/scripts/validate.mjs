@@ -294,25 +294,55 @@ if (fenceRuns(code.TILDE_FENCE_DOC) !== 4) fail('code: TILDE_FENCE_DOC does not 
 if (fenceRuns(code.NESTED_FENCE_DOC) !== 4) fail('code: NESTED_FENCE_DOC does not have four fence markers');
 if (fenceRuns(code.UNCLOSED_FENCE_DOC) !== 1) fail('code: UNCLOSED_FENCE_DOC should have exactly one, unclosed');
 
-// ── 2d. the assembled documents balance ───────────────────────────────────
+// ── 2c-bis. markdown cases parse, and ids are unique across every domain ──
 
 /**
- * Every document must close what it opens.
+ * Two checks the four domains only need now that there are four of them.
  *
- * This gate exists because the failure it catches shipped. `math.md` was
- * assembled with an unclosed `$$` fixture twelfth of eighteen, and the 184
- * lines after it rendered as one enormous math block — every other math and
- * seam case in the file swallowed. Nothing errored; the document was valid
- * markdown, just not the document anyone meant. It was found by a human
- * looking at the rendered output, which is not a gate.
+ * IDS ARE GLOBALLY UNIQUE. Each domain checked its own ids and none checked
+ * across, which was fine with one list and is not with four: benchmark
+ * scenarios are keyed by case id, so a `basic` in two domains would make two
+ * different cells share a name and a comparison silently average them.
  *
- * The rule that was already written down and then not applied: the ordering
- * comment in `code.md` said an unclosed fence must go last. Ordering is a
- * convention someone has to remember. Counting is not.
+ * EVERY MARKDOWN CASE PRODUCES NODES. A markdown fixture cannot fail loudly —
+ * a typo just yields a paragraph of literal text, which renders, measures and
+ * proves nothing. Requiring at least one node is a floor, not a proof; the
+ * real check is that roughly half of these cases are NEGATIVE and pin things
+ * that must not change, which belongs in the engine's tests, not here.
+ */
+const markdown = await import('../src/markdown/constructs.ts');
+
+const allIds = new Map();
+const addIds = (domain, cases) => {
+  for (const c of cases) {
+    const prev = allIds.get(c.id);
+    if (prev !== undefined) fail(`ids: '${c.id}' is used by both ${prev} and ${domain}`);
+    else allIds.set(c.id, domain);
+  }
+};
+addIds('mermaid', MERMAID_CASES);
+addIds('math', [...authored.MATH_SEAM_CASES, ...authored.MATH_AUTHORED]);
+addIds('code', [...code.CODE_LANGUAGES, ...code.CODE_STRUCTURES, ...code.CODE_EDGE, ...code.CODE_INLINE]);
+addIds('markdown', markdown.MARKDOWN_CASES);
+
+// ── 2d. no document swallows its own tail ────────────────────────────────
+
+/**
+ * Append a sentinel to every document and require it to come out as a
+ * top-level heading.
  *
- * Documents that end mid-construct on purpose are listed explicitly rather
- * than detected, so that a fixture which becomes unbalanced by accident
- * cannot hide among them.
+ * This replaces a `$$`-parity counter, and the replacement is the point.
+ * Parity was a PROXY for the hazard, and the proxy stopped matching the
+ * moment the engine was fixed: an unclosed `$$` that sits mid-line leaves an
+ * odd count and is completely harmless, because mathFlow is a leaf block and
+ * cannot open there. The counter would have failed a document that renders
+ * perfectly — the same keying mistake the engine bug was, made in the gate
+ * that was supposed to catch it.
+ *
+ * A sentinel measures the hazard itself: did anything in this document
+ * swallow what follows it. It uses the real parser, so it cannot drift from
+ * remark-math's actual rules the way a reimplementation of them would, and it
+ * covers unclosed fences and unclosed math with one check.
  */
 const documents = await import('../src/documents.ts');
 const exempt = new Set(documents.UNBALANCED_BY_DESIGN);
@@ -323,56 +353,49 @@ for (const name of exempt) {
   }
 }
 
+const SENTINEL = 'corpus-tail-sentinel';
+const { unified } = await import('unified');
+const remarkParse = (await import('remark-parse')).default;
+const remarkMath = (await import('remark-math')).default;
+const mdParser = unified().use(remarkParse).use(remarkMath);
+
+const tailSurvives = async (body) => {
+  const tree = await mdParser.run(mdParser.parse(`${body}\n\n## ${SENTINEL}\n`));
+  return tree.children.some(
+    (n) => n.type === 'heading' && JSON.stringify(n).includes(SENTINEL)
+  );
+};
+
 for (const [name, body] of Object.entries(documents.DOCUMENTS)) {
-  const lines = body.split('\n');
-  // Fence state, tracked the way a markdown parser tracks it: a run of 3+
-  // backticks or tildes opens, and only a run of AT LEAST the same length of
-  // the SAME marker closes. Counting markers would call the four-backtick
-  // fixture unbalanced.
-  let fenceMarker = null;
-  let fenceLen = 0;
-  let dollars = 0;
-  for (const line of lines) {
-    const m = /^\s*(`{3,}|~{3,})/.exec(line);
-    if (m !== null) {
-      const marker = m[1][0];
-      const len = m[1].length;
-      if (fenceMarker === null) {
-        fenceMarker = marker;
-        fenceLen = len;
-      } else if (marker === fenceMarker && len >= fenceLen) {
-        fenceMarker = null;
-        fenceLen = 0;
-      }
-      continue;
-    }
-    if (fenceMarker !== null) continue; // inside a fence, `$$` is literal
-    // Count OCCURRENCES, not standalone-`$$` lines.
-    //
-    // The first version of this check counted only lines that are nothing but
-    // `$$`, and passed `math-seam-unclosed-with-pipe.md` — whose opener is
-    // inline (`Partial result: $$ P(A | B`). Measured against the engine, that
-    // form truncates the rest of the document exactly like the block form
-    // does, so the checker was reporting balance on a document that poisons
-    // everything after it. A gate that cannot see the failure is worse than no
-    // gate: it issues a green light.
-    //
-    // Escaped `\$` is not a delimiter — the currency fixtures are full of them.
-    dollars += (line.replace(/\\\$/g, '').match(/\$\$/g) ?? []).length;
-  }
-  const unbalanced = fenceMarker !== null || dollars % 2 !== 0;
+  const survives = await tailSurvives(body);
   if (exempt.has(name)) {
-    if (!unbalanced) {
-      fail(`documents ${name}: listed as unbalanced by design but it balances — drop it from the list`);
+    if (survives) {
+      fail(`documents ${name}: listed as swallowing its tail, but the tail survived — drop it from the list`);
     }
     continue;
   }
-  if (fenceMarker !== null) fail(`documents ${name}: ends inside a ${fenceMarker.repeat(fenceLen)} fence`);
-  if (dollars % 2 !== 0) fail(`documents ${name}: ${dollars} display-math delimiters — an odd number, so one never closes`);
+  if (!survives) {
+    fail(`documents ${name}: something in it swallows everything after — an unclosed fence or a line-start $$`);
+  }
 }
+let mdEmpty = 0;
+for (const c of markdown.MARKDOWN_CASES) {
+  const tree = await mdParser.run(mdParser.parse(c.src));
+  if (tree.children.length === 0) {
+    fail(`markdown ${c.id}: parses to nothing`);
+    mdEmpty += 1;
+  }
+}
+if (mdEmpty === 0) {
+  process.stdout.write(
+    `[corpus] markdown: ${markdown.MARKDOWN_CASES.length} cases parse, ` +
+      `${allIds.size} case ids unique across four domains\n`
+  );
+}
+
 process.stdout.write(
   `[corpus] documents: ${Object.keys(documents.DOCUMENTS).length} assembled, ` +
-    `${exempt.size} unbalanced by design\n`
+    `${exempt.size} swallow their tail by design\n`
 );
 
 // ── 3. the generated file is in sync ──────────────────────────────────────
