@@ -34,20 +34,41 @@
  *
  * MEASURED 2026-09-01 against the full pipeline — preprocessLaTeX, the core
  * remark chain, remark-rehype and the core rehype chain, counting rendered
- * KaTeX roots rather than mdast nodes. 74 of the 76 behave as annotated. The
- * two that do not are kept, marked, and listed in `COLLECTED_KNOWN_GAPS`:
+ * KaTeX roots rather than mdast nodes. All but one behave as annotated; that
+ * one is kept, marked, and listed in `COLLECTED_KNOWN_GAPS`:
  *
- *   collected-i6  `$$1,000 = P(1 + r)^n$` — two leading dollars that are a
- *                 delimiter plus a price. Renders as literal text.
  *   collected-o2  `$x <br> y$` — a whitelisted HTML tag name inside a
  *                 formula. `splitByProtectedRegions` protects the tag, which
  *                 splits the formula across segments, and neither half finds
  *                 its partner. `$a < b > c$` with spaces is fine; `$<a|b>$`
  *                 is fine; it takes the exact `<tag>` shape.
  *
- * Both fail SILENTLY — no error, nothing missing, just a literal `$` where a
+ * A FIX WAS ATTEMPTED AND REVERTED, and what it cost is worth recording so
+ * the next attempt does not re-derive it. Three predicates, each refuted by
+ * measurement rather than by review:
+ *
+ *   "the tag contains no `$`, so there is nothing to protect" — false.
+ *   Protection also shields the tag from the pipe and bracket-delimiter
+ *   rewrites: `<a href="a|b">` became `href="a\vert{}b"` after an unclosed
+ *   `$`, and `<a title="\[x\]">` became `title="$$x$$"`.
+ *
+ *   "the tag sits between an opening and a closing `$` on its line" — breaks
+ *   the `<span>$</span>100` idiom, where an author uses tag protection
+ *   deliberately to isolate a literal dollar. The closing `</span>` has a `$`
+ *   before it and a formula later on the line, so the predicate unprotects it
+ *   and the isolated dollar pairs with the wrong partner.
+ *
+ *   "only bare tags, no attributes" — removes the corruption but not the
+ *   `<span>$</span>` breakage, since both of those tags are bare.
+ *
+ * The pattern underneath: segmentation and `$`-pairing are two models of the
+ * same text that disagree, and every predicate above patches the boundary
+ * between them rather than reconciling them. A real fix makes pairing aware
+ * of segment boundaries instead of deciding which boundaries to drop.
+ *
+ * It fails SILENTLY — no error, nothing missing, just a literal `$` where a
  * formula belonged. That is why a human reading all 95 rendered cases saw
- * nothing wrong, and why these belong in a gate rather than in a review.
+ * nothing wrong, and why it belongs in a gate rather than in a review.
  */
 
 export interface CollectedMathCase {
@@ -327,13 +348,6 @@ formula = r"$x^2 + y^2$"
     probes: '外层是 `$$`，先按块级定界符锚定，再处理内部三处货币',
     src: '$$\\text{Total} = $500 + $200 + $150$$',
     equivalentTo: '$$\\text{Total} = \\$500 + \\$200 + \\$150$$',
-  },
-  {
-    id: 'collected-i6',
-    expectation: 'repair',
-    probes: '开头连续两个 `$` 极易被误判为块级定界符，需靠后续内容与闭定界符形态排除',
-    src: 'The principal $$1,000 = P(1 + r)^n$ grows over time.',
-    equivalentTo: 'The principal $\\$1{,}000 = P(1 + r)^n$ grows over time.',
   },
   {
     id: 'collected-i7',
@@ -633,4 +647,4 @@ $$`,
  * gate fails if one of them starts passing — because that is a change worth
  * noticing, and the alternative is finding out months later.
  */
-export const COLLECTED_KNOWN_GAPS: readonly string[] = ['collected-i6', 'collected-o2'];
+export const COLLECTED_KNOWN_GAPS: readonly string[] = ['collected-o2'];
