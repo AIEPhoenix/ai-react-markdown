@@ -9,4 +9,4 @@ export {
   DISPLAY_ONLY,
   GENERATED_IDENTIFIER_COUNT,
 } from './generated.ts';
-export { MATH_SEAM_CASES, MATH_AUTHORED, MATH_MARKDOWN, type MathCase } from './authored.ts';
+export { MATH_SEAM_CASES, MATH_AUTHORED, type MathCase } from './authored.ts';

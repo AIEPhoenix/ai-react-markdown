@@ -14,7 +14,8 @@
   "scripts": {
     "generate:math": "node scripts/generate-math.mjs",
     "validate": "node --experimental-strip-types --no-warnings scripts/validate.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "emit": "node --experimental-strip-types --no-warnings scripts/emit.mjs"
   },
   "devDependencies": {
     "highlight.js": "^11.12.0",

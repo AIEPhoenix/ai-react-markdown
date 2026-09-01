@@ -28,8 +28,10 @@ export interface MermaidCase {
   readonly id: string;
   /** The diagram type as mermaid registers it. One id per type at minimum. */
   readonly type: string;
-  /** What this variant makes the renderer do that its siblings do not. */
-  readonly exercises: string;
+  /** What this variant makes the renderer do that its siblings do not.
+   *  Named `probes` to match the math and code cases — one name per concept
+   *  across the corpus, so a consumer can read any case the same way. */
+  readonly probes: string;
   readonly src: string;
 }
 
@@ -38,7 +40,7 @@ export const MERMAID_CASES: readonly MermaidCase[] = [
   {
     id: 'flowchart-basic',
     type: 'flowchart',
-    exercises: 'the baseline: a linear chain, top-down',
+    probes: 'the baseline: a linear chain, top-down',
     src: `flowchart TD
   A[Start] --> B{Is the cache warm?}
   B -->|yes| C[Serve from cache]
@@ -49,7 +51,7 @@ export const MERMAID_CASES: readonly MermaidCase[] = [
   {
     id: 'flowchart-shapes',
     type: 'flowchart',
-    exercises: 'every node shape — each is a different SVG path generator',
+    probes: 'every node shape — each is a different SVG path generator',
     src: `flowchart LR
   a[rectangle] --> b(rounded)
   b --> c([stadium])
@@ -68,7 +70,7 @@ export const MERMAID_CASES: readonly MermaidCase[] = [
   {
     id: 'flowchart-links',
     type: 'flowchart',
-    exercises: 'every link style — arrows, thickness, dotted, multi-directional',
+    probes: 'every link style — arrows, thickness, dotted, multi-directional',
     src: `flowchart LR
   a --- b
   b --> c
@@ -86,7 +88,7 @@ export const MERMAID_CASES: readonly MermaidCase[] = [
   {
     id: 'flowchart-subgraph',
     type: 'flowchart',
-    exercises: 'nested subgraphs — a layout pass the flat chart never runs',
+    probes: 'nested subgraphs — a layout pass the flat chart never runs',
     src: `flowchart TB
   subgraph client [Browser]
     direction LR
@@ -109,7 +111,7 @@ export const MERMAID_CASES: readonly MermaidCase[] = [
   {
     id: 'flowchart-styling',
     type: 'flowchart',
-    exercises: 'classDef, class assignment, inline style and link styling',
+    probes: 'classDef, class assignment, inline style and link styling',
     src: `flowchart LR
   classDef hot fill:#f96,stroke:#333,stroke-width:2px
   classDef cold fill:#9cf,stroke:#333
@@ -123,7 +125,7 @@ export const MERMAID_CASES: readonly MermaidCase[] = [
   {
     id: 'sequence-basic',
     type: 'sequenceDiagram',
-    exercises: 'participants and plain messages',
+    probes: 'participants and plain messages',
     src: `sequenceDiagram
   participant C as Client
   participant S as Server
@@ -133,7 +135,7 @@ export const MERMAID_CASES: readonly MermaidCase[] = [
   {
     id: 'sequence-blocks',
     type: 'sequenceDiagram',
-    exercises: 'loop / alt / opt / par — each draws a labelled frame',
+    probes: 'loop / alt / opt / par — each draws a labelled frame',
     src: `sequenceDiagram
   autonumber
   participant C as Client
@@ -163,7 +165,7 @@ export const MERMAID_CASES: readonly MermaidCase[] = [
   {
     id: 'sequence-notes',
     type: 'sequenceDiagram',
-    exercises: 'notes, boxes and self-messages — free-floating layout',
+    probes: 'notes, boxes and self-messages — free-floating layout',
     src: `sequenceDiagram
   box rgb(240,240,255) Front of house
     participant U as User
@@ -183,7 +185,7 @@ export const MERMAID_CASES: readonly MermaidCase[] = [
   {
     id: 'class-basic',
     type: 'classDiagram',
-    exercises: 'classes, members, visibility markers',
+    probes: 'classes, members, visibility markers',
     src: `classDiagram
   class Renderer {
     +string content
@@ -201,7 +203,7 @@ export const MERMAID_CASES: readonly MermaidCase[] = [
   {
     id: 'class-relations',
     type: 'classDiagram',
-    exercises: 'every relation arrowhead, plus generics and annotations',
+    probes: 'every relation arrowhead, plus generics and annotations',
     src: `classDiagram
   direction LR
   class Shape {
@@ -227,7 +229,7 @@ export const MERMAID_CASES: readonly MermaidCase[] = [
   {
     id: 'state-basic',
     type: 'stateDiagram-v2',
-    exercises: 'states and transitions with start and end',
+    probes: 'states and transitions with start and end',
     src: `stateDiagram-v2
   [*] --> Idle
   Idle --> Streaming : first chunk
@@ -238,7 +240,7 @@ export const MERMAID_CASES: readonly MermaidCase[] = [
   {
     id: 'state-composite',
     type: 'stateDiagram-v2',
-    exercises: 'composite states, fork/join, choice and concurrency',
+    probes: 'composite states, fork/join, choice and concurrency',
     src: `stateDiagram-v2
   state Streaming {
     [*] --> Parsing
@@ -264,7 +266,7 @@ export const MERMAID_CASES: readonly MermaidCase[] = [
   {
     id: 'er-basic',
     type: 'erDiagram',
-    exercises: 'entities, attributes, keys and every cardinality pair',
+    probes: 'entities, attributes, keys and every cardinality pair',
     src: `erDiagram
   DOCUMENT ||--o{ BLOCK : contains
   BLOCK ||--|{ NODE : "renders to"
@@ -287,7 +289,7 @@ export const MERMAID_CASES: readonly MermaidCase[] = [
   {
     id: 'gantt-basic',
     type: 'gantt',
-    exercises: 'sections, milestones, dependencies and excludes',
+    probes: 'sections, milestones, dependencies and excludes',
     src: `gantt
   title Release 3.0.0
   dateFormat YYYY-MM-DD
@@ -305,7 +307,7 @@ export const MERMAID_CASES: readonly MermaidCase[] = [
   {
     id: 'pie-basic',
     type: 'pie',
-    exercises: 'the simplest renderer in mermaid — a useful low bound',
+    probes: 'the simplest renderer in mermaid — a useful low bound',
     src: `pie title Where the stream time goes
   "Incremental parse" : 42
   "React reconcile" : 31
@@ -315,7 +317,7 @@ export const MERMAID_CASES: readonly MermaidCase[] = [
   {
     id: 'git-basic',
     type: 'gitGraph',
-    exercises: 'branches, merges, cherry-pick and tags',
+    probes: 'branches, merges, cherry-pick and tags',
     src: `gitGraph
   commit id: "v2.9.0"
   branch corpus
@@ -331,7 +333,7 @@ export const MERMAID_CASES: readonly MermaidCase[] = [
   {
     id: 'journey-basic',
     type: 'journey',
-    exercises: 'the user-journey renderer — scored tasks per actor',
+    probes: 'the user-journey renderer — scored tasks per actor',
     src: `journey
   title Reading a streamed answer
   section Ask
@@ -347,7 +349,7 @@ export const MERMAID_CASES: readonly MermaidCase[] = [
   {
     id: 'quadrant-basic',
     type: 'quadrantChart',
-    exercises: 'quadrant axes and plotted points',
+    probes: 'quadrant axes and plotted points',
     src: `quadrantChart
   title Benchmark cells by what they can see
   x-axis Low cost --> High cost
@@ -364,7 +366,7 @@ export const MERMAID_CASES: readonly MermaidCase[] = [
   {
     id: 'requirement-basic',
     type: 'requirementDiagram',
-    exercises: 'requirements, elements and satisfy/verify relations',
+    probes: 'requirements, elements and satisfy/verify relations',
     src: `requirementDiagram
   requirement corpus_coverage {
     id: 1
@@ -384,7 +386,7 @@ export const MERMAID_CASES: readonly MermaidCase[] = [
   {
     id: 'mindmap-basic',
     type: 'mindmap',
-    exercises: 'indentation-driven nesting and per-node shapes',
+    probes: 'indentation-driven nesting and per-node shapes',
     src: `mindmap
   root((corpus))
     markdown
@@ -404,7 +406,7 @@ export const MERMAID_CASES: readonly MermaidCase[] = [
   {
     id: 'timeline-basic',
     type: 'timeline',
-    exercises: 'sections with multiple events per period',
+    probes: 'sections with multiple events per period',
     src: `timeline
   title Engine milestones
   section 2026 H1
@@ -418,7 +420,7 @@ export const MERMAID_CASES: readonly MermaidCase[] = [
   {
     id: 'sankey-basic',
     type: 'sankey-beta',
-    exercises: 'CSV-shaped input — a parser unlike every other type here',
+    probes: 'CSV-shaped input — a parser unlike every other type here',
     src: `sankey-beta
 
 Chunks delivered,Parse,50283
@@ -431,7 +433,7 @@ Reparsed tail,Commit,2163`,
   {
     id: 'xychart-basic',
     type: 'xychart-beta',
-    exercises: 'bar and line series on shared axes',
+    probes: 'bar and line series on shared axes',
     src: `xychart-beta
   title "Cost by delivery schedule"
   x-axis [2KB, 18KB, 148KB, 1.15MB]
@@ -442,7 +444,7 @@ Reparsed tail,Commit,2163`,
   {
     id: 'block-basic',
     type: 'block-beta',
-    exercises: 'explicit column layout with spanning blocks',
+    probes: 'explicit column layout with spanning blocks',
     src: `block-beta
   columns 3
   doc["Document"]:3
@@ -460,7 +462,7 @@ Reparsed tail,Commit,2163`,
   {
     id: 'packet-basic',
     type: 'packet',
-    exercises: 'bit-range layout — fixed-grid rendering',
+    probes: 'bit-range layout — fixed-grid rendering',
     src: `packet
   title Chunk frame
   0-7: "Version"
@@ -473,7 +475,7 @@ Reparsed tail,Commit,2163`,
   {
     id: 'kanban-basic',
     type: 'kanban',
-    exercises: 'columns of cards with metadata',
+    probes: 'columns of cards with metadata',
     src: `kanban
   Todo
     [Wire consumers]
@@ -487,7 +489,7 @@ Reparsed tail,Commit,2163`,
   {
     id: 'architecture-basic',
     type: 'architecture',
-    exercises: 'groups, services, icons and edge junctions',
+    probes: 'groups, services, icons and edge junctions',
     src: `architecture-beta
   group workspace(cloud)[Workspace]
   service corpus(database)[Corpus] in workspace
@@ -501,7 +503,7 @@ Reparsed tail,Commit,2163`,
   {
     id: 'radar-basic',
     type: 'radar-beta',
-    exercises: 'polar axes with multiple curves',
+    probes: 'polar axes with multiple curves',
     src: `radar-beta
   title Corpus coverage by area
   axis markdown["Markdown"], code["Code"], math["Math"]
@@ -514,7 +516,7 @@ Reparsed tail,Commit,2163`,
   {
     id: 'treemap-basic',
     type: 'treemap',
-    exercises: 'nested weighted rectangles',
+    probes: 'nested weighted rectangles',
     src: `treemap-beta
 "Corpus"
     "Math"
@@ -531,7 +533,7 @@ Reparsed tail,Commit,2163`,
   {
     id: 'c4-basic',
     type: 'C4Context',
-    exercises: 'the C4 renderer — boundaries and typed relationships',
+    probes: 'the C4 renderer — boundaries and typed relationships',
     src: `C4Context
   title Streaming a rendered answer
   Person(reader, "Reader", "Watches an answer arrive")
@@ -547,7 +549,7 @@ Reparsed tail,Commit,2163`,
   {
     id: 'venn-basic',
     type: 'venn',
-    exercises: 'set intersections',
+    probes: 'set intersections',
     src: `venn-beta
   title What each corpus consumer needs
   set benchmarks ["Benchmarks"]
@@ -558,7 +560,7 @@ Reparsed tail,Commit,2163`,
   {
     id: 'cynefin-basic',
     type: 'cynefin',
-    exercises: 'the cynefin domain renderer, with inter-domain transitions',
+    probes: 'the cynefin domain renderer, with inter-domain transitions',
     src: `cynefin-beta
   title Where each failure lived
   clear "Missing package.json script"
@@ -572,7 +574,7 @@ Reparsed tail,Commit,2163`,
   {
     id: 'ishikawa-basic',
     type: 'ishikawa',
-    exercises: 'fishbone cause categories',
+    probes: 'fishbone cause categories',
     src: `ishikawa
   title Why the corpus missed constructs
   Method
@@ -588,7 +590,7 @@ Reparsed tail,Commit,2163`,
   {
     id: 'railroad-basic',
     type: 'railroad',
-    exercises: 'syntax-diagram rendering — a function-call grammar, not EBNF',
+    probes: 'syntax-diagram rendering — a function-call grammar, not EBNF',
     src: `railroad-beta
   language = oneOrMore(terminal("a"));
   content = choice(terminal("code"), terminal("text"));
@@ -597,7 +599,7 @@ Reparsed tail,Commit,2163`,
   {
     id: 'eventmodeling-basic',
     type: 'eventmodeling',
-    exercises: 'the event-modeling renderer — a numbered timeframe and one item',
+    probes: 'the event-modeling renderer — a numbered timeframe and one item',
     src: `eventmodeling
   tf 1
   cmd sendMessage "Send message"`,
@@ -605,7 +607,7 @@ Reparsed tail,Commit,2163`,
   {
     id: 'swimlane-basic',
     type: 'swimlane',
-    exercises: "lane-partitioned flow — flowchart layout with lanes, and the one diagram that reuses another's parser",
+    probes: "lane-partitioned flow — flowchart layout with lanes, and the one diagram that reuses another's parser",
     src: `swimlane-beta
   subgraph Client
     ask[send prompt] --> read[render chunk]
@@ -619,7 +621,7 @@ Reparsed tail,Commit,2163`,
   {
     id: 'treeview-basic',
     type: 'treeView',
-    exercises: 'the file-tree renderer — paths, not indentation',
+    probes: 'the file-tree renderer — paths, not indentation',
     src: `treeView-beta
   corpus[Corpus]
   corpus/src[src]
@@ -628,7 +630,7 @@ Reparsed tail,Commit,2163`,
   {
     id: 'wardley-basic',
     type: 'wardley',
-    exercises: 'value-chain positioning',
+    probes: 'value-chain positioning',
     src: `wardley-beta
   title Corpus as a capability
   anchor Reader [0.95, 0.60]
@@ -642,7 +644,7 @@ Reparsed tail,Commit,2163`,
   {
     id: 'info-basic',
     type: 'info',
-    exercises: 'the smallest registered diagram — a version banner',
+    probes: 'the smallest registered diagram — a version banner',
     src: `info`,
   },
 ];
@@ -650,8 +652,3 @@ Reparsed tail,Commit,2163`,
 /** Diagram types covered, derived rather than hand-counted so the number in
  *  the docs cannot drift from the list above. */
 export const MERMAID_TYPES: readonly string[] = [...new Set(MERMAID_CASES.map((c) => c.type))];
-
-/** The corpus as fenced markdown, ready to concatenate into a document. */
-export const MERMAID_MARKDOWN: string = MERMAID_CASES.map(
-  (c) => `### ${c.id}\n\n${c.exercises}.\n\n\`\`\`mermaid\n${c.src}\n\`\`\`\n`
-).join('\n');

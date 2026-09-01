@@ -846,8 +846,3 @@ export const UNCLOSED_FENCE_DOC = `Here is the implementation:
 ${BT}typescript
 export function advance(text: string, to: number): number {
   const nl = text.lastIndexOf('\\n', to);`;
-
-/** Every language fence, as one markdown document. */
-export const CODE_MARKDOWN: string = [...CODE_LANGUAGES, ...CODE_STRUCTURES]
-  .map((c) => `### ${c.id}\n\n${c.probes}.\n\n${fence(c.lang, c.src)}\n`)
-  .join('\n');

@@ -37,6 +37,18 @@ export interface MathCase {
   readonly probes: string;
   /** Markdown source — NOT bare TeX. These exist to be fed to the renderer. */
   readonly src: string;
+  /**
+   * This case opens a construct it never closes, so everything AFTER it in a
+   * document is swallowed by that construct.
+   *
+   * Marked rather than merely ordered. Ordering is a convention someone has
+   * to remember, and it failed the first time it was needed: `code.md` had
+   * its unclosed fence placed last with a comment explaining why, and
+   * `math.md` was then assembled with an unclosed `$$` twelfth of eighteen,
+   * swallowing the 184 lines after it. `documents.ts` pulls these out into
+   * documents of their own and the gate checks the result balances.
+   */
+  readonly terminal?: boolean;
 }
 
 /**
@@ -119,6 +131,7 @@ and an inline one, \\( a^2 + b^2 = c^2 \\), in a sentence.`,
   },
   {
     id: 'seam-unclosed-tail',
+    terminal: true,
     probes: 'a stream that stops mid-formula — the trailing unclosed block is truncated',
     src: `Here is the derivation so far.
 
@@ -127,6 +140,7 @@ $$
   },
   {
     id: 'seam-unclosed-with-pipe',
+    terminal: true,
     probes: 'an unclosed block containing a pipe, which is the streaming half of the pipe rule',
     src: 'Partial result: $$ P(A | B',
   },
@@ -297,7 +311,3 @@ $\\left(1 - \\frac{\\mu}{L}\\right)^k$ — linear rather than $O(1/k)$.`,
   },
 ];
 
-/** The whole authored layer as one markdown document. */
-export const MATH_MARKDOWN: string = [...MATH_SEAM_CASES, ...MATH_AUTHORED]
-  .map((c) => `### ${c.id}\n\n${c.probes}.\n\n${c.src}\n`)
-  .join('\n');
