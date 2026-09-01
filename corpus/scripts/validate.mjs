@@ -191,6 +191,46 @@ process.stdout.write(
     `${math.GENERATED_IDENTIFIER_COUNT} identifiers covered\n`
 );
 
+// ── 2b. the authored formulas render ──────────────────────────────────────
+
+/**
+ * `MATH_AUTHORED` only. The seam cases are markdown fixtures and several are
+ * deliberately malformed — an unclosed `$$`, a price that must NOT be math, a
+ * pipe that only becomes valid after the engine rewrites it. Feeding those to
+ * KaTeX would fail for exactly the reason they exist.
+ *
+ * The authored cases carry the opposite obligation: they are here to say what
+ * real formulas cost, and a formula that throws costs nothing and renders an
+ * error box. Every `$$…$$` and `$…$` body in them is extracted and rendered.
+ */
+const authored = await import('../src/math/authored.ts');
+
+const bodies = [];
+for (const c of authored.MATH_AUTHORED) {
+  for (const m of c.src.matchAll(/\$\$([\s\S]+?)\$\$/g)) bodies.push({ c, tex: m[1], display: true });
+  const withoutDisplay = c.src.replace(/\$\$[\s\S]+?\$\$/g, '');
+  for (const m of withoutDisplay.matchAll(/(?<!\$)\$([^$\n]+?)\$(?!\$)/g))
+    bodies.push({ c, tex: m[1], display: false });
+}
+let authoredBad = 0;
+for (const b of bodies) {
+  try {
+    katex.renderToString(b.tex, { throwOnError: true, displayMode: b.display });
+  } catch (e) {
+    fail(`math authored ${b.c.id}: ${String(e.message ?? e).split('\n')[0].slice(0, 110)}`);
+    authoredBad += 1;
+  }
+}
+if (bodies.length < authored.MATH_AUTHORED.length) {
+  fail(`math authored: only ${bodies.length} formulas extracted from ${authored.MATH_AUTHORED.length} cases`);
+}
+if (authoredBad === 0) {
+  process.stdout.write(
+    `[corpus] katex: ${bodies.length} authored formulas render, ` +
+      `${authored.MATH_SEAM_CASES.length} seam fixtures (not rendered — several are malformed on purpose)\n`
+  );
+}
+
 // ── 3. the generated file is in sync ──────────────────────────────────────
 
 const before = readFileSync(join(ROOT, 'src/math/generated.ts'), 'utf8');
