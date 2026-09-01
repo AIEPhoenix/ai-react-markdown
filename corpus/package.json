@@ -17,6 +17,7 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "highlight.js": "^11.12.0",
     "jsdom": "^30.0.1",
     "katex": "^0.16.25",
     "mermaid": "^11.16.1",

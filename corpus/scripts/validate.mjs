@@ -231,6 +231,69 @@ if (authoredBad === 0) {
   );
 }
 
+// ── 2c. every code fence names a language the highlighter knows ───────────
+
+/**
+ * A fence tagged with an unregistered language does not fail — it renders as
+ * plain text. So a corpus can claim to cover Solidity, quietly get plaintext,
+ * and post a number for it forever. `lang` is therefore resolved against the
+ * installed highlight.js, and the languages that are deliberately unknown are
+ * checked to still BE unknown: if a future highlight.js registers one,
+ * promoting it to `CODE_LANGUAGES` should be a decision someone makes rather
+ * than a silent change in what the corpus measures.
+ */
+const code = await import('../src/code/languages.ts');
+const hljs = (await import('highlight.js')).default;
+const hljsVersion = JSON.parse(
+  readFileSync(join(dirname(require.resolve('highlight.js/package.json')), 'package.json'), 'utf8')
+).version;
+
+const codeIds = new Set();
+let langCases = 0;
+for (const c of [...code.CODE_LANGUAGES, ...code.CODE_STRUCTURES, ...code.CODE_EDGE, ...code.CODE_INLINE]) {
+  if (codeIds.has(c.id)) fail(`code: duplicate id ${c.id}`);
+  codeIds.add(c.id);
+  if (c.lang === '') continue; // a bare fence, deliberately untagged
+  langCases += 1;
+  if (hljs.getLanguage(c.lang) === undefined) {
+    fail(`code ${c.id}: highlight.js ${hljsVersion} does not know '${c.lang}'`);
+  }
+}
+for (const l of code.CODE_UNKNOWN_LANGS) {
+  if (hljs.getLanguage(l) !== undefined) {
+    fail(`code: '${l}' is listed as unknown but highlight.js ${hljsVersion} now registers it — promote it`);
+  }
+}
+process.stdout.write(
+  `[corpus] highlight.js ${hljsVersion}: ${langCases} tagged fences resolve, ` +
+    `${code.CODE_UNKNOWN_LANGS.length} deliberately unknown\n`
+);
+
+/**
+ * The tag resolving is necessary and not sufficient: a fence tagged `rust`
+ * whose body is prose resolves fine and highlights into nothing. So each
+ * fixture is highlighted and required to produce real tokens.
+ *
+ * Calibrated against the measured floor rather than guessed: the least-marked
+ * fixture in the set is `data-ini` at 9 spans, which is expected — it is in
+ * the corpus precisely as the simplest grammar available. 5 sits below that
+ * with room, and well below anything a genuinely-wrong fixture would reach.
+ */
+const MIN_SPANS = 5;
+for (const c of [...code.CODE_LANGUAGES, ...code.CODE_STRUCTURES]) {
+  const spans = (hljs.highlight(c.src, { language: c.lang }).value.match(/<span/g) ?? []).length;
+  if (spans < MIN_SPANS) {
+    fail(`code ${c.id}: highlights into only ${spans} spans — the body may not be ${c.lang}`);
+  }
+}
+
+/** The three fence-level fixtures are assembled from parts, so a typo would
+ *  produce a document with an unbalanced fence and no error anywhere. */
+const fenceRuns = (s) => (s.match(/^\s*(`{3,}|~{3,})/gm) ?? []).length;
+if (fenceRuns(code.TILDE_FENCE_DOC) !== 4) fail('code: TILDE_FENCE_DOC does not have four fence markers');
+if (fenceRuns(code.NESTED_FENCE_DOC) !== 4) fail('code: NESTED_FENCE_DOC does not have four fence markers');
+if (fenceRuns(code.UNCLOSED_FENCE_DOC) !== 1) fail('code: UNCLOSED_FENCE_DOC should have exactly one, unclosed');
+
 // ── 3. the generated file is in sync ──────────────────────────────────────
 
 const before = readFileSync(join(ROOT, 'src/math/generated.ts'), 'utf8');
