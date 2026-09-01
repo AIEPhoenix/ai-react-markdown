@@ -140,8 +140,8 @@ $$
   },
   {
     id: 'seam-unclosed-with-pipe',
-    terminal: true,
-    probes: 'an unclosed block containing a pipe, which is the streaming half of the pipe rule',
+    probes:
+      'an unclosed block containing a pipe — mid-line, so it opens no math flow and the rest of the document must survive',
     src: 'Partial result: $$ P(A | B',
   },
   {

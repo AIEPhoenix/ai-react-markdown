@@ -561,12 +561,56 @@ function escapeLatexPipesInUnclosed(text: string): string {
  *
  * Only tracks `$$` — single `$` does not trigger mathFlow and is harmless
  * when `singleDollarTextMath` is `false`.
+ *
+ * AND ONLY WHEN THE OPENER COULD ACTUALLY OPEN A MATH FLOW. The first
+ * sentence above says "at the start of a line" and the implementation used to
+ * ignore it, truncating on any unpaired `$$` anywhere. mathFlow is a LEAF
+ * BLOCK construct: it only fires on a line whose first non-space character
+ * starts the run, indented at most three spaces. An unpaired `$$` mid-line
+ * swallows nothing, so removing the rest of the document to protect against
+ * it removes content for no reason at all.
+ *
+ * Measured against remark-math 2026-09-01, with a heading and a paragraph
+ * following each shape:
+ *
+ *   `The server costs $$100 per month.`   parses fine — nothing swallowed
+ *   `Partial result: $$ P(A`              parses fine — nothing swallowed
+ *   `$$\n\frac{a}{b}` at 0-3 spaces       swallowed to EOF
+ *   the same at 4 spaces, or after a tab  becomes an indented code block
+ *
+ * The visible symptom was a finished, non-streaming document losing
+ * everything after a price written `$$100`: the currency rule only escapes a
+ * single `$`, so the doubled one read as an opener and the rest of the page
+ * disappeared. Nothing errored, because a truncated document is perfectly
+ * valid markdown — just not the one anyone wrote.
+ *
+ * KNOWN RESIDUAL, deliberately not fixed here. The predicate is positional,
+ * not container-aware, so a `$$` opening a line INSIDE a list item or
+ * blockquote still counts. Measured: those do not swallow past their
+ * container, so this over-truncates them. Modelling containers is the same
+ * thing `splitByProtectedRegions` already declines to do, and doing it here
+ * alone would be a second, disagreeing model of the same structure.
  */
+function opensMathFlow(text: string, pos: number): boolean {
+  let i = pos;
+  let spaces = 0;
+  while (i > 0 && text[i - 1] !== '\n') {
+    i -= 1;
+    // A tab counts as four columns, which is already an indented code block,
+    // and any other character means the run does not begin the line.
+    if (text[i] !== ' ') return false;
+    spaces += 1;
+    if (spaces > 3) return false;
+  }
+  return true;
+}
+
 function truncateUnclosedLatexBlock(
   text: string,
   unclosedStart = findUnclosedDelimiterStart(text, 'double-only')
 ): string {
   if (unclosedStart === -1) return text;
+  if (!opensMathFlow(text, unclosedStart)) return text;
 
   // Strip the unclosed $$ block and any trailing whitespace before it.
   return text.substring(0, unclosedStart).trimEnd();

@@ -656,9 +656,13 @@ y$ which spans lines`;
     expect(preprocessLaTeX(content)).toBe(expected);
   });
 
-  test('truncates unclosed $$ after closed blocks', () => {
+  test('does NOT truncate an unclosed $$ that sits mid-line', () => {
+    // mathFlow is a leaf block: it only opens on a line whose first non-space
+    // character starts the run. Verified against remark-math — this document
+    // parses as paragraph/heading/paragraph with nothing swallowed, so
+    // removing the tail would delete content to prevent nothing.
     const content = '$$|a|$$ then $$|b\\rangle';
-    const expected = '$$\\vert{}a\\vert{}$$ then';
+    const expected = '$$\\vert{}a\\vert{}$$ then $$\\vert{}b\\rangle';
     expect(preprocessLaTeX(content)).toBe(expected);
   });
 
@@ -700,6 +704,44 @@ y$ which spans lines`;
     expect(preprocessLaTeX(content)).toBe(expected);
   });
 
+  // --- Only a line-start $$ opens a math flow ---
+  //
+  // The predicate is positional because mathFlow's is: it opens on a line
+  // whose first non-space character starts the run, indented at most three
+  // spaces. Every expectation below was measured against remark-math on
+  // 2026-09-01 by appending a heading and a paragraph and checking whether
+  // they landed inside the math node.
+  //
+  // The bug this replaced: a finished document containing a price written
+  // `$$100` lost everything after it. The currency rule escapes a single `$`
+  // only, so the doubled one read as an opener, and the whole page after it
+  // was removed to prevent a swallow that would never have happened.
+
+  test('does not truncate a price written with a doubled dollar sign', () => {
+    const content = 'The server costs $$100 per month.\n\n## Still here\n\nplain.';
+    expect(preprocessLaTeX(content)).toBe(content);
+  });
+
+  test('truncates a line-start $$ at zero indent', () => {
+    const content = 'before\n\n$$\n\\frac{a}{b}\n\n## Swallowed\n\nplain.';
+    expect(preprocessLaTeX(content)).toBe('before');
+  });
+
+  test('truncates a line-start $$ indented three spaces', () => {
+    const content = 'before\n\n   $$\n\\frac{a}{b}\n\n## Swallowed';
+    expect(preprocessLaTeX(content)).toBe('before');
+  });
+
+  test('does not truncate at four spaces — that is an indented code block', () => {
+    const content = 'before\n\n    $$\n\\frac{a}{b}\n\n## Still here\n\nplain.';
+    expect(preprocessLaTeX(content)).toBe(content);
+  });
+
+  test('does not truncate after a tab — a tab is four columns', () => {
+    const content = 'before\n\n\t$$\n\\frac{a}{b}\n\n## Still here\n\nplain.';
+    expect(preprocessLaTeX(content)).toBe(content);
+  });
+
   // --- Escaped $$ should not trigger unclosed-block truncation (H3) ---
 
   test('does not truncate on escaped \\$$ currency followed by digits', () => {
@@ -713,12 +755,14 @@ y$ which spans lines`;
   });
 
   test('double backslash before $$ is treated as unescaped (even-count parity)', () => {
-    // `\\$$...` means literal `\`, then a real `$$` delimiter. When the block
-    // is unclosed, it must still be truncated (not preserved by a naïve
-    // single-char backslash check).
+    // `\\$$...` means literal `\`, then a real `$$` delimiter — the parity
+    // check still has to see it as a delimiter rather than as escaped.
+    //
+    // It is NOT truncated, because the delimiter is mid-line and mathFlow
+    // cannot open there. What this test now pins is the parity reading alone;
+    // the truncation half moved to the line-start cases below.
     const content = 'prefix \\\\$$unclosed block';
-    const expected = 'prefix \\\\';
-    expect(preprocessLaTeX(content)).toBe(expected);
+    expect(preprocessLaTeX(content)).toBe(content);
   });
 
   test('triple backslash before $$ is treated as escaped (odd-count parity)', () => {
@@ -737,13 +781,13 @@ y$ which spans lines`;
   // code fence. This asserts that contract and protects against regressions
   // that would leak partial math across segment boundaries.
 
-  test('per-segment truncation: unclosed $$ before a code fence is truncated', () => {
-    // The unclosed `$$E = mc` in the pre-code segment is truncated (including
-    // trailing whitespace) and the post-code segment's closed `$$after$$` is
-    // preserved — confirming each segment is processed independently.
+  test('per-segment truncation: a mid-line unclosed $$ before a fence survives', () => {
+    // Segments are still processed independently — that is what the next test
+    // pins. This one no longer truncates, because `$$E = mc` is mid-line and
+    // opens no math flow. Verified against remark-math: the document parses as
+    // paragraph/code/paragraph with nothing swallowed.
     const content = 'before $$E = mc\n```\ncode\n```\nand $$after$$';
-    const expected = 'before```\ncode\n```\nand $$after$$';
-    expect(preprocessLaTeX(content)).toBe(expected);
+    expect(preprocessLaTeX(content)).toBe(content);
   });
 
   test('per-segment truncation: closed $$ inside pre-code segment survives', () => {
