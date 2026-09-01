@@ -10,10 +10,11 @@
  * survived, not what was attempted; `excluded.json` carries the rest with
  * the error each one raised.
  *
- *   math symbols    492 of  514
- *   text symbols     77 of   77
- *   functions       272 of  291
- *   macros          314 of  336
+ *   math symbols    468 of  490
+ *   text symbols     67 of   67
+ *   literal chars    42 of   52
+ *   functions       254 of  273
+ *   macros          275 of  297
  *   environments     33 of   33
  */
 
@@ -23,56 +24,64 @@ export const KATEX_VERSION = '0.16.47';
 export const MATH_SYMBOLS: readonly string[] = [
   `{\\equiv} \\quad {\\prec} \\quad {\\succ} \\quad {\\sim} \\quad {\\perp} \\quad {\\preceq} \\quad {\\succeq} \\quad {\\simeq} \\quad {\\mid} \\quad {\\ll} \\quad {\\gg} \\quad {\\asymp}`,
   `{\\parallel} \\quad {\\bowtie} \\quad {\\smile} \\quad {\\sqsubseteq} \\quad {\\sqsupseteq} \\quad {\\doteq} \\quad {\\frown} \\quad {\\ni} \\quad {\\propto} \\quad {\\vdash} \\quad {\\dashv} \\quad {\\owns}`,
-  `{\\ldotp} \\quad {\\cdotp} \\quad {\\u00b7} \\quad {\\#} \\quad {\\&} \\quad {\\aleph} \\quad {\\forall} \\quad {\\hbar} \\quad {\\exists} \\quad {\\nabla} \\quad {\\flat} \\quad {\\ell}`,
-  `{\\natural} \\quad {\\clubsuit} \\quad {\\wp} \\quad {\\sharp} \\quad {\\diamondsuit} \\quad {\\Re} \\quad {\\heartsuit} \\quad {\\Im} \\quad {\\spadesuit} \\quad {\\S} \\quad {\\P} \\quad {\\dag}`,
-  `{\\ddag} \\quad {\\rmoustache} \\quad {\\lmoustache} \\quad {\\rgroup} \\quad {\\lgroup} \\quad {\\mp} \\quad {\\ominus} \\quad {\\uplus} \\quad {\\sqcap} \\quad {\\ast} \\quad {\\sqcup} \\quad {\\bigcirc}`,
-  `{\\bullet} \\quad {\\ddagger} \\quad {\\wr} \\quad {\\amalg} \\quad {\\And} \\quad {\\longleftarrow} \\quad {\\Leftarrow} \\quad {\\Longleftarrow} \\quad {\\longrightarrow} \\quad {\\Rightarrow} \\quad {\\Longrightarrow} \\quad {\\leftrightarrow}`,
-  `{\\longleftrightarrow} \\quad {\\Leftrightarrow} \\quad {\\Longleftrightarrow} \\quad {\\mapsto} \\quad {\\longmapsto} \\quad {\\nearrow} \\quad {\\hookleftarrow} \\quad {\\hookrightarrow} \\quad {\\searrow} \\quad {\\leftharpoonup} \\quad {\\rightharpoonup} \\quad {\\swarrow}`,
-  `{\\leftharpoondown} \\quad {\\rightharpoondown} \\quad {\\nwarrow} \\quad {\\rightleftharpoons} \\quad {\\nless} \\quad {\\lneq} \\quad {\\lneqq} \\quad {\\lnsim} \\quad {\\lnapprox} \\quad {\\nprec} \\quad {\\npreceq} \\quad {\\precnsim}`,
-  `{\\precnapprox} \\quad {\\nsim} \\quad {\\nmid} \\quad {\\nvdash} \\quad {\\nvDash} \\quad {\\ntriangleleft} \\quad {\\ntrianglelefteq} \\quad {\\subsetneq} \\quad {\\subsetneqq} \\quad {\\ngtr} \\quad {\\gneq} \\quad {\\gneqq}`,
-  `{\\gnsim} \\quad {\\gnapprox} \\quad {\\nsucc} \\quad {\\nsucceq} \\quad {\\succnsim} \\quad {\\succnapprox} \\quad {\\ncong} \\quad {\\nparallel} \\quad {\\nVDash} \\quad {\\ntriangleright} \\quad {\\ntrianglerighteq} \\quad {\\supsetneq}`,
-  `{\\supsetneqq} \\quad {\\nVdash} \\quad {\\precneqq} \\quad {\\succneqq} \\quad {\\unlhd} \\quad {\\unrhd} \\quad {\\nleftarrow} \\quad {\\nrightarrow} \\quad {\\nLeftarrow} \\quad {\\nRightarrow} \\quad {\\nleftrightarrow} \\quad {\\nLeftrightarrow}`,
-  `{\\vartriangle} \\quad {\\hslash} \\quad {\\triangledown} \\quad {\\lozenge} \\quad {\\circledS} \\quad {\\circledR} \\quad {\\measuredangle} \\quad {\\nexists} \\quad {\\mho} \\quad {\\Finv} \\quad {\\Game} \\quad {\\backprime}`,
-  `{\\blacktriangle} \\quad {\\blacktriangledown} \\quad {\\blacksquare} \\quad {\\blacklozenge} \\quad {\\bigstar} \\quad {\\sphericalangle} \\quad {\\complement} \\quad {\\eth} \\quad {\\diagup} \\quad {\\diagdown} \\quad {\\square} \\quad {\\Box}`,
-  `{\\Diamond} \\quad {\\yen} \\quad {\\checkmark} \\quad {\\beth} \\quad {\\daleth} \\quad {\\gimel} \\quad {\\digamma} \\quad {\\varkappa} \\quad {\\leqq} \\quad {\\leqslant} \\quad {\\eqslantless} \\quad {\\lesssim}`,
-  `{\\lessapprox} \\quad {\\approxeq} \\quad {\\lessdot} \\quad {\\lll} \\quad {\\lessgtr} \\quad {\\lesseqgtr} \\quad {\\lesseqqgtr} \\quad {\\doteqdot} \\quad {\\risingdotseq} \\quad {\\fallingdotseq} \\quad {\\backsim} \\quad {\\backsimeq}`,
-  `{\\subseteqq} \\quad {\\Subset} \\quad {\\sqsubset} \\quad {\\preccurlyeq} \\quad {\\curlyeqprec} \\quad {\\precsim} \\quad {\\precapprox} \\quad {\\vartriangleleft} \\quad {\\trianglelefteq} \\quad {\\vDash} \\quad {\\Vvdash} \\quad {\\smallsmile}`,
-  `{\\smallfrown} \\quad {\\bumpeq} \\quad {\\Bumpeq} \\quad {\\geqq} \\quad {\\geqslant} \\quad {\\eqslantgtr} \\quad {\\gtrsim} \\quad {\\gtrapprox} \\quad {\\gtrdot} \\quad {\\ggg} \\quad {\\gtrless} \\quad {\\gtreqless}`,
-  `{\\gtreqqless} \\quad {\\eqcirc} \\quad {\\circeq} \\quad {\\triangleq} \\quad {\\thicksim} \\quad {\\thickapprox} \\quad {\\supseteqq} \\quad {\\Supset} \\quad {\\sqsupset} \\quad {\\succcurlyeq} \\quad {\\curlyeqsucc} \\quad {\\succsim}`,
-  `{\\succapprox} \\quad {\\vartriangleright} \\quad {\\trianglerighteq} \\quad {\\Vdash} \\quad {\\shortmid} \\quad {\\shortparallel} \\quad {\\between} \\quad {\\pitchfork} \\quad {\\varpropto} \\quad {\\blacktriangleleft} \\quad {\\therefore} \\quad {\\backepsilon}`,
-  `{\\blacktriangleright} \\quad {\\because} \\quad {\\llless} \\quad {\\gggtr} \\quad {\\lhd} \\quad {\\rhd} \\quad {\\eqsim} \\quad {\\Join} \\quad {\\Doteq} \\quad {\\dotplus} \\quad {\\smallsetminus} \\quad {\\Cap}`,
-  `{\\Cup} \\quad {\\doublebarwedge} \\quad {\\boxminus} \\quad {\\boxplus} \\quad {\\divideontimes} \\quad {\\ltimes} \\quad {\\rtimes} \\quad {\\leftthreetimes} \\quad {\\rightthreetimes} \\quad {\\curlywedge} \\quad {\\curlyvee} \\quad {\\circleddash}`,
-  `{\\circledast} \\quad {\\centerdot} \\quad {\\intercal} \\quad {\\doublecap} \\quad {\\doublecup} \\quad {\\boxtimes} \\quad {\\dashrightarrow} \\quad {\\dashleftarrow} \\quad {\\leftleftarrows} \\quad {\\leftrightarrows} \\quad {\\Lleftarrow} \\quad {\\twoheadleftarrow}`,
-  `{\\leftarrowtail} \\quad {\\looparrowleft} \\quad {\\leftrightharpoons} \\quad {\\curvearrowleft} \\quad {\\circlearrowleft} \\quad {\\Lsh} \\quad {\\upuparrows} \\quad {\\upharpoonleft} \\quad {\\downharpoonleft} \\quad {\\origof} \\quad {\\imageof} \\quad {\\multimap}`,
-  `{\\leftrightsquigarrow} \\quad {\\rightrightarrows} \\quad {\\rightleftarrows} \\quad {\\twoheadrightarrow} \\quad {\\rightarrowtail} \\quad {\\looparrowright} \\quad {\\curvearrowright} \\quad {\\circlearrowright} \\quad {\\Rsh} \\quad {\\downdownarrows} \\quad {\\upharpoonright} \\quad {\\downharpoonright}`,
-  `{\\rightsquigarrow} \\quad {\\leadsto} \\quad {\\Rrightarrow} \\quad {\\restriction} \\quad {\\$} \\quad {\\%} \\quad {\\_} \\quad {\\angle} \\quad {\\infty} \\quad {\\prime} \\quad {\\triangle} \\quad {\\Gamma}`,
-  `{\\Delta} \\quad {\\Theta} \\quad {\\Lambda} \\quad {\\Xi} \\quad {\\Pi} \\quad {\\Sigma} \\quad {\\Upsilon} \\quad {\\Phi} \\quad {\\Psi} \\quad {\\Omega} \\quad {\\u0391} \\quad {\\u0392}`,
-  `{\\u0395} \\quad {\\u0396} \\quad {\\u0397} \\quad {\\u0399} \\quad {\\u039A} \\quad {\\u039C} \\quad {\\u039D} \\quad {\\u039F} \\quad {\\u03A1} \\quad {\\u03A4} \\quad {\\u03A7} \\quad {\\neg}`,
-  `{\\lnot} \\quad {\\top} \\quad {\\bot} \\quad {\\emptyset} \\quad {\\varnothing} \\quad {\\alpha} \\quad {\\beta} \\quad {\\gamma} \\quad {\\delta} \\quad {\\epsilon} \\quad {\\zeta} \\quad {\\eta}`,
-  `{\\theta} \\quad {\\iota} \\quad {\\kappa} \\quad {\\lambda} \\quad {\\mu} \\quad {\\nu} \\quad {\\xi} \\quad {\\omicron} \\quad {\\pi} \\quad {\\rho} \\quad {\\sigma} \\quad {\\tau}`,
-  `{\\upsilon} \\quad {\\phi} \\quad {\\chi} \\quad {\\psi} \\quad {\\omega} \\quad {\\varepsilon} \\quad {\\vartheta} \\quad {\\varpi} \\quad {\\varrho} \\quad {\\varsigma} \\quad {\\varphi} \\quad {\\cdot}`,
-  `{\\circ} \\quad {\\div} \\quad {\\pm} \\quad {\\times} \\quad {\\cap} \\quad {\\cup} \\quad {\\setminus} \\quad {\\land} \\quad {\\lor} \\quad {\\wedge} \\quad {\\vee} \\quad {\\surd}`,
-  `{\\langle} \\quad {\\lvert} \\quad {\\lVert} \\quad {\\rangle} \\quad {\\rvert} \\quad {\\rVert} \\quad {\\approx} \\quad {\\cong} \\quad {\\ge} \\quad {\\geq} \\quad {\\gets} \\quad {\\gt}`,
-  `{\\in} \\quad {\\subset} \\quad {\\supset} \\quad {\\subseteq} \\quad {\\supseteq} \\quad {\\nsubseteq} \\quad {\\nsupseteq} \\quad {\\models} \\quad {\\leftarrow} \\quad {\\le} \\quad {\\leq} \\quad {\\lt}`,
-  `{\\rightarrow} \\quad {\\to} \\quad {\\ngeq} \\quad {\\nleq} \\quad {\\ } \\quad {\\space} \\quad {\\nobreakspace} \\quad {\\nobreak} \\quad {\\allowbreak} \\quad {\\barwedge} \\quad {\\veebar} \\quad {\\odot}`,
-  `{\\oplus} \\quad {\\otimes} \\quad {\\partial} \\quad {\\oslash} \\quad {\\circledcirc} \\quad {\\boxdot} \\quad {\\bigtriangleup} \\quad {\\bigtriangledown} \\quad {\\dagger} \\quad {\\diamond} \\quad {\\star} \\quad {\\triangleleft}`,
-  `{\\triangleright} \\quad {\\{} \\quad {\\}} \\quad {\\lbrace} \\quad {\\rbrace} \\quad {\\lbrack} \\quad {\\rbrack} \\quad {\\lparen} \\quad {\\rparen} \\quad {\\lfloor} \\quad {\\rfloor} \\quad {\\lceil}`,
-  `{\\rceil} \\quad {\\backslash} \\quad {\\vert} \\quad {\\|} \\quad {\\Vert} \\quad {\\uparrow} \\quad {\\Uparrow} \\quad {\\downarrow} \\quad {\\Downarrow} \\quad {\\updownarrow} \\quad {\\Updownarrow} \\quad {\\coprod}`,
-  `{\\bigvee} \\quad {\\bigwedge} \\quad {\\biguplus} \\quad {\\bigcap} \\quad {\\bigcup} \\quad {\\int} \\quad {\\intop} \\quad {\\iint} \\quad {\\iiint} \\quad {\\prod} \\quad {\\sum} \\quad {\\bigotimes}`,
-  `{\\bigoplus} \\quad {\\bigodot} \\quad {\\oint} \\quad {\\oiint} \\quad {\\oiiint} \\quad {\\bigsqcup} \\quad {\\smallint} \\quad {\\mathellipsis} \\quad {\\ldots} \\quad {\\ddots} \\quad {\\varvdots} \\quad {\\acute{x}}`,
-  `{\\grave{x}} \\quad {\\ddot{x}} \\quad {\\tilde{x}} \\quad {\\bar{x}} \\quad {\\breve{x}} \\quad {\\check{x}} \\quad {\\hat{x}} \\quad {\\vec{x}} \\quad {\\dot{x}} \\quad {\\mathring{x}} \\quad {\\u0131} \\quad {\\u0237}`,
-  `{\\degree} \\quad {\\pounds} \\quad {\\mathsterling} \\quad {\\maltese} \\quad {\\u2102} \\quad {\\u210D} \\quad {\\u2115} \\quad {\\u2119} \\quad {\\u211A} \\quad {\\u211D} \\quad {\\u2124} \\quad {\\u210E}`,
+  `{\\ldotp} \\quad {\\cdotp} \\quad {\\#} \\quad {\\&} \\quad {\\aleph} \\quad {\\forall} \\quad {\\hbar} \\quad {\\exists} \\quad {\\nabla} \\quad {\\flat} \\quad {\\ell} \\quad {\\natural}`,
+  `{\\clubsuit} \\quad {\\wp} \\quad {\\sharp} \\quad {\\diamondsuit} \\quad {\\Re} \\quad {\\heartsuit} \\quad {\\Im} \\quad {\\spadesuit} \\quad {\\S} \\quad {\\P} \\quad {\\dag} \\quad {\\ddag}`,
+  `{\\rmoustache} \\quad {\\lmoustache} \\quad {\\rgroup} \\quad {\\lgroup} \\quad {\\mp} \\quad {\\ominus} \\quad {\\uplus} \\quad {\\sqcap} \\quad {\\ast} \\quad {\\sqcup} \\quad {\\bigcirc} \\quad {\\bullet}`,
+  `{\\ddagger} \\quad {\\wr} \\quad {\\amalg} \\quad {\\And} \\quad {\\longleftarrow} \\quad {\\Leftarrow} \\quad {\\Longleftarrow} \\quad {\\longrightarrow} \\quad {\\Rightarrow} \\quad {\\Longrightarrow} \\quad {\\leftrightarrow} \\quad {\\longleftrightarrow}`,
+  `{\\Leftrightarrow} \\quad {\\Longleftrightarrow} \\quad {\\mapsto} \\quad {\\longmapsto} \\quad {\\nearrow} \\quad {\\hookleftarrow} \\quad {\\hookrightarrow} \\quad {\\searrow} \\quad {\\leftharpoonup} \\quad {\\rightharpoonup} \\quad {\\swarrow} \\quad {\\leftharpoondown}`,
+  `{\\rightharpoondown} \\quad {\\nwarrow} \\quad {\\rightleftharpoons} \\quad {\\nless} \\quad {\\lneq} \\quad {\\lneqq} \\quad {\\lnsim} \\quad {\\lnapprox} \\quad {\\nprec} \\quad {\\npreceq} \\quad {\\precnsim} \\quad {\\precnapprox}`,
+  `{\\nsim} \\quad {\\nmid} \\quad {\\nvdash} \\quad {\\nvDash} \\quad {\\ntriangleleft} \\quad {\\ntrianglelefteq} \\quad {\\subsetneq} \\quad {\\subsetneqq} \\quad {\\ngtr} \\quad {\\gneq} \\quad {\\gneqq} \\quad {\\gnsim}`,
+  `{\\gnapprox} \\quad {\\nsucc} \\quad {\\nsucceq} \\quad {\\succnsim} \\quad {\\succnapprox} \\quad {\\ncong} \\quad {\\nparallel} \\quad {\\nVDash} \\quad {\\ntriangleright} \\quad {\\ntrianglerighteq} \\quad {\\supsetneq} \\quad {\\supsetneqq}`,
+  `{\\nVdash} \\quad {\\precneqq} \\quad {\\succneqq} \\quad {\\unlhd} \\quad {\\unrhd} \\quad {\\nleftarrow} \\quad {\\nrightarrow} \\quad {\\nLeftarrow} \\quad {\\nRightarrow} \\quad {\\nleftrightarrow} \\quad {\\nLeftrightarrow} \\quad {\\vartriangle}`,
+  `{\\hslash} \\quad {\\triangledown} \\quad {\\lozenge} \\quad {\\circledS} \\quad {\\circledR} \\quad {\\measuredangle} \\quad {\\nexists} \\quad {\\mho} \\quad {\\Finv} \\quad {\\Game} \\quad {\\backprime} \\quad {\\blacktriangle}`,
+  `{\\blacktriangledown} \\quad {\\blacksquare} \\quad {\\blacklozenge} \\quad {\\bigstar} \\quad {\\sphericalangle} \\quad {\\complement} \\quad {\\eth} \\quad {\\diagup} \\quad {\\diagdown} \\quad {\\square} \\quad {\\Box} \\quad {\\Diamond}`,
+  `{\\yen} \\quad {\\checkmark} \\quad {\\beth} \\quad {\\daleth} \\quad {\\gimel} \\quad {\\digamma} \\quad {\\varkappa} \\quad {\\leqq} \\quad {\\leqslant} \\quad {\\eqslantless} \\quad {\\lesssim} \\quad {\\lessapprox}`,
+  `{\\approxeq} \\quad {\\lessdot} \\quad {\\lll} \\quad {\\lessgtr} \\quad {\\lesseqgtr} \\quad {\\lesseqqgtr} \\quad {\\doteqdot} \\quad {\\risingdotseq} \\quad {\\fallingdotseq} \\quad {\\backsim} \\quad {\\backsimeq} \\quad {\\subseteqq}`,
+  `{\\Subset} \\quad {\\sqsubset} \\quad {\\preccurlyeq} \\quad {\\curlyeqprec} \\quad {\\precsim} \\quad {\\precapprox} \\quad {\\vartriangleleft} \\quad {\\trianglelefteq} \\quad {\\vDash} \\quad {\\Vvdash} \\quad {\\smallsmile} \\quad {\\smallfrown}`,
+  `{\\bumpeq} \\quad {\\Bumpeq} \\quad {\\geqq} \\quad {\\geqslant} \\quad {\\eqslantgtr} \\quad {\\gtrsim} \\quad {\\gtrapprox} \\quad {\\gtrdot} \\quad {\\ggg} \\quad {\\gtrless} \\quad {\\gtreqless} \\quad {\\gtreqqless}`,
+  `{\\eqcirc} \\quad {\\circeq} \\quad {\\triangleq} \\quad {\\thicksim} \\quad {\\thickapprox} \\quad {\\supseteqq} \\quad {\\Supset} \\quad {\\sqsupset} \\quad {\\succcurlyeq} \\quad {\\curlyeqsucc} \\quad {\\succsim} \\quad {\\succapprox}`,
+  `{\\vartriangleright} \\quad {\\trianglerighteq} \\quad {\\Vdash} \\quad {\\shortmid} \\quad {\\shortparallel} \\quad {\\between} \\quad {\\pitchfork} \\quad {\\varpropto} \\quad {\\blacktriangleleft} \\quad {\\therefore} \\quad {\\backepsilon} \\quad {\\blacktriangleright}`,
+  `{\\because} \\quad {\\llless} \\quad {\\gggtr} \\quad {\\lhd} \\quad {\\rhd} \\quad {\\eqsim} \\quad {\\Join} \\quad {\\Doteq} \\quad {\\dotplus} \\quad {\\smallsetminus} \\quad {\\Cap} \\quad {\\Cup}`,
+  `{\\doublebarwedge} \\quad {\\boxminus} \\quad {\\boxplus} \\quad {\\divideontimes} \\quad {\\ltimes} \\quad {\\rtimes} \\quad {\\leftthreetimes} \\quad {\\rightthreetimes} \\quad {\\curlywedge} \\quad {\\curlyvee} \\quad {\\circleddash} \\quad {\\circledast}`,
+  `{\\centerdot} \\quad {\\intercal} \\quad {\\doublecap} \\quad {\\doublecup} \\quad {\\boxtimes} \\quad {\\dashrightarrow} \\quad {\\dashleftarrow} \\quad {\\leftleftarrows} \\quad {\\leftrightarrows} \\quad {\\Lleftarrow} \\quad {\\twoheadleftarrow} \\quad {\\leftarrowtail}`,
+  `{\\looparrowleft} \\quad {\\leftrightharpoons} \\quad {\\curvearrowleft} \\quad {\\circlearrowleft} \\quad {\\Lsh} \\quad {\\upuparrows} \\quad {\\upharpoonleft} \\quad {\\downharpoonleft} \\quad {\\origof} \\quad {\\imageof} \\quad {\\multimap} \\quad {\\leftrightsquigarrow}`,
+  `{\\rightrightarrows} \\quad {\\rightleftarrows} \\quad {\\twoheadrightarrow} \\quad {\\rightarrowtail} \\quad {\\looparrowright} \\quad {\\curvearrowright} \\quad {\\circlearrowright} \\quad {\\Rsh} \\quad {\\downdownarrows} \\quad {\\upharpoonright} \\quad {\\downharpoonright} \\quad {\\rightsquigarrow}`,
+  `{\\leadsto} \\quad {\\Rrightarrow} \\quad {\\restriction} \\quad {\\$} \\quad {\\%} \\quad {\\_} \\quad {\\angle} \\quad {\\infty} \\quad {\\prime} \\quad {\\triangle} \\quad {\\Gamma} \\quad {\\Delta}`,
+  `{\\Theta} \\quad {\\Lambda} \\quad {\\Xi} \\quad {\\Pi} \\quad {\\Sigma} \\quad {\\Upsilon} \\quad {\\Phi} \\quad {\\Psi} \\quad {\\Omega} \\quad {\\neg} \\quad {\\lnot} \\quad {\\top}`,
+  `{\\bot} \\quad {\\emptyset} \\quad {\\varnothing} \\quad {\\alpha} \\quad {\\beta} \\quad {\\gamma} \\quad {\\delta} \\quad {\\epsilon} \\quad {\\zeta} \\quad {\\eta} \\quad {\\theta} \\quad {\\iota}`,
+  `{\\kappa} \\quad {\\lambda} \\quad {\\mu} \\quad {\\nu} \\quad {\\xi} \\quad {\\omicron} \\quad {\\pi} \\quad {\\rho} \\quad {\\sigma} \\quad {\\tau} \\quad {\\upsilon} \\quad {\\phi}`,
+  `{\\chi} \\quad {\\psi} \\quad {\\omega} \\quad {\\varepsilon} \\quad {\\vartheta} \\quad {\\varpi} \\quad {\\varrho} \\quad {\\varsigma} \\quad {\\varphi} \\quad {\\cdot} \\quad {\\circ} \\quad {\\div}`,
+  `{\\pm} \\quad {\\times} \\quad {\\cap} \\quad {\\cup} \\quad {\\setminus} \\quad {\\land} \\quad {\\lor} \\quad {\\wedge} \\quad {\\vee} \\quad {\\surd} \\quad {\\langle} \\quad {\\lvert}`,
+  `{\\lVert} \\quad {\\rangle} \\quad {\\rvert} \\quad {\\rVert} \\quad {\\approx} \\quad {\\cong} \\quad {\\ge} \\quad {\\geq} \\quad {\\gets} \\quad {\\gt} \\quad {\\in} \\quad {\\subset}`,
+  `{\\supset} \\quad {\\subseteq} \\quad {\\supseteq} \\quad {\\nsubseteq} \\quad {\\nsupseteq} \\quad {\\models} \\quad {\\leftarrow} \\quad {\\le} \\quad {\\leq} \\quad {\\lt} \\quad {\\rightarrow} \\quad {\\to}`,
+  `{\\ngeq} \\quad {\\nleq} \\quad {\\ } \\quad {\\space} \\quad {\\nobreakspace} \\quad {\\nobreak} \\quad {\\allowbreak} \\quad {\\barwedge} \\quad {\\veebar} \\quad {\\odot} \\quad {\\oplus} \\quad {\\otimes}`,
+  `{\\partial} \\quad {\\oslash} \\quad {\\circledcirc} \\quad {\\boxdot} \\quad {\\bigtriangleup} \\quad {\\bigtriangledown} \\quad {\\dagger} \\quad {\\diamond} \\quad {\\star} \\quad {\\triangleleft} \\quad {\\triangleright} \\quad {\\{}`,
+  `{\\}} \\quad {\\lbrace} \\quad {\\rbrace} \\quad {\\lbrack} \\quad {\\rbrack} \\quad {\\lparen} \\quad {\\rparen} \\quad {\\lfloor} \\quad {\\rfloor} \\quad {\\lceil} \\quad {\\rceil} \\quad {\\backslash}`,
+  `{\\vert} \\quad {\\|} \\quad {\\Vert} \\quad {\\uparrow} \\quad {\\Uparrow} \\quad {\\downarrow} \\quad {\\Downarrow} \\quad {\\updownarrow} \\quad {\\Updownarrow} \\quad {\\coprod} \\quad {\\bigvee} \\quad {\\bigwedge}`,
+  `{\\biguplus} \\quad {\\bigcap} \\quad {\\bigcup} \\quad {\\int} \\quad {\\intop} \\quad {\\iint} \\quad {\\iiint} \\quad {\\prod} \\quad {\\sum} \\quad {\\bigotimes} \\quad {\\bigoplus} \\quad {\\bigodot}`,
+  `{\\oint} \\quad {\\oiint} \\quad {\\oiiint} \\quad {\\bigsqcup} \\quad {\\smallint} \\quad {\\mathellipsis} \\quad {\\ldots} \\quad {\\ddots} \\quad {\\varvdots} \\quad {\\acute{x}} \\quad {\\grave{x}} \\quad {\\ddot{x}}`,
+  `{\\tilde{x}} \\quad {\\bar{x}} \\quad {\\breve{x}} \\quad {\\check{x}} \\quad {\\hat{x}} \\quad {\\vec{x}} \\quad {\\dot{x}} \\quad {\\mathring{x}} \\quad {\\degree} \\quad {\\pounds} \\quad {\\mathsterling} \\quad {\\maltese}`,
+];
+
+/** Every literal CHARACTER the symbol table accepts as input — capital
+ *  Greek and the like, which have no command form. Separated from the
+ *  commands because dressing one up as a command produced a fragment that
+ *  rendered and meant something else. */
+export const LITERAL_CHARS: readonly string[] = [
+  `{·} \\quad {\\text{ð}} \\quad {\`} \\quad {Α} \\quad {Β} \\quad {Ε} \\quad {Ζ} \\quad {Η} \\quad {Ι} \\quad {Κ} \\quad {Μ} \\quad {Ν}`,
+  `{Ο} \\quad {Ρ} \\quad {Τ} \\quad {Χ} \\quad {*} \\quad {+} \\quad {-} \\quad {?} \\quad {!} \\quad {=} \\quad {:} \\quad {\\text{ }}`,
+  `{,} \\quad {;} \\quad {|} \\quad {ı} \\quad {ȷ} \\quad {\\text{--}} \\quad {\\text{---}} \\quad {\\text{'}} \\quad {\\text{\`\`}} \\quad {\\text{''}} \\quad {ℂ} \\quad {ℍ}`,
+  `{ℕ} \\quad {ℙ} \\quad {ℚ} \\quad {ℝ} \\quad {ℤ} \\quad {ℎ}`,
 ];
 
 /** Every text-mode symbol, each already wrapped in \text{}. */
 export const TEXT_SYMBOLS: readonly string[] = [
-  `{\\text{\\u00b7}} \\quad {\\text{\\#}} \\quad {\\text{\\&}} \\quad {\\text{\\S}} \\quad {\\text{\\P}} \\quad {\\text{\\dag}} \\quad {\\text{\\textdagger}} \\quad {\\text{\\ddag}} \\quad {\\text{\\textdaggerdbl}} \\quad {\\text{\\circledR}} \\quad {\\text{\\u00f0}} \\quad {\\text{\\yen}}`,
-  `{\\text{\\checkmark}} \\quad {\\text{\\$}} \\quad {\\text{\\textdollar}} \\quad {\\text{\\%}} \\quad {\\text{\\_}} \\quad {\\text{\\textunderscore}} \\quad {\\text{\\ }} \\quad {\\text{\\space}} \\quad {\\text{\\nobreakspace}} \\quad {\\text{\\{}} \\quad {\\text{\\textbraceleft}} \\quad {\\text{\\}}}`,
-  `{\\text{\\textbraceright}} \\quad {\\text{\\lbrack}} \\quad {\\text{\\rbrack}} \\quad {\\text{\\textless}} \\quad {\\text{\\textgreater}} \\quad {\\text{\\textbar}} \\quad {\\text{\\textbardbl}} \\quad {\\text{\\textasciitilde}} \\quad {\\text{\\textbackslash}} \\quad {\\text{\\textasciicircum}} \\quad {\\text{\\textellipsis}} \\quad {\\text{\\ldots}}`,
-  `{\\text{\\varvdots}} \\quad {\\text{\\i}} \\quad {\\text{\\j}} \\quad {\\text{\\ss}} \\quad {\\text{\\ae}} \\quad {\\text{\\oe}} \\quad {\\text{\\o}} \\quad {\\text{\\AE}} \\quad {\\text{\\OE}} \\quad {\\text{\\O}} \\quad {\\text{\\'{x}}} \\quad {\\text{\\\`{x}}}`,
-  `{\\text{\\^{x}}} \\quad {\\text{\\~{x}}} \\quad {\\text{\\={x}}} \\quad {\\text{\\u{x}}} \\quad {\\text{\\.{x}}} \\quad {\\text{\\c{x}}} \\quad {\\text{\\r{x}}} \\quad {\\text{\\v{x}}} \\quad {\\text{\\H{x}}} \\quad {\\text{\\textcircled{x}}} \\quad {\\text{\\textendash}} \\quad {\\text{\\textemdash}}`,
-  `{\\text{\\textquoteleft}} \\quad {\\text{\\textquoteright}} \\quad {\\text{\\textquotedblleft}} \\quad {\\text{\\textquotedblright}} \\quad {\\text{\\degree}} \\quad {\\text{\\textdegree}} \\quad {\\text{\\pounds}} \\quad {\\text{\\textsterling}} \\quad {\\text{\\maltese}} \\quad {\\text{\\u2102}} \\quad {\\text{\\u210D}} \\quad {\\text{\\u2115}}`,
-  `{\\text{\\u2119}} \\quad {\\text{\\u211A}} \\quad {\\text{\\u211D}} \\quad {\\text{\\u2124}} \\quad {\\text{\\u210E}}`,
+  `{\\text{\\#}} \\quad {\\text{\\&}} \\quad {\\text{\\S}} \\quad {\\text{\\P}} \\quad {\\text{\\dag}} \\quad {\\text{\\textdagger}} \\quad {\\text{\\ddag}} \\quad {\\text{\\textdaggerdbl}} \\quad {\\text{\\circledR}} \\quad {\\text{\\yen}} \\quad {\\text{\\checkmark}} \\quad {\\text{\\$}}`,
+  `{\\text{\\textdollar}} \\quad {\\text{\\%}} \\quad {\\text{\\_}} \\quad {\\text{\\textunderscore}} \\quad {\\text{\\ }} \\quad {\\text{\\space}} \\quad {\\text{\\nobreakspace}} \\quad {\\text{\\{}} \\quad {\\text{\\textbraceleft}} \\quad {\\text{\\}}} \\quad {\\text{\\textbraceright}} \\quad {\\text{\\lbrack}}`,
+  `{\\text{\\rbrack}} \\quad {\\text{\\textless}} \\quad {\\text{\\textgreater}} \\quad {\\text{\\textbar}} \\quad {\\text{\\textbardbl}} \\quad {\\text{\\textasciitilde}} \\quad {\\text{\\textbackslash}} \\quad {\\text{\\textasciicircum}} \\quad {\\text{\\textellipsis}} \\quad {\\text{\\ldots}} \\quad {\\text{\\varvdots}} \\quad {\\text{\\i}}`,
+  `{\\text{\\j}} \\quad {\\text{\\ss}} \\quad {\\text{\\ae}} \\quad {\\text{\\oe}} \\quad {\\text{\\o}} \\quad {\\text{\\AE}} \\quad {\\text{\\OE}} \\quad {\\text{\\O}} \\quad {\\text{\\'{x}}} \\quad {\\text{\\\`{x}}} \\quad {\\text{\\^{x}}} \\quad {\\text{\\~{x}}}`,
+  `{\\text{\\={x}}} \\quad {\\text{\\u{x}}} \\quad {\\text{\\.{x}}} \\quad {\\text{\\c{x}}} \\quad {\\text{\\r{x}}} \\quad {\\text{\\v{x}}} \\quad {\\text{\\H{x}}} \\quad {\\text{\\textcircled{x}}} \\quad {\\text{\\textendash}} \\quad {\\text{\\textemdash}} \\quad {\\text{\\textquoteleft}} \\quad {\\text{\\textquoteright}}`,
+  `{\\text{\\textquotedblleft}} \\quad {\\text{\\textquotedblright}} \\quad {\\text{\\degree}} \\quad {\\text{\\textdegree}} \\quad {\\text{\\pounds}} \\quad {\\text{\\textsterling}} \\quad {\\text{\\maltese}}`,
 ];
 
 /** Every callable function name, applied to placeholder arguments. */
@@ -99,54 +108,48 @@ export const MATH_FUNCTIONS: readonly string[] = [
   `{\\mskip 1mu} \\quad {\\mathllap{x}} \\quad {\\mathrlap{x}} \\quad {\\mathclap{x}} \\quad {\\mathchoice{x}{x}{x}{x}} \\quad {\\mathord{x}} \\quad {\\mathbin{x}} \\quad {\\mathrel{x}}`,
   `{\\mathopen{x}} \\quad {\\mathclose{x}} \\quad {\\mathpunct{x}} \\quad {\\mathinner{x}} \\quad {\\stackrel{x}{x}} \\quad {\\overset{x}{x}} \\quad {\\underset{x}{x}} \\quad {\\coprod}`,
   `{\\bigvee} \\quad {\\bigwedge} \\quad {\\biguplus} \\quad {\\bigcap} \\quad {\\bigcup} \\quad {\\intop} \\quad {\\prod} \\quad {\\sum}`,
-  `{\\bigotimes} \\quad {\\bigoplus} \\quad {\\bigodot} \\quad {\\bigsqcup} \\quad {\\smallint} \\quad {\\u220F} \\quad {\\u2210} \\quad {\\u2211}`,
-  `{\\u22c0} \\quad {\\u22c1} \\quad {\\u22c2} \\quad {\\u22c3} \\quad {\\u2a00} \\quad {\\u2a01} \\quad {\\u2a02} \\quad {\\u2a04}`,
-  `{\\u2a06} \\quad {\\mathop{x}} \\quad {\\arcsin} \\quad {\\arccos} \\quad {\\arctan} \\quad {\\arctg} \\quad {\\arcctg} \\quad {\\arg}`,
-  `{\\ch} \\quad {\\cos} \\quad {\\cosec} \\quad {\\cosh} \\quad {\\cot} \\quad {\\cotg} \\quad {\\coth} \\quad {\\csc}`,
-  `{\\ctg} \\quad {\\cth} \\quad {\\deg} \\quad {\\dim} \\quad {\\exp} \\quad {\\hom} \\quad {\\ker} \\quad {\\lg}`,
-  `{\\ln} \\quad {\\log} \\quad {\\sec} \\quad {\\sin} \\quad {\\sinh} \\quad {\\sh} \\quad {\\tan} \\quad {\\tanh}`,
-  `{\\tg} \\quad {\\th} \\quad {\\det} \\quad {\\gcd} \\quad {\\inf} \\quad {\\lim} \\quad {\\max} \\quad {\\min}`,
-  `{\\Pr} \\quad {\\sup} \\quad {\\int} \\quad {\\iint} \\quad {\\iiint} \\quad {\\oint} \\quad {\\oiint} \\quad {\\oiiint}`,
-  `{\\u222b} \\quad {\\u222c} \\quad {\\u222d} \\quad {\\u222e} \\quad {\\u222f} \\quad {\\u2230} \\quad {\\operatornamewithlimits{x}} \\quad {\\overline{x}}`,
-  `{\\phantom{x}} \\quad {\\vphantom{x}} \\quad {\\pmb{x}} \\quad {\\raisebox{1em}{x}} \\quad {\\rule{1em}{1em}} \\quad {\\smash{x}} \\quad {\\sqrt{x}} \\quad {\\displaystyle}`,
-  `{\\textstyle} \\quad {\\scriptstyle} \\quad {\\scriptscriptstyle} \\quad {\\text{x}} \\quad {\\textrm{x}} \\quad {\\textsf{x}} \\quad {\\texttt{x}} \\quad {\\textnormal{x}}`,
-  `{\\textbf{x}} \\quad {\\textmd{x}} \\quad {\\textit{x}} \\quad {\\textup{x}} \\quad {\\emph{x}} \\quad {\\underline{x}} \\quad {\\vcenter{x}} \\quad {\\verb|x|}`,
+  `{\\bigotimes} \\quad {\\bigoplus} \\quad {\\bigodot} \\quad {\\bigsqcup} \\quad {\\smallint} \\quad {\\mathop{x}} \\quad {\\arcsin} \\quad {\\arccos}`,
+  `{\\arctan} \\quad {\\arctg} \\quad {\\arcctg} \\quad {\\arg} \\quad {\\ch} \\quad {\\cos} \\quad {\\cosec} \\quad {\\cosh}`,
+  `{\\cot} \\quad {\\cotg} \\quad {\\coth} \\quad {\\csc} \\quad {\\ctg} \\quad {\\cth} \\quad {\\deg} \\quad {\\dim}`,
+  `{\\exp} \\quad {\\hom} \\quad {\\ker} \\quad {\\lg} \\quad {\\ln} \\quad {\\log} \\quad {\\sec} \\quad {\\sin}`,
+  `{\\sinh} \\quad {\\sh} \\quad {\\tan} \\quad {\\tanh} \\quad {\\tg} \\quad {\\th} \\quad {\\det} \\quad {\\gcd}`,
+  `{\\inf} \\quad {\\lim} \\quad {\\max} \\quad {\\min} \\quad {\\Pr} \\quad {\\sup} \\quad {\\int} \\quad {\\iint}`,
+  `{\\iiint} \\quad {\\oint} \\quad {\\oiint} \\quad {\\oiiint} \\quad {\\operatornamewithlimits{x}} \\quad {\\overline{x}} \\quad {\\phantom{x}} \\quad {\\vphantom{x}}`,
+  `{\\pmb{x}} \\quad {\\raisebox{1em}{x}} \\quad {\\rule{1em}{1em}} \\quad {\\smash{x}} \\quad {\\sqrt{x}} \\quad {\\displaystyle} \\quad {\\textstyle} \\quad {\\scriptstyle}`,
+  `{\\scriptscriptstyle} \\quad {\\text{x}} \\quad {\\textrm{x}} \\quad {\\textsf{x}} \\quad {\\texttt{x}} \\quad {\\textnormal{x}} \\quad {\\textbf{x}} \\quad {\\textmd{x}}`,
+  `{\\textit{x}} \\quad {\\textup{x}} \\quad {\\emph{x}} \\quad {\\underline{x}} \\quad {\\vcenter{x}} \\quad {\\verb|x|}`,
 ];
 
 /** Every macro that renders standalone. */
 export const MATH_MACROS: readonly string[] = [
   `{\\nonumber} \\quad {\\notag} \\quad {\\operatorname{x}} \\quad {\\hphantom{x}} \\quad {\\TextOrMath{x}{x}} \\quad {\\char"41} \\quad {\\lq} \\quad {\\rq} \\quad {\\aa} \\quad {\\AA}`,
-  `{\\textcopyright} \\quad {\\copyright} \\quad {\\textregistered} \\quad {\\u212C} \\quad {\\u2130} \\quad {\\u2131} \\quad {\\u210B} \\quad {\\u2110} \\quad {\\u2112} \\quad {\\u2133}`,
-  `{\\u211B} \\quad {\\u212D} \\quad {\\u210C} \\quad {\\u2128} \\quad {\\Bbbk} \\quad {\\llap{x}} \\quad {\\rlap{x}} \\quad {\\clap{x}} \\quad {\\mathstrut} \\quad {\\underbar{x}}`,
-  `{\\not} \\quad {\\neq} \\quad {\\ne} \\quad {\\u2260} \\quad {\\notin} \\quad {\\u2209} \\quad {\\u2258} \\quad {\\u2259} \\quad {\\u225A} \\quad {\\u225B}`,
-  `{\\u225D} \\quad {\\u225E} \\quad {\\u225F} \\quad {\\u27C2} \\quad {\\u203C} \\quad {\\u220C} \\quad {\\u231C} \\quad {\\u231D} \\quad {\\u231E} \\quad {\\u231F}`,
-  `{\\u00A9} \\quad {\\u00AE} \\quad {\\ulcorner} \\quad {\\urcorner} \\quad {\\llcorner} \\quad {\\lrcorner} \\quad {\\vdots} \\quad {\\u22ee} \\quad {\\varGamma} \\quad {\\varDelta}`,
+  `{\\textcopyright} \\quad {\\copyright} \\quad {\\textregistered} \\quad {\\Bbbk} \\quad {\\llap{x}} \\quad {\\rlap{x}} \\quad {\\clap{x}} \\quad {\\mathstrut} \\quad {\\underbar{x}} \\quad {\\not}`,
+  `{\\neq} \\quad {\\ne} \\quad {\\notin} \\quad {\\ulcorner} \\quad {\\urcorner} \\quad {\\llcorner} \\quad {\\lrcorner} \\quad {\\vdots} \\quad {\\varGamma} \\quad {\\varDelta}`,
   `{\\varTheta} \\quad {\\varLambda} \\quad {\\varXi} \\quad {\\varPi} \\quad {\\varSigma} \\quad {\\varUpsilon} \\quad {\\varPhi} \\quad {\\varPsi} \\quad {\\varOmega} \\quad {\\substack{x}}`,
   `{\\colon} \\quad {\\boxed{x}} \\quad {\\iff} \\quad {\\implies} \\quad {\\impliedby} \\quad {\\dddot{x}} \\quad {\\ddddot{x}} \\quad {\\dots} \\quad {\\dotso} \\quad {\\dotsc}`,
   `{\\cdots} \\quad {\\dotsb} \\quad {\\dotsm} \\quad {\\dotsi} \\quad {\\dotsx} \\quad {\\DOTSI} \\quad {\\DOTSB} \\quad {\\DOTSX} \\quad {\\,} \\quad {\\thinspace}`,
   `{\\>} \\quad {\\:} \\quad {\\medspace} \\quad {\\;} \\quad {\\thickspace} \\quad {\\!} \\quad {\\negthinspace} \\quad {\\negmedspace} \\quad {\\negthickspace} \\quad {\\enspace}`,
   `{\\enskip} \\quad {\\quad} \\quad {\\qquad} \\quad {\\bmod} \\quad {\\pod{x}} \\quad {\\pmod{x}} \\quad {\\mod{x}} \\quad {\\newline} \\quad {\\TeX} \\quad {\\LaTeX}`,
   `{\\KaTeX} \\quad {\\hspace{1em}} \\quad {\\ordinarycolon} \\quad {\\vcentcolon} \\quad {\\dblcolon} \\quad {\\coloneqq} \\quad {\\Coloneqq} \\quad {\\coloneq} \\quad {\\Coloneq} \\quad {\\eqqcolon}`,
-  `{\\Eqqcolon} \\quad {\\eqcolon} \\quad {\\Eqcolon} \\quad {\\colonapprox} \\quad {\\Colonapprox} \\quad {\\colonsim} \\quad {\\Colonsim} \\quad {\\u2237} \\quad {\\u2239} \\quad {\\u2254}`,
-  `{\\u2255} \\quad {\\u2A74} \\quad {\\ratio} \\quad {\\coloncolon} \\quad {\\colonequals} \\quad {\\coloncolonequals} \\quad {\\equalscolon} \\quad {\\equalscoloncolon} \\quad {\\colonminus} \\quad {\\coloncolonminus}`,
-  `{\\minuscolon} \\quad {\\minuscoloncolon} \\quad {\\coloncolonapprox} \\quad {\\coloncolonsim} \\quad {\\simcolon} \\quad {\\simcoloncolon} \\quad {\\approxcolon} \\quad {\\approxcoloncolon} \\quad {\\notni} \\quad {\\limsup}`,
-  `{\\liminf} \\quad {\\injlim} \\quad {\\projlim} \\quad {\\varlimsup} \\quad {\\varliminf} \\quad {\\varinjlim} \\quad {\\varprojlim} \\quad {\\gvertneqq} \\quad {\\lvertneqq} \\quad {\\ngeqq}`,
-  `{\\ngeqslant} \\quad {\\nleqq} \\quad {\\nleqslant} \\quad {\\nshortmid} \\quad {\\nshortparallel} \\quad {\\nsubseteqq} \\quad {\\nsupseteqq} \\quad {\\varsubsetneq} \\quad {\\varsubsetneqq} \\quad {\\varsupsetneq}`,
-  `{\\varsupsetneqq} \\quad {\\imath} \\quad {\\jmath} \\quad {\\llbracket} \\quad {\\rrbracket} \\quad {\\u27e6} \\quad {\\u27e7} \\quad {\\lBrace} \\quad {\\rBrace} \\quad {\\u2983}`,
-  `{\\u2984} \\quad {\\minuso} \\quad {\\darr} \\quad {\\dArr} \\quad {\\Darr} \\quad {\\lang} \\quad {\\rang} \\quad {\\uarr} \\quad {\\uArr} \\quad {\\Uarr}`,
-  `{\\N} \\quad {\\R} \\quad {\\Z} \\quad {\\alef} \\quad {\\alefsym} \\quad {\\Alpha} \\quad {\\Beta} \\quad {\\bull} \\quad {\\Chi} \\quad {\\clubs}`,
-  `{\\cnums} \\quad {\\Complex} \\quad {\\Dagger} \\quad {\\diamonds} \\quad {\\empty} \\quad {\\Epsilon} \\quad {\\Eta} \\quad {\\exist} \\quad {\\harr} \\quad {\\hArr}`,
-  `{\\Harr} \\quad {\\hearts} \\quad {\\image} \\quad {\\infin} \\quad {\\Iota} \\quad {\\isin} \\quad {\\Kappa} \\quad {\\larr} \\quad {\\lArr} \\quad {\\Larr}`,
-  `{\\lrarr} \\quad {\\lrArr} \\quad {\\Lrarr} \\quad {\\Mu} \\quad {\\natnums} \\quad {\\Nu} \\quad {\\Omicron} \\quad {\\plusmn} \\quad {\\rarr} \\quad {\\rArr}`,
-  `{\\Rarr} \\quad {\\real} \\quad {\\reals} \\quad {\\Reals} \\quad {\\Rho} \\quad {\\sdot} \\quad {\\sect} \\quad {\\spades} \\quad {\\sub} \\quad {\\sube}`,
-  `{\\supe} \\quad {\\Tau} \\quad {\\thetasym} \\quad {\\weierp} \\quad {\\Zeta} \\quad {\\argmin} \\quad {\\argmax} \\quad {\\plim} \\quad {\\bra{x}} \\quad {\\ket{x}}`,
-  `{\\braket{x}} \\quad {\\Bra{x}} \\quad {\\Ket{x}} \\quad {\\Braket{x}} \\quad {\\Set{x}} \\quad {\\set{x}} \\quad {\\angln} \\quad {\\blue{x}} \\quad {\\orange{x}} \\quad {\\pink{x}}`,
-  `{\\red{x}} \\quad {\\green{x}} \\quad {\\gray{x}} \\quad {\\purple{x}} \\quad {\\blueA{x}} \\quad {\\blueB{x}} \\quad {\\blueC{x}} \\quad {\\blueD{x}} \\quad {\\blueE{x}} \\quad {\\tealA{x}}`,
-  `{\\tealB{x}} \\quad {\\tealC{x}} \\quad {\\tealD{x}} \\quad {\\tealE{x}} \\quad {\\greenA{x}} \\quad {\\greenB{x}} \\quad {\\greenC{x}} \\quad {\\greenD{x}} \\quad {\\greenE{x}} \\quad {\\goldA{x}}`,
-  `{\\goldB{x}} \\quad {\\goldC{x}} \\quad {\\goldD{x}} \\quad {\\goldE{x}} \\quad {\\redA{x}} \\quad {\\redB{x}} \\quad {\\redC{x}} \\quad {\\redD{x}} \\quad {\\redE{x}} \\quad {\\maroonA{x}}`,
-  `{\\maroonB{x}} \\quad {\\maroonC{x}} \\quad {\\maroonD{x}} \\quad {\\maroonE{x}} \\quad {\\purpleA{x}} \\quad {\\purpleB{x}} \\quad {\\purpleC{x}} \\quad {\\purpleD{x}} \\quad {\\purpleE{x}} \\quad {\\mintA{x}}`,
-  `{\\mintB{x}} \\quad {\\mintC{x}} \\quad {\\grayA{x}} \\quad {\\grayB{x}} \\quad {\\grayC{x}} \\quad {\\grayD{x}} \\quad {\\grayE{x}} \\quad {\\grayF{x}} \\quad {\\grayG{x}} \\quad {\\grayH{x}}`,
-  `{\\grayI{x}} \\quad {\\kaBlue{x}} \\quad {\\kaGreen{x}}`,
+  `{\\Eqqcolon} \\quad {\\eqcolon} \\quad {\\Eqcolon} \\quad {\\colonapprox} \\quad {\\Colonapprox} \\quad {\\colonsim} \\quad {\\Colonsim} \\quad {\\ratio} \\quad {\\coloncolon} \\quad {\\colonequals}`,
+  `{\\coloncolonequals} \\quad {\\equalscolon} \\quad {\\equalscoloncolon} \\quad {\\colonminus} \\quad {\\coloncolonminus} \\quad {\\minuscolon} \\quad {\\minuscoloncolon} \\quad {\\coloncolonapprox} \\quad {\\coloncolonsim} \\quad {\\simcolon}`,
+  `{\\simcoloncolon} \\quad {\\approxcolon} \\quad {\\approxcoloncolon} \\quad {\\notni} \\quad {\\limsup} \\quad {\\liminf} \\quad {\\injlim} \\quad {\\projlim} \\quad {\\varlimsup} \\quad {\\varliminf}`,
+  `{\\varinjlim} \\quad {\\varprojlim} \\quad {\\gvertneqq} \\quad {\\lvertneqq} \\quad {\\ngeqq} \\quad {\\ngeqslant} \\quad {\\nleqq} \\quad {\\nleqslant} \\quad {\\nshortmid} \\quad {\\nshortparallel}`,
+  `{\\nsubseteqq} \\quad {\\nsupseteqq} \\quad {\\varsubsetneq} \\quad {\\varsubsetneqq} \\quad {\\varsupsetneq} \\quad {\\varsupsetneqq} \\quad {\\imath} \\quad {\\jmath} \\quad {\\llbracket} \\quad {\\rrbracket}`,
+  `{\\lBrace} \\quad {\\rBrace} \\quad {\\minuso} \\quad {\\darr} \\quad {\\dArr} \\quad {\\Darr} \\quad {\\lang} \\quad {\\rang} \\quad {\\uarr} \\quad {\\uArr}`,
+  `{\\Uarr} \\quad {\\N} \\quad {\\R} \\quad {\\Z} \\quad {\\alef} \\quad {\\alefsym} \\quad {\\Alpha} \\quad {\\Beta} \\quad {\\bull} \\quad {\\Chi}`,
+  `{\\clubs} \\quad {\\cnums} \\quad {\\Complex} \\quad {\\Dagger} \\quad {\\diamonds} \\quad {\\empty} \\quad {\\Epsilon} \\quad {\\Eta} \\quad {\\exist} \\quad {\\harr}`,
+  `{\\hArr} \\quad {\\Harr} \\quad {\\hearts} \\quad {\\image} \\quad {\\infin} \\quad {\\Iota} \\quad {\\isin} \\quad {\\Kappa} \\quad {\\larr} \\quad {\\lArr}`,
+  `{\\Larr} \\quad {\\lrarr} \\quad {\\lrArr} \\quad {\\Lrarr} \\quad {\\Mu} \\quad {\\natnums} \\quad {\\Nu} \\quad {\\Omicron} \\quad {\\plusmn} \\quad {\\rarr}`,
+  `{\\rArr} \\quad {\\Rarr} \\quad {\\real} \\quad {\\reals} \\quad {\\Reals} \\quad {\\Rho} \\quad {\\sdot} \\quad {\\sect} \\quad {\\spades} \\quad {\\sub}`,
+  `{\\sube} \\quad {\\supe} \\quad {\\Tau} \\quad {\\thetasym} \\quad {\\weierp} \\quad {\\Zeta} \\quad {\\argmin} \\quad {\\argmax} \\quad {\\plim} \\quad {\\bra{x}}`,
+  `{\\ket{x}} \\quad {\\braket{x}} \\quad {\\Bra{x}} \\quad {\\Ket{x}} \\quad {\\Braket{x}} \\quad {\\Set{x}} \\quad {\\set{x}} \\quad {\\angln} \\quad {\\blue{x}} \\quad {\\orange{x}}`,
+  `{\\pink{x}} \\quad {\\red{x}} \\quad {\\green{x}} \\quad {\\gray{x}} \\quad {\\purple{x}} \\quad {\\blueA{x}} \\quad {\\blueB{x}} \\quad {\\blueC{x}} \\quad {\\blueD{x}} \\quad {\\blueE{x}}`,
+  `{\\tealA{x}} \\quad {\\tealB{x}} \\quad {\\tealC{x}} \\quad {\\tealD{x}} \\quad {\\tealE{x}} \\quad {\\greenA{x}} \\quad {\\greenB{x}} \\quad {\\greenC{x}} \\quad {\\greenD{x}} \\quad {\\greenE{x}}`,
+  `{\\goldA{x}} \\quad {\\goldB{x}} \\quad {\\goldC{x}} \\quad {\\goldD{x}} \\quad {\\goldE{x}} \\quad {\\redA{x}} \\quad {\\redB{x}} \\quad {\\redC{x}} \\quad {\\redD{x}} \\quad {\\redE{x}}`,
+  `{\\maroonA{x}} \\quad {\\maroonB{x}} \\quad {\\maroonC{x}} \\quad {\\maroonD{x}} \\quad {\\maroonE{x}} \\quad {\\purpleA{x}} \\quad {\\purpleB{x}} \\quad {\\purpleC{x}} \\quad {\\purpleD{x}} \\quad {\\purpleE{x}}`,
+  `{\\mintA{x}} \\quad {\\mintB{x}} \\quad {\\mintC{x}} \\quad {\\grayA{x}} \\quad {\\grayB{x}} \\quad {\\grayC{x}} \\quad {\\grayD{x}} \\quad {\\grayE{x}} \\quad {\\grayF{x}} \\quad {\\grayG{x}}`,
+  `{\\grayH{x}} \\quad {\\grayI{x}} \\quad {\\kaBlue{x}} \\quad {\\kaGreen{x}}`,
 ];
 
 /** Every environment, with a body shaped to fit it. One per entry — these are
@@ -197,4 +200,4 @@ export const DISPLAY_ONLY: readonly string[] = [
 ];
 
 /** Total distinct KaTeX identifiers exercised by the four lists above. */
-export const GENERATED_IDENTIFIER_COUNT = 1188;
+export const GENERATED_IDENTIFIER_COUNT = 1139;

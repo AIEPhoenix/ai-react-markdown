@@ -73,6 +73,66 @@ function allSources() {
 
 const SOURCES = allSources();
 
+/**
+ * Decode the escapes a `.ts` source spells out, so a name is compared as the
+ * string KaTeX will see rather than as the characters that wrote it.
+ *
+ * A doubled backslash is the source's way of writing one — the command
+ * prefix. A `u`-escape or `x`-escape is how KaTeX writes a literal CHARACTER,
+ * and without this decode those were mistaken for command names: the table
+ * defines capital Greek by its character, with no command form at all.
+ *
+ * 83 of those reached the corpus looking like commands, and they RENDERED —
+ * because the escape's leading `u` is itself KaTeX's unicode-accent command,
+ * so the six characters parsed as an accent applied to a digit. Every one was
+ * exercising something other than what its name said, and no render check
+ * could have caught it: verifying that a fragment renders says nothing about
+ * whether it is the fragment you meant.
+ */
+function decodeName(raw) {
+  // LEFT TO RIGHT, one escape at a time — not a series of independent
+  // `replace` calls.
+  //
+  // Escapes are prefix-consuming: `\\` eats BOTH characters, so nothing
+  // inside it can start another escape. Order-independent replaces do not
+  // know that, and the first version of this function destroyed real
+  // commands with it — source text `"\\xcancel"` is backslash, backslash,
+  // `xcancel`, and an `\x` rule scanning the whole string matched the second
+  // backslash with `ca` and produced `\Êncel`. `\xcancel` is a public command
+  // and it simply left the corpus. Same shape ate `\xdef`.
+  //
+  // Only the render check caught it, and only because the wreckage happened
+  // to be an undefined control sequence. Had the mangled name been a valid
+  // one, it would have rendered and stayed.
+  let out = '';
+  for (let i = 0; i < raw.length; ) {
+    if (raw[i] !== '\\') {
+      out += raw[i];
+      i += 1;
+      continue;
+    }
+    const next = raw[i + 1];
+    if (next === '\\') {
+      out += '\\';
+      i += 2;
+    } else if (next === 'u' && raw[i + 2] === '{') {
+      const close = raw.indexOf('}', i + 3);
+      out += String.fromCodePoint(parseInt(raw.slice(i + 3, close), 16));
+      i = close + 1;
+    } else if (next === 'u' && /^[0-9a-fA-F]{4}$/.test(raw.slice(i + 2, i + 6))) {
+      out += String.fromCharCode(parseInt(raw.slice(i + 2, i + 6), 16));
+      i += 6;
+    } else if (next === 'x' && /^[0-9a-fA-F]{2}$/.test(raw.slice(i + 2, i + 4))) {
+      out += String.fromCharCode(parseInt(raw.slice(i + 2, i + 4), 16));
+      i += 4;
+    } else {
+      out += raw[i];
+      i += 1;
+    }
+  }
+  return out;
+}
+
 /** `defineSymbol(mode, font, group, "replace", "\\name", acceptUnicodeChar?)`.
  *  Mode and group both matter: a text-mode symbol has to be rendered inside
  *  `\text{}` or it fails for a reason that has nothing to do with support,
@@ -84,9 +144,12 @@ function readSymbols() {
   for (const src of SOURCES) {
     for (const m of src.matchAll(re)) {
       const [, mode, group, rawName] = m;
-      const name = rawName.replace(/\\\\/g, '\\');
-      if (!name.startsWith('\\')) continue; // bare characters, not commands
-      out.push({ name, mode, group });
+      const name = decodeName(rawName);
+      // A decoded name that does not begin with a backslash is a literal
+      // CHARACTER KaTeX accepts as input, not a command. That is real
+      // coverage — a document can contain the character — so it is kept, but
+      // as a character, and never dressed up as a command.
+      out.push({ name, mode, group, literal: !name.startsWith('\\') });
     }
   }
   return out;
@@ -105,7 +168,7 @@ function readFunctions() {
       const numArgs = Number(body.match(/numArgs:\s*(\d+)/)?.[1] ?? 0);
       const infix = /infix:\s*true/.test(body);
       for (const nm of namesMatch[1].matchAll(/"((?:[^"\\]|\\.)*)"/g)) {
-        const name = nm[1].replace(/\\\\/g, '\\');
+        const name = decodeName(nm[1]);
         if (!name.startsWith('\\')) continue;
         out.push({ name, numArgs, infix });
       }
@@ -129,7 +192,7 @@ function readMacros() {
   const seenNames = new Set();
   for (const src of SOURCES) {
     for (const m of src.matchAll(/defineMacro\(\s*"((?:[^"\\]|\\.)*)"/g)) {
-      const name = m[1].replace(/\\\\/g, '\\');
+      const name = decodeName(m[1]);
       if (name.startsWith('\\') && !seenNames.has(name)) {
         seenNames.add(name);
         out.push({ name });
@@ -260,6 +323,11 @@ const INTERNALS = new Set([
 const isPrivate = (name) => name.includes('@');
 
 function candidatesForSymbol(sym) {
+  // A literal character has no argument form and no command form — it IS the
+  // input. Wrapping it the way a command is wrapped would produce a fragment
+  // that renders and means something else, which is the whole reason these
+  // are separated from the commands.
+  if (sym.literal) return sym.mode === 'text' ? [`\\text{${sym.name}}`] : [sym.name];
   // `accent-token` is the one group whose members are incomplete on their
   // own: `\acute` is an error, `\acute{x}` is an accent. Text-mode accents
   // need the same treatment INSIDE the `\text{}`, which the first pass got
@@ -323,7 +391,7 @@ const functions = readFunctions();
 const macros = readMacros();
 const environments = readEnvironments();
 
-const kept = { symbolsMath: [], symbolsText: [], functions: [], macros: [], environments: [] };
+const kept = { symbolsMath: [], symbolsText: [], symbolsLiteral: [], functions: [], macros: [], environments: [] };
 const excluded = [];
 const internals = [];
 
@@ -349,7 +417,8 @@ const consider = (kind, id, candidates, meta) => {
 };
 
 for (const s of symbols) {
-  consider(s.mode === 'text' ? 'symbolsText' : 'symbolsMath', s.name, candidatesForSymbol(s), {
+  const bucket = s.literal ? 'symbolsLiteral' : s.mode === 'text' ? 'symbolsText' : 'symbolsMath';
+  consider(bucket, s.name, candidatesForSymbol(s), {
     group: s.group,
   });
 }
@@ -394,6 +463,7 @@ const displayOnly = (list) => list.filter((it) => it.displayOnly === true);
 const ALL_DISPLAY_ONLY = [
   ...displayOnly(kept.symbolsMath),
   ...displayOnly(kept.symbolsText),
+  ...displayOnly(kept.symbolsLiteral),
   ...displayOnly(kept.functions),
   ...displayOnly(kept.macros),
   ...displayOnly(kept.environments),
@@ -404,6 +474,7 @@ const esc = (s) => s.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g
 const total =
   kept.symbolsMath.length +
   kept.symbolsText.length +
+  kept.symbolsLiteral.length +
   kept.functions.length +
   kept.macros.length +
   kept.environments.length;
@@ -420,8 +491,9 @@ const out = `/**
  * survived, not what was attempted; \`excluded.json\` carries the rest with
  * the error each one raised.
  *
- *   math symbols   ${String(kept.symbolsMath.length).padStart(4)} of ${String(symbols.filter((s) => s.mode === 'math').length).padStart(4)}
- *   text symbols   ${String(kept.symbolsText.length).padStart(4)} of ${String(symbols.filter((s) => s.mode === 'text').length).padStart(4)}
+ *   math symbols   ${String(kept.symbolsMath.length).padStart(4)} of ${String(symbols.filter((s) => s.mode === 'math' && !s.literal).length).padStart(4)}
+ *   text symbols   ${String(kept.symbolsText.length).padStart(4)} of ${String(symbols.filter((s) => s.mode === 'text' && !s.literal).length).padStart(4)}
+ *   literal chars  ${String(kept.symbolsLiteral.length).padStart(4)} of ${String(symbols.filter((s) => s.literal).length).padStart(4)}
  *   functions      ${String(kept.functions.length).padStart(4)} of ${String(new Set(functions.map((f) => f.name)).size).padStart(4)}
  *   macros         ${String(kept.macros.length).padStart(4)} of ${String(macros.length).padStart(4)}
  *   environments   ${String(kept.environments.length).padStart(4)} of ${String(environments.length).padStart(4)}
@@ -432,6 +504,16 @@ export const KATEX_VERSION = '${KATEX_VERSION}';
 /** Every math-mode symbol KaTeX defines, grouped into inline formulas. */
 export const MATH_SYMBOLS: readonly string[] = [
 ${pack(inline(kept.symbolsMath), 12)
+  .map((l) => `  \`${esc(l)}\`,`)
+  .join('\n')}
+];
+
+/** Every literal CHARACTER the symbol table accepts as input — capital
+ *  Greek and the like, which have no command form. Separated from the
+ *  commands because dressing one up as a command produced a fragment that
+ *  rendered and meant something else. */
+export const LITERAL_CHARS: readonly string[] = [
+${pack(inline(kept.symbolsLiteral), 12)
   .map((l) => `  \`${esc(l)}\`,`)
   .join('\n')}
 ];
@@ -498,6 +580,7 @@ process.stdout.write(
   `[corpus] katex ${KATEX_VERSION}\n` +
     `[corpus]   math symbols  ${kept.symbolsMath.length}\n` +
     `[corpus]   text symbols  ${kept.symbolsText.length}\n` +
+    `[corpus]   literal chars ${kept.symbolsLiteral.length}\n` +
     `[corpus]   functions     ${kept.functions.length}\n` +
     `[corpus]   macros        ${kept.macros.length}\n` +
     `[corpus]   environments  ${kept.environments.length}\n` +
