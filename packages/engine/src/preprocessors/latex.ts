@@ -824,7 +824,24 @@ function processSlice(slice: string, probe = true): SliceResult {
       unclosedDouble = findUnclosedDelimiterStart(text, 'double-only');
       if (unclosedDouble !== -1) {
         quiescent = false;
-        if (index === 0 && text.slice(0, unclosedDouble).trim() === '') {
+        // The flag must track what truncation ACTUALLY does, not what an
+        // unclosed `$$` used to imply.
+        //
+        // `truncateUnclosedLatexBlock` gained an `opensMathFlow` gate and now
+        // declines on a delimiter that cannot open a math flow — indented
+        // four spaces, or after a tab. This condition was left behind, so the
+        // flag claimed a seam truncation on a slice where nothing was cut,
+        // and the incremental wrapper trimmed a newline the stateless path
+        // keeps. Measured at `freezeThreshold: 0`:
+        //
+        //   `$a$\n    $$`  stateless `$$a$$\n    $$`  incremental `$$a$$    $$`
+        //   `$a$\n\t$$`     stateless `$$a$$\n\t$$`    incremental `$$a$$\t$$`
+        //
+        // A byte-equality divergence between the two entry points, which is
+        // the one contract this file is not allowed to break. The five-leg
+        // soak ran ALL CLEAN over it; it surfaced while designing an
+        // unrelated fix.
+        if (index === 0 && opensMathFlow(text, unclosedDouble) && text.slice(0, unclosedDouble).trim() === '') {
           truncatedAtSeamStart = true;
         }
       }

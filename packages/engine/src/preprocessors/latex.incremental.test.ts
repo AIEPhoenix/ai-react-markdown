@@ -372,3 +372,26 @@ describe('createIncrementalLatexPreprocessor — property fuzz', () => {
     FUZZ_TIMEOUT_MS
   );
 });
+
+describe('seam flag tracks actual truncation', () => {
+  // `truncatedAtSeamStart` used to arm on any unclosed `$$` with a blank
+  // prefix. Once `truncateUnclosedLatexBlock` learned that only a line-start
+  // `$$` at 0-3 spaces opens a math flow, the flag kept arming on tails that
+  // are NOT truncated — a tab, or four spaces — and the wrapper trimmed a
+  // newline the stateless path keeps.
+  //
+  // Byte equality between the two entry points is the one contract this file
+  // cannot break, and the five-leg soak ran ALL CLEAN over the divergence.
+  // These pin the shapes it missed.
+  test.each([
+    ['four-space indent', '$a$\n    $$'],
+    ['tab indent', '$a$\n\t$$'],
+    ['three-space indent still truncates', '$a$\n   $$'],
+    ['mixed leading whitespace', '$a$\n  \t $$'],
+    ['zero indent still truncates', '$a$\n$$'],
+  ])('stateless and incremental agree: %s', (_name, input) => {
+    const incremental = createIncrementalLatexPreprocessor({ freezeThreshold: 0 });
+    expect(incremental(input)).toBe(preprocessLaTeX(input));
+  });
+});
+
