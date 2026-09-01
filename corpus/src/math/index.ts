@@ -10,3 +10,4 @@ export {
   GENERATED_IDENTIFIER_COUNT,
 } from './generated.ts';
 export { MATH_SEAM_CASES, MATH_AUTHORED, type MathCase } from './authored.ts';
+export { COLLECTED_MATH_CASES, COLLECTED_KNOWN_GAPS, type CollectedMathCase } from './collected.ts';

@@ -220,6 +220,9 @@ importers:
 
   corpus:
     devDependencies:
+      '@ai-react-markdown/engine':
+        specifier: workspace:*
+        version: link:../packages/engine
       highlight.js:
         specifier: ^11.12.0
         version: 11.12.0
@@ -232,12 +235,18 @@ importers:
       mermaid:
         specifier: ^11.16.1
         version: 11.16.1
+      rehype-sanitize:
+        specifier: ^6.0.0
+        version: 6.0.0
       remark-math:
         specifier: ^6.0.0
         version: 6.0.0(supports-color@8.1.1)
       remark-parse:
         specifier: ^11.0.0
         version: 11.0.0(supports-color@8.1.1)
+      remark-rehype:
+        specifier: ^11.1.2
+        version: 11.1.2
       typescript:
         specifier: ^6.0.3
         version: 6.0.3

@@ -18,12 +18,15 @@
     "emit": "node --experimental-strip-types --no-warnings scripts/emit.mjs"
   },
   "devDependencies": {
+    "@ai-react-markdown/engine": "workspace:*",
     "highlight.js": "^11.12.0",
     "jsdom": "^30.0.1",
     "katex": "^0.16.25",
     "mermaid": "^11.16.1",
+    "rehype-sanitize": "^6.0.0",
     "remark-math": "^6.0.0",
     "remark-parse": "^11.0.0",
+    "remark-rehype": "^11.1.2",
     "typescript": "^6.0.3",
     "unified": "^11.0.5"
   }

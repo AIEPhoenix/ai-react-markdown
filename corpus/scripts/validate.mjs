@@ -294,6 +294,7 @@ if (fenceRuns(code.TILDE_FENCE_DOC) !== 4) fail('code: TILDE_FENCE_DOC does not 
 if (fenceRuns(code.NESTED_FENCE_DOC) !== 4) fail('code: NESTED_FENCE_DOC does not have four fence markers');
 if (fenceRuns(code.UNCLOSED_FENCE_DOC) !== 1) fail('code: UNCLOSED_FENCE_DOC should have exactly one, unclosed');
 
+const collected = await import('../src/math/collected.ts');
 // ── 2c-bis. markdown cases parse, and ids are unique across every domain ──
 
 /**
@@ -322,8 +323,109 @@ const addIds = (domain, cases) => {
 };
 addIds('mermaid', MERMAID_CASES);
 addIds('math', [...authored.MATH_SEAM_CASES, ...authored.MATH_AUTHORED]);
+addIds('collected', collected.COLLECTED_MATH_CASES);
 addIds('code', [...code.CODE_LANGUAGES, ...code.CODE_STRUCTURES, ...code.CODE_EDGE, ...code.CODE_INLINE]);
 addIds('markdown', markdown.MARKDOWN_CASES);
+
+/** The parsers both remaining gates need. Declared once, before either. */
+const { unified } = await import('unified');
+const remarkParse = (await import('remark-parse')).default;
+const remarkMath = (await import('remark-math')).default;
+const mdParser = unified().use(remarkParse).use(remarkMath);
+
+// ── 2c-ter. the collected cases render as annotated ──────────────────────
+
+/**
+ * The real-use cases, checked against the FULL pipeline rather than against
+ * mdast.
+ *
+ * The layer matters and this gate learned it the hard way. Counting `math`
+ * nodes after `remark-parse` + the core remark chain reported three failures;
+ * running the same 95 cases through remark-rehype and the core rehype chain
+ * and counting rendered KaTeX roots reported two, and not the same two. One
+ * finding appeared only in the fuller chain and one disappeared. A gate that
+ * stops one layer short of what the user sees is measuring a different
+ * question.
+ *
+ * `repair` asserts that the loose form and the normalised form RENDER THE
+ * SAME, not that either equals a string — an engine change that alters the
+ * intermediate text without changing the output should not fail.
+ *
+ * `ambig` asserts only reproducibility: the same input, rendered twice, must
+ * give the same answer. It is the one expectation that compares a case
+ * against itself, and it is the reason the scheme was worth importing.
+ */
+const engine = await import('@ai-react-markdown/engine');
+const remarkRehype = (await import('remark-rehype')).default;
+const { defaultSchema } = await import('rehype-sanitize');
+
+const fullProc = unified()
+  .use(remarkParse)
+  .use(engine.buildCoreRemarkPlugins([]))
+  .use(remarkRehype, engine.buildCoreRemarkRehypeOptions(false))
+  .use(engine.buildCoreRehypePlugins(defaultSchema, ''));
+
+/** Rendered KaTeX roots, which is what a reader actually sees, plus the
+ *  visible text so a silent degradation to a literal `$` is legible in the
+ *  failure message rather than only as a count. */
+const renderCase = (md) => {
+  const pre = engine.preprocessLaTeX(md);
+  const scan = (n, a = { katex: 0, text: '' }) => {
+    if (n.type === 'text') a.text += n.value;
+    const cls = n.properties?.className;
+    if (Array.isArray(cls) && cls.some((c) => String(c) === 'katex')) a.katex += 1;
+    (n.children ?? []).forEach((c) => scan(c, a));
+    return a;
+  };
+  return scan(fullProc.runSync(fullProc.parse(pre), pre));
+};
+
+const knownGaps = new Set(collected.COLLECTED_KNOWN_GAPS);
+let collectedBad = 0;
+for (const c of collected.COLLECTED_MATH_CASES) {
+  const r = renderCase(c.src);
+  let ok;
+  switch (c.expectation) {
+    case 'math':
+    case 'mixed':
+      ok = r.katex >= 1;
+      break;
+    case 'text':
+    case 'raw':
+      ok = r.katex === 0;
+      break;
+    case 'repair': {
+      if (c.equivalentTo === undefined) {
+        fail(`collected ${c.id}: expectation 'repair' needs an equivalentTo form`);
+        ok = false;
+        break;
+      }
+      ok = r.katex >= 1 && r.katex === renderCase(c.equivalentTo).katex;
+      break;
+    }
+    case 'ambig':
+      // Either reading is fine; rendering it twice must not disagree.
+      ok = r.katex === renderCase(c.src).katex && r.text === renderCase(c.src).text;
+      break;
+    default:
+      fail(`collected ${c.id}: unknown expectation '${c.expectation}'`);
+      ok = false;
+  }
+  if (knownGaps.has(c.id)) {
+    if (ok) fail(`collected ${c.id}: listed as a known gap but it now passes — remove it from COLLECTED_KNOWN_GAPS`);
+    continue;
+  }
+  if (!ok) {
+    fail(`collected ${c.id} [${c.expectation}]: ${r.katex} katex root(s); visible ${JSON.stringify(r.text.replace(/\s+/g, ' ')).slice(0, 90)}`);
+    collectedBad += 1;
+  }
+}
+if (collectedBad === 0) {
+  process.stdout.write(
+    `[corpus] collected: ${collected.COLLECTED_MATH_CASES.length} real-use cases render as annotated ` +
+      `(${knownGaps.size} known gaps held open)\n`
+  );
+}
 
 // ── 2d. no document swallows its own tail ────────────────────────────────
 
@@ -354,10 +456,6 @@ for (const name of exempt) {
 }
 
 const SENTINEL = 'corpus-tail-sentinel';
-const { unified } = await import('unified');
-const remarkParse = (await import('remark-parse')).default;
-const remarkMath = (await import('remark-math')).default;
-const mdParser = unified().use(remarkParse).use(remarkMath);
 
 const tailSurvives = async (body) => {
   const tree = await mdParser.run(mdParser.parse(`${body}\n\n## ${SENTINEL}\n`));
