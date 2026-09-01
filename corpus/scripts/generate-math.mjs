@@ -105,7 +105,7 @@ function decodeName(raw) {
   // to be an undefined control sequence. Had the mangled name been a valid
   // one, it would have rendered and stayed.
   let out = '';
-  for (let i = 0; i < raw.length; ) {
+  for (let i = 0; i < raw.length;) {
     if (raw[i] !== '\\') {
       out += raw[i];
       i += 1;

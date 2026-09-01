@@ -91,7 +91,6 @@ export interface CollectedMathCase {
 }
 
 export const COLLECTED_MATH_CASES: readonly CollectedMathCase[] = [
-
   // ── A. 基线与定界符形式 — delimiter forms — how a formula can be opened and closed at all ──
   {
     id: 'collected-a1',
@@ -352,7 +351,8 @@ formula = r"$x^2 + y^2$"
   {
     id: 'collected-i7',
     expectation: 'ambig',
-    probes: '既可解释为「公式内含两个金额」，也可解释为「货币 $50 + 公式 $60$」；两种解释都可接受，但同一实现必须稳定可复现',
+    probes:
+      '既可解释为「公式内含两个金额」，也可解释为「货币 $50 + 公式 $60$」；两种解释都可接受，但同一实现必须稳定可复现',
     src: '$50 + $60$',
   },
 

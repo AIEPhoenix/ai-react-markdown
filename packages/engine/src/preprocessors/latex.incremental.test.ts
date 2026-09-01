@@ -394,4 +394,3 @@ describe('seam flag tracks actual truncation', () => {
     expect(incremental(input)).toBe(preprocessLaTeX(input));
   });
 });
-

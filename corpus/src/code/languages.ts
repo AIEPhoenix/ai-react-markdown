@@ -33,8 +33,6 @@ export interface CodeCase {
   readonly src: string;
 }
 
-const fence = (lang: string, body: string) => `\`\`\`${lang}\n${body}\n\`\`\``;
-
 export const CODE_LANGUAGES: readonly CodeCase[] = [
   {
     id: 'lang-typescript',
@@ -152,7 +150,7 @@ public record Chunk(int offset, String payload) {
 
 fun render(chunks: List<Chunk>): String = buildString {
     for (c in chunks) {
-        append("at \${c.offset}: \$c")
+        append("at \${c.offset}: $c")
         appendLine(" (\${c.payload.length} chars)")
     }
 }`,
@@ -366,13 +364,13 @@ set -euo pipefail
 corpus_root="\${1:-./corpus}"
 shopt -s nullglob
 
-for f in "\$corpus_root"/src/**/*.ts; do
-  lines=\$(wc -l < "\$f")
-  printf '%6d  %s\\n' "\$lines" "\${f#"\$corpus_root"/}"
+for f in "$corpus_root"/src/**/*.ts; do
+  lines=$(wc -l < "$f")
+  printf '%6d  %s\\n' "$lines" "\${f#"$corpus_root"/}"
 done | sort -rn | head -20
 
 cat <<'EOF' > /dev/null
-literal \$100 and \\[x\\] survive a quoted heredoc
+literal $100 and \\[x\\] survive a quoted heredoc
 EOF`,
   },
   {

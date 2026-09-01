@@ -110,10 +110,7 @@ exhaustively, derived from its own tables; the authored one covers what a TeX
 corpus structurally cannot — the markdown seams the engine's preprocessor acts
 on, and formulas shaped the way a real answer shapes them.
 
-${section(
-  'Generated: every math-mode symbol',
-  runOf(MATH_SYMBOLS)
-)}
+${section('Generated: every math-mode symbol', runOf(MATH_SYMBOLS))}
 ${section('Generated: every text-mode symbol', runOf(TEXT_SYMBOLS))}
 ${section(
   'Generated: literal characters',
@@ -134,10 +131,7 @@ ${section(
     .map((c) => case_(c, c.src))
     .join('\n')}`
 )}
-${section(
-  'Authored: document-shaped formulas',
-  MATH_AUTHORED.map((c) => case_(c, c.src)).join('\n')
-)}`;
+${section('Authored: document-shaped formulas', MATH_AUTHORED.map((c) => case_(c, c.src)).join('\n'))}`;
 
 // ── code ──────────────────────────────────────────────────────────────────
 
@@ -198,7 +192,12 @@ ${MERMAID_CASES.map((c) => case_(c, fence('mermaid', c.src))).join('\n')}`;
 // ── markdown ──────────────────────────────────────────────────────────────
 
 const mdSection = (title: string, note: string, cases: readonly MarkdownCase[]) =>
-  section(title, `${note}\n\n${openCases(cases).map((c) => case_(c, c.src)).join('\n')}`);
+  section(
+    title,
+    `${note}\n\n${openCases(cases)
+      .map((c) => case_(c, c.src))
+      .join('\n')}`
+  );
 
 export const MARKDOWN_DOCUMENT = `# Markdown corpus
 
@@ -208,11 +207,7 @@ negative: a rewriter is only as good as what it declines to touch, so a colon
 in a URL, a \`--\` in code and a \`~~\` in a file path are all here to stay
 unchanged.
 
-${mdSection(
-  'GFM',
-  'Tables, task lists, strikethrough, autolinks and footnotes.',
-  MARKDOWN_GFM
-)}
+${mdSection('GFM', 'Tables, task lists, strikethrough, autolinks and footnotes.', MARKDOWN_GFM)}
 ${mdSection(
   'Inline constructs',
   'Emphasis, ==mark==, emoji shortcodes, smart punctuation, entities and hard breaks.',
@@ -228,16 +223,8 @@ ${mdSection(
   'Headings, nested lists, definition lists, quotes and thematic breaks.',
   MARKDOWN_BLOCKS
 )}
-${mdSection(
-  'Raw HTML',
-  'The rehype-raw path, including what rehype-sanitize is expected to strip.',
-  MARKDOWN_HTML
-)}
-${mdSection(
-  'CJK',
-  'Three of the fourteen plugins exist for this, and the old corpus was pure ASCII.',
-  MARKDOWN_CJK
-)}`;
+${mdSection('Raw HTML', 'The rehype-raw path, including what rehype-sanitize is expected to strip.', MARKDOWN_HTML)}
+${mdSection('CJK', 'Three of the fourteen plugins exist for this, and the old corpus was pure ASCII.', MARKDOWN_CJK)}`;
 
 /** Every document, keyed by the file name the emit script writes. */
 export const DOCUMENTS: Readonly<Record<string, string>> = {

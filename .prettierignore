@@ -5,3 +5,8 @@ pnpm-lock.yaml
 storybook-static
 .stryker-tmp
 reports
+
+# Generated corpus documents — `pnpm --filter @bench/corpus emit` writes these,
+# and they are gitignored. Formatting a generated file would make the emit
+# script and prettier disagree on every run.
+corpus/out/

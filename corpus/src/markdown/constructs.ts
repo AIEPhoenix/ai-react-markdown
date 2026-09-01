@@ -256,9 +256,7 @@ Two in one paragraph: ![one](${img(160, 120)}) ![two](${img(160, 120)})`,
   {
     id: 'image-gallery',
     probes: 'several images arriving late — the layout-shift shape a streaming reader notices',
-    src: [1, 2, 3, 4, 5, 6]
-      .map((n) => `![Photograph ${n}](${img(400, 300)}?lock=${n})`)
-      .join('\n\n'),
+    src: [1, 2, 3, 4, 5, 6].map((n) => `![Photograph ${n}](${img(400, 300)}?lock=${n})`).join('\n\n'),
   },
   {
     id: 'image-broken',

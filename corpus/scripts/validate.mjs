@@ -217,7 +217,11 @@ for (const b of bodies) {
   try {
     katex.renderToString(b.tex, { throwOnError: true, displayMode: b.display });
   } catch (e) {
-    fail(`math authored ${b.c.id}: ${String(e.message ?? e).split('\n')[0].slice(0, 110)}`);
+    fail(
+      `math authored ${b.c.id}: ${String(e.message ?? e)
+        .split('\n')[0]
+        .slice(0, 110)}`
+    );
     authoredBad += 1;
   }
 }
@@ -416,7 +420,9 @@ for (const c of collected.COLLECTED_MATH_CASES) {
     continue;
   }
   if (!ok) {
-    fail(`collected ${c.id} [${c.expectation}]: ${r.katex} katex root(s); visible ${JSON.stringify(r.text.replace(/\s+/g, ' ')).slice(0, 90)}`);
+    fail(
+      `collected ${c.id} [${c.expectation}]: ${r.katex} katex root(s); visible ${JSON.stringify(r.text.replace(/\s+/g, ' ')).slice(0, 90)}`
+    );
     collectedBad += 1;
   }
 }
@@ -459,9 +465,7 @@ const SENTINEL = 'corpus-tail-sentinel';
 
 const tailSurvives = async (body) => {
   const tree = await mdParser.run(mdParser.parse(`${body}\n\n## ${SENTINEL}\n`));
-  return tree.children.some(
-    (n) => n.type === 'heading' && JSON.stringify(n).includes(SENTINEL)
-  );
+  return tree.children.some((n) => n.type === 'heading' && JSON.stringify(n).includes(SENTINEL));
 };
 
 for (const [name, body] of Object.entries(documents.DOCUMENTS)) {

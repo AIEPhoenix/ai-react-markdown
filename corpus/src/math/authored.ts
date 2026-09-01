@@ -69,8 +69,7 @@ export const MATH_SEAM_CASES: readonly MathCase[] = [
   },
   {
     id: 'seam-currency-vs-math',
-    probes:
-      'the parity rule: a `$` before digits is currency only if no unescaped `$` closes it later on the line',
+    probes: 'the parity rule: a `$` before digits is currency only if no unescaped `$` closes it later on the line',
     src: 'Revenue was $8.29 \\text{ B} \\times 4$ last year, against a $500 budget.',
   },
   {
@@ -175,7 +174,7 @@ $$
   {
     id: 'seam-mhchem',
     probes:
-      'mhchem commands survive the markdown pass — but NOTHING in this repo loads katex/contrib/mhchem, so the render half is the consumer\'s job and these show as errors in the benchmark apps',
+      "mhchem commands survive the markdown pass — but NOTHING in this repo loads katex/contrib/mhchem, so the render half is the consumer's job and these show as errors in the benchmark apps",
     src: 'Water is $\\ce{H2O}$ and the enthalpy is $\\pu{285.8 kJ//mol}$.',
   },
 ];
@@ -310,4 +309,3 @@ For strongly convex $f$ with modulus $\\mu$, the rate improves to
 $\\left(1 - \\frac{\\mu}{L}\\right)^k$ — linear rather than $O(1/k)$.`,
   },
 ];
-

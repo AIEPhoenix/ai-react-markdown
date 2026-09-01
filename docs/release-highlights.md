@@ -6,6 +6,72 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 ---
 
+## 2.10.1 — A price stopped deleting the rest of the page
+
+**`The server costs $$100 per month.` used to remove everything after that
+sentence.** Not during streaming — in a finished, static document. The
+currency rule escapes a single `$` only, so the doubled one read as an
+opening display-math delimiter, and the streaming protection that hides an
+incomplete formula truncated from there to the end of the file. Nothing
+errored; the document was valid markdown, just not the one anyone wrote.
+
+The protection itself is right and stays. What was wrong is where it fired.
+remark-math's `mathFlow` is a leaf block: it opens only on a line whose first
+non-space character starts the run, indented at most three spaces. The
+implementation truncated on any unpaired `$$` anywhere, including mid-line,
+where nothing can be swallowed and so nothing needs protecting. The
+function's own first sentence had said "at the start of a line" all along.
+
+Boundaries were calibrated against remark-math rather than reasoned about,
+each shape checked by appending a heading and a paragraph and looking at
+whether they landed inside the math node:
+
+| Shape                            | mathFlow opens     | Truncates now |
+| -------------------------------- | ------------------ | ------------- |
+| `$$` at 0–3 spaces of indent     | yes                | yes           |
+| `$$` at 4 spaces, or after a tab | no — indented code | no            |
+| `$$` anywhere mid-line           | no                 | no            |
+
+Three existing tests changed, and each was checked against remark-math before
+being touched rather than edited to match the new code: all three pinned
+over-truncation of mid-line delimiters, and all three parse cleanly with
+nothing swallowed.
+
+**A second fix repairs a regression the first one introduced.** Changing what
+truncation does without changing what the flag beside it claims left
+`truncatedAtSeamStart` arming on tails that are no longer cut, and the
+incremental preprocessor trimmed a newline the stateless one keeps — a
+byte-equality divergence between the two entry points, which is the one
+contract that file cannot break:
+
+```
+$a$\n    $$     stateless  $$a$$\n    $$     incremental  $$a$$    $$
+$a$\n\t$$       stateless  $$a$$\n\t$$       incremental  $$a$$\t$$
+```
+
+The five-leg soak ran ALL CLEAN over that divergence. It surfaced only
+because an unrelated design task was probing the incremental path for its own
+reasons. The gate has no leg that fuzzes the two preprocessor entry points
+against each other — `fuzz` covers incremental _parse_ equivalence, a
+different pair — and the shapes needed are `freezeThreshold: 0` crossed with
+an indent variant, a corner the seeded legs do not reach. Recorded as a gap;
+the leg is not built here.
+
+Ten new pins across both fixes, in both directions: the shapes that must no
+longer truncate, and the indents that still must.
+
+Nothing else in the published packages changed. The rest of this release is a
+new corpus package and its gates, which ship to nobody: four layers of
+markdown, code, mermaid and math test material — 1139 KaTeX identifiers
+derived from KaTeX's own tables, all 31 mermaid diagram types parse-verified,
+and 75 math cases collected from real use rather than read off the source.
+Two of those cases carry expectations this repo had no word for: `repair`,
+which asserts that a loosely written form and a normalised one render the
+same, and `ambig`, which asserts only that an ambiguous input is resolved
+reproducibly.
+
+---
+
 ## 2.10.0 — The typewriter stops classifying pauses
 
 **One behavior change reaches every host, tuned or not: `balanced`'s
