@@ -132,7 +132,11 @@ async function serve(app) {
     if (e instanceof Error && e.message.startsWith('port ')) throw e;
   }
 
-  const p = spawn('pnpm', ['--filter', `./${app.dir}`, 'run', 'preview'], { cwd: ROOT, stdio: 'ignore' });
+  const p = spawn('pnpm', ['--filter', `./${app.dir}`, 'run', 'preview'], {
+    cwd: ROOT,
+    stdio: 'ignore',
+    detached: true,
+  });
   // If the child dies (port taken, build missing), stop polling: otherwise
   // the loop runs its full deadline and reports a timeout, which reads as
   // "slow" rather than "never started".
@@ -314,7 +318,11 @@ async function main() {
       // reports as contamination on the NEXT app in the same run. Measured:
       // a plain `server.kill()` left 4317 held long enough to fail the
       // react-mantine leg of a two-app run.
-      server.kill('SIGKILL');
+      try {
+        process.kill(-server.pid, 'SIGKILL'); // the group, so vite dies with its shim
+      } catch {
+        server.kill('SIGKILL');
+      }
       const freeBy = Date.now() + 10_000;
       for (;;) {
         try {

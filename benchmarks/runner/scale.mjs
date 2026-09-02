@@ -78,7 +78,11 @@ async function serve() {
   } catch (e) {
     if (e instanceof Error && e.message.startsWith('port ')) throw e;
   }
-  const p = spawn('pnpm', ['--filter', `./${app.dir}`, 'run', 'preview'], { cwd: ROOT, stdio: 'ignore' });
+  const p = spawn('pnpm', ['--filter', `./${app.dir}`, 'run', 'preview'], {
+    cwd: ROOT,
+    stdio: 'ignore',
+    detached: true,
+  });
   const deadline = Date.now() + 60_000;
   for (;;) {
     if (Date.now() > deadline) {
@@ -183,7 +187,11 @@ async function main() {
     // it is still held makes the NEXT invocation of this tool refuse to start
     // — which is how a back-to-back `cold-` then `steps-` run silently
     // produced one family's numbers and none of the other's.
-    server.kill('SIGKILL');
+    try {
+      process.kill(-server.pid, 'SIGKILL'); // the group, so vite dies with its shim
+    } catch {
+      server.kill('SIGKILL');
+    }
     const freeBy = Date.now() + 10_000;
     for (;;) {
       try {

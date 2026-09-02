@@ -6,7 +6,9 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 ---
 
-## 2.10.1 — A price stopped deleting the rest of the page
+## 2.10.x — Delimiters stop deleting what follows them
+
+### 2.10.1 — A price stopped deleting the rest of the page
 
 **`The server costs $$100 per month.` used to remove everything after that
 sentence.** Not during streaming — in a finished, static document. The
@@ -72,7 +74,7 @@ reproducibly.
 
 ---
 
-## 2.10.0 — The typewriter stops classifying pauses
+### 2.10.0 — The typewriter stops classifying pauses
 
 **One behavior change reaches every host, tuned or not: `balanced`'s
 maximum reveal lag moves from an internal 1.2s to a preset-level 2.5s

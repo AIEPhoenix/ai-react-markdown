@@ -76,13 +76,19 @@ jobs:
 
       # Workspace packages resolve each other through exports maps that point
       # at dist/ — absent on a fresh checkout since matrix tasks run in
-      # isolated jobs. Build core AND its workspace dependencies (the `...`
-      # suffix pulls in @ai-react-markdown/remark-mark-highlight) so
-      # dependents check against the real built artifacts (what npm consumers
-      # get).
-      - name: Build core + its workspace deps (dependents resolve dist)
+      # isolated jobs.
+      #
+      # EVERY publishable package, not just core and what core depends on.
+      # `@ai-react-markdown/core...` walks core's dependencies DOWNWARD, and
+      # mantine is not one — it depends on core, not the other way round. The
+      # `react-mantine` benchmark app imports `@ai-react-markdown/mantine`,
+      # which resolves through its `exports` to a `dist` nothing had built, so
+      # `pnpm -r typecheck` failed on a module-not-found that no local run
+      # reproduces (a developer has the dist from an earlier build). CI went
+      # red the day the benchmark apps landed and stayed red for six runs.
+      - name: Build all packages (dependents resolve dist)
         if: matrix.task == 'typecheck' || matrix.task == 'test' || matrix.task == 'browser-smoke'
-        run: pnpm --filter '@ai-react-markdown/core...' build
+        run: pnpm build
 
       - name: Typecheck (all packages)
         if: matrix.task == 'typecheck'

@@ -106,7 +106,18 @@ async function serve(app = APP) {
   } catch (e) {
     if (e instanceof Error && e.message.startsWith('port ')) throw e;
   }
-  const p = spawn('pnpm', ['--filter', `./${app.dir}`, 'run', 'preview'], { cwd: ROOT, stdio: 'ignore' });
+  // `detached` puts the shim and everything it spawns in one process group,
+  // which is the only way to kill it. `pnpm run preview` spawns vite as a
+  // GRANDCHILD: SIGKILL on the shim leaves vite holding the port, and
+  // `stopServer` then waited ten seconds and returned as if it had worked.
+  // In CI that leaked port 4319 from the self-test into the benchmark run,
+  // whose stale-port guard correctly refused to measure a ghost — six red
+  // runs, blamed on the guard.
+  const p = spawn('pnpm', ['--filter', `./${app.dir}`, 'run', 'preview'], {
+    cwd: ROOT,
+    stdio: 'ignore',
+    detached: true,
+  });
   let exited = false;
   p.on('exit', () => {
     exited = true;
@@ -128,15 +139,27 @@ async function serve(app = APP) {
 }
 
 async function stopServer(server, port) {
-  server.kill('SIGKILL');
-  const freeBy = Date.now() + 10_000;
+  // Negative pid = the whole process group, so vite dies with its shim.
+  try {
+    process.kill(-server.pid, 'SIGKILL');
+  } catch {
+    server.kill('SIGKILL'); // group already gone, or not detached
+  }
+  const freeBy = Date.now() + 15_000;
   for (;;) {
     try {
       await fetch(`http://localhost:${port}/`, { signal: AbortSignal.timeout(500) });
     } catch {
-      return;
+      return; // refused — the port is free
     }
-    if (Date.now() > freeBy) return;
+    if (Date.now() > freeBy) {
+      // Do NOT return quietly. A leaked port is not this run's problem, it is
+      // the NEXT tool's, which is where it used to surface — as a stale-port
+      // refusal attributed to the guard rather than to the leak.
+      throw new Error(
+        `port ${port} is still served 15s after SIGKILL — a leftover preview will break whatever runs next`
+      );
+    }
     await new Promise((r) => setTimeout(r, 200));
   }
 }
