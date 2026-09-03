@@ -25,10 +25,47 @@ pnpm bench:web:selftest            # does the harness notice a slowdown?
 Results land in `benchmarks/results/<timestamp>.json` (gitignored). Compare
 two runs with `node benchmarks/runner/compare.mjs <before.json> <after.json>`.
 
-**It gates nothing.** That is a decision, not an omission: a budget wired
-into CI before anyone knows the noise band goes red on the third honest run
-and is muted by the fifth. Collect baselines across several releases first,
-then decide what a real regression looks like.
+**It gates nothing, and as of 2026-09-03 it does not run in CI at all.**
+
+Gating nothing was always the decision: a budget wired into CI before anyone
+knows the noise band goes red on the third honest run and is muted by the
+fifth. The plan behind it was to collect a baseline per release until there
+were enough to say what a real regression looks like. That plan is now
+withdrawn, because it never started — four workflow runs, zero successes,
+zero baselines — and because of what the four runs exposed while failing.
+
+Read this before trusting a number from here, especially a small one:
+
+- **The scenarios whose names read like real usage are the ones that cannot
+  see a regression.** The seven `timer`-paced cells deliver on a fixed
+  16 ms schedule, and the schedule is the bound, not the renderer: measured
+  2026-08-30, `code-dense` took 21.2 s unthrottled and 20.6 s under a
+  verified 4x CPU throttle. A renderer has to get 16 ms/chunk slower before
+  these move at all. `frame` pacing has a smaller dead zone (one refresh
+  interval per chunk); `immediate` has none, at the price of amortizing
+  layout across up to 33x fewer passes than chunks. The details are in the
+  `Pacing` docstring in `kit/src/scenarios.ts`, and they are the first thing
+  to read, not the fiftieth.
+- **`smoothStream` is not exercised by any scenario.** Every schedule here
+  is perfectly uniform — 24 characters per chunk, zero jitter — which is the
+  one input on which a pacing algorithm has nothing to do.
+- **Two cells report the harness cap instead of a measurement**
+  (`react-null/scale-xlong`, `react-core/math-dense` at 4x throttle, both
+  180 s). `scale.mjs` excludes timed-out cells from its fit for exactly this
+  reason; `run.mjs` records them as data.
+- **`react-null` is slower than `react-core` on `scale-long`** (171.6 s
+  against 109.5 s). The control app accumulates the whole string into a
+  `<pre>` on every one of 6297 commits, so on the long cells it is a
+  bottleneck in its own right rather than a floor to measure against.
+
+None of that makes the suite useless — it falsified the "Safari
+`smoothStream` is chunky" report as a dev-server artifact, and it produced
+the per-update floor finding on the scale axis. Both were local runs by a
+person asking one question, which is what `pnpm bench:web` is for. It is
+unattended collection that has earned nothing.
+
+The system is due a rethink after the corpus work. Until then, treat every
+cell as an instrument you have to argue for before quoting it.
 
 ## Layout
 

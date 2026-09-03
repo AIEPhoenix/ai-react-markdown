@@ -1,26 +1,55 @@
 name: Browser benchmark
 
-# Manual, plus a nudge before a release. NOT on push, and NOT a required
-# check.
+# MANUAL ONLY. Nothing triggers this job; it runs when someone dispatches it.
 #
-# The reason is recorded in benchmarks/README.md and worth repeating where
-# someone would be tempted to add `on: push`: a performance budget wired into
-# CI before anyone knows the noise band goes red on the third honest run and
-# is muted by the fifth. Shared runners are also 2-3x slower than a laptop and
-# vary between jobs, so an absolute threshold is not comparable across runs
-# even in principle.
+# It used to also run on `v*` tags, to collect a baseline per release "until
+# there is enough data to say what a real regression looks like". That plan
+# was removed on 2026-09-03 rather than repaired, because it never started:
 #
-# What this job IS for: collecting comparable-ish baselines over several
-# releases, as an artifact, until there is enough data to say what a real
-# regression looks like on this hardware. Until then the numbers are read by
-# a person.
+#   4 runs, 0 successes. Three tag runs failed at ~5 min on a leaked preview
+#   server (fixed since, in `ec065c7`, and never re-verified because no tag
+#   has been pushed). One manual run was killed by the 120-minute cap at
+#   40 of 84 cells, with react-mantine not yet started. Zero baselines were
+#   ever collected, so the argument that they would eventually add up to a
+#   threshold never got a chance to be right or wrong.
 #
-# The self-test is different, and it DOES fail the job. It asserts the
-# instrument rather than the renderer — that injected main-thread work shows
-# up in the metrics — and its assertions are arithmetic rather than
-# thresholds, so runner speed does not move them. An instrument that has
-# stopped observing is worth a red build; a page that got 8% slower on a
-# noisy runner is not.
+# The cap was not the whole story either, and the ledger entry that blamed it
+# on the `scale-*` cells was wrong: at the measured per-cell costs a full
+# pass is ~161 min, of which the three scale families are 68 and the sixteen
+# original scenarios are 93. The job had simply grown from the 39 cells this
+# file's timeout was calibrated against to 84, with nothing connecting the
+# two — `run.mjs` reads the scenario list from the BUILT APP, so adding a
+# scenario enlarges the CI job without the author ever seeing the budget.
+#
+# There is a second, worse problem, and it is why this is being switched off
+# rather than re-budgeted. The cells whose names read like real usage are the
+# ones that cannot see a regression. Measured 2026-08-30 and recorded in
+# `kit/src/scenarios.ts`: `code-dense` at 16 ms/chunk takes 21.2 s
+# unthrottled and 20.6 s under a verified 4x CPU throttle, because the
+# schedule is the bound, not the renderer. That is true of all seven
+# timer-paced scenarios. `smoothStream` is not exercised by any scenario at
+# all.
+#
+# The suite has earned its keep as an INVESTIGATION instrument — it falsified
+# the "Safari smoothStream is chunky" report as a dev-server artifact, and it
+# produced the per-update floor finding on the scale axis. Those were local
+# runs by a person asking a specific question, which is what `pnpm bench:web`
+# is still for. It has earned nothing as an unattended collector.
+#
+# Owner's call, 2026-09-03: leave it off, revisit the whole system after the
+# corpus work. Do not re-add a trigger without deciding what the numbers
+# would gate.
+#
+# The self-test step below still fails a dispatched run, and it is the one
+# part of this file with teeth: it asserts the INSTRUMENT rather than the
+# renderer — that injected main-thread work of a known size shows up in the
+# metrics — and its assertions are arithmetic rather than thresholds, so
+# runner speed does not move them. It is the obvious candidate if this ever
+# comes back to CI in some smaller form; it is not there today, because
+# gating releases on a subsystem whose design is under review is how a
+# release gets blocked by a decision nobody has made yet.
+#
+# `pnpm bench:web:selftest` runs it locally in the meantime.
 
 on:
   workflow_dispatch:
@@ -33,14 +62,6 @@ on:
         description: CPU throttle multiplier (1 = none; 4 is the comparison setting)
         required: false
         default: '4'
-  push:
-    tags:
-      # One baseline per release, which is what "collect data over several
-      # releases" needs. Note that force-pushing a tag re-triggers this, as
-      # the 2026-08-29 history rewrite demonstrated on the release workflow;
-      # harmless here (it only collects), but it will produce a duplicate
-      # artifact for the same version.
-      - 'v*'
 
 permissions:
   contents: read
@@ -48,12 +69,15 @@ permissions:
 jobs:
   benchmark:
     runs-on: ubuntu-latest
-    # Generous, and measured rather than guessed: pure stream time across the
-    # 39 cells is ~10 min per repeat on a laptop, the frame-paced cells roughly
-    # double on a 60Hz runner, and the throttled throughput cells scale with
-    # the multiplier. Three repeats plus 117 page loads plus three builds does
-    # not fit in 45.
-    timeout-minutes: 120
+    # Measured from the run that got killed at the old 120: per-cell costs
+    # across the 40 cells it completed project to ~161 min for all 84, at
+    # three repeats plus a warm-up each. 240 clears that with margin on a
+    # runner 2-3x slower than a laptop.
+    #
+    # This only ever spends runner minutes when someone dispatches the job.
+    # Leaving the cap at 120 would have left a manual button that cannot
+    # finish, which is a worse thing to leave behind than a slow one.
+    timeout-minutes: 240
     steps:
       - uses: actions/checkout@v5
 
