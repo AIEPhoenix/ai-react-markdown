@@ -94,7 +94,7 @@ import { describe, expect, test } from 'vitest';
 
 import { computeFreezeBoundary, SCANNER_NAME_LISTS, type FreezeScanCheckpoint } from './computeFreezeBoundary';
 import { CATALOG, buildAdvanceOptions, type CatalogConfig } from './testPluginCatalog';
-import { assertStreamEquivalence, runFull, testEnv } from './spliceArbiterHarness';
+import { assertStreamEquivalence, fallbackOracleSampleFromEnv, runFull, testEnv } from './spliceArbiterHarness';
 import { engineProbe, probeTailsFor, snapshotRawDisagreement, type NodeLike } from './conformanceOracles';
 import { CONSTRUCT_AXIS_CLAIMED_SHAPES } from './constructAxisAdapters';
 import { F20_CHAIN, SIGNATURE_DOMAIN, signatureValues } from './checkpointAbstraction';
@@ -324,6 +324,10 @@ const NAME_CLASS_TOKENS: readonly string[] = [
  * that list before treating a green CI as the whole claim.
  */
 const MAX_K = Number(testEnv('EXHAUSTIVE_K') ?? 2);
+/** Fallback-frame oracle sample denominator; 1 unless FALLBACK_ORACLE_SAMPLE
+ *  is set (the soak passes 20). About 97% of census frames are fallbacks.
+ *  See the harness header. */
+const FALLBACK_SAMPLE = fallbackOracleSampleFromEnv();
 /** Cut-schedule stride: CI samples every 3rd cut at K=3; deep runs set
  *  EXHAUSTIVE_STRIDE=1 for the full census. K≤2 is always full. The ≈40 s
  *  this comment used to quote predates six-config coverage and P3 — see
@@ -743,7 +747,7 @@ function drive(doc: string, cuts: number[], config: CatalogConfig): { frames: nu
     `exhaustive doc=${JSON.stringify(doc)} cuts=${JSON.stringify(cuts)}`,
     snapshots,
     config,
-    { minIncrementalFrames: 0 }
+    { minIncrementalFrames: 0, fallbackOracleSample: FALLBACK_SAMPLE }
   );
 
   // P2 — resumed scan ≡ fresh scan, own lineage.
@@ -893,7 +897,7 @@ function reportAndAssert(band: string, tokens: readonly string[], maxK: number, 
   expect(s.docs).toBeGreaterThanOrEqual(tokens.length ** maxK);
   expect(s.schedules * SHARD_TOTAL).toBeGreaterThan(s.docs);
   emit(
-    `\n[census:${band}] K=${maxK} stride=${stride} alphabet=${tokens.length} ` +
+    `\n[census:${band}] K=${maxK} stride=${stride} fallbackOracleSample=${FALLBACK_SAMPLE} alphabet=${tokens.length} ` +
       `shard=${SHARD_INDEX}/${SHARD_TOTAL} configs=${CONFIGS.length}/${CONFIG_MODE}` +
       `${CONFIG_MODE === 'rotate' ? `+salt${ROTATE_SALT}` : ''} docs=${s.docs} ` +
       `schedules=${s.schedules} frames=${s.frames} incremental=${s.incrementalFrames} ` +

@@ -8,6 +8,23 @@
  * positions included, no normalization — to a fresh full-pipeline run over
  * the same snapshot (plus phantom suffix in cross-chunk mode).
  *
+ * Two cost controls in the arbiter loop:
+ *
+ * - The oracle result is memoized per config, bounded to 256 entries. The
+ *   exported `runFull` is not cached; it has many callers outside this
+ *   module. The cached trees were deep-frozen through a full fuzz run and a
+ *   census shard on 2026-09-03 with no writes, so nothing in the loop
+ *   mutates them. Hit rate: 66% on the census leg (each cut schedule
+ *   re-parses the full document), about 8% on the fuzz legs.
+ *
+ * - On fallback frames the oracle comparison can be sampled, via
+ *   `StreamOptions.fallbackOracleSample`. On a fallback frame the engine ran
+ *   `runPipeline(content)` and returned its trees unchanged, and the oracle
+ *   runs the same pipeline on the same content, so the comparison only
+ *   verifies the engine's `usedIncremental` report. Sampling keeps that
+ *   check at a fixed fraction. Incremental frames are always compared. The
+ *   default is every frame; only the soak legs pass a denominator.
+ *
  * TEST-ONLY module: imports vitest's `expect` and must never be exported
  * from the package index. Deliberately assertion-minimal — it reports
  * StreamStats and lets each call site pin its own incremental-engagement
@@ -43,6 +60,56 @@ export function runFull(content: string, config: CatalogConfig): { mdast: unknow
   return { mdast: parsed.mdast, hast };
 }
 
+type OracleRun = ReturnType<typeof runFull>;
+
+/** Per-config FIFO cap. 256 gives 65.7% hits on the census leg against 66.4%
+ *  unbounded, at about 1 MB per shard. Keyed by config object rather than
+ *  label so two configs with the same label cannot share entries. */
+const ORACLE_MEMO_CAP = 256;
+const oracleMemo = new WeakMap<CatalogConfig, Map<string, OracleRun>>();
+
+function memoizedOracle(snapshot: string, config: CatalogConfig): OracleRun {
+  let bucket = oracleMemo.get(config);
+  if (!bucket) {
+    bucket = new Map();
+    oracleMemo.set(config, bucket);
+  }
+  const hit = bucket.get(snapshot);
+  if (hit) return hit;
+  const run = runFull(snapshot, config);
+  if (bucket.size >= ORACLE_MEMO_CAP) bucket.delete(bucket.keys().next().value!);
+  bucket.set(snapshot, run);
+  return run;
+}
+
+/** FNV-1a over the snapshot text. Sampling is keyed on content so the set of
+ *  compared frames depends only on the document and is the same under shrink
+ *  replay and across machines. */
+function snapshotHash(text: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+/**
+ * Fallback-sample denominator from `FALLBACK_ORACLE_SAMPLE`. Unset means 1
+ * (every frame), so CI, preflight and a bare `vitest run` are unchanged;
+ * `scripts/soak/fiveleg.sh` sets 20. Shared by the fuzz and census legs so
+ * they use the same default.
+ */
+export function fallbackOracleSampleFromEnv(): number {
+  const raw = testEnv('FALLBACK_ORACLE_SAMPLE');
+  if (raw === undefined) return 1;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1) {
+    throw new Error(`FALLBACK_ORACLE_SAMPLE must be a positive integer, got ${JSON.stringify(raw)}`);
+  }
+  return n;
+}
+
 /** Locate the first differing top-level child for a debuggable message. */
 export function diffLocation(actual: { children: unknown[] }, expected: { children: unknown[] }): string {
   const max = Math.max(actual.children.length, expected.children.length);
@@ -73,6 +140,12 @@ export interface StreamOptions {
    * Vacuity stays possible; it stops being invisible.
    */
   minIncrementalFrames?: number;
+  /**
+   * Run the oracle on every Nth fallback frame, selected by content hash.
+   * Default 1: every frame. Incremental frames are always compared. See the
+   * module header. Only the soak legs set this.
+   */
+  fallbackOracleSample?: number;
 }
 
 /**
@@ -87,6 +160,7 @@ export function assertStreamEquivalence(
   streamOptions?: StreamOptions
 ): StreamStats {
   const options = buildAdvanceOptions(config);
+  const fallbackSample = streamOptions?.fallbackOracleSample ?? 1;
   let state: IncrementalParseState | null = null;
   let incrementalFrames = 0;
 
@@ -95,7 +169,13 @@ export function assertStreamEquivalence(
     state = result.nextState;
     if (result.usedIncremental) incrementalFrames += 1;
 
-    const expected = runFull(snapshot, config);
+    // The engine has already run for this frame; only the comparison is
+    // sampled, and only on fallback frames.
+    if (!result.usedIncremental && fallbackSample > 1 && snapshotHash(snapshot) % fallbackSample !== 0) {
+      return;
+    }
+
+    const expected = memoizedOracle(snapshot, config);
     const label = `${name} [${config.label}] frame=${frame} len=${snapshot.length} boundary=${result.boundary} incremental=${result.usedIncremental}`;
     if (!isEqual(result.hast, expected.hast)) {
       expect.fail(`${label} — hast mismatch: ${diffLocation(result.hast, expected.hast as never)}`);

@@ -31,7 +31,13 @@ import fc from 'fast-check';
 
 import { computeFreezeBoundary, type FreezeScanCheckpoint } from './computeFreezeBoundary';
 import { buildAdvanceOptions, buildCrossChunkAdvanceOptions, CATALOG } from './testPluginCatalog';
-import { assertStreamEquivalence, runCrossChunk, testEnv, type FramePair } from './spliceArbiterHarness';
+import {
+  assertStreamEquivalence,
+  fallbackOracleSampleFromEnv,
+  runCrossChunk,
+  testEnv,
+  type FramePair,
+} from './spliceArbiterHarness';
 import { benignDocArb, hazardDocArb, scheduleSnapshots, COVERAGE_MARKERS, type FuzzDoc } from './fuzzGenerators';
 
 // 300, not the original 120: the coverage meters below demand every one of
@@ -46,6 +52,10 @@ const RUNS = Number(testEnv('FUZZ_RUNS') ?? 300);
 const SEED = Number(testEnv('FUZZ_SEED') ?? 20260717);
 /** ~30-40ms per sample (2 schedules × ~25 frames × oracle+engine) plus slack. */
 const TIMEOUT_MS = Math.max(300_000, RUNS * 300);
+
+/** Fallback-frame oracle sample denominator; 1 unless FALLBACK_ORACLE_SAMPLE
+ *  is set (the soak passes 20). See the harness header. */
+const FALLBACK_SAMPLE = fallbackOracleSampleFromEnv();
 
 const FC_PARAMS = { numRuns: RUNS, seed: SEED } as const;
 
@@ -80,7 +90,10 @@ function driveSample(fuzz: FuzzDoc, tag: string, totals: Totals): void {
     // P1 — per-frame splice ≡ full parse. The engagement floor is an
     // AGGREGATE here (asserted per family below): an individual generated
     // document may legitimately poison to boundary 0 on every frame.
-    const stats = assertStreamEquivalence(tag, snapshots, config, { minIncrementalFrames: 0 });
+    const stats = assertStreamEquivalence(tag, snapshots, config, {
+      minIncrementalFrames: 0,
+      fallbackOracleSample: FALLBACK_SAMPLE,
+    });
     totals.frames += stats.frames;
     totals.incrementalFrames += stats.incrementalFrames;
 
@@ -117,7 +130,7 @@ function driveSample(fuzz: FuzzDoc, tag: string, totals: Totals): void {
   }
 }
 
-describe(`splice fuzz arbiter (runs=${RUNS} seed=${SEED})`, () => {
+describe(`splice fuzz arbiter (runs=${RUNS} seed=${SEED} fallbackOracleSample=${FALLBACK_SAMPLE})`, () => {
   test('benign-biased family: equivalence + hot splice path', { timeout: TIMEOUT_MS }, () => {
     const totals = newTotals();
     fc.assert(

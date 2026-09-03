@@ -31,6 +31,7 @@
 # FUZZ1=33334 FUZZ2=50000 for 400k/600k legs):
 #   SHARDS (cores-2)  FUZZ1 (12500)  FUZZ2 (30000)  FUZZ3 (8000)  ORACLE (4000)
 #   CENSUS_STRIDE (1)  CENSUS_NAME_K (3)  CENSUS_NAME_STRIDE (1)
+#   FALLBACK_ORACLE_SAMPLE (20)
 #
 # CENSUS_STRIDE is 1, which is FULL cut schedules — the value it had before
 # 2026-08-28 and the value `spliceExhaustive.test.ts` has always described as
@@ -176,6 +177,15 @@ CENSUS_NAME_K=${CENSUS_NAME_K:-3}
 # shard. Worth it on the band that reaches tag names, which is where F13,
 # F19 and F28 all lived.
 CENSUS_NAME_STRIDE=${CENSUS_NAME_STRIDE:-1}
+# FALLBACK_ORACLE_SAMPLE: on fallback frames (where the engine ran the full
+# pipeline itself), the fuzz and census legs run the oracle on every Nth
+# frame, selected by content hash, instead of every frame. On those frames
+# the engine and the oracle run the same pipeline on the same input, so the
+# comparison only checks the engine's usedIncremental report; sampling keeps
+# that check at 1/20. Measured 2026-09-03: census leg -45%, fuzz leg -35%.
+# Set to 1 for every-frame comparison, which is what the legs do when the
+# variable is unset (CI and preflight). Exported so both legs see one value.
+export FALLBACK_ORACLE_SAMPLE=${FALLBACK_ORACLE_SAMPLE:-20}
 # Comma-separated leg subset; default is all five. `LEGS=census` on the
 # larger box and `LEGS=fuzz,dir,scanner,oracle` on the other is the standard
 # split.
@@ -191,7 +201,7 @@ mkdir -p "$OUT"
 FAIL=0
 
 # The shard count is machine-dependent; print it so logs can be compared.
-echo "[$LABEL] SHARDS=$SHARDS ($SHARDS_SOURCE)  seed-base=$SEED  legs=$LEGS"
+echo "[$LABEL] SHARDS=$SHARDS ($SHARDS_SOURCE)  seed-base=$SEED  legs=$LEGS  fallback-oracle-sample=$FALLBACK_ORACLE_SAMPLE"
 
 run_leg() {
   local name=$1 file=$2 env1=$3 env2=$4
