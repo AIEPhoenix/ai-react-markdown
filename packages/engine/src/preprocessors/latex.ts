@@ -22,9 +22,39 @@
  * @module preprocessors/latex
  */
 
-interface Segment {
-  text: string;
-  isCode: boolean;
+/**
+ * One lexed region of a slice. `text` segments are the analysed text; the
+ * other four are PROTECTED — their bytes are never rewritten — and differ in
+ * whether they also DELIMIT the analysed text (end a run):
+ *
+ * - `code` (fenced block, inline span) and `literal` (`<code>…</code>` and
+ *   the other LITERAL_CONTENT_TAGS regions): hard boundaries. Treating code
+ *   as a maskable atom was measured wrong twice; it stays a boundary.
+ * - `multilineTag`: a whitelisted tag whose own bytes span a line ending
+ *   (HTML_TAG_REGEX admits newlines inside attributes). A hard boundary,
+ *   because replacing it by one mask would delete line endings from the
+ *   analysed text and break every per-line rule in `processSlice`.
+ * - `tag`: a single-line whitelisted tag — a SOFT atom: masked, not a
+ *   boundary, so `$x <br> y$` is one formula and not two unclosed halves.
+ *
+ * A discriminated union on purpose: one field, nothing to drift.
+ */
+export type Segment =
+  | { kind: 'text'; text: string }
+  | { kind: 'code'; text: string }
+  | { kind: 'literal'; text: string }
+  | { kind: 'multilineTag'; text: string }
+  | { kind: 'tag'; text: string };
+
+type ProtectedKind = Exclude<Segment['kind'], 'text'>;
+
+/** Hard boundaries end the analysed text; soft atoms do not. */
+function isHardBoundary(kind: Segment['kind']): boolean {
+  return kind === 'code' || kind === 'literal' || kind === 'multilineTag';
+}
+
+function hasLineEnding(text: string): boolean {
+  return text.includes('\n') || text.includes('\r');
 }
 
 type FenceMarker = '`' | '~';
@@ -161,11 +191,11 @@ export function splitByProtectedRegions(content: string): Segment[] {
   let multilineFenceLength = 0;
   let multilineFenceIndent = 0;
 
-  function pushProtected(start: number, end: number) {
+  function pushProtected(start: number, end: number, kind: ProtectedKind) {
     if (start > lastIndex) {
-      segments.push({ text: content.substring(lastIndex, start), isCode: false });
+      segments.push({ kind: 'text', text: content.substring(lastIndex, start) });
     }
-    segments.push({ text: content.substring(start, end), isCode: true });
+    segments.push({ kind, text: content.substring(start, end) });
     lastIndex = end;
   }
 
@@ -189,7 +219,7 @@ export function splitByProtectedRegions(content: string): Segment[] {
           closerIndent <= multilineFenceIndent + 3 &&
           restOfLineIsBlank(content, i + runLen)
         ) {
-          pushProtected(multilineStart, i + runLen);
+          pushProtected(multilineStart, i + runLen, 'code');
           multilineStart = -1;
           multilineFenceMarker = null;
           multilineFenceLength = 0;
@@ -222,7 +252,7 @@ export function splitByProtectedRegions(content: string): Segment[] {
       if (char === '`') {
         const closeIdx = findClosingBacktickRun(content, i + runLen, runLen);
         if (closeIdx !== -1) {
-          pushProtected(i, closeIdx + runLen);
+          pushProtected(i, closeIdx + runLen, 'code');
           i = closeIdx + runLen;
           continue;
         }
@@ -260,7 +290,14 @@ export function splitByProtectedRegions(content: string): Segment[] {
             endIndex = content.length;
           }
         }
-        pushProtected(i, endIndex);
+        // Paired literal regions delimit; a tag spanning a line ending must
+        // delimit too (one mask would swallow the line ending); every other
+        // tag is a soft atom of the run it sits in.
+        pushProtected(
+          i,
+          endIndex,
+          isOpeningPairedTag ? 'literal' : hasLineEnding(content.substring(i, endIndex)) ? 'multilineTag' : 'tag'
+        );
         i = endIndex;
         continue;
       }
@@ -270,12 +307,12 @@ export function splitByProtectedRegions(content: string): Segment[] {
   }
 
   if (multilineStart !== -1) {
-    pushProtected(multilineStart, content.length);
+    pushProtected(multilineStart, content.length, 'code');
   }
 
   // Push remaining text
   if (lastIndex < content.length) {
-    segments.push({ text: content.substring(lastIndex), isCode: false });
+    segments.push({ kind: 'text', text: content.substring(lastIndex) });
   }
 
   return segments;
@@ -591,10 +628,18 @@ function escapeLatexPipesInUnclosed(text: string): string {
  * thing `splitByProtectedRegions` already declines to do, and doing it here
  * alone would be a second, disagreeing model of the same structure.
  */
-function opensMathFlow(text: string, pos: number): boolean {
+function opensMathFlow(text: string, pos: number, runStartsAtLineStart: boolean): boolean {
+  // Walk back over the current line. A line ending settles it (`\n`, or `\r`
+  // — CRLF is met at its `\n`; a lone `\r` is a line ending here exactly as
+  // it is for the lexer's blank-line rule and the currency counter). Reaching
+  // offset 0 without one means the line began BEFORE this run: the caller
+  // knows whether that origin was a line start (a virtual predecessor, not a
+  // run-wide veto — later lines of the run answer for themselves).
   let i = pos;
   let spaces = 0;
-  while (i > 0 && text[i - 1] !== '\n') {
+  while (i > 0) {
+    const prev = text[i - 1];
+    if (prev === '\n' || prev === '\r') return true;
     i -= 1;
     // A tab counts as four columns, which is already an indented code block,
     // and any other character means the run does not begin the line.
@@ -602,15 +647,16 @@ function opensMathFlow(text: string, pos: number): boolean {
     spaces += 1;
     if (spaces > 3) return false;
   }
-  return true;
+  return runStartsAtLineStart;
 }
 
 function truncateUnclosedLatexBlock(
   text: string,
+  runStartsAtLineStart: boolean,
   unclosedStart = findUnclosedDelimiterStart(text, 'double-only')
 ): string {
   if (unclosedStart === -1) return text;
-  if (!opensMathFlow(text, unclosedStart)) return text;
+  if (!opensMathFlow(text, unclosedStart, runStartsAtLineStart)) return text;
 
   // Strip the unclosed $$ block and any trailing whitespace before it.
   return text.substring(0, unclosedStart).trimEnd();
@@ -704,7 +750,12 @@ export function preprocessLaTeX(str: string): string {
   // waiting to happen rather than a duplication to tolerate. The only thing
   // that was ever genuinely different is the whole-string early-exit above,
   // which a slice must not re-decide — see `processSlice`.
-  return processSlice(str, false).out;
+  // The whole-string identity return above comes FIRST: the legacy arm is
+  // not identity-preserving for trigger-free input (`\text{a_b}` still
+  // transforms there), so mask exhaustion must never be consulted before it.
+  const mask = selectMask(str);
+  return (mask === null ? processSlice(str, { legacy: true, probe: false }) : processSlice(str, { probe: false, mask }))
+    .out;
 }
 
 // ─── Incremental (append-aware) wrapper ─────────────────────────────────────
@@ -767,89 +818,431 @@ function hasUnclosedTextCommand(text: string): boolean {
  *  its `\]` has not arrived, so a later append changes this segment. */
 const RESIDUAL_OPEN_BRACKET_RE = /(?<!!)\\\[/;
 
-/** Segment whose first non-whitespace bytes are a `$$` — the only shape
- *  whose B3 seam flag can be set (see processSlice). */
+/** Run (or legacy segment) whose first non-whitespace bytes are a `$$` —
+ *  the only shape whose B3 seam flag can be set (see transformRun). */
 const LEADING_DOUBLE_DOLLAR_RE = /^\s*\$\$/;
 
-interface SliceResult {
+/** Why a slice fell back to the legacy path. `null` = it did not.
+ *  `mask-exhausted` is a whole-call decision the CALLER records (every
+ *  private-use code point occurs in the complete input); `restore-invariant`
+ *  is an engine defect found while restoring atoms. Output is identical for
+ *  both; only the diagnostic differs. */
+export type DegradedReason = 'mask-exhausted' | 'restore-invariant' | null;
+
+export interface SliceResult {
   out: string;
   /** No tail-sensitive transform engaged: safe to freeze this output. */
   quiescent: boolean;
-  /** `truncateUnclosedLatexBlock` fired in the slice's FIRST segment with
-   *  only whitespace before the `$$` opener — the original's `trimEnd`
+  /** `truncateUnclosedLatexBlock` fired in the slice's FIRST run (a run that
+   *  starts at slice offset 0, i.e. `segments[0]` is not a hard boundary)
+   *  with only whitespace before the `$$` opener — the original's `trimEnd`
    *  would cross the seam into the frozen output (B3). */
+  truncatedAtSeamStart: boolean;
+  /** `degraded ≡ degradedReason !== null`; there is no separate boolean. */
+  degradedReason: DegradedReason;
+}
+
+/**
+ * The legacy arm ignores masks entirely and never re-enters selection or
+ * fallback; the default arm requires a mask the caller selected from the
+ * COMPLETE input of the public call (see {@link selectMask}). "Default
+ * processing without a mask" is unrepresentable on purpose.
+ */
+export type ProcessSliceOptions = { legacy: true; probe: boolean } | { legacy?: false; probe: boolean; mask: string };
+
+// ─── Mask selection ─────────────────────────────────────────────────────────
+//
+// A soft atom is replaced in the analysed text by ONE private-use code unit.
+// The mask must be absent from the input, and — this is the part that bit
+// the first design — absent from the input of the whole PUBLIC call, not of
+// the slice at hand: the incremental wrapper processes a freeze candidate
+// and a tail as separate slices while the stateless path sees the document
+// whole. If the alphabet were exhausted only across the union of the slices,
+// each slice would still find a mask and produce soft-atom output while the
+// stateless path had gone legacy — a byte divergence no per-slice check can
+// see. So the public entries select, `processSlice` only consumes.
+
+const PUA_START = 0xe000;
+const PUA_END = 0xf8ff;
+const PUA_SIZE = PUA_END - PUA_START + 1; // 6400
+
+/** First private-use code point absent from `source`, or `null` when all
+ *  6400 occur (then the call takes the legacy arm). Spelled as a code, never
+ *  as a literal private-use character: it is invisible and formatters drop
+ *  it. */
+export function selectMask(source: string): string | null {
+  const first = String.fromCharCode(PUA_START);
+  if (source.indexOf(first) === -1) return first;
+  const seen = new Uint8Array(PUA_SIZE);
+  for (let i = 0; i < source.length; i++) {
+    const c = source.charCodeAt(i);
+    if (c >= PUA_START && c <= PUA_END) seen[c - PUA_START] = 1;
+  }
+  for (let k = 0; k < PUA_SIZE; k++) if (seen[k] === 0) return String.fromCharCode(PUA_START + k);
+  return null;
+}
+
+/** The incremental wrapper's lineage-level presence set: which private-use
+ *  code points the complete current source contains. Fed from appended
+ *  bytes only, rebuilt on a non-append reset — no O(n) rescan per frame.
+ *  The distinct count moves only on a 0 → 1 bit transition, so ten thousand
+ *  repeats of one code point count once. */
+class PuaPresence {
+  private readonly bits = new Uint8Array(PUA_SIZE);
+  private distinct = 0;
+
+  reset(): void {
+    this.bits.fill(0);
+    this.distinct = 0;
+  }
+
+  add(text: string, from: number): void {
+    for (let i = from; i < text.length; i++) {
+      const c = text.charCodeAt(i);
+      if (c >= PUA_START && c <= PUA_END) {
+        const k = c - PUA_START;
+        if (this.bits[k] === 0) {
+          this.bits[k] = 1;
+          this.distinct += 1;
+        }
+      }
+    }
+  }
+
+  select(): string | null {
+    if (this.distinct === 0) return String.fromCharCode(PUA_START);
+    if (this.distinct >= PUA_SIZE) return null;
+    for (let k = 0; k < PUA_SIZE; k++) if (this.bits[k] === 0) return String.fromCharCode(PUA_START + k);
+    return null;
+  }
+}
+
+// ─── The transform chain, per run ───────────────────────────────────────────
+
+interface RunTransform {
+  out: string;
+  /** A tail-sensitive transform engaged (today's `quiescent === false`). */
+  tailSensitive: boolean;
   truncatedAtSeamStart: boolean;
 }
 
-/** THE LaTeX transform chain — the single definition of it. Both entry
- *  points come through here: {@link preprocessLaTeX} with `probe: false`
- *  (output only), the incremental preprocessor with probes on.
- *
- *  `probe` adds the quiescence flags and never touches `out`, so the two
- *  callers cannot diverge on output. The whole-string early-exit stays OUT
- *  of here on purpose: a slice must not re-decide it, because `\text{a_b}`
- *  in a trigger-free slice still transforms when the FULL string carries a
- *  `$` elsewhere. */
-function processSlice(slice: string, probe = true): SliceResult {
+/**
+ * The eight steps, applied to one analysed text. `probe` adds the
+ * quiescence flags and never touches `out`, so the two entry points cannot
+ * diverge on output. `runStartsAtLineStart` is the virtual predecessor
+ * `opensMathFlow` consults when its backward scan reaches offset 0;
+ * `seamEligible` is whether this text is the slice's first run (only that
+ * one can set the B3 seam flag, and only that one needs the fast-path scan
+ * on the tail pass).
+ */
+function transformRun(
+  input: string,
+  probe: boolean,
+  runStartsAtLineStart: boolean,
+  seamEligible: boolean
+): RunTransform {
+  let text = input;
+  let tailSensitive = false;
+  let truncatedAtSeamStart = false;
+  text = escapeMhchemCommands(text);
+  text = escapeCurrencyDollarSigns(text);
+  text = convertLatexDelimiters(text);
+  if (probe && RESIDUAL_OPEN_BRACKET_RE.test(text)) tailSensitive = true;
+  text = escapeLatexPipes(text);
+  if (probe && findUnclosedDelimiterStart(text, 'both') !== -1) tailSensitive = true;
+  text = escapeLatexPipesInUnclosed(text);
+  if (probe && hasUnclosedTextCommand(text)) tailSensitive = true;
+  text = escapeTextUnderscores(text);
+  text = convertSingleToDoubleDollar(text);
+  // The tail pass (`probe: false`) only needs the FIRST run's flag, and that
+  // flag needs the run's first non-blank bytes to be a `$$` opener — cheap
+  // to rule out before the O(run) unclosed scan (plain prose is one run;
+  // this scan was the last ~20% over stateless). The scan result feeds
+  // truncateUnclosedLatexBlock too — one O(run) pass, not two (r2 P2-2).
+  let unclosedDouble: number | undefined;
+  if (probe || (seamEligible && LEADING_DOUBLE_DOLLAR_RE.test(text))) {
+    unclosedDouble = findUnclosedDelimiterStart(text, 'double-only');
+    if (unclosedDouble !== -1) {
+      tailSensitive = true;
+      // The flag must track what truncation ACTUALLY does, not what an
+      // unclosed `$$` used to imply: `truncateUnclosedLatexBlock` declines
+      // on a delimiter that cannot open a math flow (indented four spaces,
+      // after a tab, or mid-line), and a flag raised anyway made the
+      // wrapper trim a newline the stateless path keeps (2026-09-02).
+      if (
+        seamEligible &&
+        opensMathFlow(text, unclosedDouble, runStartsAtLineStart) &&
+        text.slice(0, unclosedDouble).trim() === ''
+      ) {
+        truncatedAtSeamStart = true;
+      }
+    }
+  }
+  text = truncateUnclosedLatexBlock(text, runStartsAtLineStart, unclosedDouble);
+  return { out: text, tailSensitive, truncatedAtSeamStart };
+}
+
+// ─── Legacy arm: every protected segment a hard boundary ────────────────────
+
+/** Today's per-segment loop, kept verbatim in behaviour: the reference the
+ *  differential gate and the evidence harness compare against, and the
+ *  fallback when the default arm cannot stand behind its output. A segment
+ *  starts its own analysed text, so its start IS a line start for
+ *  `opensMathFlow` — exactly what the old scan did by stopping at offset 0. */
+function processSliceLegacy(slice: string, probe: boolean): SliceResult {
   const segments = splitByProtectedRegions(slice);
   const parts: string[] = [];
   let quiescent = true;
   let truncatedAtSeamStart = false;
   for (let index = 0; index < segments.length; index++) {
     const segment = segments[index];
-    if (segment.isCode) {
+    if (segment.kind !== 'text') {
       parts.push(segment.text);
       continue;
     }
-    let text = segment.text;
-    text = escapeMhchemCommands(text);
-    text = escapeCurrencyDollarSigns(text);
-    text = convertLatexDelimiters(text);
-    if (probe && RESIDUAL_OPEN_BRACKET_RE.test(text)) quiescent = false;
-    text = escapeLatexPipes(text);
-    if (probe && findUnclosedDelimiterStart(text, 'both') !== -1) quiescent = false;
-    text = escapeLatexPipesInUnclosed(text);
-    if (probe && hasUnclosedTextCommand(text)) quiescent = false;
-    text = escapeTextUnderscores(text);
-    text = convertSingleToDoubleDollar(text);
-    // The tail pass (`probe: false`) only needs the FIRST segment's flag,
-    // and that flag needs the segment's first non-blank bytes to be a `$$`
-    // opener — cheap to rule out before the O(segment) unclosed scan (plain
-    // prose is one segment; this scan was the last ~20% over stateless).
-    // The scan result feeds truncateUnclosedLatexBlock too — one O(segment)
-    // pass, not two (r2 P2-2: a tail starting with `$$`, the streaming
-    // display block's steady state, scanned twice per frame).
-    let unclosedDouble: number | undefined;
-    if (probe || (index === 0 && LEADING_DOUBLE_DOLLAR_RE.test(text))) {
-      unclosedDouble = findUnclosedDelimiterStart(text, 'double-only');
-      if (unclosedDouble !== -1) {
-        quiescent = false;
-        // The flag must track what truncation ACTUALLY does, not what an
-        // unclosed `$$` used to imply.
-        //
-        // `truncateUnclosedLatexBlock` gained an `opensMathFlow` gate and now
-        // declines on a delimiter that cannot open a math flow — indented
-        // four spaces, or after a tab. This condition was left behind, so the
-        // flag claimed a seam truncation on a slice where nothing was cut,
-        // and the incremental wrapper trimmed a newline the stateless path
-        // keeps. Measured at `freezeThreshold: 0`:
-        //
-        //   `$a$\n    $$`  stateless `$$a$$\n    $$`  incremental `$$a$$    $$`
-        //   `$a$\n\t$$`     stateless `$$a$$\n\t$$`    incremental `$$a$$\t$$`
-        //
-        // A byte-equality divergence between the two entry points, which is
-        // the one contract this file is not allowed to break. The five-leg
-        // soak ran ALL CLEAN over it; it surfaced while designing an
-        // unrelated fix.
-        if (index === 0 && opensMathFlow(text, unclosedDouble) && text.slice(0, unclosedDouble).trim() === '') {
-          truncatedAtSeamStart = true;
-        }
-      }
-    }
-    text = truncateUnclosedLatexBlock(text, unclosedDouble);
-    parts.push(text);
+    const r = transformRun(segment.text, probe, true, index === 0);
+    if (r.tailSensitive) quiescent = false;
+    if (r.truncatedAtSeamStart) truncatedAtSeamStart = true;
+    parts.push(r.out);
   }
-  return { out: parts.join(''), quiescent, truncatedAtSeamStart };
+  return { out: parts.join(''), quiescent, truncatedAtSeamStart, degradedReason: null };
+}
+
+// ─── Default arm: soft atoms and element scopes ─────────────────────────────
+//
+// Three concepts, from separating MASKING (these bytes must not be
+// rewritten) from DELIMITING (these bytes end the analysed text):
+//
+//   hard boundary  code / literal / multilineTag — ends a run (unchanged)
+//   soft atom      any other tag — one mask code unit in the run's text,
+//                  restored in order after the chain ran
+//   element scope  a soft opener and its closer on the same line of the
+//                  same run — the inner text is its own run, processed
+//                  recursively; the finished element is one atom outside
+//
+// Scopes are intervals of a tree, so pairing is top-of-stack only: a closer
+// that does not match the top of the stack is an atom and searches nothing
+// (`<b><i></b></i>` is not repaired); openers still open at the end of the
+// line become atoms; past depth 8 an opener is pushed SUPPRESSED so its own
+// closer is still consumed structurally and cannot steal an outer level's.
+// Every rule is a function of the line's bytes alone, so both entry points
+// compute the same structure for the same line — cuts sit at line starts,
+// and a frozen line is complete.
+
+type RunNode =
+  | { type: 'text'; text: string }
+  | { type: 'atom'; text: string }
+  | { type: 'scope'; open: string; close: string; children: RunNode[] };
+
+interface ScopeFrame {
+  name: string;
+  open: string;
+  suppressed: boolean;
+  children: RunNode[];
+}
+
+const SCOPE_DEPTH_CAP = 8;
+const VOID_TAGS = new Set(['br', 'hr', 'img', 'wbr', 'input', 'source']);
+const TAG_NAME_RE = /^<(\/?)([A-Za-z][A-Za-z0-9]*)/;
+
+function tagInfo(tag: string): { name: string; closing: boolean; opensScope: boolean } {
+  const m = TAG_NAME_RE.exec(tag);
+  const closing = m?.[1] === '/';
+  const name = (m?.[2] ?? '').toLowerCase();
+  const opensScope = !closing && !tag.endsWith('/>') && !VOID_TAGS.has(name);
+  return { name, closing, opensScope };
+}
+
+/** Structure pass: the run's segments → a tree of text, atoms and
+ *  same-line scopes. Line endings (`\n`, `\r\n`, lone `\r`) close every
+ *  open frame and are emitted as text at the root. */
+function buildRunTree(segments: readonly Segment[]): RunNode[] {
+  const root: RunNode[] = [];
+  const stack: ScopeFrame[] = [];
+  const current = (): RunNode[] => (stack.length > 0 ? stack[stack.length - 1].children : root);
+  const unwind = (): void => {
+    while (stack.length > 0) {
+      const frame = stack.pop() as ScopeFrame;
+      current().push({ type: 'atom', text: frame.open }, ...frame.children);
+    }
+  };
+  for (const segment of segments) {
+    if (segment.kind === 'tag') {
+      const info = tagInfo(segment.text);
+      if (info.closing) {
+        const top = stack[stack.length - 1];
+        if (top !== undefined && top.name === info.name) {
+          stack.pop();
+          const parent = current();
+          if (top.suppressed) {
+            parent.push({ type: 'atom', text: top.open }, ...top.children, { type: 'atom', text: segment.text });
+          } else {
+            parent.push({ type: 'scope', open: top.open, close: segment.text, children: top.children });
+          }
+        } else {
+          current().push({ type: 'atom', text: segment.text });
+        }
+      } else if (info.opensScope) {
+        stack.push({ name: info.name, open: segment.text, suppressed: stack.length >= SCOPE_DEPTH_CAP, children: [] });
+      } else {
+        current().push({ type: 'atom', text: segment.text });
+      }
+      continue;
+    }
+    // Text: split at line endings; each ending closes the line's frames.
+    const t = segment.text;
+    let start = 0;
+    for (let i = 0; i < t.length; i++) {
+      const c = t.charCodeAt(i);
+      if (c !== 10 && c !== 13) continue;
+      if (i > start) current().push({ type: 'text', text: t.slice(start, i) });
+      const end = c === 13 && t.charCodeAt(i + 1) === 10 ? i + 2 : i + 1;
+      unwind();
+      root.push({ type: 'text', text: t.slice(i, end) });
+      start = end;
+      i = end - 1;
+    }
+    if (start < t.length) current().push({ type: 'text', text: t.slice(start) });
+  }
+  unwind();
+  return root;
+}
+
+/** Test hook: make restoration report a violation for a run whose atoms
+ *  satisfy the predicate. The only way to reach the restore-invariant path
+ *  from a test; production never sets it. @internal */
+let restoreFailureInjector: ((atoms: readonly string[]) => boolean) | null = null;
+/** @internal */
+export function __setRestoreFailureInjector(fn: ((atoms: readonly string[]) => boolean) | null): void {
+  restoreFailureInjector = fn;
+}
+
+/**
+ * Put the atoms back. Masks in the output are a prefix-ordered subsequence
+ * of the atoms (six transforms only insert; `truncateUnclosedLatexBlock`
+ * only deletes a suffix; nothing reorders or duplicates), so the k-th mask
+ * is the k-th atom and a missing tail of atoms was truncated. More masks
+ * than atoms is a violation: `null`.
+ */
+function restore(out: string, atoms: readonly string[], mask: string): string | null {
+  if (restoreFailureInjector !== null && restoreFailureInjector(atoms)) return null;
+  let result = '';
+  let k = 0;
+  let last = 0;
+  for (;;) {
+    const idx = out.indexOf(mask, last);
+    if (idx === -1) break;
+    if (k >= atoms.length) return null;
+    result += out.slice(last, idx) + atoms[k];
+    k += 1;
+    last = idx + 1;
+  }
+  return result + out.slice(last);
+}
+
+interface EmittedRun {
+  text: string;
+  atoms: string[];
+}
+
+/** Emit pass: the tree → the masked analysed text plus its atoms in order.
+ *  A scope's inner text is its own run: chain with probes off (its closer is
+ *  present, so later appends cannot change its bytes), mid-line origin,
+ *  restored, and wrapped by its tags into ONE atom of the enclosing run. */
+function emitRun(nodes: readonly RunNode[], mask: string): EmittedRun | null {
+  let text = '';
+  const atoms: string[] = [];
+  for (const node of nodes) {
+    if (node.type === 'text') {
+      text += node.text;
+    } else if (node.type === 'atom') {
+      atoms.push(node.text);
+      text += mask;
+    } else {
+      const inner = emitRun(node.children, mask);
+      if (inner === null) return null;
+      const transformed = transformRun(inner.text, false, false, false);
+      const restored = restore(transformed.out, inner.atoms, mask);
+      if (restored === null) return null;
+      atoms.push(node.open + restored + node.close);
+      text += mask;
+    }
+  }
+  return { text, atoms };
+}
+
+function reportRestoreViolation(): void {
+  if (process.env.NODE_ENV !== 'production') {
+    console.error(
+      '[ai-react-markdown] LaTeX preprocessor: atom restoration violated its invariant (more masks in the output than atoms); the slice was re-processed on the legacy path. This is an engine defect — please report it.'
+    );
+  }
+}
+
+function processSliceDefault(slice: string, probe: boolean, mask: string): SliceResult {
+  const segments = splitByProtectedRegions(slice);
+  const parts: string[] = [];
+  let quiescent = true;
+  let truncatedAtSeamStart = false;
+  let offset = 0;
+  let i = 0;
+  while (i < segments.length) {
+    const segment = segments[i];
+    if (isHardBoundary(segment.kind)) {
+      parts.push(segment.text);
+      offset += segment.text.length;
+      i += 1;
+      continue;
+    }
+    const runStart = offset;
+    const runSegments: Segment[] = [];
+    while (i < segments.length && !isHardBoundary(segments[i].kind)) {
+      runSegments.push(segments[i]);
+      offset += segments[i].text.length;
+      i += 1;
+    }
+    const before = runStart === 0 ? -1 : slice.charCodeAt(runStart - 1);
+    const runStartsAtLineStart = before === -1 || before === 10 || before === 13;
+    // Only a run that starts at offset 0 can raise the seam flag (a slice
+    // starting with a hard boundary never could, and still cannot).
+    const seamEligible = runStart === 0;
+    const emitted = emitRun(buildRunTree(runSegments), mask);
+    if (emitted === null) {
+      reportRestoreViolation();
+      return { ...processSliceLegacy(slice, probe), degradedReason: 'restore-invariant' };
+    }
+    const r = transformRun(emitted.text, probe, runStartsAtLineStart, seamEligible);
+    const restored = restore(r.out, emitted.atoms, mask);
+    if (restored === null) {
+      reportRestoreViolation();
+      return { ...processSliceLegacy(slice, probe), degradedReason: 'restore-invariant' };
+    }
+    if (r.tailSensitive) quiescent = false;
+    if (r.truncatedAtSeamStart) truncatedAtSeamStart = true;
+    parts.push(restored);
+  }
+  return { out: parts.join(''), quiescent, truncatedAtSeamStart, degradedReason: null };
+}
+
+/**
+ * THE LaTeX transform chain over one slice — the single definition of it.
+ * Both entry points come through here: {@link preprocessLaTeX} with
+ * `probe: false`, the incremental preprocessor with probes on for the freeze
+ * candidate. The whole-string early-exit stays OUT of here on purpose: a
+ * slice must not re-decide it, because `\text{a_b}` in a trigger-free slice
+ * still transforms when the FULL string carries a `$` elsewhere.
+ *
+ * The default arm falls back to the legacy arm, in the same call, when
+ * restoration finds its invariant violated — the returned result then
+ * carries `degradedReason: 'restore-invariant'` so the incremental wrapper
+ * can poison its lineage. Exported for the differential gate and the
+ * evidence harness only; not re-exported from the package root.
+ *
+ * @internal
+ */
+export function processSlice(slice: string, options: ProcessSliceOptions): SliceResult {
+  if (options.legacy === true) return processSliceLegacy(slice, options.probe);
+  return processSliceDefault(slice, options.probe, options.mask);
 }
 
 /** A raw line holding only spaces / tabs / CR — a CommonMark blank line. */
@@ -874,7 +1267,7 @@ function findRawSafeCut(active: string): number {
   let backtickHazard = false;
   let latentLt = false;
   for (const segment of segments) {
-    if (segment.isCode) {
+    if (segment.kind !== 'text') {
       // Protected regions contain no cuts; a matched tag/span/fence carries
       // no cross-append state. `>` inside one still discharges a latent `<`
       // (HTML_TAG_REGEX scans raw text, blind to our segmentation).
@@ -956,10 +1349,14 @@ export function createIncrementalLatexPreprocessor(options?: {
    *  attempt froze (0 = failed), so the backoff bound and freeze progress
    *  can be pinned. @internal */
   onAttempt?: (info: { activeLength: number; frozenBytes: number }) => void;
+  /** Test hook: called when the lineage degrades to whole-source legacy
+   *  processing, with the reason. @internal */
+  onDegrade?: (reason: Exclude<DegradedReason, null>) => void;
 }): (content: string) => string {
   const freezeThreshold = options?.freezeThreshold ?? DEFAULT_FREEZE_ATTEMPT_THRESHOLD;
   const onAttempt = options?.onAttempt;
   const backoff = options?.backoff ?? true;
+  const onDegrade = options?.onDegrade;
   let prevSource = '';
   let prevOutput = '';
   let frozenSrcEnd = 0;
@@ -975,16 +1372,55 @@ export function createIncrementalLatexPreprocessor(options?: {
   // a geometric series (≤ 4·O(n) over the whole stream). Freezing later
   // never changes output — every frame equals `preprocessLaTeX(full)`.
   let nextAttemptLen = 0;
+  // Lineage degradation: once this lineage has gone legacy (mask alphabet
+  // exhausted over the complete source, or a restore-invariant violation),
+  // every later call is whole-source legacy — the stateless path would be
+  // too, and composing a frozen soft-atom prefix with a legacy tail is not
+  // byte-equal. Reset with the rest of the lineage state, nowhere else.
+  let lineageDegraded = false;
+  const presence = new PuaPresence();
+
+  /** Every non-replay return commits the frame: a return that skipped this
+   *  would leave the cache on the previous frame, so the next identical
+   *  input would be classified as an append, presence accounting would run
+   *  again and an injected restore failure would fire and log twice. */
+  const commit = (source: string, out: string): string => {
+    prevSource = source;
+    prevOutput = out;
+    return out;
+  };
+  const legacyWhole = (source: string): string => processSlice(source, { legacy: true, probe: false }).out;
+  const degrade = (source: string, reason: Exclude<DegradedReason, null>): string => {
+    lineageDegraded = true;
+    frozenSrcEnd = 0;
+    frozenOut = '';
+    onDegrade?.(reason);
+    return commit(source, legacyWhole(source));
+  };
 
   return function incrementalPreprocessLaTeX(source: string): string {
+    // (1) identical replay: nothing else runs, the bitmap is already right.
     if (source === prevSource) return prevOutput;
+    // (2) lineage classification and reset.
     const isAppend = source.length > prevSource.length && source.startsWith(prevSource);
     if (!isAppend) {
       frozenSrcEnd = 0;
       frozenOut = '';
       triggered = false;
       nextAttemptLen = 0;
+      lineageDegraded = false;
+      presence.reset();
+      presence.add(source, 0);
+    } else {
+      // (3) presence accounting on EVERY new source value, before the
+      // trigger gate: a literal private-use character in a trigger-free
+      // frame is still in the document when the first `$` arrives.
+      presence.add(source, prevSource.length);
     }
+    // (4) the monotone trigger gate — BEFORE any degradation decision: the
+    // legacy arm is not identity-preserving for trigger-free input
+    // (`\text{a_b}` still transforms there), so exhaustion consulted here
+    // would rewrite bytes the stateless path returns untouched.
     if (!triggered) {
       // Monotone gate (B4): while the ACCUMULATED string has no trigger, the
       // original early-exits with the identity — freezing transformed output
@@ -993,13 +1429,16 @@ export function createIncrementalLatexPreprocessor(options?: {
       // the appended chunk plus one char of overlap needs checking (`\[` /
       // `\(` can straddle the seam).
       const checkFrom = isAppend ? Math.max(0, prevSource.length - 1) : 0;
-      if (!hasLatexTrigger(source.slice(checkFrom))) {
-        prevSource = source;
-        prevOutput = source;
-        return source;
-      }
+      if (!hasLatexTrigger(source.slice(checkFrom))) return commit(source, source);
       triggered = true;
     }
+    // (5) a triggered lineage: existing degradation, or exhaustion over the
+    // complete current source, means whole-source legacy — the stateless
+    // path's answer for this input.
+    if (lineageDegraded) return commit(source, legacyWhole(source));
+    const mask = presence.select();
+    if (mask === null) return degrade(source, 'mask-exhausted');
+    // (6) candidate and tail, both with the one mask selected for this call.
     let active = source.slice(frozenSrcEnd);
     if (active.length > freezeThreshold && active.length >= nextAttemptLen) {
       const activeLength = active.length;
@@ -1014,7 +1453,13 @@ export function createIncrementalLatexPreprocessor(options?: {
       };
       const cut = findRawSafeCut(active);
       if (cut > 0) {
-        const candidate = processSlice(active.slice(0, cut));
+        const candidate = processSlice(active.slice(0, cut), { probe: true, mask });
+        if (candidate.degradedReason !== null) {
+          // The attempt happened; the instrumentation contract is one
+          // callback per attempt whatever its outcome.
+          onAttempt?.({ activeLength, frozenBytes: 0 });
+          return degrade(source, candidate.degradedReason);
+        }
         if (candidate.quiescent) freeze(cut, candidate);
       }
       // A shorter fallback cut (largest cut before the first non-quiescent
@@ -1027,19 +1472,17 @@ export function createIncrementalLatexPreprocessor(options?: {
       onAttempt?.({ activeLength, frozenBytes });
     }
     // Tail pass: transforms only — its `quiescent` is never read, only the
-    // first segment's B3 flag, so the per-segment probes are skipped (they
-    // were ~40% on top of the stateless cost for a document whose freeze
-    // never succeeds; the backoff had already removed the other 2×).
-    const tail = processSlice(active, false);
-    // B3 seam correction: the original's segment-level `trimEnd` reaches
-    // back across our cut when the truncated `$$` block's segment starts
-    // with nothing but whitespace. Applied at COMPOSE time only — the
-    // frozen output itself stays untrimmed, because the block will close
-    // in a later append and the untrimmed bytes become correct again.
+    // first run's B3 flag, so the per-run probes are skipped (they were
+    // ~40% on top of the stateless cost for a document whose freeze never
+    // succeeds; the backoff had already removed the other 2×).
+    const tail = processSlice(active, { probe: false, mask });
+    if (tail.degradedReason !== null) return degrade(source, tail.degradedReason);
+    // B3 seam correction: the original's run-level `trimEnd` reaches back
+    // across our cut when the truncated `$$` block's run starts with
+    // nothing but whitespace. Applied at COMPOSE time only — the frozen
+    // output itself stays untrimmed, because the block will close in a
+    // later append and the untrimmed bytes become correct again.
     const head = tail.truncatedAtSeamStart ? frozenOut.replace(/\s+$/, '') : frozenOut;
-    const out = head + tail.out;
-    prevSource = source;
-    prevOutput = out;
-    return out;
+    return commit(source, head + tail.out);
   };
 }

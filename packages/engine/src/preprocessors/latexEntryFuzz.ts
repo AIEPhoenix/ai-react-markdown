@@ -110,6 +110,20 @@ export const BODIES = [
   '}',
   '!\\[img\\]',
   '\\\\',
+  // Soft-atom shapes (2.11.0): same-line paired tags, a tag inside a
+  // formula, the `<span>$</span>100` idiom, an attribute carrying a pipe, a
+  // `$$` opened inside a scope, a private-use code unit (the mask alphabet),
+  // and a CRLF-terminated line. Without these the equivalence fuzz would
+  // pass vacuously on the soft-atom model — the alphabet had no same-line
+  // paired soft tag at all.
+  '$a <br> b$',
+  '<b>x</b>',
+  '<span>$</span>100',
+  '<b><i>$x$</i></b>',
+  '<a href="a|b">',
+  '<b>$$x</b>',
+  'mask \uE000 here',
+  'crlf $x$ line\r',
 ];
 
 /** A line that transforms and then settles: it carries a trigger, so the
