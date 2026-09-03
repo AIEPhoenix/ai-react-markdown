@@ -43,6 +43,7 @@ const fail = (msg) => {
 // ── 1. mermaid ────────────────────────────────────────────────────────────
 
 const { MERMAID_CASES, MERMAID_TYPES } = await import('../src/mermaid/diagrams.ts');
+const { MERMAID_NON_ASCII_LIMITS } = await import('../src/mermaid/nonAscii.ts');
 
 /**
  * mermaid needs a DOM even to PARSE, because it sanitises label text through
@@ -142,6 +143,22 @@ const DIR_TO_TYPE = {
 };
 
 const covered = new Set(MERMAID_TYPES);
+/**
+ * The INVERSE of the coverage check, and it exists because the coverage check
+ * cannot see this: `covered` only has to be a superset of `registered`, so a
+ * case that invents a type name — `'sequence'` where the registry says
+ * `'sequenceDiagram'` — passes coverage untouched while inflating
+ * `MERMAID_TYPES`, which the corpus document prints as "covering all N
+ * diagram types". Caught exactly that way on 2026-09-03, at 37 types against
+ * a real 31.
+ */
+const knownTypes = new Set(Object.values(DIR_TO_TYPE));
+for (const c of MERMAID_CASES) {
+  if (!knownTypes.has(c.type)) {
+    fail(`mermaid ${c.id}: type '${c.type}' is not a registered diagram type — check DIR_TO_TYPE for the real name`);
+  }
+}
+
 const uncovered = registered.filter((d) => {
   const t = DIR_TO_TYPE[d];
   if (t === undefined) {
@@ -152,6 +169,54 @@ const uncovered = registered.filter((d) => {
 });
 if (uncovered.length > 0) fail(`mermaid: ${uncovered.length} registered type(s) uncovered: ${uncovered.join(', ')}`);
 else process.stdout.write(`[corpus] mermaid: ${registered.length}/${registered.length} registered types covered\n`);
+
+/**
+ * Pinned limitations, asserted in BOTH directions.
+ *
+ * The `accepted` half is the ordinary one: the documented workaround has to
+ * keep working. The `rejected` half is the half that earns its keep — when
+ * mermaid fixes one of these, this goes red and someone updates the corpus,
+ * instead of the corpus quietly going on recommending a workaround nobody
+ * needs. A limitation that stopped being one is how a corpus starts teaching
+ * people to write worse source than they have to.
+ *
+ * `alsoRejects` carries the non-CJK witnesses. They are asserted for a
+ * specific failure mode: an upstream fix that widens the identifier class to
+ * CJK and stops there would flip `rejected` while leaving `développement`
+ * broken, and without these the corpus would call that done.
+ */
+const parses = async (src) => {
+  try {
+    await mermaid.parse(src);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+let limitsChecked = 0;
+for (const c of MERMAID_NON_ASCII_LIMITS) {
+  if (seenIds.has(c.id)) fail(`mermaid limits: id ${c.id} collides with a parsing case`);
+  seenIds.add(c.id);
+  if (await parses(c.rejected)) {
+    fail(`mermaid limit ${c.id}: the rejected form now PARSES — mermaid ${mermaidVersion} fixed it, update the corpus`);
+  }
+  if (c.accepted !== null && !(await parses(c.accepted))) {
+    fail(`mermaid limit ${c.id}: the documented working form no longer parses`);
+  }
+  for (const witness of c.alsoRejects ?? []) {
+    if (await parses(witness)) {
+      fail(`mermaid limit ${c.id}: a non-CJK witness now parses — the predicate has narrowed, re-derive it`);
+    }
+  }
+  limitsChecked += 1;
+}
+const noWorkaround = MERMAID_NON_ASCII_LIMITS.filter((c) => c.accepted === null).length;
+const notScript = MERMAID_NON_ASCII_LIMITS.filter((c) => !c.asciiAccepted).length;
+process.stdout.write(
+  `[corpus] mermaid: ${limitsChecked} pinned limitations still hold ` +
+    `(${noWorkaround} with no working form, ${notScript} not script-related)\n`
+);
 
 // ── 2. math renders ───────────────────────────────────────────────────────
 

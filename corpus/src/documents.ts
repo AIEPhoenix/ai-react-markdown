@@ -183,9 +183,14 @@ ${UNCLOSED_FENCE_DOC}`;
 
 export const MERMAID_DOCUMENT = `# Mermaid corpus
 
-${MERMAID_CASES.length} cases covering all ${MERMAID_TYPES.length} diagram types that mermaid registers.
-Every one is parse-verified against the installed version; several of these
-types are beta and their grammar moves between minors.
+${MERMAID_CASES.length} cases covering all ${MERMAID_TYPES.length} diagram types that mermaid registers,
+including a CJK group whose labels are Chinese, Japanese and Korean. Every one
+is parse-verified against the installed version; several of these types are
+beta and their grammar moves between minors.
+
+Diagrams mermaid REJECTS are deliberately absent — this document's contract is
+that all of it renders. They are pinned in \`src/mermaid/nonAscii.ts\` instead,
+each beside the form that works.
 
 ${MERMAID_CASES.map((c) => case_(c, fence('mermaid', c.src))).join('\n')}`;
 

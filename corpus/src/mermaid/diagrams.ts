@@ -23,6 +23,8 @@
  * are beta and their grammar does move.
  */
 
+import { MERMAID_CJK } from './cjk.ts';
+
 export interface MermaidCase {
   /** Stable id, `<type>-<variant>`. Used in benchmark scenario ids. */
   readonly id: string;
@@ -35,7 +37,7 @@ export interface MermaidCase {
   readonly src: string;
 }
 
-export const MERMAID_CASES: readonly MermaidCase[] = [
+const MERMAID_BASE: readonly MermaidCase[] = [
   // ── flowchart — the commonest by a wide margin, so the most subdivided ──
   {
     id: 'flowchart-basic',
@@ -648,6 +650,18 @@ Reparsed tail,Commit,2163`,
     src: `info`,
   },
 ];
+
+/**
+ * The base set plus the CJK group, in one array, because every consumer wants
+ * all of them and the coverage assertion is computed from this. The groups are
+ * exported separately too — `MERMAID_CJK` is the one a font-fallback or
+ * text-measurement check would want on its own.
+ *
+ * Diagrams that mermaid REJECTS live in `nonAscii.ts` and are deliberately
+ * not here: this array's contract is "every entry parses", and the gate reads
+ * it that way.
+ */
+export const MERMAID_CASES: readonly MermaidCase[] = [...MERMAID_BASE, ...MERMAID_CJK];
 
 /** Diagram types covered, derived rather than hand-counted so the number in
  *  the docs cannot drift from the list above. */
