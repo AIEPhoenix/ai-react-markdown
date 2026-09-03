@@ -6,6 +6,104 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 ---
 
+## 2.11.x — A tag inside a formula is still one formula
+
+### 2.11.0 — Soft atoms, and a credential for the engine's own tags
+
+**`$$ a <br> b $$` used to render as `<br> b $$`.** Not while streaming — in
+a finished document. A multi-line display block with a `<br>` on any line
+lost its head _and_ its tail; a paired tag inside a table-cell formula
+(`| $a <b>x</b> b$ |`) rewrote the row's trailing pipe into `\vert{}` and
+destroyed the row. Nothing errored. The corpus had carried the inline case
+(`$x <br> y$`) as a known gap since 2.10.1; the display cases were found
+while writing the plan for it.
+
+The cause was one lexer doing two jobs with one field. `splitByProtectedRegions`
+marked every protected region — fenced code, code spans, `<code>…</code>`
+regions, and every whitelisted HTML tag — as the same kind of thing, and the
+transform chain ran on each stretch of text between them in isolation. That
+is right for code: a code span both **masks** its bytes (never rewrite them)
+and **delimits** the analysed text (a `$` before a code span cannot pair
+with one after it). An inline tag needs only the first. Treating it as a
+boundary cut `$$ a ` and ` b $$` into two texts, each with an unclosed `$$`,
+and the streaming protection truncated each from its own delimiter.
+
+2.11.0 separates the two jobs. The lexer's segments are now a discriminated
+union — `text`, `code`, `literal`, `multilineTag`, `tag` — and `processSlice`
+classifies them three ways:
+
+| Class         | Members                                                                | Effect on the analysed text                                                                                                                   |
+| ------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| hard boundary | fenced code, code spans, literal elements, tags spanning a line ending | unchanged: ends the analysed text. Treating code as a maskable atom was measured wrong twice and stays a boundary                             |
+| soft atom     | every other single-line tag                                            | replaced in the text by one private-use code unit, restored in order after the chain; the tag's own bytes are never rewritten                 |
+| element scope | a soft opener and its closer on the same line of the same run          | the inner text is its own run, processed recursively; the finished element is one atom outside, so `<span>$</span>100` still isolates its `$` |
+
+Scopes pair top-of-stack only (`<b><i></b></i>` is not repaired), stop at
+line endings under the shared `\n` / `\r\n` / `\r` rule, and cap at depth 8
+with suppressed openers kept on the stack so a same-name closer cannot
+steal an outer level's. The mask is chosen from the **complete** input of
+the public call — never per slice — because the incremental wrapper
+processes a freeze candidate and a tail separately while the stateless path
+sees the whole document, and an alphabet exhausted only across their union
+would have let the two entry points diverge. When all 6400 private-use code
+points occur, or restoration finds its invariant violated, the call takes
+the legacy path for the whole source and the incremental lineage stays
+there until a non-append reset — same-call, so every frame still equals
+`preprocessLaTeX(full)`.
+
+**Output changes, all approved.** A formula containing a tag now reaches
+KaTeX with the tag inside it and renders as garbled math (`<` and `>` as
+relations) rather than being deleted — the owner's decision: garbled beats
+silent. The streaming truncation of an unclosed `$$` now covers the whole
+block instead of leaking the tag and the text after it. A `$$` right after
+a tag or a code span on the same line no longer opens a math flow (it never
+could). Same-line dollar parity, `\[ … \]` conversion and the unclosed-tail
+pipe escaping now see across a tag. A lone `\r` is a line ending for the
+truncation scan, as it already was for every other scanner in the file.
+`$5 <b>and</b> $6` is unchanged. Everything is byte-identical for input with
+neither a tag nor a code boundary.
+
+That last sentence is a gate, not a claim: `latexSoftAtoms.differential.test.ts`
+runs the legacy arm (kept verbatim inside `processSlice`) against the new
+arm over the shared fixture module, the six committed corpus documents and
+4000 seeded fuzz samples, classifies every difference into a named class,
+and fails on any unclassified change or any change in the no-tag /
+no-boundary class. The fuzz alphabet gained the shapes it had never held —
+a same-line paired tag, a tag inside a formula, the `<span>$</span>100`
+idiom, a private-use code unit, a CRLF line — so the entry-point
+equivalence fuzz cannot pass vacuously. A report-only twin
+(`latexSoftAtoms.evidence.ts`, 60 × 400) records per-class counts and both
+arms' non-idempotence rates for `gate-evidence.sh`.
+
+**The engine's placeholder tags can no longer be forged from raw HTML.**
+`footnote-sup`, `cross-chunk-link` and `cross-chunk-image` are admitted by
+the sanitize schema so the cross-chunk handlers' output can reach its React
+placeholders — and so could an authored `<footnote-sup label="a">`, which
+arrived at the placeholder with a `label`, took the `fnref-a` anchor the
+footer's backref points to, and polluted block dependency sets. Two layers
+now tell genuine from forged. The property **name**: `hast-util-raw`
+re-emits existing element nodes as parser tokens without the tokenizer, so
+a camelCase `engineProvenance` survives, while authored attributes come
+back lowercased and can never produce it (pinned against the installed
+fork). The property **value**: one per-instance credential, 128 bits from
+Web Crypto, stamped by the handlers and checked by `rehypeVerifyEngineTags`
+between `rehypeRaw` and `rehypeSanitize`; genuine instances lose it and
+pass, every other instance is unwrapped the way sanitize treats a
+disallowed element. The credential never reaches the DOM, caches or logs.
+Without Web Crypto the value is unique but not secret and the name layer
+keeps holding — standalone rendering is untouched, forged instances are
+still unwrapped, one dev-only diagnostic — and production is proven inert
+by execution (`assert-prod-diagnostic-inert.mjs`), not by string absence,
+because core's build deliberately does not treeshake.
+
+Public call shapes are preserved. `buildCoreRehypePlugins(schema, prefix)`
+still returns today's chain with no verifier; pass a third argument
+`{ provenance }` **and** put the same string in your `remarkRehypeOptions`
+(`CrossChunkHandlerOptions.provenance`) to enable it in a hand-assembled
+pipeline. The shipped renderer always does.
+
+---
+
 ## 2.10.x — Delimiters stop deleting what follows them
 
 ### 2.10.1 — A price stopped deleting the rest of the page
