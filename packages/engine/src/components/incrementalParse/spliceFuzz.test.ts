@@ -40,14 +40,12 @@ import {
 } from './spliceArbiterHarness';
 import { benignDocArb, hazardDocArb, scheduleSnapshots, COVERAGE_MARKERS, type FuzzDoc } from './fuzzGenerators';
 
-// 300, not the original 120: the coverage meters below demand every one of
-// the 32 generator families to be sampled at least RUNS/60 times, and at 120
-// the marker with the thinnest weight missed its floor on a third of seeds
-// (measured 2026-08-21 over twelve seeds — 4/12 with this corpus, 1/12 with
-// the smaller pre-2.5.4 pool, so the pool growing from 38 to 49 weights made
-// a pre-existing fragility routine). At 300 all twelve seeds clear it. The
-// soak overrides this anyway; the default is what CI and `pnpm preflight`
-// run, and a suite that fails on a quarter of seeds is worse than a slower one.
+// The default is what CI and `pnpm preflight` run; the soak overrides it.
+// 300 is kept for CI cost. At this size the coverage floor below can only
+// detect a generator family disappearing: the thinnest family
+// (`headRoutedCapture`, weight 2 of 81 in the hazard pool) appears in about
+// 2.3% of documents, 6.9 per 300 on average, so the floor is set well under
+// that. See coverageFloor.evidence.ts for the measured distribution.
 const RUNS = Number(testEnv('FUZZ_RUNS') ?? 300);
 const SEED = Number(testEnv('FUZZ_SEED') ?? 20260717);
 /** ~30-40ms per sample (2 schedules × ~25 frames × oracle+engine) plus slack. */
@@ -164,8 +162,14 @@ describe(`splice fuzz arbiter (runs=${RUNS} seed=${SEED} fallbackOracleSample=${
     );
     // Hazard docs legitimately splice less — only demand the path is alive.
     expect(totals.incrementalFrames).toBeGreaterThan(0);
-    // Phase 4c — every adversarial construct family must actually occur.
-    const floor = Math.max(1, Math.floor(RUNS / 60));
+    // Every adversarial construct family must occur. The floor is RUNS/200,
+    // about a third of the thinnest family's mean rate (2.3%), so it catches
+    // a family disappearing from the generator without failing on ordinary
+    // seed variance. At RUNS/60 the floor sat near that mean and 36% of fresh
+    // seeds failed at 300 runs (measured 2026-09-03 over 300 seeds; 0% at
+    // /200 for 300 and 1000 runs). At the soak's 12500 runs the floor is 62
+    // against a mean of 279. Measurement: coverageFloor.evidence.ts.
+    const floor = Math.max(1, Math.floor(RUNS / 200));
     for (const name of Object.keys(COVERAGE_MARKERS)) {
       expect(totals.markerHits[name] ?? 0, `generator coverage: ${name}`).toBeGreaterThanOrEqual(floor);
     }
