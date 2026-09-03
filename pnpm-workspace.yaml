@@ -60,7 +60,26 @@ overrides:
   # is free to take the next major. fast-uri did exactly that — `>=3.1.5`
   # pulled 4.1.2, outside the `^3.0.1` that its only consumer (ajv 8.x)
   # declares.
-  fast-uri@>=3.0.0 <3.1.5: '>=3.1.5 <4'
+  #
+  # Raised 2026-09-03 from `<3.1.5 -> >=3.1.5` to `<3.1.6 -> >=3.1.6`: four
+  # further advisories landed whose range is `< 3.1.6`, so the version the
+  # previous floor installed had itself become the vulnerable one. A floor
+  # that names an exact version ages into a no-op the moment the next
+  # advisory extends the range past it, and nothing here re-checks that on
+  # its own — the alert is the only signal.
+  fast-uri@>=3.0.0 <3.1.6: '>=3.1.6 <4'
+  # GHSA prototype-write / crash, vulnerable `<= 4.28.6`, patched 4.28.7.
+  # Dev-only: babel's `helper-compilation-targets` (via stryker) and
+  # `update-browserslist-db`. Every dependent declares `^4.24.0`, so this
+  # only collapses a duplicate rather than forcing anyone off their range.
+  #
+  # An override rather than a plain `pnpm update`, which was tried first and
+  # is NOT enough: update guarantees a satisfying version exists, it does not
+  # remove an older resolution that also satisfies. It installed 4.28.8 and
+  # left 4.28.6 in the tree, alert still open, with a lockfile that reads as
+  # fixed. The test is whether the OLD version is gone, not whether the new
+  # one arrived.
+  browserslist@<4.28.7: '>=4.28.7 <5'
   # Selector deliberately bounded below as well, so minimatch's 1.x/2.x
   # instances are not caught by it.
   brace-expansion@>=3.0.0 <5.0.7: '>=5.0.7 <6'
