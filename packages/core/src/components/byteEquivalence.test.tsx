@@ -57,6 +57,7 @@ import rehypeUnwrapImages from 'rehype-unwrap-images';
 import { sanitizeSchema } from '@ai-react-markdown/engine';
 import { rehypeRebaseHashLinks } from '@ai-react-markdown/engine';
 import { rehypeFooterAdorn } from '@ai-react-markdown/engine';
+import { rehypeVerifyEngineTags } from '@ai-react-markdown/engine';
 import { highlight, definitionList, removeComments, smartypants, pangu } from '@ai-react-markdown/engine';
 
 type ExtraSyntaxName = 'highlight' | 'definitionList';
@@ -118,6 +119,11 @@ function legacyPlugins(config: PluginConfig) {
     ] as never,
     rehypePlugins: [
       [rehypeRaw, { passThrough: [] }],
+      // The shipped chain installs the provenance verifier here (a
+      // credential is always passed by the renderer). Mirrored deliberately;
+      // note this mirror cannot detect a MISSING verifier — sanitize strips
+      // the credential property anyway, so bytes still match.
+      [rehypeVerifyEngineTags, { provenance: 'byte-equivalence-mirror' }],
       [rehypeSanitize, { ...sanitizeSchema, clobberPrefix: TEST_CLOBBER_PREFIX }],
       rehypeFooterAdorn,
       [rehypeRebaseHashLinks, { prefix: TEST_CLOBBER_PREFIX }],

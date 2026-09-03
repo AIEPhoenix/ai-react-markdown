@@ -56,6 +56,7 @@ import {
 import { advanceIncrementalParse, type IncrementalParseState } from '@ai-react-markdown/engine';
 import { measureStage } from '@ai-react-markdown/engine';
 import { useAIMarkdownDocument, useAIMarkdownState } from '../context';
+import { useProvenanceCredential } from './provenance';
 import { deriveTailSignal } from './streamingCursor/tailSignal';
 import { AIMarkdownCustomComponents } from '../defs';
 import type { AIMarkdownEnginePlugin } from '@ai-react-markdown/engine';
@@ -153,6 +154,10 @@ interface RendererProps {
    *  see `crossChunkUrlSanitize.ts` for why this must happen at render
    *  time rather than at contribute time. */
   sanitizeSchema: SanitizeSchema;
+  /** Per-instance provenance credential (see `./provenance`). Stamped by the
+   *  cross-chunk handlers through the remark-rehype options and checked by
+   *  the verifier `buildCoreRehypePlugins` installed with the same value. */
+  provenance: string;
 }
 
 /**
@@ -173,6 +178,7 @@ const BlockMemoizedRenderer = memo(
     incrementalParse,
     preserveOrphanReferences,
     defListEnabled,
+    provenance,
   }: RendererProps) => {
     // Vendored Markdown options that AIMarkdown does not currently expose. They
     // are tracked in the G3 flush below so the cache stays correct if any of
@@ -512,6 +518,9 @@ const BlockMemoizedRenderer = memo(
               phantomLinkLabels: targetPhantoms.missingLinks,
               preserveOrphan: preserveForBodyHarvest,
               documentId,
+              // The SAME value `buildCoreRehypePlugins` received — the
+              // verifier unwraps every placeholder stamped with anything else.
+              provenance,
             }
           : {
               ...remarkRehypeOptions,
@@ -560,7 +569,18 @@ const BlockMemoizedRenderer = memo(
           // any G3 field — e.g. a `preserveOrphanReferences` flip). The
           // phantom label sets are deliberately NOT here: their churn tracks
           // the suffix (always re-parsed with the tail), never the prefix.
-          depsKey: [remarkPlugins, rehypePlugins, remarkRehypeOptions, handlers, preserveForBodyHarvest, documentId],
+          depsKey: [
+            remarkPlugins,
+            rehypePlugins,
+            remarkRehypeOptions,
+            handlers,
+            preserveForBodyHarvest,
+            documentId,
+            // Explicit even though `rehypePlugins` already carries it: a
+            // credential change must never reuse trees stamped under the
+            // old one.
+            provenance,
+          ],
           defListEnabled,
           phantomSuffix,
           measure: measureHere,
@@ -599,6 +619,7 @@ const BlockMemoizedRenderer = memo(
       handlers,
       preserveForBodyHarvest,
       documentId,
+      provenance,
       incrementalParse,
       defListEnabled,
       measureHere,
@@ -914,6 +935,7 @@ const LegacyRenderer = memo(
     urlTransform,
     preserveOrphanReferences,
     sanitizeSchema: _sanitizeSchema,
+    provenance,
   }: RendererProps) => {
     const effectivePreserveOrphan = usePreserveOrphanReferences(preserveOrphanReferences);
     const { documentId } = useAIMarkdownDocument();
@@ -931,8 +953,9 @@ const LegacyRenderer = memo(
         phantomLinkLabels: new Set<string>(),
         preserveOrphan: true,
         documentId,
+        provenance,
       } as RemarkRehypeOptions;
-    }, [remarkRehypeOptions, effectivePreserveOrphan, documentId]);
+    }, [remarkRehypeOptions, effectivePreserveOrphan, documentId, provenance]);
     return (
       <Markdown
         remarkPlugins={remarkPlugins}
@@ -967,6 +990,9 @@ const AIMarkdownContent = memo(
     enginePlugins,
   }: AIMarkdownContentProps) => {
     const { clobberPrefix } = useAIMarkdownDocument();
+    // One provenance credential per mounted instance (see ./provenance for
+    // why it is a lazy state initialiser and not a ref or a memo).
+    const provenance = useProvenanceCredential().value;
     // Dev-mode flip probes live in the parent `<AIMarkdown>`'s stability
     // firewall (`useStableRecord`, `./../index.tsx`) — the DEEP_EQUAL policy
     // there both warns on identity churn and restores the previous reference.
@@ -994,8 +1020,8 @@ const AIMarkdownContent = memo(
     const remarkPlugins = useMemo<RemarkPlugins>(() => buildCoreRemarkPlugins(enginePlugins), [enginePlugins]);
 
     const rehypePlugins = useMemo<RehypePlugins>(
-      () => buildCoreRehypePlugins(usedSanitizeSchema, clobberPrefix),
-      [clobberPrefix, usedSanitizeSchema]
+      () => buildCoreRehypePlugins(usedSanitizeSchema, clobberPrefix, { provenance }),
+      [clobberPrefix, usedSanitizeSchema, provenance]
     );
 
     const remarkRehypeOptions = useMemo<RemarkRehypeOptions>(
@@ -1017,6 +1043,7 @@ const AIMarkdownContent = memo(
         incrementalParse={incrementalParse}
         preserveOrphanReferences={preserveOrphanReferences}
         defListEnabled={enableDefinitionList}
+        provenance={provenance}
       />
     );
   }
