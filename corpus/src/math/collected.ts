@@ -34,18 +34,22 @@
  *
  * MEASURED 2026-09-01 against the full pipeline — preprocessLaTeX, the core
  * remark chain, remark-rehype and the core rehype chain, counting rendered
- * KaTeX roots rather than mdast nodes. All but one behave as annotated; that
- * one is kept, marked, and listed in `COLLECTED_KNOWN_GAPS`:
+ * KaTeX roots rather than mdast nodes. All but one behaved as annotated; that
+ * one was kept, marked, and listed in `COLLECTED_KNOWN_GAPS` until 2.11.0
+ * closed it (the q-group below pins the fix):
  *
  *   collected-o2  `$x <br> y$` — a whitelisted HTML tag name inside a
- *                 formula. `splitByProtectedRegions` protects the tag, which
- *                 splits the formula across segments, and neither half finds
- *                 its partner. `$a < b > c$` with spaces is fine; `$<a|b>$`
- *                 is fine; it takes the exact `<tag>` shape.
+ *                 formula. `splitByProtectedRegions` protected the tag AS A
+ *                 BOUNDARY, which split the formula across segments, and
+ *                 neither half found its partner. `$a < b > c$` with spaces
+ *                 was fine; `$<a|b>$` was fine; it took the exact `<tag>`
+ *                 shape. The same boundary deleted the head of
+ *                 `$$ a <br> b $$` and the head and tail of a multi-line
+ *                 block, silently, in finished documents.
  *
- * A FIX WAS ATTEMPTED AND REVERTED, and what it cost is worth recording so
- * the next attempt does not re-derive it. Three predicates, each refuted by
- * measurement rather than by review:
+ * A FIRST FIX WAS ATTEMPTED AND REVERTED, and what it cost is worth keeping
+ * so nobody re-derives it. Three predicates, each refuted by measurement
+ * rather than by review:
  *
  *   "the tag contains no `$`, so there is nothing to protect" — false.
  *   Protection also shields the tag from the pipe and bracket-delimiter
@@ -54,19 +58,20 @@
  *
  *   "the tag sits between an opening and a closing `$` on its line" — breaks
  *   the `<span>$</span>100` idiom, where an author uses tag protection
- *   deliberately to isolate a literal dollar. The closing `</span>` has a `$`
- *   before it and a formula later on the line, so the predicate unprotects it
- *   and the isolated dollar pairs with the wrong partner.
+ *   deliberately to isolate a literal dollar.
  *
  *   "only bare tags, no attributes" — removes the corruption but not the
  *   `<span>$</span>` breakage, since both of those tags are bare.
  *
- * The pattern underneath: segmentation and `$`-pairing are two models of the
- * same text that disagree, and every predicate above patches the boundary
- * between them rather than reconciling them. A real fix makes pairing aware
- * of segment boundaries instead of deciding which boundaries to drop.
+ * The pattern underneath: the lexer had fused MASKING (these bytes must not
+ * be rewritten) with DELIMITING (these bytes end the analysed text). Code
+ * needs both; an inline tag needs only the first. 2.11.0 separates them —
+ * a single-line tag becomes a masked atom inside the run it sits in, a
+ * same-line paired tag an element scope, and code stays a hard boundary —
+ * so the formula is one analysed text again while the tag's own bytes are
+ * still never touched (`packages/engine/src/preprocessors/latex.ts`).
  *
- * It fails SILENTLY — no error, nothing missing, just a literal `$` where a
+ * It failed SILENTLY — no error, nothing missing, just a literal `$` where a
  * formula belonged. That is why a human reading all 95 rendered cases saw
  * nothing wrong, and why it belongs in a gate rather than in a review.
  */
@@ -637,6 +642,36 @@ $$`,
 
 公式 $z^2$`,
   },
+  // ── q: a whitelisted HTML tag inside a formula (soft atoms, 2.11.0) ──
+  // Before 2.11.0 the preprocessor treated every tag as a hard boundary:
+  // `$$ a <br> b $$` lost its head, a multi-line block lost head AND tail,
+  // and a paired tag inside a table-cell formula rewrote the row's trailing
+  // pipe. The owner's decision: garbled math (`<br>` rendered as relations)
+  // beats silent deletion.
+  {
+    id: 'collected-q1',
+    expectation: 'math',
+    probes: '行内公式夹 `<br>`，整段仍是一个公式',
+    src: 'The expression $x <br> y$ is one formula.',
+  },
+  {
+    id: 'collected-q2',
+    expectation: 'math',
+    probes: '单行 display 块夹 `<br>`，块首不再被删',
+    src: '$$ a <br> b $$',
+  },
+  {
+    id: 'collected-q3',
+    expectation: 'math',
+    probes: '多行 display 块夹 `<br>`，块首尾都保留',
+    src: '$$\na <br>\nb\n$$',
+  },
+  {
+    id: 'collected-q4',
+    expectation: 'mixed',
+    probes: '表格单元格里的公式夹配对标签，行尾竖线不被改写成 \\vert',
+    src: '| $a <b>x</b> b$ | y |\n| --- | --- |\n| $c$ | d |',
+  },
 ];
 
 /**
@@ -647,4 +682,4 @@ $$`,
  * gate fails if one of them starts passing — because that is a change worth
  * noticing, and the alternative is finding out months later.
  */
-export const COLLECTED_KNOWN_GAPS: readonly string[] = ['collected-o2'];
+export const COLLECTED_KNOWN_GAPS: readonly string[] = [];

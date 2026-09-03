@@ -43,7 +43,10 @@
       "id": "latex-preprocessor",
       "source": "packages/engine/src/preprocessors/latex.ts",
       "oracle": "preprocessLaTeX stateless entry",
-      "tests": ["packages/engine/src/preprocessors/latexEntryEquivalence.fuzz.test.ts"],
+      "tests": [
+        "packages/engine/src/preprocessors/latexEntryEquivalence.fuzz.test.ts",
+        "packages/engine/src/preprocessors/latexSoftAtoms.differential.test.ts"
+      ],
       "legs": ["latex"],
       "antiVacuity": "per-config freeze, rewind, and composed seam floors"
     }
