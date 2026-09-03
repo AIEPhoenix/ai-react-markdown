@@ -29,7 +29,7 @@
 #
 # Env overrides (defaults = the standard gate; the scaled release gate used
 # FUZZ1=33334 FUZZ2=50000 for 400k/600k legs):
-#   SHARDS (12)  FUZZ1 (12500)  FUZZ2 (30000)  FUZZ3 (8000)  ORACLE (4000)
+#   SHARDS (cores-2)  FUZZ1 (12500)  FUZZ2 (30000)  FUZZ3 (8000)  ORACLE (4000)
 #   CENSUS_STRIDE (1)  CENSUS_NAME_K (3)  CENSUS_NAME_STRIDE (1)
 #
 # CENSUS_STRIDE is 1, which is FULL cut schedules — the value it had before
@@ -49,17 +49,39 @@
 # already used by hand. Cost at 4000 is ~10 min across twelve shards
 # against a two-hour gate, so this is a correction, not a new spend.
 #
-# SHARDS is 12, which is tuned for a small machine, and nothing here used to
-# say that it is per-machine. Check what the box has before a run (`nproc`,
-# and whether anything else is on it); if it is free, raise SHARDS toward the
-# core count. A vitest shard is about one busy core plus a mostly-idle main
-# thread, so leaving it at 12 on a much larger box idles most of the machine
-# and stretches the census leg to several times the wall clock it needs.
+# SHARDS defaults to the detected core count minus two, resolved at start and
+# printed on the run's first line. The previous default was a fixed 12, which
+# left most of a larger machine idle; a vitest shard uses roughly one core.
+# The two spare cores cover the shards' main threads and keep the machine
+# responsive during the run.
 #
-# When you do raise it, expect MEMORY to bind before the CPU does — bandwidth
-# and DIMM thermals, not core count. Whatever limits that is, it is a
-# property of the machine rather than of this script, so check the machine's
-# own monitoring rather than adding a watchdog here.
+# Core detection, in order:
+#   1. `nproc`                      Linux, WSL, Git Bash, Cygwin. Tried first
+#                                   because it honours cgroup/taskset affinity;
+#                                   inside a container the other probes report
+#                                   the host's cores.
+#   2. `getconf _NPROCESSORS_ONLN`  macOS and most POSIX systems.
+#   3. `sysctl -n hw.logicalcpu`    macOS fallback.
+#   4. `$NUMBER_OF_PROCESSORS`      Windows; inherited by every bash layer.
+#                                   Reports the current processor group, so it
+#                                   reads low above 64 cores. That errs toward
+#                                   fewer shards.
+#   5. PowerShell `[Environment]::ProcessorCount`
+#                                   Windows fallback when the variable is
+#                                   unset. `wmic` is not used; it was removed
+#                                   in Windows 11 24H2.
+# If every probe fails, SHARDS is 12 (the previous default). The fallback is
+# applied by the caller, not inside detect_cores, so it is not reduced by two.
+#
+# SHARDS is clamped to [1, 100]. The lower bound prevents zero shards on a
+# two-core machine. The upper bound follows from the seed layout: the legs
+# use SEED+i, SEED+100+i, SEED+200+i and SEED+300+i, so at 101 or more shards
+# the fuzz leg's seeds overlap the direction leg's, and both legs use the same
+# arbitraries and would generate the same documents. Widen the per-leg
+# offsets before raising the cap.
+#
+# Memory usually limits the shard count before CPU does. If it does on a
+# given machine, set SHARDS by hand.
 #
 # Logs land in .soak-logs/<label>-*.log (gitignored). On macOS the script
 # re-execs itself under `caffeinate -dimsu`; note that caffeinate does NOT
@@ -85,7 +107,59 @@ if [ $# -lt 1 ]; then
 fi
 SEED=$1
 LABEL=${2:-soak}
-SHARDS=${SHARDS:-12}
+# Probe order and clamp range are explained in the header. bash 3.2 compatible.
+# Prints the core count and returns 0, or prints nothing and returns 1. The
+# fallback of 12 is applied by the caller.
+detect_cores() {
+  local n=""
+  if command -v nproc > /dev/null 2>&1; then
+    n=$(nproc 2> /dev/null)
+    if [ -n "$n" ]; then echo "$n"; return 0; fi
+  fi
+  if command -v getconf > /dev/null 2>&1; then
+    n=$(getconf _NPROCESSORS_ONLN 2> /dev/null)
+    if [ -n "$n" ]; then echo "$n"; return 0; fi
+  fi
+  if command -v sysctl > /dev/null 2>&1; then
+    n=$(sysctl -n hw.logicalcpu 2> /dev/null)
+    if [ -n "$n" ]; then echo "$n"; return 0; fi
+  fi
+  if [ -n "${NUMBER_OF_PROCESSORS:-}" ]; then
+    echo "$NUMBER_OF_PROCESSORS"
+    return 0
+  fi
+  for ps in powershell.exe pwsh.exe powershell pwsh; do
+    if command -v "$ps" > /dev/null 2>&1; then
+      n=$("$ps" -NoProfile -NonInteractive -Command '[Environment]::ProcessorCount' 2> /dev/null)
+      # Strip the CRLF a Windows shell appends.
+      n=$(printf '%s' "$n" | tr -d '\r\n')
+      if [ -n "$n" ]; then echo "$n"; return 0; fi
+    fi
+  done
+  return 1
+}
+
+if [ -n "${SHARDS:-}" ]; then
+  SHARDS_SOURCE="SHARDS env"
+else
+  CORES=$(detect_cores | head -1 | tr -dc '0-9')
+  if [ -z "$CORES" ] || [ "$CORES" -lt 1 ]; then
+    # 12, not 12-2: the previous default.
+    SHARDS=12
+    SHARDS_SOURCE="core detection failed, default"
+  else
+    SHARDS=$((CORES - 2))
+    SHARDS_SOURCE="$CORES cores - 2"
+  fi
+fi
+if [ "$SHARDS" -lt 1 ]; then
+  SHARDS=1
+  SHARDS_SOURCE="$SHARDS_SOURCE, clamped up to 1"
+fi
+if [ "$SHARDS" -gt 100 ]; then
+  SHARDS=100
+  SHARDS_SOURCE="$SHARDS_SOURCE, clamped down to 100 (seed-band collision)"
+fi
 FUZZ1=${FUZZ1:-12500}
 FUZZ2=${FUZZ2:-30000}
 FUZZ3=${FUZZ3:-8000}
@@ -115,6 +189,9 @@ VITEST=../../node_modules/.bin/vitest
 OUT="$ROOT/.soak-logs"
 mkdir -p "$OUT"
 FAIL=0
+
+# The shard count is machine-dependent; print it so logs can be compared.
+echo "[$LABEL] SHARDS=$SHARDS ($SHARDS_SOURCE)  seed-base=$SEED  legs=$LEGS"
 
 run_leg() {
   local name=$1 file=$2 env1=$3 env2=$4
