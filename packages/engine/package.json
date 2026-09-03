@@ -69,7 +69,9 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "fuzz:splice": "vitest --run src/components/incrementalParse/spliceFuzz.test.ts",
     "soak": "../../scripts/soak/soak.sh",
-    "soak:watch": "../../scripts/soak/soak-watch.sh"
+    "soak:watch": "../../scripts/soak/soak-watch.sh",
+    "soak:aggregate": "node ../../scripts/soak/soak-aggregate.mjs",
+    "soak:coverage": "node ../../scripts/soak/assert-coverage-map.mjs"
   },
   "peerDependencies": {
     "katex": "^0.16.0 || ^0.17.0"

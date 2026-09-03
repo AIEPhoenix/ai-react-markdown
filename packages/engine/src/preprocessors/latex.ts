@@ -942,6 +942,7 @@ const DEFAULT_FREEZE_ATTEMPT_THRESHOLD = 512;
  *   full-reprocess fallback.
  * @internal Wired by the renderer; not part of the public API.
  */
+/** @soak-entry latex-preprocessor */
 export function createIncrementalLatexPreprocessor(options?: {
   freezeThreshold?: number;
   /** Failure backoff (default on). Tests that rely on `freezeThreshold: 0`

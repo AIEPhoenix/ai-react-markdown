@@ -1,0 +1,19 @@
+{
+  "name": "release",
+  "requiredLegs": ["fuzz", "dir", "scanner", "census", "oracle", "latex"],
+  "parameters": {
+    "fuzz1": { "minimum": 12500 },
+    "fuzz2": { "minimum": 30000 },
+    "fuzz3": { "minimum": 8000 },
+    "fuzz4": { "minimum": 40000 },
+    "oracle": { "minimum": 4000 },
+    "censusK": { "equals": 4 },
+    "censusStride": { "equals": 1 },
+    "censusNameK": { "minimum": 3 },
+    "censusNameStride": { "equals": 1 },
+    "censusConfigMode": { "equals": "cross" },
+    "fallbackOracleSample": { "maximum": 20 }
+  },
+  "requireFresh": true,
+  "requireCleanTree": true
+}

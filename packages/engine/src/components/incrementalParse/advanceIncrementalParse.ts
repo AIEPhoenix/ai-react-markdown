@@ -134,6 +134,7 @@ function runPipeline(source: string, options: AdvanceOptions): { mdast: MdastRoo
   return { mdast: parsed.mdast, hast };
 }
 
+/** @soak-entry incremental-parse */
 export function advanceIncrementalParse(
   prev: IncrementalParseState | null,
   content: string,

@@ -1099,6 +1099,10 @@ function classifyBlockStart(text: string, indent: number, defListEnabled: boolea
   return null; // indent 1–3 non-marker: ambiguous
 }
 
+/**
+ * @soak-entry freeze-scanner-resume
+ * @soak-entry freeze-direction
+ */
 export function computeFreezeBoundary(
   text: string,
   options: FreezeBoundaryOptions,

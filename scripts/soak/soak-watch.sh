@@ -8,9 +8,9 @@
 # out here where a bug in it can waste your time but not your gate.
 #
 # Usage:
-#   scripts/soak/soak-watch.sh [label] [-n SECONDS] [--stale SECONDS]
+#   scripts/soak/soak-watch.sh [run-id] [-n SECONDS] [--stale SECONDS]
 #
-#   label    log prefix to read, default "soak" (soak.sh's own default)
+#   run-id   exact run directory name; a unique label prefix is also accepted
 #   -n       repeat every SECONDS instead of printing once
 #   --stale  a shard whose last beat is older than this is flagged,
 #            default 300
@@ -55,13 +55,33 @@ done
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 OUT="$ROOT/.soak-logs"
 
+resolve_run_dir() {
+  if [ -d "$OUT/$LABEL" ] && [ -f "$OUT/$LABEL/manifest.json" ]; then
+    RUN_DIR="$OUT/$LABEL"
+    return 0
+  fi
+  local matches
+  matches=$(find "$OUT" -maxdepth 1 -type d -name "$LABEL-*" 2>/dev/null | sort)
+  local count
+  count=$(printf '%s\n' "$matches" | sed '/^$/d' | wc -l | tr -d ' ')
+  if [ "$count" -eq 1 ]; then RUN_DIR=$matches; return 0; fi
+  if [ "$count" -gt 1 ]; then
+    echo "multiple runs match '$LABEL'; pass an exact run-id:" >&2
+    printf '%s\n' "$matches" | sed "s|$OUT/|  |" >&2
+    return 2
+  fi
+  echo "no run directory matching $OUT/$LABEL" >&2
+  return 1
+}
+resolve_run_dir || exit $?
+
 render() {
   local now
   now=$(date +%s)
   local files
-  files=$(ls "$OUT/$LABEL"-*.log 2>/dev/null)
+  files=$(ls "$RUN_DIR"/*.log 2>/dev/null)
   if [ -z "$files" ]; then
-    echo "no logs matching $OUT/$LABEL-*.log"
+    echo "no logs matching $RUN_DIR/*.log"
     return 1
   fi
 
@@ -73,7 +93,7 @@ render() {
   for f in $files; do
     local base rest leg shard line
     base=$(basename "$f" .log)
-    rest=${base#"$LABEL"-}
+    rest=$base
     leg=${rest%-*}
     shard=${rest##*-}
     total=$((total + 1))

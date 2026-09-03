@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "incremental-parse",
+      "source": "packages/engine/src/components/incrementalParse/advanceIncrementalParse.ts",
+      "oracle": "fresh full parse",
+      "tests": ["packages/engine/src/components/incrementalParse/spliceFuzz.test.ts"],
+      "legs": ["fuzz"],
+      "antiVacuity": "incremental frame ratio and generator-family floors"
+    },
+    {
+      "id": "freeze-scanner-resume",
+      "source": "packages/engine/src/components/incrementalParse/computeFreezeBoundary.ts",
+      "oracle": "fresh boundary scan",
+      "tests": [
+        "packages/engine/src/components/incrementalParse/spliceFuzz.test.ts",
+        "packages/engine/src/components/incrementalParse/spliceExhaustive.test.ts"
+      ],
+      "legs": ["fuzz", "census"],
+      "antiVacuity": "non-zero engagement and exhaustive P3"
+    },
+    {
+      "id": "freeze-direction",
+      "source": "packages/engine/src/components/incrementalParse/computeFreezeBoundary.ts",
+      "oracle": "full parse after hazard futures",
+      "tests": [
+        "packages/engine/src/components/incrementalParse/boundaryDirection.test.ts",
+        "packages/engine/src/components/incrementalParse/oracleConformance.test.ts"
+      ],
+      "legs": ["dir", "oracle"],
+      "antiVacuity": "boundary and document-probe floors"
+    },
+    {
+      "id": "definition-label-scanner",
+      "source": "packages/engine/src/components/collectDefLabels.ts",
+      "oracle": "collectDefLabels full parse",
+      "tests": ["packages/engine/src/components/collectDefLabels.fuzz.test.ts"],
+      "legs": ["scanner"],
+      "antiVacuity": "hazard and benign corpora at every snapshot"
+    },
+    {
+      "id": "latex-preprocessor",
+      "source": "packages/engine/src/preprocessors/latex.ts",
+      "oracle": "preprocessLaTeX stateless entry",
+      "tests": ["packages/engine/src/preprocessors/latexEntryEquivalence.fuzz.test.ts"],
+      "legs": ["latex"],
+      "antiVacuity": "per-config freeze, rewind, and composed seam floors"
+    }
+  ]
+}

@@ -166,6 +166,7 @@ export interface DefLabelScanner {
  *   parse is indistinguishable from a parse whose sets came out equal).
  *   Production callers never pass it.
  */
+/** @soak-entry definition-label-scanner */
 export function createDefLabelScanner(parse: (source: string) => DefLabels = collectDefLabels): DefLabelScanner {
   let prevSource: string | null = null;
   let prevLabels: DefLabels | null = null;

@@ -109,7 +109,8 @@
 # Memory usually limits the shard count before CPU does. If it does on a
 # given machine, set SHARDS by hand.
 #
-# Logs land in .soak-logs/<label>-*.log (gitignored). On macOS the script
+# Logs land in a unique .soak-logs/<run-id>/ directory (gitignored), with a
+# manifest and result beside the shard logs. On macOS the script
 # re-execs itself under `caffeinate -dimsu`; note that caffeinate does NOT
 # survive a lid close — an overnight run on a closed laptop dies to
 # wall-clock timeouts (measured 2026-08-25: 12 shards × 43364 s, all
@@ -133,6 +134,17 @@ if [ $# -lt 1 ]; then
 fi
 SEED=$1
 LABEL=${2:-soak}
+ALL_LEGS="fuzz,dir,scanner,census,oracle,latex"
+
+die() { echo "soak: $*" >&2; exit 2; }
+require_uint() {
+  local name=$1 value=$2 min=${3:-0} max=${4:-2147483647}
+  case "$value" in ''|*[!0-9]*) die "$name must be an integer in [$min,$max], got '$value'" ;; esac
+  [ "$value" -ge "$min" ] 2>/dev/null && [ "$value" -le "$max" ] 2>/dev/null || \
+    die "$name must be in [$min,$max], got '$value'"
+}
+case "$LABEL" in ''|*[!A-Za-z0-9._-]*|.*) die "label must match [A-Za-z0-9][A-Za-z0-9._-]*" ;; esac
+require_uint SEED "$SEED" 0 2147483148
 # Probe order and clamp range are explained in the header. bash 3.2 compatible.
 # Prints the core count and returns 0, or prints nothing and returns 1. The
 # fallback of 12 is applied by the caller.
@@ -178,6 +190,7 @@ else
     SHARDS_SOURCE="$CORES cores - 2"
   fi
 fi
+require_uint SHARDS "$SHARDS" 0 2147483647
 if [ "$SHARDS" -lt 1 ]; then
   SHARDS=1
   SHARDS_SOURCE="$SHARDS_SOURCE, clamped up to 1"
@@ -224,7 +237,7 @@ export FALLBACK_ORACLE_SAMPLE=${FALLBACK_ORACLE_SAMPLE:-20}
 # Seconds between per-shard progress heartbeats. Every leg's hot loop calls
 # `soakBeat().tick()`; unset means the mechanism is inert, which is why CI
 # and preflight are unaffected. Read the beats with
-# `scripts/soak/soak-watch.sh <label>` — a separate READ-ONLY script, so the
+# `scripts/soak/soak-watch.sh <run-id>` — a separate READ-ONLY script, so the
 # progress machinery cannot break the gate.
 #
 # Before this existed, a shard log was three lines of banner for four hours
@@ -236,7 +249,46 @@ export SOAK_HEARTBEAT=${SOAK_HEARTBEAT:-30}
 # standard split.
 # Legs share nothing but the tree, and the census leg is seed-free exhaustive
 # sharding, so a split run is byte-equivalent to a single-machine one.
-LEGS=${LEGS:-fuzz,dir,scanner,census,oracle,latex}
+LEGS=${LEGS-fuzz,dir,scanner,census,oracle,latex}
+
+# Validate and canonicalize the requested set before starting any process.
+case "$LEGS" in ''|,*|*,|*,,*) die "LEGS must be a non-empty comma-separated list without empty members" ;; esac
+REQUESTED_LEGS=$LEGS
+SEEN_LEGS=""
+OLD_IFS=$IFS
+IFS=,
+set -- $LEGS
+IFS=$OLD_IFS
+for requested in "$@"; do
+  case ",$ALL_LEGS," in *,$requested,*) ;; *) die "unknown leg '$requested' (valid: $ALL_LEGS)" ;; esac
+  case ",$SEEN_LEGS," in *,$requested,*) die "duplicate leg '$requested'" ;; esac
+  [ -z "$SEEN_LEGS" ] && SEEN_LEGS=$requested || SEEN_LEGS="$SEEN_LEGS,$requested"
+done
+NORMALIZED_LEGS=""
+OLD_IFS=$IFS
+IFS=,
+set -- $ALL_LEGS
+IFS=$OLD_IFS
+for candidate in "$@"; do
+  case ",$REQUESTED_LEGS," in
+    *,$candidate,*) [ -z "$NORMALIZED_LEGS" ] && NORMALIZED_LEGS=$candidate || NORMALIZED_LEGS="$NORMALIZED_LEGS,$candidate" ;;
+  esac
+done
+LEGS=$NORMALIZED_LEGS
+MODE=subset
+[ "$LEGS" = "$ALL_LEGS" ] && MODE=full
+
+require_uint SHARDS "$SHARDS" 1 100
+require_uint FUZZ1 "$FUZZ1" 1
+require_uint FUZZ2 "$FUZZ2" 1
+require_uint FUZZ3 "$FUZZ3" 1
+require_uint FUZZ4 "$FUZZ4" 1
+require_uint ORACLE "$ORACLE" 1
+require_uint CENSUS_STRIDE "$CENSUS_STRIDE" 1
+require_uint CENSUS_NAME_K "$CENSUS_NAME_K" 1
+require_uint CENSUS_NAME_STRIDE "$CENSUS_NAME_STRIDE" 1
+require_uint FALLBACK_ORACLE_SAMPLE "$FALLBACK_ORACLE_SAMPLE" 1
+require_uint SOAK_HEARTBEAT "$SOAK_HEARTBEAT" 0
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$ROOT/packages/engine"
@@ -244,12 +296,46 @@ VITEST=../../node_modules/.bin/vitest
 OUT="$ROOT/.soak-logs"
 mkdir -p "$OUT"
 FAIL=0
+RUN_KIND=${RUN_KIND:-fresh}
+case "$RUN_KIND" in fresh|replay) ;; *) die "RUN_KIND must be fresh or replay" ;; esac
+PROFILE=${SOAK_PROFILE:-release}
+case "$PROFILE" in release|smoke) ;; *) die "SOAK_PROFILE must be release or smoke" ;; esac
+if [ "$PROFILE" = release ]; then
+  [ "$RUN_KIND" = fresh ] || die "release profile requires RUN_KIND=fresh"
+  [ "$FUZZ1" -ge 12500 ] || die "release profile requires FUZZ1>=12500"
+  [ "$FUZZ2" -ge 30000 ] || die "release profile requires FUZZ2>=30000"
+  [ "$FUZZ3" -ge 8000 ] || die "release profile requires FUZZ3>=8000"
+  [ "$FUZZ4" -ge 40000 ] || die "release profile requires FUZZ4>=40000"
+  [ "$ORACLE" -ge 4000 ] || die "release profile requires ORACLE>=4000"
+  [ "$CENSUS_STRIDE" -eq 1 ] || die "release profile requires CENSUS_STRIDE=1"
+  [ "$CENSUS_NAME_K" -ge 3 ] || die "release profile requires CENSUS_NAME_K>=3"
+  [ "$CENSUS_NAME_STRIDE" -eq 1 ] || die "release profile requires CENSUS_NAME_STRIDE=1"
+  [ "$FALLBACK_ORACLE_SAMPLE" -le 20 ] || die "release profile requires FALLBACK_ORACLE_SAMPLE<=20"
+  [ -z "$(git status --porcelain)" ] || die "release profile requires a clean worktree (use SOAK_PROFILE=smoke for development)"
+fi
+COMMIT_SHORT=$(git rev-parse --short HEAD)
+STAMP=$(date -u '+%Y%m%dT%H%M%SZ')
+RUN_ID=${RUN_ID:-$LABEL-$STAMP-$COMMIT_SHORT-$$}
+case "$RUN_ID" in ''|*[!A-Za-z0-9._-]*|.*) die "RUN_ID must match [A-Za-z0-9][A-Za-z0-9._-]*" ;; esac
+RUN_DIR="$OUT/$RUN_ID"
+STATE_DIR="$ROOT/.soak-state"
+mkdir -p "$STATE_DIR"
+PARAMETERS=$(printf '{"fuzz1":%s,"fuzz2":%s,"fuzz3":%s,"fuzz4":%s,"oracle":%s,"censusK":4,"censusStride":%s,"censusNameK":%s,"censusNameStride":%s,"censusConfigMode":"cross","fallbackOracleSample":%s}' \
+  "$FUZZ1" "$FUZZ2" "$FUZZ3" "$FUZZ4" "$ORACLE" "$CENSUS_STRIDE" "$CENSUS_NAME_K" "$CENSUS_NAME_STRIDE" "$FALLBACK_ORACLE_SAMPLE")
+RUN_DIR=$(node "$ROOT/scripts/soak/soak-metadata.mjs" create \
+  --run-dir "$RUN_DIR" --run-id "$RUN_ID" --label "$LABEL" --mode "$MODE" --run-kind "$RUN_KIND" \
+  --seed "$SEED" --legs "$LEGS" --shards "$SHARDS" --cores "${CORES:-$SHARDS}" --profile "$PROFILE" \
+  --parameters "$PARAMETERS" --state-dir "$STATE_DIR") || exit 2
+STARTED_AT=$(node -e "console.log(require(process.argv[1]).startedAt)" "$RUN_DIR/manifest.json")
+LEG_RESULTS=""
 
 # The shard count is machine-dependent; print it so logs can be compared.
+echo "[$LABEL] run-id=$RUN_ID mode=$MODE kind=$RUN_KIND profile=$PROFILE"
 echo "[$LABEL] SHARDS=$SHARDS ($SHARDS_SOURCE)  seed-base=$SEED  legs=$LEGS  fallback-oracle-sample=$FALLBACK_ORACLE_SAMPLE"
+echo "[$LABEL] logs=$RUN_DIR"
 
 run_leg() {
-  local name=$1 file=$2 env1=$3 env2=$4
+  local name=$1 file=$2
   # LEGS selects a subset, because the gate has been split across two
   # machines for every release since 2.8.1 and the split was hand-assembled
   # from this script's env lines each time — the ad-hoc pattern the header
@@ -263,8 +349,16 @@ run_leg() {
   echo "[$LABEL] $name"
   local pids=()
   for i in $(seq 0 $((SHARDS - 1))); do
-    env $(eval echo "$env1") $(eval echo "$env2") "$VITEST" --run "$file" \
-      > "$OUT/$LABEL-$name-$i.log" 2>&1 &
+    case "$name" in
+      fuzz) FUZZ_RUNS="$FUZZ1" FUZZ_SEED=$((SEED + i)) "$VITEST" --run "$file" > "$RUN_DIR/$name-$i.log" 2>&1 & ;;
+      dir) FUZZ_RUNS="$FUZZ2" FUZZ_SEED=$((SEED + 100 + i)) "$VITEST" --run "$file" > "$RUN_DIR/$name-$i.log" 2>&1 & ;;
+      scanner) FUZZ_RUNS="$FUZZ3" FUZZ_SEED=$((SEED + 200 + i)) "$VITEST" --run "$file" > "$RUN_DIR/$name-$i.log" 2>&1 & ;;
+      census) EXHAUSTIVE_K=4 EXHAUSTIVE_STRIDE="$CENSUS_STRIDE" EXHAUSTIVE_NAME_K="$CENSUS_NAME_K" \
+        EXHAUSTIVE_NAME_STRIDE="$CENSUS_NAME_STRIDE" EXHAUSTIVE_CONFIG_MODE=cross EXHAUSTIVE_SHARD="$i/$SHARDS" \
+        "$VITEST" --run "$file" > "$RUN_DIR/$name-$i.log" 2>&1 & ;;
+      oracle) ORACLE_RAW=1 ORACLE_RUNS="$ORACLE" ORACLE_SEED=$((SEED + 300 + i)) "$VITEST" --run "$file" > "$RUN_DIR/$name-$i.log" 2>&1 & ;;
+      latex) FUZZ_RUNS="$FUZZ4" FUZZ_SEED=$((SEED + 400 + i)) "$VITEST" --run "$file" > "$RUN_DIR/$name-$i.log" 2>&1 & ;;
+    esac
     pids+=($!)
   done
   # Per-leg, NOT cumulative. `FAIL` is the run's verdict and must persist, but
@@ -275,14 +369,15 @@ run_leg() {
   local legfail=0
   for pid in "${pids[@]}"; do wait "$pid" || { legfail=1; FAIL=1; }; done
   echo "[$LABEL] $name fail=$legfail"
+  local status=passed
+  [ "$legfail" -eq 0 ] || status=failed
+  [ -z "$LEG_RESULTS" ] || LEG_RESULTS="$LEG_RESULTS,"
+  LEG_RESULTS="$LEG_RESULTS\"$name\":{\"status\":\"$status\",\"expectedShards\":$SHARDS}"
 }
 
-run_leg fuzz src/components/incrementalParse/spliceFuzz.test.ts \
-  'FUZZ_RUNS=$FUZZ1' 'FUZZ_SEED=$((SEED + i))'
-run_leg dir src/components/incrementalParse/boundaryDirection.test.ts \
-  'FUZZ_RUNS=$FUZZ2' 'FUZZ_SEED=$((SEED + 100 + i))'
-run_leg scanner src/components/collectDefLabels.fuzz.test.ts \
-  'FUZZ_RUNS=$FUZZ3' 'FUZZ_SEED=$((SEED + 200 + i))'
+run_leg fuzz src/components/incrementalParse/spliceFuzz.test.ts
+run_leg dir src/components/incrementalParse/boundaryDirection.test.ts
+run_leg scanner src/components/collectDefLabels.fuzz.test.ts
 # The census leg's defaults are the CI ones — K=2, name band K=2, configs
 # ROTATED one per document. Every value below has to be passed, and until
 # 2026-08-28 two of them were not, so the "gate" ran a slightly larger CI
@@ -292,16 +387,22 @@ run_leg scanner src/components/collectDefLabels.fuzz.test.ts \
 # repo actually executed. `EXHAUSTIVE_CONFIG_MODE=cross` is the one the
 # test file's own header calls load-bearing; it is worth nothing until it
 # is HERE.
-run_leg census src/components/incrementalParse/spliceExhaustive.test.ts \
-  'EXHAUSTIVE_K=4 EXHAUSTIVE_STRIDE=$CENSUS_STRIDE EXHAUSTIVE_NAME_K=$CENSUS_NAME_K EXHAUSTIVE_NAME_STRIDE=$CENSUS_NAME_STRIDE EXHAUSTIVE_CONFIG_MODE=cross' \
-  'EXHAUSTIVE_SHARD=$i/$SHARDS'
-run_leg oracle src/components/incrementalParse/oracleConformance.test.ts \
-  'ORACLE_RAW=1 ORACLE_RUNS=$ORACLE' 'ORACLE_SEED=$((SEED + 300 + i))'
-run_leg latex src/preprocessors/latexEntryEquivalence.fuzz.test.ts \
-  'FUZZ_RUNS=$FUZZ4' 'FUZZ_SEED=$((SEED + 400 + i))'
+run_leg census src/components/incrementalParse/spliceExhaustive.test.ts
+run_leg oracle src/components/incrementalParse/oracleConformance.test.ts
+run_leg latex src/preprocessors/latexEntryEquivalence.fuzz.test.ts
 
-if [ "$FAIL" -eq 0 ]; then echo "[$LABEL] ALL CLEAN (legs: $LEGS)"; else echo "[$LABEL] FAILURES — inspect $OUT/$LABEL-*.log"; fi
-for f in "$OUT"/$LABEL-*.log; do
+STATUS=passed
+[ "$FAIL" -eq 0 ] || STATUS=failed
+node "$ROOT/scripts/soak/soak-metadata.mjs" finish --run-dir "$RUN_DIR" --run-id "$RUN_ID" --mode "$MODE" \
+  --run-kind "$RUN_KIND" --status "$STATUS" --started-at "$STARTED_AT" --legs-json "{$LEG_RESULTS}" || FAIL=1
+if [ "$FAIL" -ne 0 ]; then
+  echo "[$LABEL] FAILURES — inspect $RUN_DIR/*.log"
+elif [ "$MODE" = full ]; then
+  echo "[$LABEL] ALL CLEAN (legs: $LEGS)"
+else
+  echo "[$LABEL] SUBSET CLEAN — not a complete release gate (legs: $LEGS)"
+fi
+for f in "$RUN_DIR"/*.log; do
   printf "%-28s %s\n" "$(basename "$f")" "$(grep -oE 'Tests +[0-9]+ (failed|passed)' "$f" | tail -1)"
 done
 exit $FAIL

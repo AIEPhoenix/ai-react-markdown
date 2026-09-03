@@ -1,0 +1,7 @@
+{
+  "name": "smoke",
+  "requiredLegs": ["fuzz", "dir", "scanner", "census", "oracle", "latex"],
+  "parameters": {},
+  "requireFresh": false,
+  "requireCleanTree": false
+}
