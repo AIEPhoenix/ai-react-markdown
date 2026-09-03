@@ -64,6 +64,7 @@ import {
 import { REALISTIC_DOCS, pinnedFuzzDocs } from './pinnedCorpus';
 import { testEnv } from './spliceArbiterHarness';
 import { benignDocArb, hazardDocArb, type FuzzDoc } from './fuzzGenerators';
+import { soakBeat } from './soakHeartbeat';
 
 describe('oracle self-tests (must fire / must stay quiet)', () => {
   test('the formElement counterexample fires at both identity layers', () => {
@@ -429,7 +430,9 @@ describe('oracle sweep — fuzz corpus (env-scaled)', () => {
       const snapFirings: string[] = [];
       const infoBuckets = new Map<string, number>();
       const infoExamples = new Map<string, string[]>();
+      const beat = soakBeat(name, docs.length);
       docs.forEach((d, i) => {
+        beat.tick();
         const config = CATALOG[d.configIndex % CATALOG.length];
         const findings = oracleCheckDoc(d.doc, config, stats, 0, ORACLE_OPTS);
         for (const f of findings.filter((f) => f.severity === 'info')) {
@@ -455,6 +458,7 @@ describe('oracle sweep — fuzz corpus (env-scaled)', () => {
           snapFirings.push(`#${i} [${config.label}] doc=${JSON.stringify(d.doc).slice(0, 200)} ${u}`);
         }
       });
+      beat.finish();
       const buckets = [...infoBuckets.entries()].sort((a, b) => b[1] - a[1]);
       // Real stream, not `console.log`: this readout only ever speaks on a
       // PASSING run, which is exactly the output vitest 4 drops here (see the
@@ -575,7 +579,7 @@ describe('oracle sweep — fuzz corpus (env-scaled)', () => {
         // Read `blindDocs=N/M` from each sweep's readout — one line per
         // family per shard, 24 readings — and take the spread. Use a FRESH
         // seed base above every one already used (20400400-411 and
-        // 20400700-711 are spent), for the reason `fiveleg.sh` insists on
+        // 20400700-711 are spent), for the reason `soak.sh` insists on
         // one. No reporter flag is needed: the readout goes through
         // `emit`/`process.stdout.write`, not `console.log`.
         //

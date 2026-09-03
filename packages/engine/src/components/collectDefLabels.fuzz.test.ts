@@ -19,6 +19,7 @@ import fc from 'fast-check';
 import { collectDefLabels, createDefLabelScanner, type DefLabels } from './collectDefLabels';
 import { testEnv } from './incrementalParse/spliceArbiterHarness';
 import { benignDocArb, hazardDocArb, scheduleSnapshots, type FuzzDoc } from './incrementalParse/fuzzGenerators';
+import { soakBeat } from './incrementalParse/soakHeartbeat';
 
 const RUNS = Number(testEnv('FUZZ_RUNS') ?? 100);
 const SEED = Number(testEnv('FUZZ_SEED') ?? 20260805);
@@ -43,12 +44,15 @@ describe('def-label scanner — fuzz equivalence under the scanner boundary prof
   test(
     'hazard corpus: scanner equals full parse at every snapshot',
     () => {
+      const beat = soakBeat('hazard', RUNS);
       fc.assert(
         fc.property(hazardDocArb, (fuzz) => {
+          beat.tick();
           driveSample(fuzz);
         }),
         FC_PARAMS
       );
+      beat.finish();
     },
     TIMEOUT_MS
   );
@@ -56,12 +60,15 @@ describe('def-label scanner — fuzz equivalence under the scanner boundary prof
   test(
     'benign corpus: scanner equals full parse at every snapshot',
     () => {
+      const beat = soakBeat('benign', Math.max(20, Math.floor(RUNS / 2)));
       fc.assert(
         fc.property(benignDocArb, (fuzz) => {
+          beat.tick();
           driveSample(fuzz);
         }),
         { ...FC_PARAMS, numRuns: Math.max(20, Math.floor(RUNS / 2)) }
       );
+      beat.finish();
     },
     TIMEOUT_MS
   );

@@ -330,7 +330,7 @@ Terminal case
 : A second definition for the same term.
 
 Soak
-: The five-leg fresh-seed run that gates a release.
+: The six-leg fresh-seed run that gates a release.
 
   A second paragraph inside a definition.`,
   },

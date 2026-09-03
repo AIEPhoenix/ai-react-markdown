@@ -97,7 +97,7 @@ function snapshotHash(text: string): number {
 /**
  * Fallback-sample denominator from `FALLBACK_ORACLE_SAMPLE`. Unset means 1
  * (every frame), so CI, preflight and a bare `vitest run` are unchanged;
- * `scripts/soak/fiveleg.sh` sets 20. Shared by the fuzz and census legs so
+ * `scripts/soak/soak.sh` sets 20. Shared by the fuzz and census legs so
  * they use the same default.
  */
 export function fallbackOracleSampleFromEnv(): number {

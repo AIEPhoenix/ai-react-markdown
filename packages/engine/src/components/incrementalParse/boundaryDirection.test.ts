@@ -29,6 +29,7 @@ import { computeFreezeBoundary } from './computeFreezeBoundary';
 import { CATALOG, buildAdvanceOptions } from './testPluginCatalog';
 import { runFull, testEnv } from './spliceArbiterHarness';
 import { benignDocArb, hazardDocArb, type FuzzDoc } from './fuzzGenerators';
+import { soakBeat } from './soakHeartbeat';
 
 const RUNS = Number(testEnv('FUZZ_RUNS') ?? 80);
 const SEED = Number(testEnv('FUZZ_SEED') ?? 20260717);
@@ -88,8 +89,10 @@ function frozenRegion(doc: string, boundary: number, config: (typeof CATALOG)[nu
 describe(`boundary direction battery (runs=${RUNS} seed=${SEED}, futures=${FUTURES.length})`, () => {
   test('frozen output is stable under every hazard future', { timeout: TIMEOUT_MS }, () => {
     let boundaries = 0;
+    const beat = soakBeat('futures', RUNS);
     fc.assert(
       fc.property(fc.oneof(benignDocArb, hazardDocArb), fc.integer({ min: 1, max: 7 }), (fuzz: FuzzDoc, cutDenom) => {
+        beat.tick();
         const config = CATALOG[fuzz.configIndex % CATALOG.length];
         const { defListEnabled } = buildAdvanceOptions(config);
         // A prefix mid-stream (not just the finished doc) — cut at a
@@ -115,6 +118,7 @@ describe(`boundary direction battery (runs=${RUNS} seed=${SEED}, futures=${FUTUR
       }),
       { numRuns: RUNS, seed: SEED }
     );
+    beat.finish();
     // The battery must have tested real boundaries, not skipped everything.
     expect(boundaries).toBeGreaterThan(RUNS / 8);
   });

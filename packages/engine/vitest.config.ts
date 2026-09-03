@@ -25,7 +25,7 @@ export default defineConfig({
  * neither does. The switch is whether a reporter is passed EXPLICITLY —
  * `--reporter=default` prints, plain `vitest run` does not — and nothing in
  * this repo passes one (`package.json` `test`, CI's `pnpm -r test`, and all
- * five soak legs in `scripts/soak/fiveleg.sh` use bare `--run`). So the drop
+ * soak legs in `scripts/soak/soak.sh` use bare `--run`). So the drop
  * is global, and it cost this package four silent diagnostics.
  *
  * Setting `reporters` here would restore them, and it was measured rather

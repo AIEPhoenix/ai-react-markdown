@@ -393,4 +393,21 @@ describe('seam flag tracks actual truncation', () => {
     const incremental = createIncrementalLatexPreprocessor({ freezeThreshold: 0 });
     expect(incremental(input)).toBe(preprocessLaTeX(input));
   });
+
+  test('shrunk out of the entry-point fuzz leg: blank line, space-tab indent, content after', () => {
+    // Found 2026-09-03 by re-introducing the defect and letting fast-check
+    // minimise. Sixteen characters, and unlike the five above it opens on a
+    // BLANK line, mixes a space with a tab, and carries content after the
+    // delimiter — the five were written from the diagnosis, this one was
+    // found.
+    //
+    // It is a REPLAY, not a single call, and that is the point: written as
+    // `incremental(doc)` in one shot it passes even against the defect,
+    // because nothing has frozen yet and the seam correction has no frozen
+    // output to trim. The counterexample needs the cut to have landed on an
+    // earlier frame, which is the schedule the fuzz leg drew ([2,1,1,25])
+    // and the reason a hunting suite finds shapes a hand-written pin does
+    // not.
+    replay(['\n ', '\t', '$', '$ E = mc^2\n\n']);
+  });
 });

@@ -90,7 +90,7 @@ for (const frame of ['# Hello', '# Hello\n\nworld', '# Hello\n\nworld and more']
 
 ## Verification
 
-The incremental engine ships with a five-layer equivalence stack (fixture pins, fuzz arbiter, direction battery, exhaustive census, arbiter-sensitivity meta-suite) plus a five-leg release-gate soak (`scripts/soak/fiveleg.sh`, from the repo root, with a fresh seed base); the full record lives in `src/experiments/prefixFreeze/README.md`. Every reachable divergence found so far is pinned as a deterministic test.
+The incremental engine ships with a five-layer equivalence stack (fixture pins, fuzz arbiter, direction battery, exhaustive census, arbiter-sensitivity meta-suite) plus a six-leg release-gate soak (`scripts/soak/soak.sh`, from the repo root, with a fresh seed base); the full record lives in `src/experiments/prefixFreeze/README.md`. Every reachable divergence found so far is pinned as a deterministic test.
 
 ## Runtime support
 

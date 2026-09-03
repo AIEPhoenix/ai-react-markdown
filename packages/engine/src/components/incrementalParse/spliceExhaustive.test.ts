@@ -98,6 +98,7 @@ import { assertStreamEquivalence, fallbackOracleSampleFromEnv, runFull, testEnv 
 import { engineProbe, probeTailsFor, snapshotRawDisagreement, type NodeLike } from './conformanceOracles';
 import { CONSTRUCT_AXIS_CLAIMED_SHAPES } from './constructAxisAdapters';
 import { F20_CHAIN, SIGNATURE_DOMAIN, signatureValues } from './checkpointAbstraction';
+import { soakBeat } from './soakHeartbeat';
 import type { FreezeScanCheckpointInternal } from './computeFreezeBoundary';
 
 /**
@@ -458,7 +459,7 @@ const CONFIGS = (() => {
  * gate. `EXHAUSTIVE_RAW_FROZEN=0` turns it off.
  *
  * "The gate runs at stride 1" was FALSE for one release and this comment did
- * not notice, which is the only interesting thing about it: `fiveleg.sh`
+ * not notice, which is the only interesting thing about it: `soak.sh`
  * defaulted `CENSUS_STRIDE` to 3 between 2026-08-28 and 2026-08-29 while
  * three sentences here went on describing full-stride as a gate property. A
  * cost argument that names a setting has to be checked against the script
@@ -496,7 +497,7 @@ const TIMEOUT_MS = Math.max(3_600_000, 900_000 * 24 ** Math.max(0, MAX_K - 3));
 const NAME_K = Number(testEnv('EXHAUSTIVE_NAME_K') ?? 2);
 /** The name band's own cut stride. The DEFAULT thins to every third cut at
  *  K>=3 because that is CI's budget; the release gate passes 1 explicitly
- *  (`CENSUS_NAME_STRIDE` in `fiveleg.sh`) and has since 2026-08-29. Measured
+ *  (`CENSUS_NAME_STRIDE` in `soak.sh`) and has since 2026-08-29. Measured
  *  on one shard at K=3 cross: 397 s at stride 3 against 1077 s at stride 1,
  *  for 936k against 2.62M cut schedules.
  *
@@ -609,7 +610,7 @@ const alignCut = (doc: string, at: number): number => {
  * documents reachable so far. The narrowness is a property of the splice's
  * current appetite, not of the scanner's claim, which is why this is
  * recorded rather than dismissed. Reported to the scanner's owner rather
- * than fixed here; a scanner change needs the five-leg gate.
+ * than fixed here; a scanner change needs the soak gate.
  *
  * NOT done here, and why: `oracleCheckDoc` follows each document with a
  * ZERO-DISTANCE variant — the claimed prefix re-run as a document of its
@@ -793,8 +794,18 @@ interface SweepStats {
 }
 
 /** Walk every token sequence of length 1..maxK, driving P1/P2 over the cut
- *  schedules and P3 once per document, under every config. */
-function sweep(tokens: readonly string[], maxK: number, stride: number): SweepStats {
+ *  schedules and P3 once per document, under every config.
+ *
+ *  `band` names the sweep in its progress heartbeat. The denominator is the
+ *  odometer's own size, `sum(alphabet^k)` for k in 1..maxK, and the counter
+ *  is `out.docs`, which advances on EVERY document including the ones this
+ *  shard hashes away — so the percentage is progress through the shared
+ *  walk, identical across shards, rather than a per-shard figure that would
+ *  make twelve logs disagree about the same run. */
+function sweep(band: string, tokens: readonly string[], maxK: number, stride: number): SweepStats {
+  let planned = 0;
+  for (let k = 1; k <= maxK; k++) planned += tokens.length ** k;
+  const beat = soakBeat(band, planned);
   const out: SweepStats = {
     docs: 0,
     schedules: 0,
@@ -820,6 +831,7 @@ function sweep(tokens: readonly string[], maxK: number, stride: number): SweepSt
     const idx = new Array<number>(k).fill(0);
     for (;;) {
       out.docs += 1;
+      beat.tick();
       // Multiplicative hash, HIGH bits: low bits of `docs * odd` depend
       // only on low bits of `docs`, which would re-import the odometer
       // correlation the hash exists to break.
@@ -878,6 +890,7 @@ function sweep(tokens: readonly string[], maxK: number, stride: number): SweepSt
       if (d < 0) break;
     }
   }
+  beat.finish();
   return out;
 }
 
@@ -1060,7 +1073,13 @@ describe.skipIf(MAX_K === 0)(
   `splice exhaustive sweep (fragment band K=${MAX_K}, alphabet=${FRAGMENT_TOKENS.length})`,
   () => {
     test('all sequences × all 2-cuts (+ sampled 3-cuts)', { timeout: TIMEOUT_MS }, () => {
-      reportAndAssert('fragment', FRAGMENT_TOKENS, MAX_K, CUT_STRIDE, sweep(FRAGMENT_TOKENS, MAX_K, CUT_STRIDE));
+      reportAndAssert(
+        'fragment',
+        FRAGMENT_TOKENS,
+        MAX_K,
+        CUT_STRIDE,
+        sweep('fragment', FRAGMENT_TOKENS, MAX_K, CUT_STRIDE)
+      );
     });
   }
 );
@@ -1069,7 +1088,13 @@ describe.skipIf(NAME_K === 0)(
   `name-class census (K=${NAME_K}, alphabet=${NAME_CLASS_TOKENS.length} from ${NAME_CLASS_REPS.length} classes)`,
   () => {
     test('every derived name-class line sequence', { timeout: NAME_TIMEOUT_MS }, () => {
-      reportAndAssert('name', NAME_CLASS_TOKENS, NAME_K, NAME_STRIDE, sweep(NAME_CLASS_TOKENS, NAME_K, NAME_STRIDE));
+      reportAndAssert(
+        'name',
+        NAME_CLASS_TOKENS,
+        NAME_K,
+        NAME_STRIDE,
+        sweep('name', NAME_CLASS_TOKENS, NAME_K, NAME_STRIDE)
+      );
     });
   }
 );

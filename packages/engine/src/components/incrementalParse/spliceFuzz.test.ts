@@ -39,6 +39,7 @@ import {
   type FramePair,
 } from './spliceArbiterHarness';
 import { benignDocArb, hazardDocArb, scheduleSnapshots, COVERAGE_MARKERS, type FuzzDoc } from './fuzzGenerators';
+import { soakBeat } from './soakHeartbeat';
 
 // The default is what CI and `pnpm preflight` run; the soak overrides it.
 // 300 is kept for CI cost. At this size the coverage floor below can only
@@ -131,12 +132,15 @@ function driveSample(fuzz: FuzzDoc, tag: string, totals: Totals): void {
 describe(`splice fuzz arbiter (runs=${RUNS} seed=${SEED} fallbackOracleSample=${FALLBACK_SAMPLE})`, () => {
   test('benign-biased family: equivalence + hot splice path', { timeout: TIMEOUT_MS }, () => {
     const totals = newTotals();
+    const beat = soakBeat('benign', RUNS);
     fc.assert(
       fc.property(benignDocArb, (fuzz) => {
+        beat.tick();
         driveSample(fuzz, 'fuzz-benign', totals);
       }),
       FC_PARAMS
     );
+    beat.finish();
     // Anti-vacuity floor: aggregate engagement across the family. The floor
     // exists to catch the path COLLAPSING — a change that makes the splice
     // stop engaging — not to track a few points of drift.
@@ -154,12 +158,15 @@ describe(`splice fuzz arbiter (runs=${RUNS} seed=${SEED} fallbackOracleSample=${
 
   test('hazard-dense family: equivalence + generator coverage meters', { timeout: TIMEOUT_MS }, () => {
     const totals = newTotals();
+    const beat = soakBeat('hazard', RUNS);
     fc.assert(
       fc.property(hazardDocArb, (fuzz) => {
+        beat.tick();
         driveSample(fuzz, 'fuzz-hazard', totals);
       }),
       FC_PARAMS
     );
+    beat.finish();
     // Hazard docs legitimately splice less — only demand the path is alive.
     expect(totals.incrementalFrames).toBeGreaterThan(0);
     // Every adversarial construct family must occur. The floor is RUNS/200,
@@ -177,6 +184,7 @@ describe(`splice fuzz arbiter (runs=${RUNS} seed=${SEED} fallbackOracleSample=${
 
   test('cross-chunk family: phantom-suffix churn under fuzzed docs', { timeout: TIMEOUT_MS }, () => {
     let incremental = 0;
+    const beat = soakBeat('cross-chunk', Math.max(20, Math.floor(RUNS / 4)));
     fc.assert(
       fc.property(
         benignDocArb,
@@ -184,6 +192,7 @@ describe(`splice fuzz arbiter (runs=${RUNS} seed=${SEED} fallbackOracleSample=${
         fc.subarray(['A1', 'A2', 'B7'] as string[], { minLength: 1 }),
         fc.subarray(['SPEC', 'GFM'] as string[]),
         (fuzz, churnDenom, footPool, linkPool) => {
+          beat.tick();
           // Refs to phantom labels make the suffix load-bearing, not inert.
           const doc = `${fuzz.doc}\ncross refs [^${footPool[0]}] and [${linkPool[0] ?? 'SPEC'}] appear.\n`;
           const snapshots = scheduleSnapshots(doc, fuzz.sizes);
@@ -212,6 +221,7 @@ describe(`splice fuzz arbiter (runs=${RUNS} seed=${SEED} fallbackOracleSample=${
       ),
       { ...FC_PARAMS, numRuns: Math.max(20, Math.floor(RUNS / 4)) }
     );
+    beat.finish();
     expect(incremental).toBeGreaterThan(0);
   });
 });

@@ -1,22 +1,44 @@
 #!/bin/bash
-# The five-leg fresh-seed soak — the repo's release safety gate for the
-# freeze scanner (verification protocol §2.2). The boundary-diff harness
-# and the unit suite are REGRESSION nets; only this run is a safety
-# argument, and it has proven the distinction twice: v2.5.5's F11/F12 and
-# v2.7.0's stray-`-->` regression were invisible to both nets and caught
-# here, by seeds nothing had ever run.
+# The fresh-seed soak — the repo's release safety gate for the freeze
+# scanner and the incremental paths (verification protocol §2.2). The
+# boundary-diff harness and the unit suite are REGRESSION nets; only this
+# run is a safety argument, and it has proven the distinction twice:
+# v2.5.5's F11/F12 and v2.7.0's stray-`-->` regression were invisible to
+# both nets and caught here, by seeds nothing had ever run.
+#
+# The converse is also on record. A safety argument covers what its legs
+# cover and nothing else: on 2026-09-02 the two LaTeX preprocessor entry
+# points diverged by a newline and this script printed ALL CLEAN, because
+# no leg compared them. Leg 6 exists because of that day. When the next
+# hole is found, the fix is another leg, not more runs of these.
+#
+# The file was `fiveleg.sh` until 2026-09-03, when the sixth leg landed. A
+# gate whose name states a leg count it no longer runs is the same defect
+# class as a header describing a check the code stopped implementing, which
+# this script's own comments spend several paragraphs on. `pnpm soak` is
+# unchanged and remains the name to type.
 #
 # Usage:
-#   scripts/soak/fiveleg.sh <seed-base> [label]
+#   scripts/soak/soak.sh <seed-base> [label]
 #
 #   seed-base   REQUIRED, and must be fresh — re-running old seeds re-walks
 #               the same space and proves nothing new. Legs use seed-base,
-#               +100, +200, +300 (the census leg is exhaustive; no seed).
+#               +100, +200, +300, +400 (the census leg is exhaustive; no
+#               seed).
 #   label       log prefix, default "soak".
 #
 # Leg 5 is the P1 conformance sweep under ORACLE_RAW=1, added 2026-08-26.
 # It is the only leg that gates the (P) identity instruments; raw mode used
 # to be a log-only mode nobody ran in CI.
+#
+# Leg 6 is the LaTeX preprocessor's two entry points against each other,
+# added 2026-09-03. It closes a hole this gate had from the start: the fuzz
+# leg fuzzes incremental PARSING, and nothing here fuzzed
+# `preprocessLaTeX` against `createIncrementalLatexPreprocessor`. On
+# 2026-09-02 those two diverged by a newline for a full day while this
+# script printed ALL CLEAN; the divergence was found by someone designing
+# an unrelated fix. The leg is cheap — string transforms, no parse — so
+# FUZZ4 is large relative to the others.
 #
 # What FAILS leg 5, as of 2026-08-28: engine divergence, a snapshot-gate
 # firing, and the per-document BLINDNESS floor. What no longer fails it: a
@@ -29,7 +51,8 @@
 #
 # Env overrides (defaults = the standard gate; the scaled release gate used
 # FUZZ1=33334 FUZZ2=50000 for 400k/600k legs):
-#   SHARDS (cores-2)  FUZZ1 (12500)  FUZZ2 (30000)  FUZZ3 (8000)  ORACLE (4000)
+#   SHARDS (cores-2)  FUZZ1 (12500)  FUZZ2 (30000)  FUZZ3 (8000)
+#   FUZZ4 (40000)  ORACLE (4000)
 #   CENSUS_STRIDE (1)  CENSUS_NAME_K (3)  CENSUS_NAME_STRIDE (1)
 #   FALLBACK_ORACLE_SAMPLE (20)
 #
@@ -76,10 +99,12 @@
 #
 # SHARDS is clamped to [1, 100]. The lower bound prevents zero shards on a
 # two-core machine. The upper bound follows from the seed layout: the legs
-# use SEED+i, SEED+100+i, SEED+200+i and SEED+300+i, so at 101 or more shards
-# the fuzz leg's seeds overlap the direction leg's, and both legs use the same
-# arbitraries and would generate the same documents. Widen the per-leg
-# offsets before raising the cap.
+# use SEED+i, SEED+100+i, SEED+200+i, SEED+300+i and SEED+400+i, so at 101 or
+# more shards the fuzz leg's seeds overlap the direction leg's, and both legs
+# use the same arbitraries and would generate the same documents. Widen the
+# per-leg offsets before raising the cap. (Leg 6 draws from its own
+# generators, so its band could safely overlap — but a rule that holds for
+# four of five bands and not the fifth is a rule nobody can apply.)
 #
 # Memory usually limits the shard count before CPU does. If it does on a
 # given machine, set SHARDS by hand.
@@ -164,6 +189,16 @@ fi
 FUZZ1=${FUZZ1:-12500}
 FUZZ2=${FUZZ2:-30000}
 FUZZ3=${FUZZ3:-8000}
+# Leg 6 does string transforms only — no parse, no plugin chain — so a run
+# costs roughly two orders of magnitude less than a splice sample. Measured
+# 2026-09-03 on a 16-core machine: the whole leg at this size is 2 min 57 s
+# wall across 14 shards, about 2.5% of a two-hour gate.
+#
+# If you time it and get triple that, check whether the script was EDITED
+# while running. bash reads a script incrementally by byte offset, so an
+# in-place edit makes the running shell resume at a stale offset: measured
+# here once, it re-ran a leg and then tried to execute half a path.
+FUZZ4=${FUZZ4:-40000}
 ORACLE=${ORACLE:-4000}
 CENSUS_STRIDE=${CENSUS_STRIDE:-1}
 CENSUS_NAME_K=${CENSUS_NAME_K:-3}
@@ -186,12 +221,22 @@ CENSUS_NAME_STRIDE=${CENSUS_NAME_STRIDE:-1}
 # Set to 1 for every-frame comparison, which is what the legs do when the
 # variable is unset (CI and preflight). Exported so both legs see one value.
 export FALLBACK_ORACLE_SAMPLE=${FALLBACK_ORACLE_SAMPLE:-20}
-# Comma-separated leg subset; default is all five. `LEGS=census` on the
-# larger box and `LEGS=fuzz,dir,scanner,oracle` on the other is the standard
-# split.
+# Seconds between per-shard progress heartbeats. Every leg's hot loop calls
+# `soakBeat().tick()`; unset means the mechanism is inert, which is why CI
+# and preflight are unaffected. Read the beats with
+# `scripts/soak/soak-watch.sh <label>` — a separate READ-ONLY script, so the
+# progress machinery cannot break the gate.
+#
+# Before this existed, a shard log was three lines of banner for four hours
+# whether it was at 5%, at 95%, or wedged. The percentage is convenient; the
+# timestamp is the point, because "slow" and "dead" were indistinguishable.
+export SOAK_HEARTBEAT=${SOAK_HEARTBEAT:-30}
+# Comma-separated leg subset; default is all six. `LEGS=census` on the
+# larger box and `LEGS=fuzz,dir,scanner,oracle,latex` on the other is the
+# standard split.
 # Legs share nothing but the tree, and the census leg is seed-free exhaustive
 # sharding, so a split run is byte-equivalent to a single-machine one.
-LEGS=${LEGS:-fuzz,dir,scanner,census,oracle}
+LEGS=${LEGS:-fuzz,dir,scanner,census,oracle,latex}
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$ROOT/packages/engine"
@@ -252,6 +297,8 @@ run_leg census src/components/incrementalParse/spliceExhaustive.test.ts \
   'EXHAUSTIVE_SHARD=$i/$SHARDS'
 run_leg oracle src/components/incrementalParse/oracleConformance.test.ts \
   'ORACLE_RAW=1 ORACLE_RUNS=$ORACLE' 'ORACLE_SEED=$((SEED + 300 + i))'
+run_leg latex src/preprocessors/latexEntryEquivalence.fuzz.test.ts \
+  'FUZZ_RUNS=$FUZZ4' 'FUZZ_SEED=$((SEED + 400 + i))'
 
 if [ "$FAIL" -eq 0 ]; then echo "[$LABEL] ALL CLEAN (legs: $LEGS)"; else echo "[$LABEL] FAILURES — inspect $OUT/$LABEL-*.log"; fi
 for f in "$OUT"/$LABEL-*.log; do

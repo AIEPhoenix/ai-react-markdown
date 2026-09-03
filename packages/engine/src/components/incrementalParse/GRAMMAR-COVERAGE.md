@@ -447,7 +447,7 @@ an assertion message live; numbers in `console.*` die. vitest 4 intercepts
 `console.log`/`error`/`warn`/`info`/`table` in this package and DROPS the
 output of a test that PASSES — a failing test's survives, a passing test's
 does not. The switch is whether a reporter is passed EXPLICITLY, and nothing
-here passes one (`pnpm test`, CI's `pnpm -r test`, and all five soak legs use
+here passes one (`pnpm test`, CI's `pnpm -r test`, and every soak leg uses
 bare `--run`), so the drop was global and silent.
 
 The corollary is the part that bites: **a diagnostic that only speaks when the

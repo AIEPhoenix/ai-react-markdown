@@ -29,7 +29,15 @@ jobs:
         # e0f0d77a with the fuzzGenerators.ts edit in the type-7 sticky-residue fix alone. The real
         # rule lives in boundaryDiff.test.ts: any change to fuzzGenerators.ts
         # or pinnedCorpus.ts must regenerate boundaryBaseline.json in the SAME
-        # commit. (node 24 does drift the fast-check stream — keep the pin.)
+        # commit.
+        #
+        # This comment used to end "(node 24 does drift the fast-check stream
+        # — keep the pin.)" Measured 2026-09-03 on 22.23.2 vs 24.20.0: it does
+        # not. Four document arbitraries hash identically at a fixed seed, and
+        # boundaryDiff passes against its committed baseline on both — see
+        # `streamdrift.evidence.ts`. Keep the pin anyway, for the reason on
+        # the first line: one runtime everywhere is one less variable when a
+        # gate reddens. Do not keep the old reason.
         node: ['22.23.2']
         task:
           - lint
