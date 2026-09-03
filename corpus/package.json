@@ -4,13 +4,6 @@
   "private": true,
   "type": "module",
   "description": "The repository's single authoritative markdown corpus. Consumed by the benchmark apps, the engine fixtures and both story sets.",
-  "exports": {
-    ".": "./src/index.ts",
-    "./markdown": "./src/markdown/index.ts",
-    "./code": "./src/code/index.ts",
-    "./mermaid": "./src/mermaid/index.ts",
-    "./math": "./src/math/index.ts"
-  },
   "scripts": {
     "generate:math": "node scripts/generate-math.mjs",
     "validate": "node --experimental-strip-types --no-warnings scripts/validate.mjs",

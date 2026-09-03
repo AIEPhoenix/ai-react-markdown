@@ -36,6 +36,8 @@
  * curly quote.
  */
 
+import { MARKDOWN_MIXED } from './mixed.ts';
+
 export interface MarkdownCase {
   readonly id: string;
   /** What this case is here to expose. */
@@ -217,6 +219,21 @@ also a hard break.`,
 
 export const MARKDOWN_LINKS: readonly MarkdownCase[] = [
   {
+    id: 'image-reference',
+    probes: 'reference-style IMAGES — a distinct mdast node from a reference link, and absent until measured',
+    src: `Full reference: ![the freeze boundary][boundary]
+
+Collapsed reference: ![boundary][]
+
+Shortcut reference: ![boundary]
+
+A definition with a title, and one reference that resolves to nothing:
+
+![missing][no-such-label]
+
+[boundary]: ${img()} 'The offset before which output cannot change'`,
+  },
+  {
     id: 'link-forms',
     probes: 'every link form, including reference styles and one with a title',
     src: `An [inline link](https://example.test/a), one [with a title](https://example.test/b "The title"),
@@ -251,7 +268,10 @@ Awkward URLs: [parens](https://example.test/a_(b)_c),
 
 [![a linked image](${img(320, 240)})](https://example.test/target)
 
-Two in one paragraph: ![one](${img(160, 120)}) ![two](${img(160, 120)})`,
+Two in one paragraph: ![one](${img(160, 120)}) ![two](${img(160, 120)})
+
+With a title, which rides on the node rather than in the alt text:
+![charted](${img(240, 180)} 'cost per KB against document size')`,
   },
   {
     id: 'image-gallery',
@@ -270,6 +290,32 @@ Two in one paragraph: ![one](${img(160, 120)}) ![two](${img(160, 120)})`,
 // ── block structure ───────────────────────────────────────────────────────
 
 export const MARKDOWN_BLOCKS: readonly MarkdownCase[] = [
+  {
+    id: 'block-indented-code',
+    probes: 'indented code — a separate block construct from a fence, and the one that interacts with list indentation',
+    src: `An indented block, four spaces, no language and no fence:
+
+    const boundary = computeFreezeBoundary(text);
+    if (boundary === 0) return fallback();
+
+A fence with no info string, which parses to the same node type:
+
+\`\`\`
+plain text, no highlighting requested
+\`\`\`
+
+Inside a list item, where the indentation has to be counted twice:
+
+1.  A step.
+
+        indented code inside the item
+
+2.  The next step.
+
+> Inside a blockquote:
+>
+>     indented code inside the quote`,
+  },
   {
     id: 'block-headings',
     probes: 'both heading syntaxes at every level, plus one with inline formatting',
@@ -295,7 +341,7 @@ Setext level two
   },
   {
     id: 'block-lists-nested',
-    probes: 'ordered and unordered nesting, a custom start, and loose against tight',
+    probes: 'ordered and unordered nesting, a custom start, and loose against tight in both flavours',
     src: `1. First
 2. Second
    - nested unordered
@@ -308,6 +354,14 @@ Starting at seven:
 
 7. seven
 8. eight
+
+A loose ORDERED list, which carries a different spread flag from the bullet one below:
+
+1. first item, with a blank line after it
+
+2. second item
+
+3. third item
 
 Loose list — note the blank lines:
 
@@ -550,6 +604,8 @@ Emoji as text: 🎉 👩‍💻 🇯🇵 — including a ZWJ sequence and a flag
 
 // ── the whole surface, in one list ────────────────────────────────────────
 
+export { MARKDOWN_MIXED };
+
 export const MARKDOWN_CASES: readonly MarkdownCase[] = [
   ...MARKDOWN_GFM,
   ...MARKDOWN_INLINE,
@@ -557,4 +613,5 @@ export const MARKDOWN_CASES: readonly MarkdownCase[] = [
   ...MARKDOWN_BLOCKS,
   ...MARKDOWN_HTML,
   ...MARKDOWN_CJK,
+  ...MARKDOWN_MIXED,
 ];

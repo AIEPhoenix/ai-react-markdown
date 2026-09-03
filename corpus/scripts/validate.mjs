@@ -22,6 +22,26 @@
  *     and 2 against the OLD identifier set while the installed KaTeX has a
  *     new one.
  *
+ *  4. THE COMMITTED DOCUMENTS ARE IN SYNC. Same shape as check 3, applied to
+ *     `documents/`. Those files are the artefact a person actually reads, and
+ *     committing them is what makes a corpus change visible in review; this
+ *     is the gate that stops them drifting from the cases they were emitted
+ *     from.
+ *
+ * WHO CONSUMES THIS PACKAGE: nobody, programmatically, and that is a finding
+ * rather than an omission. The five candidates were checked on 2026-09-03 and
+ * each has a constraint that points the other way — `pinnedCorpus` is
+ * deliberately frozen so boundary numbers stay comparable across revisions;
+ * `engine/src/fixtures/scenarios.ts` is part of the engine's PUBLIC api and
+ * cannot depend on a private package; `benchmarks/kit` generates
+ * size-controlled content and would invalidate its baselines; core's story
+ * fixtures forbid network resources, which the corpus's image placeholders
+ * use. Those four constraints are why five separate corpora existed in the
+ * first place. The package's `exports` map has been removed accordingly —
+ * its `.` entry had pointed at a `src/index.ts` that was never written, and
+ * nothing noticed, which is the tidiest possible proof that nothing imported
+ * it.
+ *
  * Run with `pnpm --filter @bench/corpus validate`.
  */
 import { execFileSync } from 'node:child_process';
@@ -528,6 +548,46 @@ for (const name of exempt) {
 
 const SENTINEL = 'corpus-tail-sentinel';
 
+/**
+ * The exempt documents are this gate's POSITIVE CONTROLS, and that is the only
+ * reason they exist — see the header `terminalDocument` writes into them.
+ *
+ * Without this floor the gate has a hole with no symptom: delete both terminal
+ * documents AND their entries here, and every remaining document has a
+ * surviving tail, so the detector is never once asked to notice a swallow. It
+ * could then return `true` unconditionally and this whole section would stay
+ * green. Measured by mutating it to do exactly that — those two documents were
+ * the only failures, so removing them removes the entire signal.
+ *
+ * One per HAZARD KIND, not just one overall, because the gate's claim is that
+ * it "covers unclosed fences and unclosed math with one check". A single
+ * control would let the other kind's detection rot unnoticed. The kind is read
+ * off the parse tree rather than off the file name: whichever node ends up
+ * holding the sentinel text is the construct that swallowed it.
+ */
+{
+  const swallower = async (body) => {
+    const tree = await mdParser.run(mdParser.parse(`${body}\n\n## ${SENTINEL}\n`));
+    let found = null;
+    (function walk(n) {
+      if (found !== null) return;
+      if (n.children === undefined && typeof n.value === 'string' && n.value.includes(SENTINEL)) found = n.type;
+      for (const c of n.children ?? []) walk(c);
+    })(tree);
+    return found;
+  };
+  const kinds = new Set();
+  for (const name of exempt) kinds.add(await swallower(documents.DOCUMENTS[name]));
+  for (const kind of ['code', 'math']) {
+    if (!kinds.has(kind)) {
+      fail(
+        `documents: no positive control whose tail is swallowed by a '${kind}' node — ` +
+          `the sentinel detector cannot be shown to notice that kind at all`
+      );
+    }
+  }
+}
+
 const tailSurvives = async (body) => {
   const tree = await mdParser.run(mdParser.parse(`${body}\n\n## ${SENTINEL}\n`));
   return tree.children.some((n) => n.type === 'heading' && JSON.stringify(n).includes(SENTINEL));
@@ -574,6 +634,169 @@ if (before !== after) {
   fail('math: src/math/generated.ts is stale — re-run generate:math and commit the result');
 } else {
   process.stdout.write('[corpus] math: generated.ts matches a fresh derivation\n');
+}
+
+// ── 3b. node-type coverage, derived ───────────────────────────────────────
+
+/**
+ * Every mdast node type the engine's chain can emit must appear SOMEWHERE in
+ * the corpus. Derived from a list of what the plugins produce, not from a
+ * count someone wrote down — the markdown layer was the only one of the four
+ * without a coverage argument, and asserting "37 cases parse" is an
+ * anti-vacuity floor rather than a claim about what is covered.
+ *
+ * Measured 2026-09-03 when this gate was written: `imageReference` was absent
+ * from the whole corpus, and `code` appeared only as a fenced block with a
+ * language, so indented code — a separate CommonMark construct, and the one
+ * that fights with list indentation — was missing too.
+ *
+ * `yaml` is deliberately not in the list: the engine ships no frontmatter
+ * plugin, so a corpus containing frontmatter would be testing a construct the
+ * library does not parse.
+ */
+const EXPECTED_NODE_TYPES = [
+  // core block
+  'root',
+  'paragraph',
+  'heading',
+  'thematicBreak',
+  'blockquote',
+  'list',
+  'listItem',
+  'html',
+  'code',
+  'definition',
+  // core inline
+  'text',
+  'emphasis',
+  'strong',
+  'inlineCode',
+  'break',
+  'link',
+  'image',
+  'linkReference',
+  'imageReference',
+  // gfm
+  'table',
+  'tableRow',
+  'tableCell',
+  'delete',
+  'footnoteDefinition',
+  'footnoteReference',
+  // remark-math
+  'math',
+  'inlineMath',
+  // remark-definition-list
+  'defList',
+  'defListTerm',
+  'defListDescription',
+  // remark-mark-highlight
+  'mark',
+];
+
+/**
+ * COMBINATIONS, which the type census above cannot see. A corpus can hold
+ * every node type and still never put one inside another; the denominator for
+ * pairs is a product, so these are the four chosen by where a container's
+ * boundary and a leaf's boundary are decided by different code — see
+ * `src/mixed.ts`. Before that file existed, all four of these were empty.
+ */
+const EXPECTED_PAIRS = [
+  ['tableCell', 'inlineMath'],
+  ['listItem', 'code'],
+  ['listItem', 'math'],
+  ['footnoteDefinition', 'code'],
+  ['footnoteDefinition', 'math'],
+  ['blockquote', 'code'],
+  ['blockquote', 'math'],
+];
+
+{
+  // The REAL chain, both halves of it. Two things were learned writing this,
+  // and both are the same lesson the collected-math gate already records —
+  // a gate that stops one layer short of the user measures a different
+  // question:
+  //
+  //   `defaultEnginePlugins`, not `[]`, or `defList*` and `mark` never appear
+  //   and the corpus looks like it is missing cases it has.
+  //
+  //   `preprocessLaTeX` first, or `inlineMath` never appears at all. The
+  //   engine normalises `$x$` to `$$x$$` before parsing, so raw corpus text
+  //   yields only block `math` — the node the reader actually gets is
+  //   downstream of a transform this gate has to run too.
+  const fullChain = unified().use(remarkParse).use(engine.buildCoreRemarkPlugins(engine.defaultEnginePlugins));
+  const present = new Set();
+  const pairs = new Set();
+  for (const [, body] of Object.entries(documents.DOCUMENTS)) {
+    const prepared = engine.preprocessLaTeX(body);
+    const tree = await fullChain.run(fullChain.parse(prepared));
+    (function walk(node, ancestors) {
+      present.add(node.type);
+      for (const a of ancestors) pairs.add(`${a}>${node.type}`);
+      const next = [...ancestors, node.type];
+      for (const child of node.children ?? []) walk(child, next);
+    })(tree, []);
+  }
+  const missingTypes = EXPECTED_NODE_TYPES.filter((t) => !present.has(t));
+  if (missingTypes.length > 0) {
+    fail(`node coverage: ${missingTypes.length} type(s) never appear — ${missingTypes.join(', ')}`);
+  }
+  const missingPairs = EXPECTED_PAIRS.filter(([o, i]) => !pairs.has(`${o}>${i}`));
+  if (missingPairs.length > 0) {
+    fail(
+      `node coverage: ${missingPairs.length} combination(s) never occur — ${missingPairs.map(([o, i]) => `${i} in ${o}`).join(', ')}`
+    );
+  }
+  if (missingTypes.length === 0 && missingPairs.length === 0) {
+    process.stdout.write(
+      `[corpus] node coverage: ${EXPECTED_NODE_TYPES.length}/${EXPECTED_NODE_TYPES.length} mdast types and ` +
+        `${EXPECTED_PAIRS.length}/${EXPECTED_PAIRS.length} nested combinations present\n`
+    );
+  }
+}
+
+// ── 4. the committed documents are in sync ────────────────────────────────
+
+/**
+ * `documents/` is committed, so a corpus change shows up as a readable diff.
+ * That only holds while the files match the cases they came from, which is
+ * what this compares — in memory, without writing, so a validate run never
+ * silently "fixes" the very drift it is supposed to report.
+ *
+ * The tail newline mirrors `emit.mjs`, which appends one when a document does
+ * not end in it. Comparing against the raw document instead would fail every
+ * file for a byte the emitter is meant to add.
+ */
+{
+  const { DOCUMENTS } = await import('../src/documents.ts');
+  const dir = join(ROOT, 'documents');
+  const { readdirSync, existsSync } = require('node:fs');
+  const expected = Object.keys(DOCUMENTS).sort();
+  const onDisk = existsSync(dir)
+    ? readdirSync(dir)
+        .filter((f) => f.endsWith('.md'))
+        .sort()
+    : [];
+
+  const missing = expected.filter((n) => !onDisk.includes(n));
+  const extra = onDisk.filter((n) => !expected.includes(n));
+  if (missing.length > 0) fail(`documents: not emitted — ${missing.join(', ')} (run \`pnpm emit\`)`);
+  // An extra file is not cosmetic: a renamed document leaves its old copy
+  // behind, and the stale one keeps looking like part of the corpus.
+  if (extra.length > 0) fail(`documents: orphaned files — ${extra.join(', ')} (delete them)`);
+
+  let stale = 0;
+  for (const name of expected) {
+    if (missing.includes(name)) continue;
+    const want = DOCUMENTS[name].endsWith('\n') ? DOCUMENTS[name] : `${DOCUMENTS[name]}\n`;
+    if (readFileSync(join(dir, name), 'utf8') !== want) {
+      fail(`documents: ${name} differs from a fresh emit — re-run \`pnpm emit\` and commit it`);
+      stale += 1;
+    }
+  }
+  if (stale === 0 && missing.length === 0 && extra.length === 0) {
+    process.stdout.write(`[corpus] documents: ${expected.length} committed files match a fresh emit\n`);
+  }
 }
 
 // ── verdict ───────────────────────────────────────────────────────────────

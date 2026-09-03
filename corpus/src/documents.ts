@@ -49,6 +49,7 @@ import {
   type MarkdownCase,
 } from './markdown/constructs.ts';
 import { MERMAID_CASES, MERMAID_TYPES } from './mermaid/diagrams.ts';
+import { MARKDOWN_MIXED } from './markdown/mixed.ts';
 
 const section = (title: string, body: string) => `## ${title}\n\n${body}\n`;
 /** `probes` is written lowercase in the case files, where it reads as a field
@@ -84,8 +85,19 @@ const terminalDocument = (c: { id: string; probes: string; src: string }) =>
 
 ${c.probes[0].toUpperCase()}${c.probes.slice(1)}.
 
-This is its own document because it opens a construct it never closes.
-Anything after it would be swallowed, so nothing is after it.
+It is its own document because it opens a construct it never closes, and
+anything after it would be swallowed. But that is only why it is SEPARATE.
+
+Why it EXISTS: it is the positive control for the tail-sentinel gate. That
+gate appends a sentinel heading to every document and requires it to survive;
+these two are the only documents required to EAT it. Without them the
+detector never sees a document that swallows, so it could return "the tail
+survived" unconditionally and the whole gate would still pass — measured, by
+mutating it to do exactly that: these two files were the only failures.
+
+So the emptiness is the point. Do not add content after the open construct to
+"make it a better test": the gate supplies what gets swallowed, and content of
+its own would only be swallowed too.
 
 ${c.src}`;
 
@@ -229,7 +241,12 @@ ${mdSection(
   MARKDOWN_BLOCKS
 )}
 ${mdSection('Raw HTML', 'The rehype-raw path, including what rehype-sanitize is expected to strip.', MARKDOWN_HTML)}
-${mdSection('CJK', 'Three of the fourteen plugins exist for this, and the old corpus was pure ASCII.', MARKDOWN_CJK)}`;
+${mdSection('CJK', 'Three of the fourteen plugins exist for this, and the old corpus was pure ASCII.', MARKDOWN_CJK)}
+${mdSection(
+  'Mixed',
+  'Code, math and mermaid INSIDE these constructs. Every other document in this corpus is deep in one domain and shallow across domains, so a node-type census over all of them reads as full coverage while none of these combinations occurred — the missing thing is a pair, and pairs have a product for a denominator.',
+  MARKDOWN_MIXED
+)}`;
 
 /** Every document, keyed by the file name the emit script writes. */
 export const DOCUMENTS: Readonly<Record<string, string>> = {
