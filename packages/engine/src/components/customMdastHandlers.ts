@@ -39,6 +39,24 @@ export interface CrossChunkHandlerOptions {
   /** Passed through to placeholder hast properties so React components can
    *  partition by document. */
   documentId: string;
+  /**
+   * Per-pipeline provenance credential. When present, every placeholder
+   * element the handlers emit carries it as `engineProvenance`, and
+   * `rehypeVerifyEngineTags` (installed by `buildCoreRehypePlugins` when it
+   * is given the SAME value) unwraps any placeholder that lacks it — the
+   * sanitize schema admits the placeholder tag names, so authored raw HTML
+   * could otherwise forge them. Optional for API compatibility: absent, the
+   * handlers emit exactly what they always did and no verifier runs.
+   */
+  provenance?: string;
+}
+
+/** The `engineProvenance` property for a placeholder, or nothing when the
+ *  pipeline carries no credential. camelCase is load-bearing: authored raw
+ *  HTML comes back from the tokenizer lowercased and can never produce it. */
+function provenanceProps(s: StateShape): { engineProvenance?: string } {
+  const provenance = s.options.provenance;
+  return typeof provenance === 'string' ? { engineProvenance: provenance } : {};
 }
 
 // Type assertion helper for state shape (mdast-util-to-hast doesn't export it).
@@ -125,6 +143,7 @@ export function buildCrossChunkHandlers(): Handlers {
           referenceType: node.referenceType,
           documentId: s.options.documentId,
           ...localDefProps(s, id),
+          ...provenanceProps(s),
         },
         children: s.all(node) as HastElement['children'],
       };
@@ -144,6 +163,7 @@ export function buildCrossChunkHandlers(): Handlers {
           alt: node.alt ?? '',
           documentId: s.options.documentId,
           ...localDefProps(s, id),
+          ...provenanceProps(s),
         },
         children: [],
       };
@@ -168,6 +188,7 @@ export function buildCrossChunkHandlers(): Handlers {
             label: node.identifier,
             localOccurrence,
             documentId: s.options.documentId,
+            ...provenanceProps(s),
           },
           children: [],
         };
@@ -188,6 +209,7 @@ export function buildCrossChunkHandlers(): Handlers {
           // renders, so marks and footer agree (core-render-02).
           localNumber: s.footnoteOrder.indexOf(id) + 1,
           documentId: s.options.documentId,
+          ...provenanceProps(s),
         },
         children: [],
       };

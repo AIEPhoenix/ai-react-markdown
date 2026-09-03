@@ -379,3 +379,38 @@ describe('customMdastHandlers — standalone mode (footnoteDefinition only)', ()
     expect(footerLis(hast).length).toBe(1);
   });
 });
+
+describe('customMdastHandlers — provenance stamping', () => {
+  function pipeWith(source: string, provenance?: string): HastRoot {
+    const handlers = buildCrossChunkHandlers();
+    const opt = {
+      phantomFootnoteLabels: new Set<string>(),
+      phantomLinkLabels: new Set<string>(),
+      preserveOrphan: true,
+      documentId: 'doc',
+      ...(provenance !== undefined ? { provenance } : {}),
+    };
+    const processor = unified()
+      .use(remarkParse)
+      .use(remarkGfm)
+      .use(remarkRehype, { handlers, ...opt } as Parameters<typeof remarkRehype>[0]);
+    const mdast = processor.parse(source) as MdastRoot;
+    return processor.runSync(mdast) as HastRoot;
+  }
+
+  test('with a credential, all three placeholders carry engineProvenance', () => {
+    const hast = pipeWith('See [^a] and [t][l] and ![i][l].\n\n[^a]: n\n\n[l]: /x', 'cred');
+    for (const tag of ['footnote-sup', 'cross-chunk-link', 'cross-chunk-image']) {
+      const el = findTag(hast, tag);
+      expect(el, tag).toBeTruthy();
+      expect(el?.properties?.engineProvenance).toBe('cred');
+    }
+  });
+
+  test('without a credential the placeholders are exactly what they always were', () => {
+    const hast = pipeWith('See [^a].\n\n[^a]: n');
+    const sup = findTag(hast, 'footnote-sup');
+    expect(sup?.properties).not.toHaveProperty('engineProvenance');
+    expect(sup?.properties).toMatchObject({ label: 'a', documentId: 'doc' });
+  });
+});

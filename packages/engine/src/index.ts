@@ -31,6 +31,12 @@ export * from './components/documentRegistry';
 export * from './components/markdown';
 export * from './components/pluginChain';
 export {
+  rehypeVerifyEngineTags,
+  ENGINE_PLACEHOLDER_TAGS,
+  ENGINE_PROVENANCE_PROPERTY,
+  type RehypeVerifyEngineTagsOptions,
+} from './components/rehypeVerifyEngineTags';
+export {
   default as rehypeRebaseHashLinks,
   type RehypeRebaseHashLinksOptions,
 } from './components/rehypeRebaseHashLinks';

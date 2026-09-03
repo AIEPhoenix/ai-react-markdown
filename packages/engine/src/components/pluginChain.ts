@@ -24,6 +24,7 @@ import rehypeRaw from '@ai-markdown/rehype-raw';
 import rehypeUnwrapImages from 'rehype-unwrap-images';
 import { rehypeUnwrapCrossChunkImages } from './rehypeUnwrapCrossChunkImages';
 import rehypeSanitize from 'rehype-sanitize';
+import { rehypeVerifyEngineTags } from './rehypeVerifyEngineTags';
 import remarkBreaks from 'remark-breaks';
 import remarkCjkFriendly from 'remark-cjk-friendly';
 import remarkCjkFriendlyGfmStrikethrough from 'remark-cjk-friendly-gfm-strikethrough';
@@ -92,12 +93,33 @@ export function buildCoreRemarkPlugins(enginePlugins: readonly AIMarkdownEngineP
   ] as RemarkPlugins;
 }
 
+export interface CoreRehypePluginsOptions {
+  /**
+   * Per-pipeline provenance credential. Installs `rehypeVerifyEngineTags`
+   * between `rehypeRaw` and `rehypeSanitize` so that only placeholder
+   * elements stamped with this exact value by the cross-chunk handlers
+   * survive; put the SAME value in the remark-rehype options
+   * (`CrossChunkHandlerOptions.provenance`). Omitting `options` keeps the
+   * chain exactly as before — no verifier — which is the documented
+   * escape-hatch behaviour for hand-assembled pipelines; the shipped
+   * renderer always passes a credential.
+   */
+  provenance: string;
+}
+
 /** The rehype chain. `clobberPrefix` namespaces ids per instance; pass ''
  *  for unprefixed output (test harnesses). */
-export function buildCoreRehypePlugins(sanitizeSchema: SanitizeSchema, clobberPrefix: string): RehypePlugins {
+export function buildCoreRehypePlugins(
+  sanitizeSchema: SanitizeSchema,
+  clobberPrefix: string,
+  options?: CoreRehypePluginsOptions
+): RehypePlugins {
   return [
     // Allow raw HTML through so rehype-sanitize can handle it.
     [rehypeRaw, { passThrough: [] }],
+    // Unwrap forged engine placeholders BEFORE sanitize admits their tag
+    // names. Only when the caller holds a credential (see the option's doc).
+    ...(options ? [[rehypeVerifyEngineTags, { provenance: options.provenance }]] : []),
     // Sanitize HTML while allowing <mark> (highlight), KaTeX class names,
     // and any extra protocols the caller permitted via the `sanitizeSchema`
     // prop. Override `clobberPrefix` with the instance-scoped value — the

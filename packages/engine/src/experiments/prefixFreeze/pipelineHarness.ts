@@ -70,7 +70,10 @@ export function runProductionPipeline(content: string): PipelineResult {
     .use(remarkParse)
     .use(buildCoreRemarkPlugins([]))
     .use(remarkRehype, buildCoreRemarkRehypeOptions(false))
-    .use(buildCoreRehypePlugins(sanitizeSchema, ''));
+    // The shipped renderer always passes a credential; mirror that so the
+    // harness runs the verifier too (no handlers here → it unwraps any
+    // authored placeholder, exactly as production does for forged ones).
+    .use(buildCoreRehypePlugins(sanitizeSchema, '', { provenance: 'prefix-freeze-harness' }));
 
   const mdast = processor.parse(content);
   // runSync mutates the mdast in place via remark transformers — same

@@ -30,6 +30,7 @@ import rehypeKatex from 'rehype-katex';
 import rehypeUnwrapImages from 'rehype-unwrap-images';
 import rehypeRebaseHashLinks from './rehypeRebaseHashLinks';
 import rehypeFooterAdorn from './rehypeFooterAdorn';
+import { rehypeVerifyEngineTags } from './rehypeVerifyEngineTags';
 import { sanitizeSchema } from './sanitizeSchema';
 import type { Root, Element } from 'hast';
 
@@ -76,6 +77,10 @@ function runProductionPipeline(content: string): Root {
     })
     // --- Rehype stack (always on; mirror MarkdownContent.tsx) ---
     .use(rehypeRaw, { passThrough: [] })
+    // Provenance verifier sits between raw and sanitize in the shipped
+    // chain (`buildCoreRehypePlugins` with a credential). It only unwraps
+    // placeholder elements, so it must never touch top-level positions.
+    .use(rehypeVerifyEngineTags, { provenance: 'position-propagation' })
     .use(rehypeSanitize, sanitizeSchema)
     .use(rehypeFooterAdorn)
     .use(rehypeRebaseHashLinks)

@@ -104,6 +104,10 @@ export const CATALOG: CatalogConfig[] = [
 
 const TEST_DOCUMENT_ID = 'ip';
 const TEST_CLOBBER_PREFIX = `${encodeURIComponent(TEST_DOCUMENT_ID)}-user-content-`;
+/** ONE credential for the handler options AND the chain — the two must
+ *  agree or the verifier unwraps every placeholder the handlers emit, and
+ *  the arbiter's placeholder assertions (`spliceEquivalence`) go dark. */
+export const TEST_PROVENANCE = 'test-provenance';
 const EMPTY_SET: ReadonlySet<string> = new Set();
 
 /** Coordinated-mode mirror: ALL FOUR cross-chunk handlers, non-empty
@@ -134,10 +138,11 @@ export function buildCrossChunkAdvanceOptions(
     phantomLinkLabels,
     preserveOrphan: true,
     documentId: TEST_DOCUMENT_ID,
+    provenance: TEST_PROVENANCE,
   };
   return {
     remarkPlugins: buildCoreRemarkPlugins(config ? enginePluginsFor(config) : []),
-    rehypePlugins: buildCoreRehypePlugins(sanitizeSchema, TEST_CLOBBER_PREFIX),
+    rehypePlugins: buildCoreRehypePlugins(sanitizeSchema, TEST_CLOBBER_PREFIX, { provenance: TEST_PROVENANCE }),
     remarkRehypeOptions: remarkRehypeOptions as never,
     depsKey: ['cross-chunk', config?.label ?? 'no-plugins'],
     defListEnabled: config?.defList ?? false,
@@ -172,6 +177,7 @@ export function buildAdvanceOptions(config: CatalogConfig): AdvanceOptions {
     phantomLinkLabels: EMPTY_SET,
     preserveOrphan: config.preserveOrphan,
     documentId: TEST_DOCUMENT_ID,
+    provenance: TEST_PROVENANCE,
   };
 
   // The chains come from pluginChain.ts — the SAME builders MarkdownContent
@@ -179,7 +185,7 @@ export function buildAdvanceOptions(config: CatalogConfig): AdvanceOptions {
   // here map onto the sealed plugin selection the production memos consume).
   const options: AdvanceOptions = {
     remarkPlugins: buildCoreRemarkPlugins(enginePluginsFor(config)),
-    rehypePlugins: buildCoreRehypePlugins(sanitizeSchema, TEST_CLOBBER_PREFIX),
+    rehypePlugins: buildCoreRehypePlugins(sanitizeSchema, TEST_CLOBBER_PREFIX, { provenance: TEST_PROVENANCE }),
     remarkRehypeOptions: remarkRehypeOptions as never,
     depsKey: [config.label],
     defListEnabled: config.defList,
