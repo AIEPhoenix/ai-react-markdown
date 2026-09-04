@@ -22,7 +22,7 @@
   "devDependencies": {
     "@bench/kit": "workspace:*",
     "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.4",
+    "@types/react-dom": "^19.2.5",
     "@vitejs/plugin-react": "^5.1.0",
     "typescript": "^6.0.3",
     "vite": "^7.2.2"
