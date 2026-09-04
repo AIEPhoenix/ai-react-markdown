@@ -13,8 +13,12 @@
  * recorded because the model raises it).
  *
  * Env: EVIDENCE_SOFT_SEEDS (60), EVIDENCE_SOFT_RUNS (400).
- * Runtime: measured on landing — see the release notes; the seeds×runs
- * product is the knob.
+ * Runtime: 15.8 s for 60 × 400 × 2 families on landing (2026-09-04, 16-core
+ * laptop) — string transforms only, no parse; the seeds×runs product is the
+ * knob. The same run found 33 unclassified changes the 5 × 400 gate had not
+ * reached; all were one shape (an unclosed `$` left by currency escaping,
+ * or an unclosed `\text{`, before a tag), the classifier's raw parity count
+ * was replaced by the legacy arm's own probe, and the count went to 0.
  */
 import { test } from 'vitest';
 import fc from 'fast-check';

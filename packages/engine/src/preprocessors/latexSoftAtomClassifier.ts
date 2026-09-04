@@ -96,24 +96,15 @@ export function classify(input: string): Classification {
 }
 
 /** Does some text segment that is immediately followed by a soft tag leave
- *  a `$` or a `$$` unclosed (odd count of bare singles, or of doubles)? */
+ *  something open that the chain treats as tail-sensitive — an unclosed `$`
+ *  or `$$` (after currency escaping, which a raw parity count cannot see),
+ *  a residual `\[`, or an unclosed `\text{`? Asked of the legacy arm's own
+ *  probes over that segment alone, exactly as the legacy arm analysed it. */
 function unclosedBeforeTag(input: string): boolean {
   const segments = splitByProtectedRegions(input);
   for (let i = 0; i + 1 < segments.length; i++) {
     if (segments[i].kind !== 'text' || segments[i + 1].kind !== 'tag') continue;
-    const t = segments[i].text;
-    let singles = 0;
-    let doubles = 0;
-    for (let j = 0; j < t.length; j++) {
-      if (t[j] !== '$' || (j > 0 && t[j - 1] === '\\')) continue;
-      if (t[j + 1] === '$') {
-        doubles += 1;
-        j += 1;
-      } else {
-        singles += 1;
-      }
-    }
-    if (singles % 2 === 1 || doubles % 2 === 1) return true;
+    if (!processSlice(segments[i].text, { legacy: true, probe: true }).quiescent) return true;
   }
   return false;
 }

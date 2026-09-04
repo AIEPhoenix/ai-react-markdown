@@ -29,6 +29,14 @@
  *   seam disqualified           14.8 / 8           36.8 / 20         8   (seam family only)
  *   seam mathFlow                8.2 / 3           19.1 / 9          4   (seam family only)
  *
+ * Re-measured 2026-09-04 after the soft-atom alphabet landed (eight bodies
+ * added to BODIES — same-line paired tags, a tag inside a formula, the
+ * `<span>$</span>100` idiom, a private-use code unit, a CRLF line), 60
+ * seeds x 400 runs, node 24: soup froze defaults 45.5 / 31, threshold-0/off
+ * 103.3 / 85, threshold-0/on 119.7 / 102; seam froze defaults 77.4 / 60,
+ * seam disqualified 42.4 / 24, seam mathFlow 22.5 / 13. Every floor keeps
+ * its margin (0% of seeds failing at RUNS/50 on the gated rows).
+ *
  * Re-measured under node 22.23.2, the version CI pins, 30 seeds: seam
  * disqualified mean 43.8 min 22, seam mathFlow mean 22.6 min 12, froze
  * defaults min 31 — same floors, 0% failing on both versions.
