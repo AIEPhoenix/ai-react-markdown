@@ -6,6 +6,51 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 ---
 
+## 2.12.x — Faithful content and less repeated streaming work
+
+### 2.12.0 — Reference fidelity, explicit queue waiting, and streaming efficiency
+
+**Cross-chunk references now preserve the final link/image policy.** Resolved
+references honor the final element's sanitizer tag, attribute, protocol and
+ancestor constraints. Hash destinations use the document prefix before the URL
+callback runs, and escaped or character-reference labels retain a separate lookup
+identifier. Full, collapsed and shortcut references work across chunks without
+using decoded display text as the registry key.
+
+**Code display and copying preserve the source.** JSON formatting retains numeric
+tokens, duplicate keys and key order instead of round-tripping numbers through
+JavaScript Number. The copy button copies the original code text. New optional
+`codeBlock.formatJson` and `codeBlock.expandNestedJson` flags both default to
+`true`; disable nested expansion for formatting alone, or disable formatting to
+show the source. Raw pre/code structures with nested markup, sibling text or
+additional attributes retain their normal rendering. Non-append code replacements
+also restart language auto-detection, including same-length replacements.
+
+**Pre-mounted empty chunks can explicitly wait for their input.** Set
+`smoothWaiting` on `AIMarkdownSmoothStream`, or `waiting` on
+`useDocumentSmoothStream`, from the first mount while awaiting the request.
+Clear it when streaming starts or an empty result completes. The default remains
+`false`: an empty, non-streaming chunk is a completed result. Completion is still
+sticky, and `documentIndex` does not reorder smooth turns.
+
+**Repeated work is reduced without changing the pacing law.** Registry queries
+share a lazy per-version index; reference placeholders select the values they
+render. Core reuses context-free prefix plans retained by the incremental engine,
+while reference and raw-HTML regions retain conservative planning. Definition and
+JSON completeness scans keep append state. Mermaid serializes initialization,
+parsing and rendering while retaining only the latest pending task per instance.
+The smooth controller consumes its grapheme queue with a cursor instead of
+copying the remaining backlog on each frame. Global registry notifications,
+top-level plan traversal and ordinary code highlighting still have work left to
+optimize; this release does not claim an entirely tail-only render path.
+
+Validation: full preflight passed with **143 test files / 1,905 tests**, including
+Chromium stories. The standard, fresh-seed **six-leg release soak passed all 84
+shards**, with no source changes during the run. Release preparation changes only
+versions, workspace lock metadata and documentation; production source matches the
+soaked candidate. The release workflow reruns its quality and packaging gates
+before publishing engine, core and mantine together.
+
 ## 2.11.x — A tag inside a formula is still one formula
 
 ### 2.11.0 — Soft atoms, and a credential for the engine's own tags
