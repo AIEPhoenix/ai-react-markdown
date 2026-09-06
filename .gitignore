@@ -21,3 +21,7 @@ storybook-static/
 # format settles. Committing them before then would bake a schema nobody has
 # had to read twice yet.
 benchmarks/results/
+
+# Local review notes must stay out of the repository.
+/docs/review/
+/docs/reviews/
