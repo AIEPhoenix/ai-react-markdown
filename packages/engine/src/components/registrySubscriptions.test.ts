@@ -153,3 +153,72 @@ test('new subscriptions during fanout do not receive a stale scheduled notificat
   await drain();
   expect(added).toHaveBeenCalledTimes(1);
 });
+
+test('mixed mutation histories notify exactly when indexed observable snapshots change', async () => {
+  const same = (a: unknown, b: unknown): boolean =>
+    Array.isArray(a) && Array.isArray(b)
+      ? a.length === b.length && a.every((value, i) => same(value, b[i]))
+      : Object.is(a, b);
+  const r = createRegistry();
+  const chunks = Array.from({ length: 6 }, (_, i) => r.allocateSymbol(`chunk-${i}`, i));
+  const labels = ['A', 'B', 'C'];
+  const seen = Array.from({ length: 6 }, () => vi.fn());
+  labels.forEach((label, i) => {
+    r.subscribeLabel('link', label.toLowerCase(), seen[i]);
+    r.subscribeLabel('footnote', label.toLowerCase(), seen[i + 3]);
+  });
+  await drain();
+  const snapshots = () => [
+    ...labels.map((label) => [r.canonicalLinkFor(label), r.resolveLinkDef(label)?.url, r.resolveLinkDef(label)?.title]),
+    ...labels.map((label) => [
+      r.canonicalFootnoteFor(label),
+      r.globalNumber(label),
+      r.getRefsForLabel(label),
+      chunks.map((chunk) => [1, 2, 3, 4].map((n) => r.globalOccurrenceForRef(chunk, label, n))),
+    ]),
+  ];
+  let seed = 726391;
+  const next = (n: number) => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed % n;
+  };
+  let changes = 0;
+  for (let step = 0; step < 180; step++) {
+    const before = snapshots();
+    seen.forEach((callback) => callback.mockClear());
+    const chunk = next(chunks.length);
+    if (step % 11 === 0) {
+      r.releaseSymbol(`chunk-${chunk}`);
+      await drain();
+      // Treat removal and replacement as separate notification batches.
+      const removed = snapshots();
+      seen.forEach((callback, i) => expect(callback.mock.calls.length).toBe(same(before[i], removed[i]) ? 0 : 1));
+      seen.forEach((callback) => callback.mockClear());
+      chunks[chunk] = r.allocateSymbol(`chunk-${chunk}`, next(12));
+      await drain();
+      continue;
+    }
+    if (step % 7 === 0) {
+      r.allocateSymbol(`chunk-${chunk}`, next(12));
+      r.releaseSymbol(`chunk-${chunk}`); // balance the move's temporary retain
+    } else {
+      const payload = data(
+        Array.from({ length: next(5) }, () => labels[next(3)]),
+        labels.filter(() => next(2) === 0).map((label) => [label, `/value-${next(4)}`])
+      );
+      for (const label of labels.filter(() => next(3) === 0)) {
+        payload.defs.set(label, { identifier: label, contentSource: `body-${step}` });
+        payload.ownFootnoteLabels.add(label);
+      }
+      r.contributeChunkData(chunks[chunk], payload);
+    }
+    await drain();
+    const after = snapshots();
+    seen.forEach((callback, i) => {
+      const changed = !same(before[i], after[i]);
+      if (changed) changes++;
+      expect(callback.mock.calls.length, `step=${step}, observer=${i}`).toBe(changed ? 1 : 0);
+    });
+  }
+  expect(changes).toBeGreaterThan(100);
+});
