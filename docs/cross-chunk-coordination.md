@@ -164,6 +164,7 @@ function BacklinkPanel({ documentId, label }: { documentId: string; label: strin
 | `labelSet`                                          | `{ footnoteLabels, linkLabels }` (ReadonlySet) | Union of own-def labels across chunks                                                                                          |
 | `version`                                           | `number`                                       | Monotonic counter; bumped on every mutation                                                                                    |
 | `subscribe(cb)`                                     | unsubscribe function                           | Wake-up on registry mutations                                                                                                  |
+| `subscribeLabel(kind, label, cb)`                   | unsubscribe function                           | Observe one normalized `link` or `footnote` label's indexed selectors; links and images share the link channel                 |
 | `canonicalFootnoteFor(label)`                       | `symbol \| null`                               | Which chunk owns the canonical def for this footnote                                                                           |
 | `canonicalLinkFor(label)`                           | `symbol \| null`                               | Same, for link defs                                                                                                            |
 | `globalNumber(label)`                               | `number \| null`                               | Document-wide footnote number for a label                                                                                      |
@@ -179,7 +180,7 @@ A few internals are deliberately kept off the public surface — useful to know 
 
 - **Per-chunk `Symbol`** — every chunk allocates a unique `Symbol` to identify itself inside the registry. There's no hook to read your own chunk's symbol from a custom component. If you need chunk-scoped behavior, derive it from `useAIMarkdownDocument().documentId` (shared across chunks) plus your own scoping logic.
 - **Per-chunk URL policy / cross-chunk URL sanitization context** — the cross-chunk placeholders run their own per-attribute `urlTransform` pass using each consuming chunk's `urlTransform` + `sanitizeSchema`. The mechanism is internal; you control behavior by passing those props to each `<AIMarkdown>`, not by hooking into the cross-chunk machinery.
-- **Mutator methods on `Registry`** — see the note above. Only selectors and `subscribe` are public.
+- **Mutator methods on `Registry`** — see the note above. Only selectors, `subscribe` and `subscribeLabel` are public.
 
 If you find yourself wanting one of these, the supported path is usually to drive the same behavior from the public surfaces (`documentId`, `metadata`, `urlTransform`, `sanitizeSchema`, the public `Registry` selectors). If that's genuinely insufficient, open an issue describing the use case.
 
@@ -424,3 +425,9 @@ The wrapper does evict empty registries, but the perf cost of allocate/teardown 
 ### Nesting `<AIMarkdownDocuments>`
 
 Already covered above — dev throws, prod degrades. Don't.
+
+### Label notification routing
+
+Placeholders use `subscribeLabel` and a scalar snapshot instead of receiving every registry notification. Link observers wake when their canonical owner, URL or title changes. Footnote observers wake when the canonical owner, number, reference count or per-chunk occurrence range changes, including indirect renumbering after another label is inserted earlier in document order. Labels are normalized by the same identifier rules as the selectors.
+
+Each microtask compares the observed labels against the current ordered index before invoking any callbacks. Multiple same-label placeholders share that comparison. Net-zero changes can produce no label callback; global `subscribe` still observes every mutation batch and is required for raw chunk data, footnote bodies and aggregate views. Unsubscribing the last listener removes the label group. Index rebuilding and comparison across subscribed labels still cost work; this removes unrelated callback fanout, not every document-wide scan.
