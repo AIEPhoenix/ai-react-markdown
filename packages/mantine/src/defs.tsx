@@ -35,6 +35,10 @@ export interface MantineCodeBlockOptions {
   formatJson?: boolean;
   /** Expand string values containing JSON objects/arrays for display. @default true */
   expandNestedJson?: boolean;
+  /** Coalesce appended code display updates while streaming. Completion,
+   * replacement and language changes update immediately; copy uses latest
+   * source. Set 0 for every update. @default 50 */
+  highlightIntervalMs?: number;
 }
 
 /** Shipped defaults for the `codeBlock` behavior group. */
@@ -43,6 +47,7 @@ export const defaultMantineCodeBlockOptions: Readonly<MantineCodeBlockOptions> =
   autoDetectUnknownLanguage: false,
   formatJson: true,
   expandNestedJson: true,
+  highlightIntervalMs: 50,
 });
 
 /**

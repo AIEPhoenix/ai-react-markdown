@@ -377,3 +377,11 @@ Block memoization wins by dividing work into many small caches. If your content 
 ### Mistaking `streaming` for an in-progress signal that pauses rendering
 
 `streaming === true` does not delay rendering. Content is rendered immediately as it arrives. The flag is purely a _signal_ to your custom components that more content is coming. If you need a paused/buffered render (e.g. only update every 100ms), implement that in **your** component upstream of `<AIMarkdown>` — debounce the `content` you pass.
+
+## Mantine code display cadence
+
+Ordinary streaming code blocks coalesce appended display updates with `codeBlock.highlightIntervalMs` (default 50 ms). The first frame, static content, completion, replacements and language changes bypass the wait. A pending deadline is not postponed by further appends, so continuous input still makes progress. Set the interval to 0 for every input update; non-finite or negative values fall back to the default. Browser timers can fire later when the main thread is busy or a tab is backgrounded, so the interval is a scheduling target, not a hard latency guarantee.
+
+The copy control reads the latest unformatted source independently of the displayed snapshot. Each block retains only its latest highlighting result, keyed by code, language, color scheme and highlighter function identity; outer adapter Provider renders therefore do not repeat identical highlighting. Adapter/theme changes still invalidate the result. Mermaid keeps its separate serial render queue.
+
+Retained reference-bearing prefix blocks can now reuse their block plans. Tail planning uses full-document reference context whenever the prefix contains references, preserving global context, ranks and occurrence counts. Raw HTML and definition ownership still use the conservative full planner. This reduces repeated per-block planning; document context walks and top-level array work remain.

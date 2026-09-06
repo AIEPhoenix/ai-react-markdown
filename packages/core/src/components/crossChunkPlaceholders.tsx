@@ -90,9 +90,11 @@ export function FootnoteSupNumber({
   // this whole change exists to keep standalone.
   const registry = useDocumentRegistry(documentId, documentIdExplicit);
   const chunkSym = useContext(ChunkSymbolContext);
-  // Select only facts that affect this mark. Unrelated registry updates
-  // still notify the store but no longer schedule a React render here.
-  const subscribe = useCallback((cb: () => void) => (registry ? registry.subscribe(cb) : () => {}), [registry]);
+  // Route notifications by label, then select only facts used by this mark.
+  const subscribe = useCallback(
+    (cb: () => void) => (registry ? registry.subscribeLabel('footnote', label, cb) : () => {}),
+    [registry, label]
+  );
   const getSnapshot = useCallback(
     () =>
       JSON.stringify([
@@ -271,9 +273,11 @@ export function CrossChunkLink({
   // opens a registry shell via a stray placeholder tag.
   const registry = useDocumentRegistry(documentId, documentIdExplicit);
   const policy = useContext(CrossChunkUrlContext);
-  // Only a changed destination/title schedules this placeholder. The store
-  // still broadcasts notifications; indexing makes each snapshot lookup cheap.
-  const subscribe = useCallback((cb: () => void) => (registry ? registry.subscribe(cb) : () => {}), [registry]);
+  // Links and images share the definition channel; unrelated labels do not wake this subscriber.
+  const subscribe = useCallback(
+    (cb: () => void) => (registry ? registry.subscribeLabel('link', identifier ?? label, cb) : () => {}),
+    [registry, identifier, label]
+  );
   const getSnapshot = useCallback(() => {
     const def = registry?.resolveLinkDef(identifier ?? label);
     return JSON.stringify(def ? [def.url, def.title ?? null] : null);
@@ -330,7 +334,10 @@ export function CrossChunkImage({
   const policy = useContext(CrossChunkUrlContext);
   // Same subscription-only useSyncExternalStore pattern as CrossChunkLink —
   // see that component for the rationale.
-  const subscribe = useCallback((cb: () => void) => (registry ? registry.subscribe(cb) : () => {}), [registry]);
+  const subscribe = useCallback(
+    (cb: () => void) => (registry ? registry.subscribeLabel('link', identifier ?? label, cb) : () => {}),
+    [registry, identifier, label]
+  );
   const getSnapshot = useCallback(() => {
     const def = registry?.resolveLinkDef(identifier ?? label);
     return JSON.stringify(def ? [def.url, def.title ?? null] : null);

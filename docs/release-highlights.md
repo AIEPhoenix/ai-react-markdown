@@ -6,6 +6,15 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 ---
 
+## 2.13.x — Less repeated streaming work
+
+### 2.13.0 — Coalesced highlights and selective reference updates
+
+- Coalesce ordinary streaming code display updates with `codeBlock.highlightIntervalMs` (default 50 ms, 0 disables); preserve immediate final frames and copying of the latest source.
+- Route placeholder notifications through label subscriptions, including indirect footnote renumbering and occurrence changes.
+- Reuse retained reference prefix plans while carrying full document context into tail planning.
+- Separate freeze checkpoint state, line grammar and line transitions, and separate splice injection, coordinates, HTML guards and seam alignment. Existing entry points and transition bodies are preserved.
+
 ## 2.12.x — Faithful content and less repeated streaming work
 
 ### 2.12.0 — Reference fidelity, explicit queue waiting, and streaming efficiency

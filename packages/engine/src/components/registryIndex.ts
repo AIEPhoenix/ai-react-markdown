@@ -6,6 +6,7 @@ export interface RegistryIndex {
   numbers: Map<string, number>;
   counts: Map<string, number>;
   occurrences: Map<symbol, Map<string, { start: number; count: number }>>;
+  labelOccurrences: Map<string, Map<symbol, { start: number; count: number }>>;
 }
 
 /** One ordered pass per observed registry version. Querying a reference no
@@ -18,6 +19,7 @@ export function buildRegistryIndex(registry: Pick<Registry, 'chunkOrder' | 'chun
     numbers: new Map(),
     counts: new Map(),
     occurrences: new Map(),
+    labelOccurrences: new Map(),
   };
   for (const sym of registry.chunkOrder) {
     const data = registry.chunkData.get(sym);
@@ -34,7 +36,13 @@ export function buildRegistryIndex(registry: Pick<Registry, 'chunkOrder' | 'chun
       index.counts.set(label, total);
       const prior = local.get(label);
       if (prior) prior.count++;
-      else local.set(label, { start: total, count: 1 });
+      else {
+        const range = { start: total, count: 1 };
+        local.set(label, range);
+        let byChunk = index.labelOccurrences.get(label);
+        if (!byChunk) index.labelOccurrences.set(label, (byChunk = new Map()));
+        byChunk.set(sym, range);
+      }
     }
   }
   return index;

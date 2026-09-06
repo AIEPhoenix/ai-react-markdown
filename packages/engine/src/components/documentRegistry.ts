@@ -9,6 +9,7 @@
 import type { ElementContent as HastElementContent } from 'hast';
 import { normalizeId } from './normalizeId';
 import { buildRegistryIndex, type RegistryIndex } from './registryIndex';
+import { createRegistrySubscriptions } from './registrySubscriptions';
 
 export interface FootnoteDef {
   /** Already-normalized identifier (uppercase). Used as dictionary key for
@@ -100,10 +101,14 @@ export interface Registry {
 
   subscribe(cb: () => void): () => void;
 
-  // Selectors — pure reads over chunkOrder × chunkData, recomputed on every
-  // call (NOT memoized: each is a linear walk of the registry; placeholder
-  // components already gate their re-renders on `version`, so callers pay
-  // one walk per registry mutation, not per render).
+  /** Observe one normalized label's indexed selectors. Links/images share
+   * the 'link' channel (canonical owner, URL, title). Footnotes observe
+   * canonical owner, numbering, counts and per-chunk occurrence ranges.
+   * Raw chunk payload/body changes still require the global subscription.
+   * Notifications are microtask-coalesced and may skip net-zero changes. */
+  subscribeLabel(kind: 'link' | 'footnote', label: string, cb: () => void): () => void;
+
+  // Selectors share a lazy ordered index for the current version.
   canonicalFootnoteFor(label: string): symbol | null;
   canonicalLinkFor(label: string): symbol | null;
   globalNumber(label: string): number | null;
@@ -201,6 +206,7 @@ export function createRegistry(onEmpty?: () => void): RegistryInternal {
     }
     return index;
   };
+  const labels = createRegistrySubscriptions(() => ({ registry: reg, index: getIndex() }));
   const reg = {
     chunkOrder: [] as symbol[],
     chunkData: new Map<symbol, ChunkData>(),
@@ -433,6 +439,10 @@ export function createRegistry(onEmpty?: () => void): RegistryInternal {
       };
     },
 
+    subscribeLabel(kind: 'link' | 'footnote', label: string, cb: () => void): () => void {
+      return labels.subscribe(kind, label, cb);
+    },
+
     canonicalFootnoteFor(label: string): symbol | null {
       return getIndex().footnotes.get(normalizeId(label)) ?? null;
     },
@@ -463,10 +473,12 @@ export function createRegistry(onEmpty?: () => void): RegistryInternal {
       this._notifyScheduled = true;
       queueMicrotask(() => {
         this._notifyScheduled = false;
+        const labelCallbacks = labels.collect();
         // Snapshot subscribers so unsubscribes during fanout don't shift the
         // iteration. New subscribers added during fanout will pick up the
         // current `version` on their next render.
         for (const cb of [...this._subscribers]) cb();
+        for (const cb of labelCallbacks) cb();
       });
     },
   };

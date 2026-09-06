@@ -326,6 +326,9 @@ const EMPTY_LABELS: ReadonlySet<string> = new Set<string>();
 
 /** Extra render-time facts {@link buildBlocks} cannot read off the trees. */
 export interface BuildBlocksOptions {
+  /** Full document when planning only a tail. Its ordered reference and
+   * definition context seeds numbering and invalidation for tail blocks. */
+  contextMdast?: MdastRoot;
   /**
    * Labels this chunk phantom-injected because another chunk defines them
    * (already normalized). The coordinated handlers keep these out of
@@ -468,7 +471,7 @@ export function buildBlocks(
     }
     return lo;
   };
-  visit(mdast, (n) => {
+  visit(options.contextMdast ?? mdast, (n) => {
     if (!CTX_TYPES.has(n.type)) return;
     const at = n.position?.start?.offset;
     if (at !== undefined) taintOffsets.push(at);
@@ -528,7 +531,7 @@ export function buildBlocks(
       }
       return rank;
     };
-    visit(mdast, (n) => {
+    visit(options.contextMdast ?? mdast, (n) => {
       if (n.type === 'footnoteDefinition') {
         // A definition met before the label's first ref can enter the
         // engine's footnoteOrder first (preserveOrphan) — it takes part in

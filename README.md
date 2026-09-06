@@ -504,12 +504,13 @@ Rules worth knowing:
 
 The Mantine package additionally surfaces a `codeBlock` prop (group value replaces atomically; omitted fields fall to defaults):
 
-| Prop field                            | Type      | Default | Purpose                                                                      |
-| ------------------------------------- | --------- | ------- | ---------------------------------------------------------------------------- |
-| `codeBlock.defaultExpanded`           | `boolean` | `true`  | Whether code blocks start expanded                                           |
-| `codeBlock.autoDetectUnknownLanguage` | `boolean` | `false` | Use `hljs.highlightAuto` for unlabelled blocks                               |
-| `codeBlock.formatJson`                | `boolean` | `true`  | Format JSON without rounding numeric tokens; copying uses original code text |
-| `codeBlock.expandNestedJson`          | `boolean` | `true`  | Expand JSON object/array strings when formatting is enabled                  |
+| Prop field                            | Type      | Default | Purpose                                                                                                                                                                             |
+| ------------------------------------- | --------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `codeBlock.defaultExpanded`           | `boolean` | `true`  | Whether code blocks start expanded                                                                                                                                                  |
+| `codeBlock.autoDetectUnknownLanguage` | `boolean` | `false` | Use `hljs.highlightAuto` for unlabelled blocks                                                                                                                                      |
+| `codeBlock.formatJson`                | `boolean` | `true`  | Format JSON without rounding numeric tokens; copying uses original code text                                                                                                        |
+| `codeBlock.expandNestedJson`          | `boolean` | `true`  | Expand JSON object/array strings when formatting is enabled                                                                                                                         |
+| `codeBlock.highlightIntervalMs`       | `number`  | `50`    | Coalesce streaming code display updates over this interval in milliseconds; `0` updates every frame. Completion and replacement update immediately; copy always uses latest source. |
 
 ### `define*` factories (optional)
 
@@ -777,7 +778,7 @@ Issues and pull requests are welcome. For non-trivial changes, please open an is
 
 Reporting a bug helps most when it includes:
 
-- The package and version (`@ai-react-markdown/core@2.12.0` …)
+- The package and version (`@ai-react-markdown/core@2.13.0` …)
 - The relevant `<AIMarkdown>` / `<MantineAIMarkdown>` props
 - A minimal markdown sample that reproduces the issue
 - For streaming-related bugs: the chunk sequence (one string per chunk)

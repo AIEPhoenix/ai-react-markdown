@@ -1,13 +1,20 @@
 'use client';
 
-import { HTMLAttributes, memo, useEffect, useMemo, useRef, useState } from 'react';
-import { CodeHighlight, CodeHighlightTabs, CodeHighlightControl } from '@mantine/code-highlight';
+import { createContext, HTMLAttributes, memo, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  CodeHighlight,
+  CodeHighlightTabs,
+  CodeHighlightControl,
+  CodeHighlightAdapterProvider,
+  useHighlight,
+} from '@mantine/code-highlight';
 import { useAIMarkdownState, useAIMarkdownTheme } from '@ai-react-markdown/core';
 import { useMantineCodeBlockOptions } from '../../hooks/useMantineCodeBlockOptions';
 import MantineAIMMermaidCode from './MermaidCode';
 import { CopyButton } from '@mantine/core';
 import { prettyPrintJson } from './formatJson';
 import { createJsonCompletenessScanner } from './jsonCompleteness';
+import { useCodeFrame } from './useCodeFrame';
 export { jsonLooksComplete } from './jsonCompleteness';
 export { prettyPrintJson } from './formatJson';
 
@@ -146,8 +153,11 @@ export function preloadMantineCodeAssets(): Promise<void> {
   );
 }
 
-/** Copy always uses source bytes, independently of display formatting. */
-function RawCodeCopy({ code }: { code: string }) {
+const RawCodeContext = createContext('');
+
+/** Context updates the copy control without re-running the highlighter. */
+function RawCodeCopy() {
+  const code = useContext(RawCodeContext);
   return (
     <CopyButton value={code}>
       {({ copied, copy }) => (
@@ -177,6 +187,82 @@ function RawCodeCopy({ code }: { code: string }) {
     </CopyButton>
   );
 }
+
+/** Single-entry adapter cache. Lives outside render; each request is keyed
+ * by every input consumed by the highlighter, and a new function gets a new cache. */
+function createCachedHighlightAdapter(highlight: ReturnType<typeof useHighlight>) {
+  let previous: Parameters<typeof highlight>[0] | undefined;
+  let result: ReturnType<typeof highlight>;
+  return {
+    getHighlighter: () => (input: Parameters<typeof highlight>[0]) => {
+      if (
+        !previous ||
+        input.code !== previous.code ||
+        input.language !== previous.language ||
+        input.colorScheme !== previous.colorScheme
+      ) {
+        result = highlight(input);
+        previous = input;
+      }
+      return result;
+    },
+  };
+}
+
+/** Stable props keep Mantine's synchronous adapter out of intermediate renders. */
+const OrdinaryCodeHighlight = memo(function OrdinaryCodeHighlight({
+  code,
+  language,
+  fileName,
+  fontSize,
+  defaultExpanded,
+}: {
+  code: string;
+  language: string;
+  fileName: string;
+  fontSize: number | string;
+  defaultExpanded: boolean;
+}) {
+  const highlight = useHighlight();
+  const adapter = useMemo(() => createCachedHighlightAdapter(highlight), [highlight]);
+  return (
+    <CodeHighlightAdapterProvider adapter={adapter}>
+      {fileName === 'unknown' ? (
+        <CodeHighlight
+          mb={15}
+          fz={fontSize}
+          w="100%"
+          code={code}
+          withBorder
+          withExpandButton
+          defaultExpanded={defaultExpanded}
+          maxCollapsedHeight="320px"
+          withCopyButton={false}
+          controls={[<RawCodeCopy key="copy" />]}
+        />
+      ) : (
+        <CodeHighlightTabs
+          mb={15}
+          fz={fontSize}
+          w="100%"
+          code={[
+            {
+              fileName: fileName,
+              code: code,
+              language: language,
+            },
+          ]}
+          withBorder
+          withExpandButton
+          defaultExpanded={defaultExpanded}
+          maxCollapsedHeight="320px"
+          withCopyButton={false}
+          controls={[<RawCodeCopy key="copy" />]}
+        />
+      )}
+    </CodeHighlightAdapterProvider>
+  );
+});
 
 /**
  * Code languages that receive specialized rendering instead of standard
@@ -224,7 +310,8 @@ const MantineAIMPreCode = memo(
   ) => {
     const { fontSize } = useAIMarkdownTheme();
     const { streaming } = useAIMarkdownState();
-    const { autoDetectUnknownLanguage, defaultExpanded, formatJson, expandNestedJson } = useMantineCodeBlockOptions();
+    const { autoDetectUnknownLanguage, defaultExpanded, formatJson, expandNestedJson, highlightIntervalMs } =
+      useMantineCodeBlockOptions();
 
     const detectedLanguage = useAutoDetectedLanguage(
       props.codeText,
@@ -269,51 +356,14 @@ const MantineAIMPreCode = memo(
       if (formatJson && usedCodeStr && usedCodeLanguage === 'json' && (!streaming || jsonComplete)) {
         usedCodeStr = prettyPrintJson(usedCodeStr, expandNestedJson);
       }
-      return usedFileName === 'unknown' ? (
-        <CodeHighlight
-          mb={15}
-          fz={fontSize}
-          w="100%"
-          code={usedCodeStr}
-          withBorder
-          withExpandButton
-          defaultExpanded={defaultExpanded}
-          maxCollapsedHeight="320px"
-          withCopyButton={false}
-          controls={[<RawCodeCopy key="copy" code={props.codeText} />]}
-        />
-      ) : (
-        <CodeHighlightTabs
-          mb={15}
-          fz={fontSize}
-          w="100%"
-          code={[
-            {
-              fileName: usedFileName,
-              code: usedCodeStr,
-              language: usedCodeLanguage,
-            },
-          ]}
-          withBorder
-          withExpandButton
-          defaultExpanded={defaultExpanded}
-          maxCollapsedHeight="320px"
-          withCopyButton={false}
-          controls={[<RawCodeCopy key="copy" code={props.codeText} />]}
-        />
-      );
-    }, [
-      isSpecialCodeBlock,
-      props.codeText,
+      return usedCodeStr;
+    }, [isSpecialCodeBlock, props.codeText, usedCodeLanguage, streaming, formatJson, expandNestedJson, jsonComplete]);
+    const displayedCode = useCodeFrame(
+      normalCodeBlockContent ?? '',
       usedCodeLanguage,
-      usedFileName,
-      fontSize,
-      defaultExpanded,
-      streaming,
-      formatJson,
-      expandNestedJson,
-      jsonComplete,
-    ]);
+      streaming && !isSpecialCodeBlock,
+      highlightIntervalMs
+    );
 
     const specialCodeBlockContent = useMemo(() => {
       switch (codeLanguage) {
@@ -324,7 +374,19 @@ const MantineAIMPreCode = memo(
       }
     }, [codeLanguage, props.codeText]);
 
-    return isSpecialCodeBlock ? specialCodeBlockContent : normalCodeBlockContent;
+    return isSpecialCodeBlock ? (
+      specialCodeBlockContent
+    ) : (
+      <RawCodeContext.Provider value={props.codeText}>
+        <OrdinaryCodeHighlight
+          code={displayedCode}
+          language={usedCodeLanguage}
+          fileName={usedFileName}
+          fontSize={fontSize}
+          defaultExpanded={defaultExpanded}
+        />
+      </RawCodeContext.Provider>
+    );
   }
 );
 

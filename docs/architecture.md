@@ -180,7 +180,7 @@ Located at `packages/engine/src/components/documentRegistry.ts` (framework-agnos
 1. **Per-`documentId` partitioning**. The wrapper holds a `Map<documentId, Registry>`. Each unique id gets its own registry.
 2. **Symbol-keyed contributions**. Each chunk allocates a `Symbol(reactId)` on mount and contributes to the registry under that symbol. The symbol is the chunk's identity for the registry's lifetime.
 3. **Refcount + microtask cleanup**. `releaseSymbol` decrements a refcount and schedules deletion via `queueMicrotask`. This survives React 19 Strict Mode (mount → unmount → mount within a frame) without losing the chunk's identity.
-4. **Monotonic version counter**. Every mutation bumps `version`; subscribers wake via microtask-coalesced fanout.
+4. **Monotonic version counter**. Every mutation bumps `version`; global subscribers wake via microtask-coalesced fanout. Label subscribers compare indexed selector snapshots and wake only for their affected label.
 5. **labelSet derivation**. `labelSet.{footnoteLabels, linkLabels}` is the union of own-def labels across all live chunks. Used by Stage B's phantom-def injection to know which orphan refs to protect.
 6. **Last-chunk eviction**. When the final chunk releases its symbol and the registry becomes empty, an `onEmpty` callback fires, removing the registry from the wrapper's Map. The next mount with the same id allocates a fresh registry.
 
@@ -271,6 +271,10 @@ packages/engine/src/                ← @ai-react-markdown/engine (framework-agn
 ├── experiments/prefixFreeze/   ← freeze-boundary measurement study
 └── components/
     ├── incrementalParse/       ← splice engine + arbiter harness + fuzz batteries
+    │   ├── computeFreezeBoundary.ts ← resume orchestration and boundary selection
+    │   ├── freezeScanState.ts / freezeLineSyntax.ts / freezeLineTransition.ts
+    │   ├── spliceParse.ts       ← splice orchestration and fallback order
+    │   └── prefixInjection.ts / spliceCoordinates.ts / spliceHtmlGuards.ts / prefixAlignment.ts
     ├── markdown/               ← pure pipeline half of the vendored react-markdown
     │                             (processor, transform, parse/transform stages)
     ├── smoothStream/controller.ts ← framework-agnostic pacing controller

@@ -69,7 +69,7 @@ yarn add @ai-react-markdown/mantine @ai-react-markdown/core
 {
   "react": ">=19",
   "react-dom": ">=19",
-  "@ai-react-markdown/core": "^2.12.0",
+  "@ai-react-markdown/core": "^2.13.0",
   "@mantine/core": "^9.0.0",
   "@mantine/code-highlight": "^9.0.0",
   "highlight.js": "^11.11.2"
@@ -150,12 +150,13 @@ The Mantine package adds one behavior group on top of core's flat props: the `co
 
 ### `codeBlock` (`Partial<MantineCodeBlockOptions>`)
 
-| Field                       | Type      | Default | Description                                                                                                                          |
-| --------------------------- | --------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `defaultExpanded`           | `boolean` | `true`  | Whether code blocks start in their expanded state. When `false`, long blocks are collapsed with an expand button.                    |
-| `autoDetectUnknownLanguage` | `boolean` | `false` | When `true`, uses `highlight.js`'s `highlightAuto` to determine the language of code blocks lacking an explicit annotation.          |
-| `formatJson`                | `boolean` | `true`  | Format JSON while preserving number tokens, key order and duplicate keys. Set `false` to display source text.                        |
-| `expandNestedJson`          | `boolean` | `true`  | When JSON formatting is enabled, expand string values containing JSON objects or arrays. Set `false` for whitespace formatting only. |
+| Field                       | Type      | Default | Description                                                                                                                                                                         |
+| --------------------------- | --------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `defaultExpanded`           | `boolean` | `true`  | Whether code blocks start in their expanded state. When `false`, long blocks are collapsed with an expand button.                                                                   |
+| `autoDetectUnknownLanguage` | `boolean` | `false` | When `true`, uses `highlight.js`'s `highlightAuto` to determine the language of code blocks lacking an explicit annotation.                                                         |
+| `formatJson`                | `boolean` | `true`  | Format JSON while preserving number tokens, key order and duplicate keys. Set `false` to display source text.                                                                       |
+| `expandNestedJson`          | `boolean` | `true`  | When JSON formatting is enabled, expand string values containing JSON objects or arrays. Set `false` for whitespace formatting only.                                                |
+| `highlightIntervalMs`       | `number`  | `50`    | Coalesce streaming code display updates over this interval in milliseconds; `0` updates every frame. Completion and replacement update immediately; copy always uses latest source. |
 
 ### Example: Collapsed Code Blocks
 
