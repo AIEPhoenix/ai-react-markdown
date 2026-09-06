@@ -6,7 +6,9 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 ---
 
-## Unreleased
+## 2.13.x — Less repeated streaming work
+
+### 2.13.0 — Coalesced highlights and selective reference updates
 
 - Coalesce ordinary streaming code display updates with `codeBlock.highlightIntervalMs` (default 50 ms, 0 disables); preserve immediate final frames and copying of the latest source.
 - Route placeholder notifications through label subscriptions, including indirect footnote renumbering and occurrence changes.
