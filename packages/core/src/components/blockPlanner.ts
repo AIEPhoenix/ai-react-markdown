@@ -3,20 +3,15 @@ import type { Root as HastRoot } from 'hast';
 import { visit } from 'unist-util-visit';
 import { buildBlocks, type BuildBlocksOptions, type BuildBlocksResult, type RenderItem } from './blockMemo';
 
-const CONTEXT_TYPES = new Set([
-  'html',
-  'definition',
-  'footnoteDefinition',
-  'footnoteReference',
-  'linkReference',
-  'imageReference',
-]);
+const UNPAIRED_TYPES = new Set(['html', 'definition', 'footnoteDefinition']);
 
-/** Reuse the engine's retained, context-free prefix plans. Reference-bearing
- * and raw HTML regions still use the complete planner: their ownership and
- * numbering can depend on later nodes. Identity checks, not source-text
+/** Reuse the engine's retained prefix plans, including reference blocks.
+ * Reference prefixes require full-document context when planning the tail.
+ * Raw HTML and definition regions retain complete planning: their ownership
+ * need not be one-to-one. Identity checks, not source-text
  * guesses, establish which trees the incremental engine actually retained.
- * Top-level array traversal remains O(blocks); deep planning is tail-only. */
+ * Top-level traversal remains O(blocks); reference context still visits the
+ * full mdast when needed, while per-block HAST planning is tail-only. */
 export function createBlockPlanner() {
   let previous:
     | {
@@ -33,7 +28,7 @@ export function createBlockPlanner() {
     if (result === undefined) {
       result = true;
       visit(node, (child) => {
-        if (CONTEXT_TYPES.has(child.type)) result = false;
+        if (UNPAIRED_TYPES.has(child.type)) result = false;
       });
       eligible.set(node, result);
     }
@@ -42,6 +37,7 @@ export function createBlockPlanner() {
   return (mdast: MdastRoot, hast: HastRoot, source: string, options: BuildBlocksOptions = {}): BuildBlocksResult => {
     let m = 0;
     let h = 0;
+    let reusedContext = false;
     if (previous && source.startsWith(previous.source) && options.phantomFootnoteLabels === previous.phantoms) {
       while (m < mdast.children.length) {
         const node = mdast.children[m];
@@ -54,11 +50,11 @@ export function createBlockPlanner() {
           el.type !== 'element' ||
           !item ||
           item.kind !== 'block' ||
-          item.info.hasReference ||
           item.info.startOffset !== node.position?.start.offset ||
           !isEligible(node)
         )
           break;
+        reusedContext ||= item.info.hasReference;
         m++;
         h++;
         while (h < hast.children.length) {
@@ -74,7 +70,7 @@ export function createBlockPlanner() {
         { ...mdast, children: mdast.children.slice(m) },
         { ...hast, children: hast.children.slice(h) },
         source,
-        options
+        reusedContext ? { ...options, contextMdast: options.contextMdast ?? mdast } : options
       );
       const prefix = previous.result.plan.slice(0, h);
       const prefixBlocks = prefix.filter(

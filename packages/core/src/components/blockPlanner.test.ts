@@ -10,6 +10,8 @@ const docs = [
   'Prefix.\n\nClaim[^a] and [link][b].\n\n[^a]: Footnote\n\n[b]: #target\n\nTail.',
   'Prefix.\n\n<details>\n\nClaim[^a]\n\n[^a]: Note\n\n</details>\n\nTail.',
   'Prefix.\n\nTerm\n: definition\n\n$$x^2$$\n\nTail.',
+  'Claim[^a] and [link][x].\n\nAgain[^a].\n\n[^a]: Note with [link][x]\n\n[x]: /first\n\nTail[^a] and [link][x].\n\n[x]: /ignored',
+  'Claim[^b].\n\nThen[^a] and again[^b].\n\n[^a]: Alpha\n\n[^b]: Beta\n\nTail[^c].\n\n[^c]: Gamma',
 ];
 
 test.each(CATALOG)('retained-prefix plans equal full plans at every append seam: $label', (config) => {
@@ -33,6 +35,22 @@ test.each(CATALOG)('retained-prefix plans equal full plans at every append seam:
       expect(plan(result.mdast, result.hast, text)).toEqual(buildBlocks(result.mdast, result.hast, text));
     }
   }
+});
+
+test('reuses a reference prefix while preserving full context and tail occurrence counts', () => {
+  const options = buildAdvanceOptions(CATALOG[0]);
+  const plan = createBlockPlanner();
+  const source = 'Claim[^a] and [link][x].\n\nAgain[^a].\n\n[^a]: Note\n\n[x]: /first\n\nTail.\n\n';
+  const first = advanceIncrementalParse(null, source, options);
+  const a = plan(first.mdast, first.hast, source);
+  const text = source + 'More[^a] and [link][x].\n\n';
+  const next = advanceIncrementalParse(first.nextState, text, options);
+  const b = plan(next.mdast, next.hast, text);
+  expect(a.blocks[0].hasReference).toBe(true);
+  expect(b.blocks[0]).toBe(a.blocks[0]);
+  expect(b).toEqual(buildBlocks(next.mdast, next.hast, text));
+  const last = b.blocks.at(-1)!;
+  expect(last.taintLabels?.footnoteRefLocalCtx).toBe(JSON.stringify([['A', 2, 0]]));
 });
 
 test('actually reuses retained block information, but resets on phantom-policy change', () => {
