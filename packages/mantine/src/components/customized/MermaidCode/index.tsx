@@ -1,5 +1,7 @@
 'use client';
 
+import { mermaidRenderQueue } from './renderQueue';
+
 import React, { memo, useEffect, useRef, useState, useCallback } from 'react';
 import { CodeHighlightControl, CodeHighlightTabs } from '@mantine/code-highlight';
 import { ActionIcon, CopyButton, Flex, Tooltip } from '@mantine/core';
@@ -335,20 +337,9 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
         // `document.body` (its default path, cleaned up internally), so
         // measurement works no matter what our container is doing. The SVG
         // string is written into our own <pre> below either way.
-        // mermaid's config is a module singleton and the awaits above yield:
-        // an instance under the OTHER color scheme may have re-initialized
-        // in between, in which case this render came out in the wrong theme.
-        // Re-assert and render once more; a second flip is vanishingly
-        // unlikely and would self-heal on the next attempt anyway
-        // (2026-08 project review, pkg-small-11).
-        let rendered = await mermaid.render(generateMermaidUUID(), props.code);
-        if (initializedTheme !== (isDark ? 'dark' : 'light')) {
-          if (!ref.current || cancelled || renderVersion !== renderVersionRef.current) {
-            return;
-          }
-          ensureMermaidInitialized(mermaid, isDark);
-          rendered = await mermaid.render(generateMermaidUUID(), props.code);
-        }
+        // The queue holds initialization, parsing and rendering together,
+        // so another library instance cannot change the theme mid-task.
+        const rendered = await mermaid.render(generateMermaidUUID(), props.code);
         const { svg, bindFunctions, diagramType } = rendered;
         if (!ref.current || cancelled || renderVersion !== renderVersionRef.current) {
           return;
@@ -386,10 +377,12 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
       }
     };
 
-    void renderMermaid();
+    const owner = renderVersionRef;
+    void mermaidRenderQueue.enqueue(owner, renderMermaid);
 
     return () => {
       cancelled = true;
+      mermaidRenderQueue.cancel(owner);
       if (retryTimer !== undefined) clearTimeout(retryTimer);
     };
     // `streaming` in the deps is what drives the end-of-stream corrective

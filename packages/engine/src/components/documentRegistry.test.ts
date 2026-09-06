@@ -1,4 +1,4 @@
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect, vi } from 'vitest';
 import { createRegistry, type Registry } from './documentRegistry';
 
 // Compile-time guards that the exported `Registry` interface forbids direct
@@ -567,4 +567,37 @@ describe('Registry — contribute + selectors', () => {
     await new Promise<void>((r) => queueMicrotask(() => r()));
     expect(count).toBe(1);
   });
+});
+
+test('query batches share one lazy index and the next contribution invalidates it', () => {
+  const reg = createRegistry();
+  const syms: symbol[] = [];
+  const payload = (label: string) => ({
+    refs: [{ label, kind: 'footnote' as const }],
+    defs: new Map(),
+    linkDefs: new Map(),
+    ownFootnoteLabels: new Set<string>(),
+    ownLinkLabels: new Set<string>(),
+  });
+  for (let i = 0; i < 50; i++) {
+    const sym = reg.allocateSymbol(`c${i}`);
+    syms.push(sym);
+    reg.contributeChunkData(sym, payload(`F${i}`));
+  }
+  const reads = vi.spyOn(reg.chunkData, 'get');
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = 0; i < syms.length; i++) {
+      expect(reg.globalNumber(`F${i}`)).toBe(i + 1);
+      expect(reg.getRefsForLabel(`F${i}`)).toBe(1);
+      expect(reg.globalOccurrenceForRef(syms[i], `F${i}`, 1)).toBe(1);
+    }
+  }
+  expect(reads).toHaveBeenCalledTimes(50);
+  reg.contributeChunkData(syms[0], payload('NEW'));
+  reads.mockClear();
+  expect(reg.globalNumber('F0')).toBeNull();
+  expect(reg.globalNumber('NEW')).toBe(1);
+  expect(reg.globalNumber('F49')).toBe(50);
+  expect(reads).toHaveBeenCalledTimes(50);
+  reads.mockRestore();
 });

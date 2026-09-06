@@ -119,7 +119,17 @@ export function buildCoreRehypePlugins(
     [rehypeRaw, { passThrough: [] }],
     // Unwrap forged engine placeholders BEFORE sanitize admits their tag
     // names. Only when the caller holds a credential (see the option's doc).
-    ...(options ? [[rehypeVerifyEngineTags, { provenance: options.provenance }]] : []),
+    ...(options
+      ? [
+          [
+            rehypeVerifyEngineTags,
+            {
+              provenance: options.provenance,
+              ...(sanitizeSchema.ancestors?.a || sanitizeSchema.ancestors?.img ? { referenceAncestors: true } : {}),
+            },
+          ],
+        ]
+      : []),
     // Sanitize HTML while allowing <mark> (highlight), KaTeX class names,
     // and any extra protocols the caller permitted via the `sanitizeSchema`
     // prop. Override `clobberPrefix` with the instance-scoped value — the

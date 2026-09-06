@@ -611,6 +611,9 @@ export interface AIMarkdownSmoothStreamProps<
    * explicit `documentId` prop; without one this flag is moot.
    */
   smoothCoordination?: boolean;
+  /** Reserve the document queue slot while awaiting input; clear on start
+   * or completion of an empty result. Does not display a streaming cursor. */
+  smoothWaiting?: boolean;
 }
 
 /**
@@ -645,6 +648,7 @@ const AIMarkdownSmoothStreamComponent = <TMetadata extends AIMarkdownMetadata = 
   smoothPacing,
   onSmoothDrained,
   smoothCoordination,
+  smoothWaiting,
   content,
   streaming,
   ...rest
@@ -665,6 +669,7 @@ const AIMarkdownSmoothStreamComponent = <TMetadata extends AIMarkdownMetadata = 
     streaming,
     pacing: smoothPacing,
     onDrained: onSmoothDrained,
+    waiting: smoothWaiting,
   });
   return <AIMarkdown {...rest} content={smooth.content} streaming={smooth.streaming} />;
 };

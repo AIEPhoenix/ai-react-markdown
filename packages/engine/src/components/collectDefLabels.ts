@@ -16,6 +16,7 @@ import remarkGfm from 'remark-gfm';
 import { visit } from 'unist-util-visit';
 import type { Root as MdastRoot } from 'mdast';
 import { normalizeId } from './normalizeId';
+import { createBlankLineScanner } from './blankLineScanner';
 import { computeFreezeBoundary, type FreezeScanCheckpoint } from './incrementalParse/computeFreezeBoundary';
 
 /**
@@ -170,6 +171,8 @@ export interface DefLabelScanner {
 export function createDefLabelScanner(parse: (source: string) => DefLabels = collectDefLabels): DefLabelScanner {
   let prevSource: string | null = null;
   let prevLabels: DefLabels | null = null;
+  const scanBlankLines = createBlankLineScanner();
+  let regionStart = 0;
   // Frozen-prefix cache (Phase B): labels extracted from the region before
   // `frozenEnd` are FINAL — the freeze boundary guarantees every block
   // beginning before it parses byte-identically under any future append,
@@ -190,15 +193,18 @@ export function createDefLabelScanner(parse: (source: string) => DefLabels = col
 
   return {
     scan(source: string): DefLabels {
+      if (source === prevSource && prevLabels !== null) return prevLabels;
+      const previousRegionStart = regionStart;
+      const appended = prevSource !== null && source.startsWith(prevSource);
+      regionStart = scanBlankLines(source, appended ? prevSource!.length : 0);
       let isAppend = false;
       if (prevSource !== null && prevLabels !== null) {
         if (source === prevSource) return prevLabels;
         if (source.startsWith(prevSource)) {
           isAppend = true;
-          const regionStart = lastRegionStart(prevSource);
           // Joined so a def line straddling the append boundary keeps its
           // line-start context.
-          const region = prevSource.slice(regionStart) + source.slice(prevSource.length);
+          const region = source.slice(previousRegionStart);
           if (!DEF_LINE_START_RE.test(region)) {
             prevSource = source;
             return prevLabels;

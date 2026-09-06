@@ -1,10 +1,15 @@
 'use client';
 
 import { HTMLAttributes, memo, useEffect, useMemo, useRef, useState } from 'react';
-import { CodeHighlight, CodeHighlightTabs } from '@mantine/code-highlight';
+import { CodeHighlight, CodeHighlightTabs, CodeHighlightControl } from '@mantine/code-highlight';
 import { useAIMarkdownState, useAIMarkdownTheme } from '@ai-react-markdown/core';
 import { useMantineCodeBlockOptions } from '../../hooks/useMantineCodeBlockOptions';
 import MantineAIMMermaidCode from './MermaidCode';
+import { CopyButton } from '@mantine/core';
+import { prettyPrintJson } from './formatJson';
+import { createJsonCompletenessScanner } from './jsonCompleteness';
+export { jsonLooksComplete } from './jsonCompleteness';
+export { prettyPrintJson } from './formatJson';
 
 /**
  * highlight.js is NOT imported statically any more: the root entry carries
@@ -65,8 +70,14 @@ function useAutoDetectedLanguage(codeText: string, enabled: boolean, streaming: 
   // attempt failed stayed "unknown" for good (v2.4.2 review P2-2). Bounded.
   const [loadAttempt, setLoadAttempt] = useState(0);
   const loadFailuresRef = useRef(0);
+  const previousTextRef = useRef(codeText);
   useEffect(() => {
-    if (!enabled) return;
+    const appended = codeText.startsWith(previousTextRef.current);
+    previousTextRef.current = codeText;
+    if (!enabled) {
+      if (detected) setDetected(null);
+      return;
+    }
     // The block was REPLACED, not appended to (a regenerate reuses this
     // instance — the key is the block's source offset — or a same-offset
     // swap): a guess made for the old text is worthless for the new one.
@@ -76,7 +87,7 @@ function useAutoDetectedLanguage(codeText: string, enabled: boolean, streaming: 
     // would never re-run the effect and a non-streaming replacement stayed
     // "unknown" for good (v2.4.1 review) — evaluate the schedule against
     // the cleared prior in this same pass.
-    const prior = detected !== null && codeText.length < detected.atLength ? null : detected;
+    const prior = !appended || (detected !== null && codeText.length < detected.atLength) ? null : detected;
     if (prior !== detected) setDetected(null);
     if (codeText.length < AUTODETECT_MIN_CHARS) return;
     const due =
@@ -135,78 +146,36 @@ export function preloadMantineCodeAssets(): Promise<void> {
   );
 }
 
-/**
- * Pretty-print helper: `JSON.parse` the block and expand string values that
- * are themselves JSON DOCUMENTS (an object or array — the tool-call
- * transcript shape, where a `tool_result` field is one escaped blob), so
- * both levels print indented. Strings that merely parse as a JSON
- * PRIMITIVE (`"true"`, `"123"`, `"null"`) are left alone: the previous
- * `deep-parse-json` dependency turned `{"flag":"true"}` into
- * `{"flag":true}` — a type rewrite of what the model wrote, and the copy
- * button ships the rewritten bytes (2026-08-19 review r2 P2-14). Returns
- * the input unchanged when it is not valid JSON.
- */
-export function prettyPrintJson(text: string): string {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    return text;
-  }
-  return JSON.stringify(expandNestedJson(parsed), null, 2);
-}
-
-function expandNestedJson(value: unknown): unknown {
-  if (typeof value === 'string') {
-    const t = value.trim();
-    if (t.length > 1 && (t[0] === '{' || t[0] === '[')) {
-      try {
-        const inner: unknown = JSON.parse(t);
-        if (inner !== null && typeof inner === 'object') return expandNestedJson(inner);
-      } catch {
-        /* not a nested document — keep the string */
-      }
-    }
-    return value;
-  }
-  if (Array.isArray(value)) return value.map(expandNestedJson);
-  if (value !== null && typeof value === 'object') {
-    // Null-prototype target: a `"__proto__"` key (an OWN property after
-    // JSON.parse) must stay a property, not become the prototype and vanish
-    // from the output (oracle review of the r2 batch).
-    const out: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = expandNestedJson(v);
-    return out;
-  }
-  return value;
-}
-
-/**
- * Cheap tell that a streamed JSON block is complete: it ends with a closing
- * bracket AND its brackets balance to zero outside string literals. A
- * balanced prefix can still be invalid JSON (prettyPrintJson then just
- * returns the text), but an in-progress pretty-printed block is never
- * balanced, so the parse is skipped on the way through.
- */
-export function jsonLooksComplete(text: string): boolean {
-  if (!/[}\]]\s*$/.test(text)) return false;
-  let depth = 0;
-  let inString = false;
-  for (let i = 0; i < text.length; i++) {
-    const c = text.charCodeAt(i);
-    if (inString) {
-      if (c === 92 /* \\ */) i += 1;
-      else if (c === 34 /* " */) inString = false;
-    } else if (c === 34) {
-      inString = true;
-    } else if (c === 123 || c === 91) {
-      depth += 1;
-    } else if (c === 125 || c === 93) {
-      depth -= 1;
-      if (depth < 0) return false;
-    }
-  }
-  return depth === 0 && !inString;
+/** Copy always uses source bytes, independently of display formatting. */
+function RawCodeCopy({ code }: { code: string }) {
+  return (
+    <CopyButton value={code}>
+      {({ copied, copy }) => (
+        <CodeHighlightControl
+          tooltipLabel={copied ? 'Copied' : 'Copy'}
+          aria-label={copied ? 'Copied' : 'Copy code'}
+          onClick={copy}
+        >
+          {copied ? (
+            '✓'
+          ) : (
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              aria-hidden="true"
+            >
+              <rect x="8" y="8" width="12" height="12" rx="2" />
+              <path d="M16 8V4H4v12h4" />
+            </svg>
+          )}
+        </CodeHighlightControl>
+      )}
+    </CopyButton>
+  );
 }
 
 /**
@@ -237,7 +206,7 @@ const SPECIAL_LANGUAGES = new Set<string>(Object.values(SpecialCodeLanguage));
  *   auto-detection.
  * - Mermaid code blocks (`language-mermaid`) are rendered as interactive diagrams
  *   via {@link MantineAIMMermaidCode}.
- * - JSON code blocks are deep-parsed and pretty-printed before display.
+ * - JSON code blocks are formatted without rounding numeric tokens; nested expansion is optional.
  * - Unrecognized languages render as plaintext with an "unknown" label using
  *   {@link CodeHighlight} (no tabs).
  * - Recognized languages render with {@link CodeHighlightTabs} showing the
@@ -255,7 +224,7 @@ const MantineAIMPreCode = memo(
   ) => {
     const { fontSize } = useAIMarkdownTheme();
     const { streaming } = useAIMarkdownState();
-    const { autoDetectUnknownLanguage, defaultExpanded } = useMantineCodeBlockOptions();
+    const { autoDetectUnknownLanguage, defaultExpanded, formatJson, expandNestedJson } = useMantineCodeBlockOptions();
 
     const detectedLanguage = useAutoDetectedLanguage(
       props.codeText,
@@ -279,6 +248,12 @@ const MantineAIMPreCode = memo(
 
     const isSpecialCodeBlock = SPECIAL_LANGUAGES.has(codeLanguage);
 
+    const [scanJson] = useState(createJsonCompletenessScanner);
+    const jsonComplete = useMemo(
+      () => (usedCodeLanguage === 'json' && formatJson && streaming ? scanJson(props.codeText) : false),
+      [usedCodeLanguage, formatJson, streaming, scanJson, props.codeText]
+    );
+
     const normalCodeBlockContent = useMemo(() => {
       if (isSpecialCodeBlock) return null;
       let usedCodeStr = props.codeText;
@@ -291,8 +266,8 @@ const MantineAIMPreCode = memo(
       // on `}` / `]` at almost every nesting level, so the parse still ran
       // on nearly every chunk (v2.4.1 review). Only a BALANCED bracket
       // scan (strings skipped, one linear pass) admits the parse.
-      if (usedCodeStr && usedCodeLanguage === 'json' && (!streaming || jsonLooksComplete(usedCodeStr))) {
-        usedCodeStr = prettyPrintJson(usedCodeStr);
+      if (formatJson && usedCodeStr && usedCodeLanguage === 'json' && (!streaming || jsonComplete)) {
+        usedCodeStr = prettyPrintJson(usedCodeStr, expandNestedJson);
       }
       return usedFileName === 'unknown' ? (
         <CodeHighlight
@@ -304,6 +279,8 @@ const MantineAIMPreCode = memo(
           withExpandButton
           defaultExpanded={defaultExpanded}
           maxCollapsedHeight="320px"
+          withCopyButton={false}
+          controls={[<RawCodeCopy key="copy" code={props.codeText} />]}
         />
       ) : (
         <CodeHighlightTabs
@@ -321,9 +298,22 @@ const MantineAIMPreCode = memo(
           withExpandButton
           defaultExpanded={defaultExpanded}
           maxCollapsedHeight="320px"
+          withCopyButton={false}
+          controls={[<RawCodeCopy key="copy" code={props.codeText} />]}
         />
       );
-    }, [isSpecialCodeBlock, props.codeText, usedCodeLanguage, usedFileName, fontSize, defaultExpanded, streaming]);
+    }, [
+      isSpecialCodeBlock,
+      props.codeText,
+      usedCodeLanguage,
+      usedFileName,
+      fontSize,
+      defaultExpanded,
+      streaming,
+      formatJson,
+      expandNestedJson,
+      jsonComplete,
+    ]);
 
     const specialCodeBlockContent = useMemo(() => {
       switch (codeLanguage) {

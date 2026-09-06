@@ -47,7 +47,8 @@ type RemarkPlugins = NonNullable<MarkdownOptions['remarkPlugins']>;
 type RehypePlugins = NonNullable<MarkdownOptions['rehypePlugins']>;
 type RemarkRehypeOptions = NonNullable<MarkdownOptions['remarkRehypeOptions']>;
 import { sanitizeSchema } from '@ai-react-markdown/engine';
-import { buildBlocks, createCache, renderBlocksWithCache, type Cache, type PostOptions } from './blockMemo';
+import { createBlockPlanner } from './blockPlanner';
+import { createCache, renderBlocksWithCache, type Cache, type PostOptions } from './blockMemo';
 import {
   buildCoreRehypePlugins,
   buildCoreRemarkPlugins,
@@ -69,11 +70,9 @@ import { buildCrossChunkHandlers } from '@ai-react-markdown/engine';
 import { normalizeForMatch } from '@ai-react-markdown/engine';
 import { crossChunkComponents } from './crossChunkPlaceholders';
 import { CrossChunkUrlContext, type CrossChunkUrlPolicy } from './crossChunkUrlContext';
-import { extractContributions } from '@ai-react-markdown/engine';
-import { extractDefBodiesFromHast } from '@ai-react-markdown/engine';
 import { AggregateFootnotesIfLast } from './aggregateFootnotesIfLast';
 import { ChunkSymbolContext } from './chunkSymbolContext';
-import type { ElementContent as HastElementContent } from 'hast';
+import { useRegistryContribution } from './useRegistryContribution';
 
 /** Module-level SSR snapshot constant for useSyncExternalStore. Hoisted out
  *  of the component so its identity is stable across renders (a fresh `() => 0`
@@ -307,6 +306,7 @@ const BlockMemoizedRenderer = memo(
     );
 
     const cacheRef = useRef<Cache>(createCache());
+    const [planBlocks] = useState(createBlockPlanner);
     // Incremental-parse state (previous frame's content + post-transform
     // trees + verified freeze boundary). Render-phase ref mutation, same
     // pattern as `defScannerRef`/`cacheRef`. Cleared by the G3 flush below
@@ -630,7 +630,7 @@ const BlockMemoizedRenderer = memo(
     const built = useMemo(
       () =>
         measureHere('build', () =>
-          buildBlocks(pipeline.mdast, pipeline.hast, content ?? '', {
+          planBlocks(pipeline.mdast, pipeline.hast, content ?? '', {
             // The block cache's footnote rank models `state.footnoteOrder`,
             // which phantom labels never enter (2026-08-20 B2). Identity is
             // stable across renders whose phantom sets match, so this does
@@ -638,7 +638,7 @@ const BlockMemoizedRenderer = memo(
             phantomFootnoteLabels: targetPhantoms.missingFootnotes,
           })
         ),
-      [pipeline, content, measureHere, targetPhantoms]
+      [pipeline, content, measureHere, targetPhantoms, planBlocks]
     );
 
     // Streaming-cursor tail signal: classify whether the source tail sits
@@ -689,142 +689,19 @@ const BlockMemoizedRenderer = memo(
       ]
     );
 
-    // Post-PASS-1 contribute: walk the parsed mdast and publish refs/defs
-    // back to the registry so other chunks can resolve cross-chunk labels.
-    //
-    // Guarded by a fingerprint to prevent an infinite re-render cascade:
-    // contributeChunkData calls _notify → version++ → useSyncExternalStore
-    // wakes this renderer → targetPhantoms recomputes (fresh Set instances)
-    // → pipeline re-runs (new mdast reference) → this effect would re-fire
-    // and re-contribute the same data → loop. Comparing serialized payload
-    // to last contribution breaks the cycle at the side-effect layer.
-    //
-    // Ordering: `sym` is in the dep array, so this effect re-fires after the
-    // allocate effect commits its setSym(...). The previous microtask/flushSync
-    // dance is gone; React's dep system enforces "allocate before contribute".
-    // `chain` — the identity tuple of every parse input beyond the source
-    // text (same set as the engine's depsKey). The fingerprint below hashes
-    // only source-derived facts, so a runtime plugin/schema/policy swap
-    // re-parses (pipeline changes) but left the fp equal and short-circuited
-    // the contribute: the registry kept bodyHast rendered by the OLD chain
-    // and the aggregate footer disagreed with the body until some label
-    // changed (2026-08 project review, core-render-05). Comparing the chain
-    // by identity fixes that without re-contributing every streaming frame.
-    const lastContributionRef = useRef<{
-      registry: RegistryInternal;
-      symbol: symbol;
-      fp: string;
-      chain: readonly unknown[];
-    } | null>(null);
-    useEffect(() => {
-      if (!registry || !sym) return;
-      const chain = [
-        remarkPlugins,
-        rehypePlugins,
-        remarkRehypeOptions,
-        handlers,
-        preserveForBodyHarvest,
-        clobberPrefix,
-      ];
-      const refs: {
-        label: string;
-        kind: 'footnote' | 'link' | 'image';
-        referenceType?: 'full' | 'collapsed' | 'shortcut';
-      }[] = [];
-      // Collect def metadata first so the fingerprint compares only cheap
-      // fields. bodyHast is sourced from the post-pipeline hast (not from a
-      // bare mdast→hast walk) so def bodies inside the cross-chunk aggregate
-      // render with full plugin output (math, raw HTML, defLists, …).
-      const defMeta = new Map<string, { identifier: string; sourceIdentifier: string; contentSource: string }>();
-      const linkDefs = new Map<string, { identifier: string; url: string; title?: string }>();
-      // Link-definition URLs enter the registry RAW: the render-time
-      // `sanitizeCrossChunkUrl` gate in the placeholders is the single point
-      // of enforcement (protocol allowlist + urlTransform, per attribute
-      // key). A contribute-time pre-pass used to collapse a blocked URL to ''
-      // — indistinguishable from a legal empty destination — and applied a
-      // rewriting urlTransform twice (v2.4.2 review P1-4).
-      for (const node of extractContributions(pipeline.mdast, {
-        phantomFootnoteLabels: targetPhantoms.missingFootnotes,
-      })) {
-        if (node.kind === 'ref') {
-          refs.push({ label: node.label, kind: node.refKind, referenceType: node.referenceType });
-        } else if (node.kind === 'fnDef') {
-          defMeta.set(node.label, {
-            identifier: node.label,
-            sourceIdentifier: node.sourceIdentifier,
-            contentSource: node.content,
-          });
-        } else if (node.kind === 'linkDef') {
-          linkDefs.set(node.label, { identifier: node.label, url: node.url, title: node.title });
-        }
-      }
-      const fp = JSON.stringify({
-        r: refs,
-        d: Array.from(defMeta.entries()).map(([k, v]) => [k, v.sourceIdentifier, v.contentSource]),
-        l: Array.from(linkDefs.entries()).map(([k, v]) => [k, v.url, v.title ?? '']),
-        ofn: Array.from(ownLabels.footnoteLabels).sort(),
-        ol: Array.from(ownLabels.linkLabels).sort(),
-        // Include targetPhantoms in the fingerprint: a phantom→resolved
-        // transition (another chunk publishes a def for a label this chunk
-        // references inside one of its OWN def bodies) changes the rendered
-        // hast — the `<cross-chunk-link>` / `<cross-chunk-image>` placeholder
-        // disappears and a real `<a>` / `<img>` takes its place — without
-        // touching this chunk's refs / defMeta / linkDefs / ownLabels. Without
-        // including the phantom snapshot in the fingerprint, the fp check
-        // would short-circuit and the registry would keep stale bodyHast
-        // forever, leaving the aggregate footer rendering the placeholder
-        // long after the label was resolved.
-        tpfn: Array.from(targetPhantoms.missingFootnotes).sort(),
-        tpl: Array.from(targetPhantoms.missingLinks).sort(),
-      });
-      const last = lastContributionRef.current;
-      if (
-        last?.registry === registry &&
-        last.symbol === sym &&
-        last.fp === fp &&
-        last.chain.length === chain.length &&
-        last.chain.every((dep, i) => dep === chain[i])
-      ) {
-        return;
-      }
-      // Fingerprint changed → harvest bodyHast from the post-pipeline hast
-      // and publish. Missing entries are defensive: after allocation,
-      // preserveForBodyHarvest keeps real local defs in the synthetic footer
-      // even when visible orphan rendering is disabled.
-      const bodiesByLabel = extractDefBodiesFromHast(pipeline.hast, clobberPrefix);
-      const defs = new Map<
-        string,
-        { identifier: string; sourceIdentifier: string; contentSource: string; bodyHast: HastElementContent[] }
-      >();
-      for (const [label, meta] of defMeta) {
-        defs.set(label, {
-          identifier: meta.identifier,
-          sourceIdentifier: meta.sourceIdentifier,
-          contentSource: meta.contentSource,
-          bodyHast: (bodiesByLabel.get(label) ?? []) as HastElementContent[],
-        });
-      }
-      lastContributionRef.current = { registry, symbol: sym, fp, chain };
-      registry.contributeChunkData(sym, {
-        refs,
-        defs,
-        linkDefs,
-        ownFootnoteLabels: ownLabels.footnoteLabels,
-        ownLinkLabels: ownLabels.linkLabels,
-      });
-    }, [
+    const contributionChain = useMemo(
+      () => [remarkPlugins, rehypePlugins, remarkRehypeOptions, handlers, preserveForBodyHarvest, clobberPrefix],
+      [remarkPlugins, rehypePlugins, remarkRehypeOptions, handlers, preserveForBodyHarvest, clobberPrefix]
+    );
+    useRegistryContribution({
       pipeline,
       ownLabels,
       registry,
       targetPhantoms,
       sym,
       clobberPrefix,
-      remarkPlugins,
-      rehypePlugins,
-      remarkRehypeOptions,
-      handlers,
-      preserveForBodyHarvest,
-    ]);
+      chain: contributionChain,
+    });
 
     // Intentional cache memoization via cacheRef; see G3 comment above.
     // Unlike the three memoized stages above, this runs on EVERY render —
@@ -835,8 +712,8 @@ const BlockMemoizedRenderer = memo(
     );
 
     // Cross-chunk URL sanitization policy — read by `CrossChunkLink` and
-    // `CrossChunkImage` at render time to apply the same two-gate pipeline
-    // (urlTransform + protocols allowlist) the standalone in-tree pass
+    // `CrossChunkImage` at render time to apply schema, hash rebasing and
+    // urlTransform in the order that the standalone in-tree pass
     // applies. Resolved here so the same `defaultUrlTransform` /
     // `sanitizeSchema` fallbacks the rest of the pipeline uses are honored
     // — no chance of drift between standalone and cross-chunk paths.

@@ -13,6 +13,52 @@ import { ENGINE_PROVENANCE_PROPERTY, rehypeVerifyEngineTags } from './rehypeVeri
 
 const CRED = 'c0ffee';
 
+test.each([undefined, null])('missing verifier options fail closed instead of throwing: %s', (options) => {
+  const tree: HastRoot = {
+    type: 'root',
+    children: [
+      {
+        type: 'element',
+        tagName: 'cross-chunk-image',
+        properties: { engineProvenance: CRED },
+        children: [],
+      },
+    ],
+  };
+  rehypeVerifyEngineTags(options as never)(tree);
+  expect(tree.children).toEqual([]);
+});
+
+test('records actual ancestry after unwrapping forged parents, overriding stale data', () => {
+  const genuine: Element = {
+    type: 'element',
+    tagName: 'cross-chunk-image',
+    properties: { engineProvenance: CRED },
+    children: [],
+    data: { referenceAncestors: ['a'] } as Element['data'],
+  };
+  const tree: HastRoot = {
+    type: 'root',
+    children: [
+      {
+        type: 'element',
+        tagName: 'p',
+        properties: {},
+        children: [
+          {
+            type: 'element',
+            tagName: 'cross-chunk-link',
+            properties: { engineprovenance: CRED },
+            children: [genuine],
+          },
+        ],
+      },
+    ],
+  };
+  rehypeVerifyEngineTags({ provenance: CRED, referenceAncestors: true })(tree);
+  expect(genuine.data).toEqual({ referenceAncestors: ['p'] });
+});
+
 /** The shipped shape: raw → verifier → sanitize, with or without the
  *  coordinated handlers, with or without a credential on each side. */
 function run(

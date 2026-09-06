@@ -18,8 +18,8 @@ import { AIMarkdownSmoothStream, AIMarkdownStreamingCursor } from '@ai-react-mar
 ```
 
 `<AIMarkdownSmoothStream>` accepts the full `<AIMarkdown>` prop surface and
-adds three props: a `smoothPacing` preset, an `onSmoothDrained` callback, and
-the `smoothCoordination` turn-taking switch (see [API](#api-reference)).
+adds a `smoothPacing` preset, an `onSmoothDrained` callback, the
+`smoothCoordination` turn-taking switch, and a `smoothWaiting` input-wait flag (see [API](#api-reference)).
 Everything else — plugins, custom components,
 sanitization, cross-chunk coordination — behaves identically, because the
 shell renders a plain `<AIMarkdown>` with a paced `content` string.
@@ -224,11 +224,12 @@ Contract highlights (full JSDoc on the export):
 
 ### `<AIMarkdownSmoothStream>` extra props
 
-| Prop                 | Type                                     | Default      | Description                                                         |
-| -------------------- | ---------------------------------------- | ------------ | ------------------------------------------------------------------- |
-| `smoothPacing`       | `'smooth' \| 'balanced' \| 'responsive'` | `'balanced'` | Latency-vs-smoothness preset (see the table above); read live       |
-| `onSmoothDrained`    | `() => void`                             | —            | Fires when the post-stream drain completes — once per stream round  |
-| `smoothCoordination` | `boolean`                                | `true`       | Document turn-taking for this chunk; `false` = reveal independently |
+| Prop                 | Type                                     | Default      | Description                                                                                  |
+| -------------------- | ---------------------------------------- | ------------ | -------------------------------------------------------------------------------------------- |
+| `smoothPacing`       | `'smooth' \| 'balanced' \| 'responsive'` | `'balanced'` | Latency-vs-smoothness preset (see the table above); read live                                |
+| `onSmoothDrained`    | `() => void`                             | —            | Fires when the post-stream drain completes — once per stream round                           |
+| `smoothWaiting`      | `boolean`                                | `false`      | Reserve an empty chunk's queue slot while awaiting input; clear on start or empty completion |
+| `smoothCoordination` | `boolean`                                | `true`       | Document turn-taking for this chunk; `false` = reveal independently                          |
 
 All other props are forwarded to `<AIMarkdown>` untouched. The wrapper-side
 switch is `smoothTurnTaking` on `<AIMarkdownDocuments>` (default `true`).
@@ -241,7 +242,7 @@ the revealed prefix and `streaming` stays `true` until drained.
 
 ### `useDocumentSmoothStream(options)`
 
-Everything `useSmoothStream` takes plus `documentId`. With a `documentId`
+Everything `useSmoothStream` takes plus `documentId` and optional `waiting` (the hook equivalent of `smoothWaiting`, default `false`). With a `documentId`
 and an `<AIMarkdownDocuments>` ancestor it joins that document's
 turn-taking queue; without either it behaves exactly like
 `useSmoothStream`. The `documentId` must match the one the rendered
@@ -319,10 +320,33 @@ when a chunk stays gated behind a predecessor that shows no reveal
 progress for ~10 s; in production, wire `streaming` to the actual
 completion event of your transport, not to a heuristic.
 
+### Empty chunks awaiting their first input
+
+An empty chunk with `streaming={false}` is a completed empty result and
+releases its turn. If you mount placeholders before starting a request, set
+`smoothWaiting={true}` (or `waiting: true` on `useDocumentSmoothStream`) from
+that first mount. This holds the queue slot without activating a cursor.
+Clear waiting when input starts, or when the request completes with no text:
+
+```tsx
+<AIMarkdownSmoothStream
+  documentId="answer"
+  content={text}
+  streaming={status === 'streaming'}
+  smoothWaiting={status === 'waiting'}
+/>
+```
+
+Waiting only delays queue completion; it does not gate incoming content or
+suppress an explicitly active `streaming` flag. It has no effect without
+coordination. Completion remains sticky: setting waiting after a chunk has
+already completed does not reopen its slot. For a new independently queued
+message, mount a new keyed chunk. Keep the actively revealing chunk mounted.
+
 ### Chunks inserted out of mount order
 
-The turn-taking queue is mount-ordered — the same assumption cross-chunk
-footnote numbering already makes. A chunk mounted mid-conversation
+The turn-taking queue is mount-ordered. The reference registry separately
+supports `documentIndex` ordering; that prop does not reorder smooth turns. A chunk mounted mid-conversation
 (regenerating an earlier message, inserting at the top of a list) lands at
 the END of the queue and waits for every existing chunk, including ones
 visually below it: the symptom is a hole in the middle of the
@@ -355,7 +379,11 @@ parsing at all, and while a genuine def block streams (a citation footer)
 only the live tail is reparsed (measured ~0.8 ms/append on a 12k-char
 chunk, down from a ~30 ms full reparse). What remains at per-frame reveal
 rates is the coordination fanout itself: a chunk revealing a def body
-bumps the shared registry version each frame and wakes sibling chunks.
+bumps the shared registry version each frame and notifies subscribers.
+Reference placeholders now select only their own destination or numbering,
+so unrelated changes do not rerender those placeholders; parent renderers
+and aggregate footnotes still observe registry-wide changes. Registry
+queries share a lazy ordered index per version.
 Turn-taking already gives you the single-typewriter shape, and gated
 chunks contribute nothing while they wait; if you still see fanout cost
 with very many mounted siblings, smoothing the message _before_ it enters

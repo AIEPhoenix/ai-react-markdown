@@ -8,6 +8,7 @@
 
 import type { ElementContent as HastElementContent } from 'hast';
 import { normalizeId } from './normalizeId';
+import { buildRegistryIndex, type RegistryIndex } from './registryIndex';
 
 export interface FootnoteDef {
   /** Already-normalized identifier (uppercase). Used as dictionary key for
@@ -191,6 +192,15 @@ export interface RegistryInternal extends Registry {
  * caller's eviction logic.
  */
 export function createRegistry(onEmpty?: () => void): RegistryInternal {
+  let index: RegistryIndex | undefined;
+  let indexedVersion = -1;
+  const getIndex = (): RegistryIndex => {
+    if (!index || indexedVersion !== reg.version) {
+      index = buildRegistryIndex(reg);
+      indexedVersion = reg.version;
+    }
+    return index;
+  };
   const reg = {
     chunkOrder: [] as symbol[],
     chunkData: new Map<symbol, ChunkData>(),
@@ -424,83 +434,27 @@ export function createRegistry(onEmpty?: () => void): RegistryInternal {
     },
 
     canonicalFootnoteFor(label: string): symbol | null {
-      const id = normalizeId(label);
-      for (const sym of this.chunkOrder) {
-        const data = this.chunkData.get(sym);
-        if (data?.defs.has(id)) return sym;
-      }
-      return null;
+      return getIndex().footnotes.get(normalizeId(label)) ?? null;
     },
-
     canonicalLinkFor(label: string): symbol | null {
-      const id = normalizeId(label);
-      for (const sym of this.chunkOrder) {
-        const data = this.chunkData.get(sym);
-        if (data?.linkDefs.has(id)) return sym;
-      }
-      return null;
+      return getIndex().links.get(normalizeId(label)) ?? null;
     },
-
     globalNumber(label: string): number | null {
-      const id = normalizeId(label);
-      let n = 0;
-      const seen = new Set<string>();
-      for (const sym of this.chunkOrder) {
-        const data = this.chunkData.get(sym);
-        if (!data) continue;
-        for (const ref of data.refs) {
-          // Footnote numbering is a per-space ordinal; link/image refs share
-          // the `refs` array but occupy a disjoint namespace, so they must
-          // NOT advance the footnote counter.
-          if (ref.kind !== 'footnote') continue;
-          if (!seen.has(ref.label)) {
-            seen.add(ref.label);
-            n++;
-            if (ref.label === id) return n;
-          }
-        }
-      }
-      return null;
+      return getIndex().numbers.get(normalizeId(label)) ?? null;
     },
-
     resolveLinkDef(label: string): LinkDef | null {
-      const sym = this.canonicalLinkFor(label);
-      if (!sym) return null;
-      return this.chunkData.get(sym)?.linkDefs.get(normalizeId(label)) ?? null;
+      const id = normalizeId(label);
+      const sym = getIndex().links.get(id);
+      return sym ? (this.chunkData.get(sym)?.linkDefs.get(id) ?? null) : null;
     },
-
     getRefsForLabel(label: string): number {
-      const id = normalizeId(label);
-      let n = 0;
-      for (const sym of this.chunkOrder) {
-        const data = this.chunkData.get(sym);
-        if (!data) continue;
-        // Only count footnote refs: the consumers (backref-strip and
-        // backref-inject) decide based on whether a footnote `<li>` should
-        // exist, which depends on footnote refs alone.
-        for (const ref of data.refs) {
-          if (ref.kind === 'footnote' && ref.label === id) n++;
-        }
-      }
-      return n;
+      return getIndex().counts.get(normalizeId(label)) ?? 0;
     },
-
     globalOccurrenceForRef(chunkSym: symbol, label: string, localOccurrence: number): number | null {
-      const id = normalizeId(label);
-      let global = 0;
-      for (const sym of this.chunkOrder) {
-        const data = this.chunkData.get(sym);
-        if (!data) continue;
-        let localCount = 0;
-        for (const ref of data.refs) {
-          if (ref.kind !== 'footnote') continue;
-          if (ref.label !== id) continue;
-          localCount++;
-          global++;
-          if (sym === chunkSym && localCount === localOccurrence) return global;
-        }
-      }
-      return null;
+      const range = getIndex().occurrences.get(chunkSym)?.get(normalizeId(label));
+      return range && Number.isInteger(localOccurrence) && localOccurrence > 0 && localOccurrence <= range.count
+        ? range.start + localOccurrence - 1
+        : null;
     },
 
     _notify(): void {

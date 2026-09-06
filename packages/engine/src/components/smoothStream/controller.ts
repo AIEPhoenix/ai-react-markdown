@@ -351,12 +351,17 @@ export const createSmoothStreamController = (options: SmoothStreamOptions = {}):
   /** UTF-16 offset of the revealed prefix's end. */
   let visibleEnd = 0;
   /**
-   * Confirmed grapheme end offsets awaiting reveal, ascending, all in
+   * From pendingHead onward: confirmed grapheme end offsets awaiting reveal,
+   * ascending, all in
    * `(visibleEnd, source.length]`. The trailing grapheme of the source is
    * NOT in here until confirmed (see module doc) — its end lives in
    * `tentativeEnd` and is re-derived whenever more text arrives.
    */
   let pending: number[] = [];
+  // Retire offsets through a cursor instead of copying the entire backlog
+  // each animation frame. Occasional compaction bounds retained storage.
+  let pendingHead = 0;
+  const pendingCount = () => pending.length - pendingHead;
   let tentativeEnd = 0;
   let finished = false;
   /**
@@ -445,7 +450,7 @@ export const createSmoothStreamController = (options: SmoothStreamOptions = {}):
   };
 
   const ensureScheduled = () => {
-    if (disposed || cancelFrame || pending.length === 0) return;
+    if (disposed || cancelFrame || pendingCount() === 0) return;
     lastTickAt = now();
     credit = 0;
     cancelFrame = schedule(tick);
@@ -463,7 +468,7 @@ export const createSmoothStreamController = (options: SmoothStreamOptions = {}):
     if (finished && drainDeadlineAt !== undefined) {
       // Drain regime: remaining backlog over remaining time-to-deadline —
       // reaches zero BY the deadline instead of decaying asymptotically.
-      rate = Math.max(params.minCharsPerSecond, (pending.length * 1000) / Math.max(1, drainDeadlineAt - t));
+      rate = Math.max(params.minCharsPerSecond, (pendingCount() * 1000) / Math.max(1, drainDeadlineAt - t));
     } else if (gapWindow.length > 0 && lastArrivalAt !== undefined) {
       // Deadline regime: everything on hand should be on screen by the
       // time the next lump is expected. Backlog and time-to-deadline
@@ -473,28 +478,35 @@ export const createSmoothStreamController = (options: SmoothStreamOptions = {}):
       const intervalQ = gaps[Math.min(gaps.length - 1, Math.floor(gaps.length * INTERVAL_QUANTILE))];
       const horizon = Math.max(16, Math.min(params.bufferFactor * intervalQ + HORIZON_PAD_MS, params.maxLagMs));
       const deadline = Math.max(lastArrivalAt + horizon, t + DEADLINE_FLOOR_MS);
-      rate = Math.max(params.minCharsPerSecond, (pending.length * 1000) / Math.max(1, deadline - t));
+      rate = Math.max(params.minCharsPerSecond, (pendingCount() * 1000) / Math.max(1, deadline - t));
     } else {
       // Pre-stats regime (first burst after construction/snap): no
       // arrival estimate yet — reveal over roughly one correction window.
-      rate = Math.max(params.minCharsPerSecond, (pending.length * 1000) / Math.max(1, params.correctionTauMs));
+      rate = Math.max(params.minCharsPerSecond, (pendingCount() * 1000) / Math.max(1, params.correctionTauMs));
     }
     credit += (rate * dt) / 1000;
 
-    const reveal = Math.min(Math.floor(credit), pending.length);
+    const reveal = Math.min(Math.floor(credit), pendingCount());
     if (reveal > 0) {
-      visibleEnd = pending[reveal - 1];
-      pending = pending.slice(reveal);
+      visibleEnd = pending[pendingHead + reveal - 1];
+      pendingHead += reveal;
+      if (pendingHead === pending.length) {
+        pending = [];
+        pendingHead = 0;
+      } else if (pendingHead >= 1024 && pendingHead * 2 >= pending.length) {
+        pending = pending.slice(pendingHead);
+        pendingHead = 0;
+      }
       // Leftover credit only carries while a backlog remains; otherwise a
       // quiet spell would bank credit and dump the next chunk instantly.
-      credit = pending.length > 0 ? credit - reveal : 0;
+      credit = pendingCount() > 0 ? credit - reveal : 0;
       notify();
     }
     // Re-check both guards after notify: a subscriber may have called
     // dispose() (don't schedule past it) or update() (ensureScheduled
     // already booked the next frame — booking a second would orphan its
     // cancel handle and fork the tick chain).
-    if (!disposed && !cancelFrame && pending.length > 0) cancelFrame = schedule(tick);
+    if (!disposed && !cancelFrame && pendingCount() > 0) cancelFrame = schedule(tick);
   };
 
   /** Re-segments the unrevealed tail from the last confirmed boundary.
@@ -512,13 +524,13 @@ export const createSmoothStreamController = (options: SmoothStreamOptions = {}):
    *  re-segmented with left context instead of from the seam itself
    *  (2026-08-20 A2). */
   const resegmentTail = () => {
-    if (seam !== undefined && seam < source.length && pending[pending.length - 1] === seam) {
+    if (pendingCount() > 0 && seam !== undefined && seam < source.length && pending[pending.length - 1] === seam) {
       // Confirmed but not yet shown, and no longer a boundary we trust.
       // Only the last entry can be the seam: it is a source end, so nothing
       // confirmed later is smaller, and this runs before the new ends land.
       pending.pop();
     }
-    const from = pending.length > 0 ? pending[pending.length - 1] : visibleEnd;
+    const from = pendingCount() > 0 ? pending[pending.length - 1] : visibleEnd;
     let anchor = from;
     if (seam !== undefined && from <= seam) {
       // Text already revealed cannot be taken back — one frame showing
@@ -574,6 +586,7 @@ export const createSmoothStreamController = (options: SmoothStreamOptions = {}):
     visibleEnd = next.length;
     tentativeEnd = next.length;
     pending = [];
+    pendingHead = 0;
     seam = next.length;
     credit = 0;
     cancelScheduled();
@@ -621,7 +634,7 @@ export const createSmoothStreamController = (options: SmoothStreamOptions = {}):
       // clearing it here was ablated and rejected — it degraded that
       // common case far more than it helped the rare cross-cadence one).
       lastArrivalAt = undefined;
-      if (tentativeEnd > (pending.length > 0 ? pending[pending.length - 1] : visibleEnd)) {
+      if (tentativeEnd > (pendingCount() > 0 ? pending[pending.length - 1] : visibleEnd)) {
         pending.push(tentativeEnd);
       }
       // Rate-continuity drain window. R̂ EXCLUDES the newest sample: the
@@ -657,10 +670,11 @@ export const createSmoothStreamController = (options: SmoothStreamOptions = {}):
       // possibly-broken cluster to the parser, the one thing the module's
       // grapheme discipline promises never happens (2026-08 project review,
       // eng-stream-04). Finished streams have confirmed it into `pending`.
-      const target = finished ? source.length : pending.length > 0 ? pending[pending.length - 1] : visibleEnd;
+      const target = finished ? source.length : pendingCount() > 0 ? pending[pending.length - 1] : visibleEnd;
       if (target <= visibleEnd) return;
       visibleEnd = target;
       pending = [];
+      pendingHead = 0;
       credit = 0;
       cancelScheduled();
       notify();

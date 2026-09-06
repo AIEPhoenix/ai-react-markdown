@@ -28,6 +28,11 @@ import { visit } from 'unist-util-visit';
 
 const DEFAULT_PREFIX = 'user-content-';
 
+export function rebaseHashHref(href: string, prefix: string): string {
+  const hashPrefix = '#' + prefix;
+  return href.startsWith('#') && !href.startsWith(hashPrefix) ? hashPrefix + href.slice(1) : href;
+}
+
 export interface RehypeRebaseHashLinksOptions {
   /** Prefix to apply. Must match the `clobberPrefix` used by `rehype-sanitize`. */
   prefix?: string;
@@ -35,14 +40,12 @@ export interface RehypeRebaseHashLinksOptions {
 
 const rehypeRebaseHashLinks: Plugin<[RehypeRebaseHashLinksOptions?], Root> = (options) => {
   const prefix = options?.prefix ?? DEFAULT_PREFIX;
-  const hashPrefix = '#' + prefix;
   return (tree) => {
     visit(tree, 'element', (node) => {
       if (node.tagName !== 'a') return;
       const href = node.properties?.href;
       if (typeof href !== 'string' || !href.startsWith('#')) return;
-      if (href.startsWith(hashPrefix)) return;
-      node.properties.href = hashPrefix + href.slice(1);
+      node.properties.href = rebaseHashHref(href, prefix);
     });
   };
 };

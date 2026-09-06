@@ -92,7 +92,16 @@ const DefaultCustomComponents: AIMarkdownCustomComponents = {
           children: { value?: string }[];
         }
       | undefined;
-    if (!code || code.type !== 'element' || code.tagName !== 'code' || !code.position) {
+    if (
+      !code ||
+      code.type !== 'element' ||
+      code.tagName !== 'code' ||
+      !code.position ||
+      node?.children.length !== 1 ||
+      code.children.some((child) => !('value' in child) || typeof child.value !== 'string') ||
+      Object.keys(code.properties ?? {}).some((key) => key !== 'className') ||
+      Object.keys(node.properties ?? {}).length > 0
+    ) {
       return <pre {...usefulProps} />;
     }
     const key = `pre-code-${node?.position?.start?.offset || 0}`;
@@ -108,6 +117,7 @@ const DefaultCustomComponents: AIMarkdownCustomComponents = {
     const detectedLanguage = classList
       .find((className) => className.startsWith('language-'))
       ?.substring('language-'.length);
+    if (classList.some((className) => !className.startsWith('language-'))) return <pre {...usefulProps} />;
     // A `<code>` inside `<pre>` normally carries ONE text child; if an
     // upstream plugin splits it, the pieces are contiguous source — join
     // with '' (a '\n' joiner would invent line breaks the source lacks).

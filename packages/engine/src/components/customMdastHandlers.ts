@@ -134,11 +134,9 @@ export function buildCrossChunkHandlers(): Handlers {
         type: 'element',
         tagName: 'cross-chunk-link',
         properties: {
-          // `label` is the ORIGINAL source text (mdast's `label` field), NOT
-          // the normalized `identifier`. The placeholder uses it to construct
-          // hrefs that line up with mdast-util-to-hast's default `<li id>`
-          // which also preserves source case. Registry lookups normalize
-          // internally, so cross-chunk case-insensitive matching still works.
+          // Display labels decode escapes; registry identifiers must retain
+          // those bytes. Never use the display label as the lookup key.
+          identifier: node.identifier,
           label: node.label ?? node.identifier,
           referenceType: node.referenceType,
           documentId: s.options.documentId,
@@ -158,6 +156,7 @@ export function buildCrossChunkHandlers(): Handlers {
         type: 'element',
         tagName: 'cross-chunk-image',
         properties: {
+          identifier: node.identifier,
           label: node.label ?? node.identifier,
           referenceType: node.referenceType,
           alt: node.alt ?? '',

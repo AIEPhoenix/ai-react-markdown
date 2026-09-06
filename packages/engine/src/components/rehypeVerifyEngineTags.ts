@@ -52,11 +52,14 @@ export interface RehypeVerifyEngineTagsOptions {
   /** The credential the handlers were given. The empty string accepts
    *  nothing (fail closed); it is never a valid credential. */
   provenance: string;
+  /** Capture ancestry only when the final a/img schema needs it. Data is
+   * recorded after verification, never taken from authored attributes. */
+  referenceAncestors?: boolean;
 }
 
 type Parent = Root | Element;
 
-function walk(parent: Parent, provenance: string): void {
+function walk(parent: Parent, provenance: string, ancestors?: string[]): void {
   const children = parent.children as Array<RootContent | ElementContent>;
   let i = 0;
   while (i < children.length) {
@@ -67,7 +70,14 @@ function walk(parent: Parent, provenance: string): void {
       const genuine = provenance !== '' && typeof stamped === 'string' && stamped === provenance;
       if (genuine) {
         delete props[ENGINE_PROVENANCE_PROPERTY];
-        walk(node, provenance);
+        if (ancestors && (node.tagName === 'cross-chunk-link' || node.tagName === 'cross-chunk-image')) {
+          ((node.data ??= {}) as { referenceAncestors?: string[] }).referenceAncestors = ancestors.slice();
+        }
+        ancestors?.push(
+          node.tagName === 'cross-chunk-link' ? 'a' : node.tagName === 'cross-chunk-image' ? 'img' : node.tagName
+        );
+        walk(node, provenance, ancestors);
+        ancestors?.pop();
         i += 1;
       } else {
         // Unwrap: the exposed children (possibly none) now sit at `i` and
@@ -76,7 +86,11 @@ function walk(parent: Parent, provenance: string): void {
       }
       continue;
     }
-    if (node.type === 'element') walk(node, provenance);
+    if (node.type === 'element') {
+      ancestors?.push(node.tagName);
+      walk(node, provenance, ancestors);
+      ancestors?.pop();
+    }
     i += 1;
   }
 }
@@ -88,7 +102,7 @@ function walk(parent: Parent, provenance: string): void {
 export function rehypeVerifyEngineTags(options: RehypeVerifyEngineTagsOptions) {
   const provenance = options?.provenance ?? '';
   return function transformer(tree: Root): void {
-    walk(tree, provenance);
+    walk(tree, provenance, options?.referenceAncestors ? [] : undefined);
   };
 }
 

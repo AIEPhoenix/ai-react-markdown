@@ -735,7 +735,7 @@ State is deliberately split across five per-system contexts (document, metadata,
 - `useAIMarkdown()` -- the aggregate (subscribes to all five contexts)
 - `useDocumentRegistry()`
 - `useSmoothStream()` -- typewriter pacing as a hook; returns a props-shaped `{ content, streaming, flush }` that spreads into any wrapper
-- `useDocumentSmoothStream()` -- `useSmoothStream` plus document turn-taking: pass a `documentId` and, under `<AIMarkdownDocuments>`, chunks reveal in mount order (one typewriter, one cursor); degrades to plain `useSmoothStream` without one
+- `useDocumentSmoothStream()` -- `useSmoothStream` plus document turn-taking (`waiting` reserves an empty slot before input): pass a `documentId` and, under `<AIMarkdownDocuments>`, chunks reveal in mount order (one typewriter, one cursor); degrades to plain `useSmoothStream` without one
 - `useStableValue()`
 - `useStableRecord()` -- the stability firewall, for wrapper authors
 

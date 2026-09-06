@@ -877,7 +877,7 @@ describe('buildBlocks — inline (non-element) top-level children', () => {
     expect(inline!.reactKey).toMatch(/^inline-(\d+|i\d+)$/);
   });
 
-  test('inline items render every frame (no caching) — different ReactNode references', () => {
+  test('inline output stays equivalent while block nodes retain cache identity', () => {
     const cacheRef = { current: createCache() };
     const { mdast: m1, hast: h1 } = runPipeline('A\n\nB');
     const built1 = buildBlocks(m1, h1, 'A\n\nB');
@@ -888,10 +888,12 @@ describe('buildBlocks — inline (non-element) top-level children', () => {
     // Find inline indices.
     const inlineIndices = built1.plan.map((p, i) => (p.kind === 'inline' ? i : -1)).filter((i) => i !== -1);
     expect(inlineIndices.length).toBeGreaterThan(0);
-    // Inline ReactNodes are freshly created each frame; reference inequality
-    // is expected (and acceptable — they are cheap and rarely larger than 1 char).
+    // Plain text can be returned directly. Verify emitted bytes, not an
+    // incidental Fragment allocation around each whitespace separator.
     for (const i of inlineIndices) {
-      expect(r2[i].node).not.toBe(r1[i].node);
+      const html = (node: ReactNode) => renderToStaticMarkup(createElement(Fragment, null, node));
+      expect(html(r2[i].node)).toBe(html(r1[i].node));
+      expect(html(r2[i].node)).toBe('\n');
     }
     // Block nodes still hit cache despite the inline re-render.
     const blockIndices = built1.plan.map((p, i) => (p.kind === 'block' ? i : -1)).filter((i) => i !== -1);

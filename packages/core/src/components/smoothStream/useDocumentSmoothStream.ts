@@ -48,6 +48,10 @@ export interface UseDocumentSmoothStreamOptions extends UseSmoothStreamOptions {
    * undefined behavior.
    */
   documentId?: string;
+  /** Hold this queue slot before input starts, without showing a streaming
+   * cursor. Clear when input starts OR when an empty result completes.
+   * `streaming: false` alone still means a completed source. */
+  waiting?: boolean;
 }
 
 /** Dev-only stuck-flag warning threshold (§ ordering failure modes in the
@@ -59,6 +63,7 @@ export const useDocumentSmoothStream = ({
   documentId,
   content,
   streaming = false,
+  waiting = false,
   pacing,
   onDrained,
   now,
@@ -169,8 +174,8 @@ export const useDocumentSmoothStream = ({
   // would release its successors ahead of it.
   useEffect(() => {
     if (!coordinator || !released) return;
-    if (!streaming && !forcedStreaming && !inner.streaming) coordinator.markDone(reactId);
-  }, [coordinator, released, reactId, streaming, forcedStreaming, inner.streaming]);
+    if (!waiting && !streaming && !forcedStreaming && !inner.streaming) coordinator.markDone(reactId);
+  }, [coordinator, released, reactId, waiting, streaming, forcedStreaming, inner.streaming]);
 
   // ── Reveal-progress heartbeat (feeds the dev-only warning below) ─────────
   // `now` is the @internal test-clock seam; identity-stable in practice, so

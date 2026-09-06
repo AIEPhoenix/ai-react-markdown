@@ -99,8 +99,8 @@ export const sanitizeSchema: Schema = deepFreeze(
     attributes: {
       ...defaultSchema.attributes,
       code: mergeClassNameAllowlist(defaultSchema.attributes?.code, ['math-inline', 'math-display']),
-      'cross-chunk-link': ['label', 'referenceType', 'documentId', 'localUrl', 'localTitle'],
-      'cross-chunk-image': ['label', 'referenceType', 'documentId', 'alt', 'localUrl', 'localTitle'],
+      'cross-chunk-link': ['identifier', 'label', 'referenceType', 'documentId', 'localUrl', 'localTitle'],
+      'cross-chunk-image': ['identifier', 'label', 'referenceType', 'documentId', 'alt', 'localUrl', 'localTitle'],
       'footnote-sup': ['label', 'localOccurrence', 'localNumber', 'documentId'],
     },
     strip: [...new Set([...(defaultSchema.strip || []), ...STRIPPED_TAGS])],

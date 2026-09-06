@@ -44,6 +44,7 @@ export { default as rehypeFooterAdorn } from './components/rehypeFooterAdorn';
 export * from './components/remarkInjectPhantomDefs';
 export * from './components/customMdastHandlers';
 export * from './components/crossChunkUrlSanitize';
+export * from './components/resolveCrossChunkReference';
 export * from './plugins/defs';
 export * from './plugins/catalog';
 

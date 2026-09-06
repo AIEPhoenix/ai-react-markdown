@@ -31,12 +31,18 @@ export interface MantineCodeBlockOptions {
    * @default false
    */
   autoDetectUnknownLanguage: boolean;
+  /** Format JSON for display without changing numeric literals. @default true */
+  formatJson?: boolean;
+  /** Expand string values containing JSON objects/arrays for display. @default true */
+  expandNestedJson?: boolean;
 }
 
 /** Shipped defaults for the `codeBlock` behavior group. */
 export const defaultMantineCodeBlockOptions: Readonly<MantineCodeBlockOptions> = Object.freeze({
   defaultExpanded: true,
   autoDetectUnknownLanguage: false,
+  formatJson: true,
+  expandNestedJson: true,
 });
 
 /**

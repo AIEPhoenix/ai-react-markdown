@@ -1138,3 +1138,23 @@ describe('smoothStream controller — deadline law (v2.10 pins)', () => {
     }
   );
 });
+
+test('large partially consumed backlogs preserve append, flush and replacement behavior', () => {
+  const { controller, advance } = makeHarness(fixedRate(1000));
+  const source = 'a'.repeat(2400);
+  controller.update('');
+  controller.update(source);
+  for (let i = 0; i < 12; i++) advance(100);
+  expect(controller.getVisible()).toBe(source.slice(0, 1200));
+  controller.update(source + 'bc');
+  controller.flush();
+  expect(controller.getVisible()).toBe(source + 'b');
+  controller.finish();
+  controller.flush();
+  expect(controller.getVisible()).toBe(source + 'bc');
+  controller.update('replacement');
+  controller.update('replacement tail');
+  controller.finish();
+  controller.flush();
+  expect(controller.getVisible()).toBe('replacement tail');
+});

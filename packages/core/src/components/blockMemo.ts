@@ -866,7 +866,8 @@ function scanSwallowedSubtree(el: HastElement): {
     const props = (node.properties ?? {}) as Record<string, unknown>;
     if (PLACEHOLDER_TAGS.has(node.tagName)) {
       hasReference = true;
-      const label = props.label === undefined ? null : normalizeId(String(props.label));
+      const identifier = props.identifier ?? props.label;
+      const label = identifier === undefined ? null : normalizeId(String(identifier));
       if (label === null) return;
       if (node.tagName === 'footnote-sup') {
         refLabels.push(label);
@@ -943,7 +944,7 @@ export function renderBlocksWithCache(
   for (const item of plan) {
     if (item.kind === 'inline') {
       rendered.push({
-        node: renderHastSubtree(item.el, postOptions),
+        node: item.el.type === 'text' ? item.el.value : renderHastSubtree(item.el, postOptions),
         reactKey: item.reactKey,
       });
       continue;

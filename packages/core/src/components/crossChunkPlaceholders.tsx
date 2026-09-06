@@ -11,14 +11,26 @@
  *
  * @module components/crossChunkPlaceholders
  */
-import { type ReactNode, isValidElement, useCallback, useContext, useSyncExternalStore } from 'react';
+import {
+  type ReactNode,
+  Fragment,
+  cloneElement,
+  isValidElement,
+  useCallback,
+  useContext,
+  useSyncExternalStore,
+} from 'react';
 import { useAIMarkdownDocument } from '../context';
 import { useDocumentRegistry } from './AIMarkdownDocuments';
 import { ChunkSymbolContext } from './chunkSymbolContext';
 import { CrossChunkUrlContext } from './crossChunkUrlContext';
-import { sanitizeCrossChunkUrl } from '@ai-react-markdown/engine';
+import { resolveCrossChunkReference } from '@ai-react-markdown/engine';
+import { toJsxRuntime } from 'hast-util-to-jsx-runtime';
+import { jsx, jsxs } from 'react/jsx-runtime';
+import type { CrossChunkUrlPolicy } from './crossChunkUrlContext';
 import { defaultUrlTransform } from './markdown';
 import { sanitizeSchema as defaultSanitizeSchema } from '@ai-react-markdown/engine';
+import type { Element } from 'hast';
 import type { LinkDef } from '@ai-react-markdown/engine';
 import { footnoteSafeId } from '@ai-react-markdown/engine';
 
@@ -26,7 +38,7 @@ type RefType = 'full' | 'collapsed' | 'shortcut' | undefined;
 
 /** Module-level SSR snapshot constant. Hoisted out of components so its
  *  identity is stable across renders. */
-const SSR_NUM_SNAPSHOT = () => 0;
+const SSR_LABEL_SNAPSHOT = () => '';
 
 interface FootnoteSupProps {
   label: string;
@@ -78,13 +90,20 @@ export function FootnoteSupNumber({
   // this whole change exists to keep standalone.
   const registry = useDocumentRegistry(documentId, documentIdExplicit);
   const chunkSym = useContext(ChunkSymbolContext);
-  // Subscribe identity stabilised across renders (see top of file).
-  // useSyncExternalStore's selector must return an `Object.is`-stable value
-  // across notifications when the underlying registry state is unchanged —
-  // `registry.version` is just a number, so this property holds.
+  // Select only facts that affect this mark. Unrelated registry updates
+  // still notify the store but no longer schedule a React render here.
   const subscribe = useCallback((cb: () => void) => (registry ? registry.subscribe(cb) : () => {}), [registry]);
-  const getSnapshot = useCallback(() => registry?.version ?? 0, [registry]);
-  useSyncExternalStore(subscribe, getSnapshot, SSR_NUM_SNAPSHOT);
+  const getSnapshot = useCallback(
+    () =>
+      JSON.stringify([
+        registry?.globalNumber(label) ?? null,
+        registry && chunkSym && localOccurrence !== null
+          ? registry.globalOccurrenceForRef(chunkSym, label, localOccurrence)
+          : null,
+      ]),
+    [registry, label, chunkSym, localOccurrence]
+  );
+  useSyncExternalStore(subscribe, getSnapshot, SSR_LABEL_SNAPSHOT);
   const num = registry?.globalNumber(label) ?? null;
   // Same id encoding as mdast-util-to-hast's marks and footer (and the
   // aggregate footer): a raw label in the id broke `[^注]` / `[^a%b]`
@@ -156,8 +175,30 @@ export function FootnoteSupNumber({
   );
 }
 
+/** Convert sanitized HAST properties with the same JSX runtime as regular
+ * elements (including required/class/style attributes from custom schemas).
+ * Link children are already rendered; retain their component identities. */
+function renderResolvedReference(
+  input: Parameters<typeof resolveCrossChunkReference>[0],
+  policy: CrossChunkUrlPolicy | null,
+  clobberPrefix: string,
+  children?: ReactNode
+): ReactNode {
+  const result = resolveCrossChunkReference(
+    input,
+    policy?.sanitizeSchema ?? defaultSanitizeSchema,
+    policy?.urlTransform ?? defaultUrlTransform,
+    clobberPrefix
+  );
+  if (!result.element) return result.keepChildren ? children : null;
+  const rendered = toJsxRuntime(result.element, { Fragment, jsx, jsxs });
+  return input.tagName === 'a' && isValidElement(rendered) ? cloneElement(rendered, undefined, children) : rendered;
+}
+
 interface CrossChunkLinkProps {
+  node?: Element;
   label: string;
+  identifier?: string;
   referenceType: RefType;
   children?: ReactNode;
   /** The chunk's OWN definition (never a phantom's) — carried by the
@@ -217,61 +258,43 @@ function literalLink(rt: RefType, label: string, children: ReactNode): string {
 }
 
 export function CrossChunkLink({
+  node,
   label,
+  identifier,
   referenceType,
   children,
   localUrl,
   localTitle,
 }: CrossChunkLinkProps): ReactNode {
-  const { documentId, documentIdExplicit } = useAIMarkdownDocument();
+  const { documentId, documentIdExplicit, clobberPrefix } = useAIMarkdownDocument();
   // See FootnoteSupNumber: gate on explicitness so an auto-id chunk never
   // opens a registry shell via a stray placeholder tag.
   const registry = useDocumentRegistry(documentId, documentIdExplicit);
   const policy = useContext(CrossChunkUrlContext);
-  // Subscription pattern matches `FootnoteSupNumber`: useSyncExternalStore
-  // wakes us up on any registry mutation; the actual def is read directly
-  // from the registry after the hook. Keeping subscription separate from
-  // value lookup means the SSR snapshot (`registry?.version ?? 0`) doesn't
-  // need to materialize a real `LinkDef` — and the post-hook read sees
-  // whatever's in the registry at the moment of render, including data
-  // seeded synchronously by tests or by sibling chunks that committed
-  // before this one mounted.
+  // Only a changed destination/title schedules this placeholder. The store
+  // still broadcasts notifications; indexing makes each snapshot lookup cheap.
   const subscribe = useCallback((cb: () => void) => (registry ? registry.subscribe(cb) : () => {}), [registry]);
-  const getSnapshot = useCallback(() => registry?.version ?? 0, [registry]);
-  useSyncExternalStore(subscribe, getSnapshot, SSR_NUM_SNAPSHOT);
-  const def = resolveDef(registry, label, localUrl, localTitle);
+  const getSnapshot = useCallback(() => {
+    const def = registry?.resolveLinkDef(identifier ?? label);
+    return JSON.stringify(def ? [def.url, def.title ?? null] : null);
+  }, [registry, identifier, label]);
+  useSyncExternalStore(subscribe, getSnapshot, SSR_LABEL_SNAPSHOT);
+  const def = resolveDef(registry, identifier ?? label, localUrl, localTitle);
   if (!def) {
     return literalLink(referenceType, label, children);
   }
-  // Apply the same two-gate sanitization the standalone in-tree pipeline
-  // applies to `<a href>` (urlTransform + rehype-sanitize protocols.href).
-  // Cross-chunk URLs are read from the registry at render time, AFTER both
-  // hast-pass gates have run — without this, a custom scheme allowed by
-  // `urlTransform` but disallowed in `sanitizeSchema.protocols.href` would
-  // render correctly in standalone but slip through cross-chunk (and same
-  // for `javascript:` — the registry stores the RAW definition URL).
-  // Fallback to safe defaults when the policy context is missing (the
-  // placeholder rendered outside an `<AIMarkdown>` ancestor — a test path).
-  const url = sanitizeCrossChunkUrl(
-    def.url,
-    'href',
-    'a',
-    policy?.urlTransform ?? defaultUrlTransform,
-    policy?.sanitizeSchema ?? defaultSanitizeSchema
-  );
-  // A protocol-blocked URL (null) leaves the element WITHOUT the attribute
-  // — exactly what rehype-sanitize does to an in-tree `<a>` (v2.4.0
-  // review); a legal EMPTY destination (`[x]: <>`) or a urlTransform that
-  // returned '' keeps `href=""`, like standalone (v2.4.1 review).
-  return (
-    <a href={url ?? undefined} title={def.title}>
-      {children}
-    </a>
+  return renderResolvedReference(
+    { tagName: 'a', url: def.url, title: def.title, node },
+    policy,
+    clobberPrefix,
+    children
   );
 }
 
 interface CrossChunkImageProps {
+  node?: Element;
   label: string;
+  identifier?: string;
   referenceType: RefType;
   alt?: string;
   /** See CrossChunkLinkProps. */
@@ -292,13 +315,15 @@ function literalImage(rt: RefType, label: string, alt: string): string {
 }
 
 export function CrossChunkImage({
+  node,
   label,
+  identifier,
   referenceType,
   alt = '',
   localUrl,
   localTitle,
 }: CrossChunkImageProps): ReactNode {
-  const { documentId, documentIdExplicit } = useAIMarkdownDocument();
+  const { documentId, documentIdExplicit, clobberPrefix } = useAIMarkdownDocument();
   // See FootnoteSupNumber: gate on explicitness so an auto-id chunk never
   // opens a registry shell via a stray placeholder tag.
   const registry = useDocumentRegistry(documentId, documentIdExplicit);
@@ -306,25 +331,16 @@ export function CrossChunkImage({
   // Same subscription-only useSyncExternalStore pattern as CrossChunkLink —
   // see that component for the rationale.
   const subscribe = useCallback((cb: () => void) => (registry ? registry.subscribe(cb) : () => {}), [registry]);
-  const getSnapshot = useCallback(() => registry?.version ?? 0, [registry]);
-  useSyncExternalStore(subscribe, getSnapshot, SSR_NUM_SNAPSHOT);
-  const def = resolveDef(registry, label, localUrl, localTitle);
+  const getSnapshot = useCallback(() => {
+    const def = registry?.resolveLinkDef(identifier ?? label);
+    return JSON.stringify(def ? [def.url, def.title ?? null] : null);
+  }, [registry, identifier, label]);
+  useSyncExternalStore(subscribe, getSnapshot, SSR_LABEL_SNAPSHOT);
+  const def = resolveDef(registry, identifier ?? label, localUrl, localTitle);
   if (!def) {
     return literalImage(referenceType, label, alt);
   }
-  // Sanitize for the `<img src>` shape: pass `key='src'` so a key-aware
-  // urlTransform (allowing a scheme on `href` only, say) does the right
-  // thing, and check against `sanitizeSchema.protocols.src` (which may
-  // differ from `protocols.href`). See `crossChunkUrlSanitize.ts` for the
-  // full rationale.
-  const url = sanitizeCrossChunkUrl(
-    def.url,
-    'src',
-    'img',
-    policy?.urlTransform ?? defaultUrlTransform,
-    policy?.sanitizeSchema ?? defaultSanitizeSchema
-  );
-  return <img src={url ?? undefined} alt={alt} title={def.title} />;
+  return renderResolvedReference({ tagName: 'img', url: def.url, title: def.title, alt, node }, policy, clobberPrefix);
 }
 
 /**
