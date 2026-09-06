@@ -745,7 +745,7 @@ function drive(doc: string, cuts: number[], config: CatalogConfig): { frames: nu
   // end of the sweep): most short token sequences legitimately poison to
   // boundary 0, so a per-schedule floor would fight the alphabet.
   const stats = assertStreamEquivalence(
-    `exhaustive doc=${JSON.stringify(doc)} cuts=${JSON.stringify(cuts)}`,
+    () => `exhaustive doc=${JSON.stringify(doc)} cuts=${JSON.stringify(cuts)}`,
     snapshots,
     config,
     { minIncrementalFrames: 0, fallbackOracleSample: FALLBACK_SAMPLE }
@@ -770,7 +770,7 @@ function drive(doc: string, cuts: number[], config: CatalogConfig): { frames: nu
   // changing between minor versions. Audited 2026-08-28 — every other
   // resume in the repo is a linear loop, and `MarkdownContent`'s catch
   // already nulls its state ref for this exact reason.
-  const { defListEnabled } = buildAdvanceOptions(config);
+  const defListEnabled = config.defList;
   let checkpoint: FreezeScanCheckpoint | null = null;
   for (const snapshot of snapshots) {
     const fresh = computeFreezeBoundary(snapshot, { defListEnabled });

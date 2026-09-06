@@ -3,6 +3,8 @@
 import { closeSync, existsSync, fstatSync, openSync, readFileSync, readSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+import { integer, validateTask, validateManifest } from './soak-contract.mjs';
+
 const argv = process.argv.slice(2);
 let profileName = 'release';
 if (argv[0] === '--profile') profileName = argv.splice(0, 2)[1];
@@ -48,7 +50,16 @@ const first = runs[0]?.manifest;
 const seen = new Map();
 for (const run of runs) {
   const { manifest: m, result: r, dir } = run;
-  if (m.schemaVersion !== 1 || r.schemaVersion !== 1) errors.push(`${dir}: unsupported schema version`);
+  try {
+    validateManifest(m);
+  } catch (error) {
+    errors.push(`${dir}: ${error.message}`);
+    continue;
+  }
+  if (m.schemaVersion !== 2 || r.schemaVersion !== 2) errors.push(`${dir}: unsupported schema version`);
+  if (!integer(m.shards) || !integer(m.workers)) errors.push(`${dir}: invalid shards/workers`);
+  if (profile.requireFresh && m.shards < 14) errors.push(`${dir}: release requires at least 14 logical shards`);
+  if (r.repositoryChanged !== false) errors.push(`${dir}: repositoryChanged must be false`);
   if (m.profile !== profile.name) errors.push(`${dir}: profile is ${m.profile}; expected ${profile.name}`);
   if (r.runId !== m.runId || r.mode !== m.mode || r.runKind !== m.runKind)
     errors.push(`${dir}: manifest/result identity differs`);
@@ -75,11 +86,26 @@ for (const run of runs) {
       errors.push(`${dir}: missing result for ${leg}`);
       continue;
     }
+    if (!integer(lr.expectedShards) || lr.expectedShards !== m.shards || lr.completedShards !== m.shards) {
+      errors.push(`${dir}: ${leg} incomplete or inconsistent shard count`);
+      continue;
+    }
     if (lr.status !== 'passed') errors.push(`${dir}: ${leg} is ${lr.status}`);
     const logs = Array.from({ length: lr.expectedShards }, (_, i) => resolve(dir, `${leg}-${i}.log`));
     for (const log of logs) {
       if (!existsSync(log)) errors.push(`${dir}: missing ${log.split('/').pop()}`);
-      else if (!/Tests\s+\d+ passed/.test(readTail(log))) errors.push(`${log}: missing passing Vitest verdict`);
+      else {
+        const tail = readTail(log);
+        if (!/Tests\s+\d+ passed/.test(tail) || /(?:Tests|Test Files)[^\n]*\d+ failed/.test(tail))
+          errors.push(`${log}: missing clean Vitest verdict`);
+      }
+    }
+    for (let i = 0; i < m.shards; i++) {
+      try {
+        validateTask(dir, m, leg, i);
+      } catch (error) {
+        errors.push(`${dir}: ${error.message}`);
+      }
     }
     const actualLogs = readdirSync(dir).filter((file) => file.startsWith(`${leg}-`) && file.endsWith('.log'));
     if (actualLogs.length !== lr.expectedShards)
@@ -90,12 +116,12 @@ for (const leg of profile.requiredLegs) if (!seen.has(leg)) errors.push(`missing
 for (const leg of seen.keys()) if (!profile.requiredLegs.includes(leg)) errors.push(`unknown leg: ${leg}`);
 
 if (errors.length) {
-  console.error('Release soak: INVALID');
+  console.error(`${profileName === 'release' ? 'Release' : 'Smoke'} soak: INVALID`);
   for (const error of errors) console.error(`- ${error}`);
   process.exit(1);
 }
 const shardCount = runs.reduce((n, r) => n + r.manifest.legs.length * r.manifest.shards, 0);
-console.log('Release soak: PASS');
+console.log(`${profileName === 'release' ? 'Release' : 'Smoke'} soak: PASS`);
 console.log(`Commit: ${first.repository.commit}`);
 console.log(`Seed base: ${first.seedBase}`);
 console.log(`Profile: ${profile.name}`);

@@ -5,6 +5,8 @@ import { hostname } from 'node:os';
 import { resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
+import { seedOverlap } from './soak-contract.mjs';
+
 const [command, ...args] = process.argv.slice(2);
 const get = (name) => {
   const i = args.indexOf(`--${name}`);
@@ -28,69 +30,79 @@ if (command === 'create') {
   const stateDir = resolve(get('state-dir'));
   mkdirSync(stateDir, { recursive: true });
   const registry = resolve(stateDir, 'seed-registry.jsonl');
-  if (runKind === 'fresh' && existsSync(registry)) {
-    for (const line of readFileSync(registry, 'utf8').split('\n').filter(Boolean)) {
-      const prior = JSON.parse(line);
-      if (prior.seedBase === seedBase && prior.runKind === 'fresh' && prior.legs.some((leg) => legs.includes(leg))) {
-        throw new Error(
-          `fresh seed ${seedBase} already reserved for overlapping leg(s) by ${prior.runId}; use RUN_KIND=replay to reproduce`
-        );
+  const shards = Number(get('shards'));
+  const lock = resolve(stateDir, 'reservation.lock');
+  mkdirSync(lock);
+  try {
+    if (runKind === 'fresh' && existsSync(registry)) {
+      for (const line of readFileSync(registry, 'utf8').split('\n').filter(Boolean)) {
+        const prior = JSON.parse(line);
+        if (prior.runKind === 'fresh' && seedOverlap({ seedBase, legs, shards }, prior)) {
+          throw new Error(
+            `fresh seed ${seedBase} already reserved for overlapping random stream(s) by ${prior.runId}; use RUN_KIND=replay to reproduce`
+          );
+        }
       }
     }
-  }
-  if (existsSync(runDir)) throw new Error(`run directory already exists: ${runDir}`);
-  const reservationsRoot = resolve(stateDir, 'seed-reservations');
-  const madeReservations = [];
-  if (runKind === 'fresh') {
-    mkdirSync(reservationsRoot, { recursive: true });
-    try {
-      for (const leg of legs) {
-        const reservation = resolve(reservationsRoot, `${seedBase}-${leg}`);
-        mkdirSync(reservation);
-        madeReservations.push(reservation);
+    if (existsSync(runDir)) throw new Error(`run directory already exists: ${runDir}`);
+    const reservationsRoot = resolve(stateDir, 'seed-reservations');
+    const madeReservations = [];
+    if (runKind === 'fresh') {
+      mkdirSync(reservationsRoot, { recursive: true });
+      try {
+        for (const leg of legs) {
+          const reservation = resolve(reservationsRoot, `${seedBase}-${leg}`);
+          mkdirSync(reservation);
+          madeReservations.push(reservation);
+        }
+      } catch (error) {
+        for (const reservation of madeReservations) rmdirSync(reservation);
+        throw new Error(`fresh seed ${seedBase} was concurrently reserved for an overlapping leg: ${error.message}`, {
+          cause: error,
+        });
       }
+    }
+    try {
+      mkdirSync(runDir, { recursive: false });
     } catch (error) {
       for (const reservation of madeReservations) rmdirSync(reservation);
-      throw new Error(`fresh seed ${seedBase} was concurrently reserved for an overlapping leg: ${error.message}`, {
-        cause: error,
-      });
+      throw error;
     }
+    const manifest = {
+      schemaVersion: 2,
+      runId: get('run-id'),
+      label: get('label'),
+      mode: get('mode'),
+      runKind,
+      status: 'running',
+      startedAt: new Date().toISOString(),
+      repository: { commit, dirty },
+      host: { hostname: hostname(), platform: process.platform, detectedCores: Number(get('cores')) },
+      seedBase,
+      legs,
+      shards,
+      workers: Number(get('workers')),
+      failFast: get('fail-fast') === '1',
+      profile: get('profile'),
+      parameters: JSON.parse(get('parameters')),
+    };
+    json(resolve(runDir, 'manifest.json'), manifest);
+    appendFileSync(
+      registry,
+      `${JSON.stringify({
+        runId: manifest.runId,
+        seedBase: manifest.seedBase,
+        shards,
+        legs: manifest.legs,
+        runKind: manifest.runKind,
+        commit,
+        startedAt: manifest.startedAt,
+      })}\n`
+    );
+    process.stdout.write(`${runDir}\n`);
+  } finally {
+    rmdirSync(lock);
   }
-  try {
-    mkdirSync(runDir, { recursive: false });
-  } catch (error) {
-    for (const reservation of madeReservations) rmdirSync(reservation);
-    throw error;
-  }
-  const manifest = {
-    schemaVersion: 1,
-    runId: get('run-id'),
-    label: get('label'),
-    mode: get('mode'),
-    runKind,
-    status: 'running',
-    startedAt: new Date().toISOString(),
-    repository: { commit, dirty },
-    host: { hostname: hostname(), platform: process.platform, detectedCores: Number(get('cores')) },
-    seedBase,
-    legs,
-    shards: Number(get('shards')),
-    profile: get('profile'),
-    parameters: JSON.parse(get('parameters')),
-  };
-  json(resolve(runDir, 'manifest.json'), manifest);
-  appendFileSync(
-    registry,
-    `${JSON.stringify({
-      runId: manifest.runId,
-      seedBase: manifest.seedBase,
-      legs: manifest.legs,
-      runKind: manifest.runKind,
-      commit,
-      startedAt: manifest.startedAt,
-    })}\n`
-  );
-  process.stdout.write(`${runDir}\n`);
 } else if (command === 'finish') {
   const runDir = resolve(get('run-dir'));
   const startedAt = get('started-at');
@@ -99,7 +111,7 @@ if (command === 'create') {
   const repositoryChanged =
     repository.commit !== manifest.repository.commit || repository.dirty !== manifest.repository.dirty;
   const result = {
-    schemaVersion: 1,
+    schemaVersion: manifest.schemaVersion,
     runId: get('run-id'),
     mode: get('mode'),
     runKind: get('run-kind'),

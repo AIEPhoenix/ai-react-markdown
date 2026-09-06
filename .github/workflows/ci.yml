@@ -109,6 +109,10 @@ jobs:
         if: matrix.task == 'typecheck'
         run: pnpm typecheck
 
+      - name: Soak control tests
+        if: matrix.task == 'test'
+        run: pnpm test:soak-control
+
       - name: Test (all packages)
         if: matrix.task == 'test'
         run: pnpm -r test

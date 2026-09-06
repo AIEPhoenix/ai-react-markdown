@@ -10,6 +10,7 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     name: 'unit',
+    setupFiles: process.env.SOAK_TASK ? ['../../scripts/soak/task-setup.mjs'] : [],
     environment: 'node',
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
   },

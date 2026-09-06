@@ -166,6 +166,9 @@ jobs:
         run: pnpm typecheck
 
       # Per-package unit suites, matching the CI gate.
+      - name: Soak control tests
+        run: pnpm test:soak-control
+
       - name: Test
         run: pnpm -r test
 

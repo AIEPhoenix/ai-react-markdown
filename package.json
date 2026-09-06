@@ -21,9 +21,10 @@
     "bench:web:scale": "node benchmarks/runner/scale.mjs --prefix scale-",
     "bench:web:scale:cold": "node benchmarks/runner/scale.mjs --prefix cold-",
     "bench:web:scale:steps": "node benchmarks/runner/scale.mjs --prefix steps-",
-    "preflight": "pnpm check:overrides && pnpm check:soak-coverage && pnpm lint && pnpm format:check && pnpm build && pnpm packcheck && pnpm -r typecheck && pnpm typecheck && pnpm vitest run",
+    "preflight": "pnpm check:overrides && pnpm check:soak-coverage && pnpm lint && pnpm format:check && pnpm build && pnpm test:soak-control && pnpm packcheck && pnpm -r typecheck && pnpm typecheck && pnpm vitest run",
     "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    "build-storybook": "storybook build",
+    "test:soak-control": "node --test scripts/soak/soak-control.test.mjs"
   },
   "keywords": [
     "react",

@@ -78,6 +78,30 @@ pnpm --filter @ai-react-markdown/engine fuzz:splice
 ./scripts/soak/soak-watch.sh [label] -n 30
 ```
 
+The work budget and execution concurrency are separate: `SHARDS` defaults to 14
+logical shards, while `WORKERS` defaults to detected cores minus two. Use
+`WORKERS=8 ./scripts/soak/soak.sh <fresh-seed-base>` to reduce CPU pressure without
+reducing coverage. Release runs require at least 14 logical shards. `FAIL_FAST=1`
+is the default; use `FAIL_FAST=0` to collect failures across all legs.
+
+Each task writes a log, a Vitest JSON report, a task exit record and a runtime
+record of effective test parameters and worker CPU/peak RSS. Aggregate completed
+runs with `node scripts/soak/soak-aggregate.mjs .soak-logs/<run-id>`. Schema 2
+requires these records; older schema 1 reports remain historical evidence and
+are not accepted by the new gate. `SIGINT`/`SIGTERM` stops worker groups and writes
+an interrupted result. An interrupted run cannot be resumed as fresh evidence;
+use replay for diagnosis and a new seed range for the release gate.
+
+For small scheduling experiments, use `SOAK_PROFILE=smoke RUN_KIND=replay`, fixed
+`SHARDS` and seed, and vary only `WORKERS`. `CENSUS_K=2 CENSUS_NAME_K=2` reduces the
+smoke census; release always requires K=4 and name K>=3, all six configurations,
+raw-frozen checks and state-directed search. Arbitrary `EXHAUSTIVE_*`, `FUZZ_*`
+and `ORACLE_*` variables from the invoking shell do not override task settings.
+The seed ledger rejects overlapping streams, not just equal seed bases. Old
+ledger entries without shard counts conservatively reserve 100 seeds per leg.
+A reservation lock left by an abruptly killed metadata process fails closed;
+confirm that no metadata writer is active before removing that stale lock.
+
 A green soak is a **release** gate, not a per-PR one; CI does not run it. If your PR changes engine behavior, say in the description whether you ran it and what the result was.
 
 #### Where a number goes

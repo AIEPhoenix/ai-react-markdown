@@ -58,15 +58,21 @@ vi.mock('./computeFreezeBoundary', async (importOriginal) => {
 
 describe('arbiter sensitivity (planted faults MUST be detected)', () => {
   test('sanity: the corpus passes with no fault planted', () => {
-    assertStreamEquivalence('sensitivity-sanity', scheduleSnapshots(MASKING_DOC, MASKING_SIZES), CATALOG[0]);
+    const label = vi.fn(() => 'sensitivity-sanity');
+    assertStreamEquivalence(label, scheduleSnapshots(MASKING_DOC, MASKING_SIZES), CATALOG[0]);
+    expect(label).not.toHaveBeenCalled();
   });
 
   test('fault 1: pre-fix under-block boundary → P1 equivalence oracle throws', () => {
     faultState.boundaryOverride = true;
     try {
       expect(() =>
-        assertStreamEquivalence('sensitivity-underblock', scheduleSnapshots(MASKING_DOC, MASKING_SIZES), CATALOG[0])
-      ).toThrowError(/mismatch/);
+        assertStreamEquivalence(
+          () => 'sensitivity-underblock',
+          scheduleSnapshots(MASKING_DOC, MASKING_SIZES),
+          CATALOG[0]
+        )
+      ).toThrowError(/sensitivity-underblock.*mismatch/);
     } finally {
       faultState.boundaryOverride = false;
     }

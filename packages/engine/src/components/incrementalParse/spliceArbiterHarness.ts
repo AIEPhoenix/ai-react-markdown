@@ -154,7 +154,7 @@ export interface StreamOptions {
  * callers can assert they exercised what they claim to exercise.
  */
 export function assertStreamEquivalence(
-  name: string,
+  name: string | (() => string),
   snapshots: string[],
   config: CatalogConfig,
   streamOptions?: StreamOptions
@@ -176,19 +176,20 @@ export function assertStreamEquivalence(
     }
 
     const expected = memoizedOracle(snapshot, config);
-    const label = `${name} [${config.label}] frame=${frame} len=${snapshot.length} boundary=${result.boundary} incremental=${result.usedIncremental}`;
+    const label = () =>
+      `${typeof name === 'function' ? name() : name} [${config.label}] frame=${frame} len=${snapshot.length} boundary=${result.boundary} incremental=${result.usedIncremental}`;
     if (!isEqual(result.hast, expected.hast)) {
-      expect.fail(`${label} — hast mismatch: ${diffLocation(result.hast, expected.hast as never)}`);
+      expect.fail(`${label()} — hast mismatch: ${diffLocation(result.hast, expected.hast as never)}`);
     }
     if (!isEqual(result.mdast, expected.mdast)) {
-      expect.fail(`${label} — mdast mismatch: ${diffLocation(result.mdast, expected.mdast as never)}`);
+      expect.fail(`${label()} — mdast mismatch: ${diffLocation(result.mdast, expected.mdast as never)}`);
     }
   });
 
   const floor = streamOptions?.minIncrementalFrames ?? 1;
   if (incrementalFrames < floor) {
     expect.fail(
-      `${name} [${config.label}] drove ${snapshots.length} frames with incrementalFrames=${incrementalFrames} ` +
+      `${typeof name === 'function' ? name() : name} [${config.label}] drove ${snapshots.length} frames with incrementalFrames=${incrementalFrames} ` +
         `(floor ${floor}) — the splice never ran, so this pin compared the full path against itself. ` +
         `If zero engagement IS the assertion here, pass { minIncrementalFrames: 0 }.`
     );
