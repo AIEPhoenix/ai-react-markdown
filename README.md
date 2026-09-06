@@ -504,12 +504,13 @@ Rules worth knowing:
 
 The Mantine package additionally surfaces a `codeBlock` prop (group value replaces atomically; omitted fields fall to defaults):
 
-| Prop field                            | Type      | Default | Purpose                                                                      |
-| ------------------------------------- | --------- | ------- | ---------------------------------------------------------------------------- |
-| `codeBlock.defaultExpanded`           | `boolean` | `true`  | Whether code blocks start expanded                                           |
-| `codeBlock.autoDetectUnknownLanguage` | `boolean` | `false` | Use `hljs.highlightAuto` for unlabelled blocks                               |
-| `codeBlock.formatJson`                | `boolean` | `true`  | Format JSON without rounding numeric tokens; copying uses original code text |
-| `codeBlock.expandNestedJson`          | `boolean` | `true`  | Expand JSON object/array strings when formatting is enabled                  |
+| Prop field                            | Type      | Default | Purpose                                                                                                                                                                             |
+| ------------------------------------- | --------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `codeBlock.defaultExpanded`           | `boolean` | `true`  | Whether code blocks start expanded                                                                                                                                                  |
+| `codeBlock.autoDetectUnknownLanguage` | `boolean` | `false` | Use `hljs.highlightAuto` for unlabelled blocks                                                                                                                                      |
+| `codeBlock.formatJson`                | `boolean` | `true`  | Format JSON without rounding numeric tokens; copying uses original code text                                                                                                        |
+| `codeBlock.expandNestedJson`          | `boolean` | `true`  | Expand JSON object/array strings when formatting is enabled                                                                                                                         |
+| `codeBlock.highlightIntervalMs`       | `number`  | `50`    | Coalesce streaming code display updates over this interval in milliseconds; `0` updates every frame. Completion and replacement update immediately; copy always uses latest source. |
 
 ### `define*` factories (optional)
 

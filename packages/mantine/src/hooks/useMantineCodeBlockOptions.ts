@@ -41,6 +41,9 @@ export function useMantineCodeBlockOptions(): Required<MantineCodeBlockOptions> 
       const value = group?.[key];
       if (value !== undefined) (resolved as Record<string, unknown>)[key] = value;
     }
+    if (!Number.isFinite(resolved.highlightIntervalMs) || resolved.highlightIntervalMs < 0) {
+      resolved.highlightIntervalMs = defaultMantineCodeBlockOptions.highlightIntervalMs!;
+    }
     return resolved;
   }, [group]);
 }
