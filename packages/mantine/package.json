@@ -80,7 +80,7 @@
     "@ai-react-markdown/core": "workspace:*",
     "@mantine/code-highlight": "^9.5.1",
     "@mantine/core": "^9.5.1",
-    "@mantine/hooks": "^9.5.1",
+    "@mantine/hooks": "^9.5.2",
     "@types/node": "^25.9.5",
     "autoprefixer": "^10.5.4",
     "esbuild-sass-plugin": "^3.7.0",
