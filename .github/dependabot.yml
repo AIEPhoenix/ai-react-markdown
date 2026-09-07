@@ -1,27 +1,11 @@
 version: 2
 
-# Shared ignore policy (copied verbatim across every npm ecosystem below
-# because dependabot.yml does not support YAML anchors at the top level).
-#
-# Every published package needs its own entry: dependabot reads one
-# manifest per `directory`, so a package that is missing here is a blind
-# spot. After the 2.3.0 engine split that matters more than it used to —
-# the remark/rehype/micromark dependency mass lives in
-# packages/engine, not packages/core.
-#
-# - Major bumps across the dependency graph: blocked. Breaking changes,
-#   peer-dep ripples, and migration cost need hands-on evaluation; we
-#   bump majors manually.
-# - Lint / typecheck plugins (eslint, eslint-plugin-*, @typescript-eslint,
-#   typescript itself): minors blocked. These tools routinely add new
-#   rules on minor bumps that flag previously-passing code; locking to
-#   patch keeps CI green. We'll bump minors manually when we have time
-#   to address new violations. (See eslint-plugin-react-hooks 7.0→7.1,
-#   April 2026, which broke MarkdownContent.tsx with 20+ new ref/effect
-#   diagnostics — none of which were API changes.)
+# This pnpm workspace has one shared root lockfile. The root npm job
+# discovers workspace manifests, including packages, corpus and benchmarks.
+# Keep one job so shared dependencies receive the same policy and grouping.
+# Major upgrades and lint/typecheck minor upgrades are reviewed manually.
 
 updates:
-  # npm dependencies in the monorepo root (devDeps: storybook, vitest, eslint, etc.)
   - package-ecosystem: npm
     directory: /
     schedule:
@@ -47,6 +31,12 @@ updates:
       - dependency-name: 'eslint'
         update-types:
           - version-update:semver-minor
+      - dependency-name: '@eslint/*'
+        update-types:
+          - version-update:semver-minor
+      - dependency-name: 'eslint-config-*'
+        update-types:
+          - version-update:semver-minor
       - dependency-name: 'eslint-plugin-*'
         update-types:
           - version-update:semver-minor
@@ -59,197 +49,24 @@ updates:
       - dependency-name: 'typescript'
         update-types:
           - version-update:semver-minor
-      # katex: minors blocked. On 0.x a minor IS a breaking change, and this
-      # dependency is a two-part contract that dependabot cannot see. The
-      # rendering is done by the katex that rehype-katex bundles as a regular
-      # dependency (0.16.x); the katex declared here supplies only the
-      # stylesheet, via `import 'katex/dist/katex.min.css'`. The two must emit
-      # and target the same class names. 0.18.0 prefixed KaTeX's internal
-      # classes — its stylesheet has no `.base` / `.strut` / `.sizing` rules at
-      # all — so pairing a 0.18 stylesheet with a 0.16 renderer silently breaks
-      # formula layout, with every test still green. (PR #37 did exactly this;
-      # see issue #39.) Lift only when rehype-katex ships a version that
-      # bundles the matching katex, and move the core/engine peer ranges in the
-      # same commit.
+      # KaTeX renderer output and its stylesheet must move together.
+      # Review minor updates manually, including engine/core peer ranges.
       - dependency-name: 'katex'
         update-types:
           - version-update:semver-minor
     groups:
+      # Match families before dependency-type groups: workspace consumers
+      # can classify the same package as production or development.
+      mantine:
+        patterns:
+          - '@mantine/*'
+        update-types: [minor, patch]
       dev-deps:
         dependency-type: development
-        update-types:
-          - minor
-          - patch
-
-  # @ai-react-markdown/core
-  - package-ecosystem: npm
-    directory: /packages/core
-    schedule:
-      interval: weekly
-      day: monday
-      time: '09:00'
-      timezone: Asia/Shanghai
-    open-pull-requests-limit: 5
-    cooldown:
-      default-days: 7
-      semver-minor-days: 7
-      semver-patch-days: 3
-    labels:
-      - dependencies
-      - 'scope:core'
-    ignore:
-      - dependency-name: '*'
-        update-types:
-          - version-update:semver-major
-      - dependency-name: 'eslint'
-        update-types:
-          - version-update:semver-minor
-      - dependency-name: 'eslint-plugin-*'
-        update-types:
-          - version-update:semver-minor
-      - dependency-name: '@typescript-eslint/*'
-        update-types:
-          - version-update:semver-minor
-      - dependency-name: 'typescript-eslint'
-        update-types:
-          - version-update:semver-minor
-      - dependency-name: 'typescript'
-        update-types:
-          - version-update:semver-minor
-    groups:
+        update-types: [minor, patch]
       runtime-deps:
         dependency-type: production
-        update-types:
-          - minor
-          - patch
-
-  # @ai-react-markdown/engine — carries the remark / rehype / micromark
-  # dependency mass that core shed in the 2.3.0 split.
-  - package-ecosystem: npm
-    directory: /packages/engine
-    schedule:
-      interval: weekly
-      day: monday
-      time: '09:00'
-      timezone: Asia/Shanghai
-    open-pull-requests-limit: 5
-    cooldown:
-      default-days: 7
-      semver-minor-days: 7
-      semver-patch-days: 3
-    labels:
-      - dependencies
-      - 'scope:engine'
-    ignore:
-      - dependency-name: '*'
-        update-types:
-          - version-update:semver-major
-      - dependency-name: 'eslint'
-        update-types:
-          - version-update:semver-minor
-      - dependency-name: 'eslint-plugin-*'
-        update-types:
-          - version-update:semver-minor
-      - dependency-name: '@typescript-eslint/*'
-        update-types:
-          - version-update:semver-minor
-      - dependency-name: 'typescript-eslint'
-        update-types:
-          - version-update:semver-minor
-      - dependency-name: 'typescript'
-        update-types:
-          - version-update:semver-minor
-    groups:
-      runtime-deps:
-        dependency-type: production
-        update-types:
-          - minor
-          - patch
-
-  # @ai-react-markdown/mantine
-  - package-ecosystem: npm
-    directory: /packages/mantine
-    schedule:
-      interval: weekly
-      day: monday
-      time: '09:00'
-      timezone: Asia/Shanghai
-    open-pull-requests-limit: 5
-    cooldown:
-      default-days: 7
-      semver-minor-days: 7
-      semver-patch-days: 3
-    labels:
-      - dependencies
-      - 'scope:mantine'
-    ignore:
-      - dependency-name: '*'
-        update-types:
-          - version-update:semver-major
-      - dependency-name: 'eslint'
-        update-types:
-          - version-update:semver-minor
-      - dependency-name: 'eslint-plugin-*'
-        update-types:
-          - version-update:semver-minor
-      - dependency-name: '@typescript-eslint/*'
-        update-types:
-          - version-update:semver-minor
-      - dependency-name: 'typescript-eslint'
-        update-types:
-          - version-update:semver-minor
-      - dependency-name: 'typescript'
-        update-types:
-          - version-update:semver-minor
-    groups:
-      runtime-deps:
-        dependency-type: production
-        update-types:
-          - minor
-          - patch
-
-  # @ai-react-markdown/remark-mark-highlight — published on its own semver
-  # track, but its micromark/mdast deps need the same watch as the rest.
-  - package-ecosystem: npm
-    directory: /packages/remark-mark-highlight
-    schedule:
-      interval: weekly
-      day: monday
-      time: '09:00'
-      timezone: Asia/Shanghai
-    open-pull-requests-limit: 5
-    cooldown:
-      default-days: 7
-      semver-minor-days: 7
-      semver-patch-days: 3
-    labels:
-      - dependencies
-      - 'scope:remark-mark-highlight'
-    ignore:
-      - dependency-name: '*'
-        update-types:
-          - version-update:semver-major
-      - dependency-name: 'eslint'
-        update-types:
-          - version-update:semver-minor
-      - dependency-name: 'eslint-plugin-*'
-        update-types:
-          - version-update:semver-minor
-      - dependency-name: '@typescript-eslint/*'
-        update-types:
-          - version-update:semver-minor
-      - dependency-name: 'typescript-eslint'
-        update-types:
-          - version-update:semver-minor
-      - dependency-name: 'typescript'
-        update-types:
-          - version-update:semver-minor
-    groups:
-      runtime-deps:
-        dependency-type: production
-        update-types:
-          - minor
-          - patch
+        update-types: [minor, patch]
 
   # GitHub Actions used in workflows — major-block only; no lint-plugin lock needed.
   - package-ecosystem: github-actions

@@ -12,8 +12,8 @@
   "dependencies": {
     "@ai-react-markdown/core": "workspace:*",
     "@ai-react-markdown/mantine": "workspace:*",
-    "@mantine/code-highlight": "^9.0.0",
-    "@mantine/core": "^9.0.0",
+    "@mantine/code-highlight": "^9.5.2",
+    "@mantine/core": "^9.5.2",
     "highlight.js": "^11.11.2",
     "katex": "^0.16.25",
     "react": "^19.2.0",
@@ -22,7 +22,7 @@
   "devDependencies": {
     "@bench/kit": "workspace:*",
     "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.4",
+    "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^5.1.0",
     "typescript": "^6.0.3",
     "vite": "^7.2.2"
