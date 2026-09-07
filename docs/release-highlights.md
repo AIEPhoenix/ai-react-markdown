@@ -8,6 +8,11 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 ## 2.13.x — Less repeated streaming work
 
+### 2.13.2 — Streaming repair and dependency maintenance
+
+- Update the optional streaming repair preprocessor to remend 1.3.1, including Safari compatibility, emphasis/math handling and faster scanning of incomplete code blocks.
+- Update the CJK plugins while retaining their parsing-only entry points, and refresh Mermaid and the Mantine integration dependencies.
+
 ### 2.13.1 — Correct references across uncertain block boundaries
 
 - Keep streamed reference links and footnotes correct when definitions arrive after mixed table, raw HTML and math content. Definition-shaped text in an uncertain block no longer freezes an earlier unresolved reference prematurely.
