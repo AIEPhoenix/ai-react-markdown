@@ -6,11 +6,11 @@ A distilled, human-readable summary of what's notable in each version — extrac
 
 ---
 
-## Unreleased
+## 2.13.x — Less repeated streaming work
+
+### 2.13.1 — Correct references across uncertain block boundaries
 
 - Keep streamed reference links and footnotes correct when definitions arrive after mixed table, raw HTML and math content. Definition-shaped text in an uncertain block no longer freezes an earlier unresolved reference prematurely.
-
-## 2.13.x — Less repeated streaming work
 
 ### 2.13.0 — Coalesced highlights and selective reference updates
 
