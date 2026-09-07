@@ -15,6 +15,7 @@ const active = new Set();
 let stopped = false;
 let interrupted = false;
 let failed = false;
+const cleanupErrors = [];
 const write = (path, data) => {
   writeFileSync(`${path}.tmp`, JSON.stringify(data, null, 2) + '\n');
   renameSync(`${path}.tmp`, path);
@@ -25,7 +26,17 @@ const signalChild = (child, signal) => {
     if (process.platform === 'win32') child.kill(signal);
     else process.kill(-child.pid, signal);
   } catch (error) {
-    if (error.code !== 'ESRCH') throw error;
+    if (error.code === 'ESRCH') return;
+    // Cleanup errors must not abort delivery to the remaining workers or
+    // prevent the non-passing result from being persisted.
+    failed = true;
+    cleanupErrors.push({ pid: child.pid, signal, error: error.message });
+    console.error(`soak cleanup: ${error.message}`);
+    try {
+      child.kill(signal);
+    } catch (fallbackError) {
+      cleanupErrors.push({ pid: child.pid, signal, error: fallbackError.message });
+    }
   }
 };
 const stop = () => {
@@ -137,6 +148,7 @@ try {
   stop();
   console.error(error);
 }
+if (cleanupErrors.length) write(`${dir}/cleanup-errors.json`, cleanupErrors);
 const status = interrupted ? 'interrupted' : failed ? 'failed' : 'passed';
 try {
   execFileSync(

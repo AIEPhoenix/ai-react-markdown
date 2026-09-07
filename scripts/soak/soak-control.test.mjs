@@ -1,3 +1,4 @@
+import process from 'node:process';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, readFileSync, mkdirSync, rmSync } from 'node:fs';
@@ -205,7 +206,7 @@ test('concurrent overlapping seed reservations cannot both succeed', async (t) =
 });
 
 // Exercise the actual Vitest subprocess and its setup/reporting boundary.
-async function realRun(t, workers, interrupt = false, fault = false, failFast = true) {
+async function realRun(t, workers, interrupt = false, fault = false, failFast = true, denyGroupKill = false) {
   const { spawn } = await import('node:child_process');
   const { setTimeout: delay } = await import('node:timers/promises');
   const dir = temp(t);
@@ -228,7 +229,28 @@ async function realRun(t, workers, interrupt = false, fault = false, failFast = 
   };
   put(`${dir}/manifest.json`, m);
   if (fault) mkdirSync(`${dir}/dir-0.runtime.json`);
-  const child = spawn('node', [script('soak-runner'), dir], { cwd: root, stdio: 'ignore' });
+  const env = { ...process.env };
+  if (denyGroupKill) {
+    const hook = `${dir}/deny-group-kill.mjs`;
+    writeFileSync(
+      hook,
+      `import process from 'node:process';
+      const kill = process.kill.bind(process);
+      process.kill = (pid, signal) => {
+        if (pid < 0) throw Object.assign(new Error('injected group kill denial'), { code: 'EPERM' });
+        return kill(pid, signal);
+      };`
+    );
+    env.NODE_OPTIONS = `--import=${JSON.stringify(hook)}`;
+  }
+  const child = spawn('node', [script('soak-runner'), dir], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
+  let output = '';
+  child.stdout.on('data', (chunk) => {
+    output += chunk;
+  });
+  child.stderr.on('data', (chunk) => {
+    output += chunk;
+  });
   const done = new Promise((resolveDone) => child.once('exit', (code) => resolveDone(code)));
   t.after(() => child.kill('SIGTERM'));
   if (interrupt) {
@@ -246,11 +268,17 @@ async function realRun(t, workers, interrupt = false, fault = false, failFast = 
     child.kill('SIGTERM');
   }
   const code = await done;
-  const result = JSON.parse(readFileSync(`${dir}/result.json`));
+  let result;
+  try {
+    result = JSON.parse(readFileSync(`${dir}/result.json`));
+  } catch (error) {
+    throw new Error(`runner exited ${code}: ${output}`, { cause: error });
+  }
   if (interrupt) {
     assert.notEqual(code, 0);
     assert.equal(result.status, 'interrupted');
     assert.equal(result.legs.dir.status, 'failed');
+    if (denyGroupKill) assert.ok(JSON.parse(readFileSync(`${dir}/cleanup-errors.json`)).length > 0);
   } else if (fault) {
     assert.notEqual(code, 0);
     assert.equal(result.status, 'failed');
@@ -281,3 +309,7 @@ test('a previously replayed stream cannot become fresh evidence', (t) => {
   assert.equal(spawnSync('node', args).status, 0);
   assert.notEqual(spawnSync('node', createArgs(dir, 900001)).status, 0);
 });
+
+test('process-group denial still persists interruption and cleans other workers', { timeout: 20000 }, (t) =>
+  realRun(t, 2, true, false, true, true)
+);
