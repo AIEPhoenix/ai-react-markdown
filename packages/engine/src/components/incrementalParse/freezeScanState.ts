@@ -277,8 +277,9 @@ export interface FreezeScanCheckpointInternal extends FreezeScanCheckpoint {
    *  seed-20260757 under-block: the tracker's fence phase INVERTS from that
    *  line on, every later close reads as an open, and the corruption never
    *  resyncs). Candidates past this offset are rejected outright — sticky,
-   *  pure over-block; candidates before it are untouched (the ambiguous
-   *  region then re-parses inside the tail). This field is the sticky
+   *  pure over-block. Earlier candidates still require reference settlement
+   *  using definitions before this offset; later definition-shaped text
+   *  may belong to an uncertain HTML or math block. This field is the sticky
    *  phase-corruption backstop (the old rolling hazard poison for
    *  "ambiguous tag names" retired with exact type 7). */
   phasePoisonedAt: number;

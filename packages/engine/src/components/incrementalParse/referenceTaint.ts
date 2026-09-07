@@ -9,9 +9,8 @@
  * the checkpoint's ref sub-state; the scanner calls `collectRefLine` once
  * per confirmed line and `settleRefsAndEarliestUnresolved` once per scan.
  *
- * Nothing here may change behaviour relative to the pre-move scanner: the
- * P2 acceptance is a strict zero delta on the pinned boundary corpus plus
- * a clean four-leg soak, and a non-zero result means revert, not explain.
+ * Definition settlement also respects the scanner's uncertain-phase limit:
+ * untrusted block ownership cannot release an earlier unresolved reference.
  */
 
 import { normalizeIdentifier } from 'micromark-util-normalize-identifier';
@@ -195,6 +194,7 @@ export interface RefTaintView {
   prevLineWasText: boolean;
   prevLineWasValidDef: boolean;
   lastBlankStart: number;
+  phasePoisonedAt: number;
 }
 
 export interface RefLineFacts {
@@ -344,7 +344,10 @@ export function collectRefLine(
  *  unresolved ref offset (`Infinity` when none). */
 export function settleRefsAndEarliestUnresolved(cp: RefTaintView): number {
   if (cp.unresolvedRefs.length > 0) {
-    const settled = (defEnd: number): boolean => cp.lastBlankStart >= defEnd;
+    // Once block ownership is uncertain, a definition-shaped line may be
+    // HTML or math content. It cannot resolve an earlier reference: that
+    // would release a prefix which a later real definition can still change.
+    const settled = (defEnd: number): boolean => cp.lastBlankStart >= defEnd && defEnd < cp.phasePoisonedAt;
     cp.unresolvedRefs = cp.unresolvedRefs.filter((ref) => {
       const table = ref.footnote ? cp.footnoteDefs : cp.defs;
       const defEnd = table.get(ref.label);
