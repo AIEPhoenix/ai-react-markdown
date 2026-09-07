@@ -74,18 +74,18 @@
     "react-dom": ">=19"
   },
   "dependencies": {
-    "mermaid": "^11.16.1"
+    "mermaid": "^11.17.2"
   },
   "devDependencies": {
     "@ai-react-markdown/core": "workspace:*",
-    "@mantine/code-highlight": "^9.5.1",
-    "@mantine/core": "^9.5.1",
-    "@mantine/hooks": "^9.5.1",
+    "@mantine/code-highlight": "^9.5.2",
+    "@mantine/core": "^9.5.2",
+    "@mantine/hooks": "^9.5.2",
     "@types/node": "^25.9.5",
     "autoprefixer": "^10.5.4",
     "esbuild-sass-plugin": "^3.7.0",
     "highlight.js": "^11.11.2",
-    "postcss": "^8.5.26",
+    "postcss": "^8.5.28",
     "tsup": "^8.5.1"
   }
 }
