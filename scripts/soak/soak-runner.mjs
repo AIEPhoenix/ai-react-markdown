@@ -4,20 +4,13 @@ import { spawn, execFileSync } from 'node:child_process';
 import { openSync, closeSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath, URL } from 'node:url';
-import { LEGS, taskEnvironment, validateTask, validateManifest } from './soak-contract.mjs';
+import { LEGS, TASK_FILES, taskEnvironment, validateTask, validateManifest } from './soak-contract.mjs';
 
 const dir = resolve(process.argv[2]);
 const root = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const m = JSON.parse(readFileSync(`${dir}/manifest.json`, 'utf8'));
 validateManifest(m);
-const files = {
-  fuzz: 'components/incrementalParse/spliceFuzz.test.ts',
-  dir: 'components/incrementalParse/boundaryDirection.test.ts',
-  scanner: 'components/collectDefLabels.fuzz.test.ts',
-  census: 'components/incrementalParse/spliceExhaustive.test.ts',
-  oracle: 'components/incrementalParse/oracleConformance.test.ts',
-  latex: 'preprocessors/latexEntryEquivalence.fuzz.test.ts',
-};
+
 const active = new Set();
 let stopped = false;
 let interrupted = false;
@@ -66,10 +59,11 @@ async function task(leg, shard) {
   const started = Date.now();
   const fd = openSync(`${dir}/${id}.log`, 'w');
   const child = spawn(
-    resolve(root, 'node_modules/.bin/vitest'),
+    process.execPath,
     [
+      resolve(root, 'node_modules/vitest/vitest.mjs'),
       'run',
-      `src/${files[leg]}`,
+      `src/${TASK_FILES[leg]}`,
       '--maxWorkers=1',
       '--reporter=default',
       '--reporter=json',

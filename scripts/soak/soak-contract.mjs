@@ -2,6 +2,15 @@ import { readFileSync } from 'node:fs';
 import { URL } from 'node:url';
 
 export const LEGS = ['fuzz', 'dir', 'scanner', 'census', 'oracle', 'latex'];
+export const TASK_FILES = {
+  fuzz: 'components/incrementalParse/spliceFuzz.test.ts',
+  dir: 'components/incrementalParse/boundaryDirection.test.ts',
+  scanner: 'components/collectDefLabels.fuzz.test.ts',
+  census: 'components/incrementalParse/spliceExhaustive.test.ts',
+  oracle: 'components/incrementalParse/oracleConformance.test.ts',
+  latex: 'preprocessors/latexEntryEquivalence.fuzz.test.ts',
+};
+
 export const OFFSETS = { fuzz: 0, dir: 100, scanner: 200, oracle: 300, latex: 400 };
 export const integer = (value, min = 1, max = 100) => Number.isInteger(value) && value >= min && value <= max;
 
@@ -70,6 +79,15 @@ export function validateTask(dir, m, leg, shard) {
     report.testResults.some((r) => r.status !== 'passed')
   )
     throw new Error(`${id}: incomplete or failed Vitest report`);
+  const suite = report.testResults[0];
+  if (
+    typeof suite.name !== 'string' ||
+    !suite.name.replaceAll('\\', '/').endsWith(`/src/${TASK_FILES[leg]}`) ||
+    !Array.isArray(suite.assertionResults) ||
+    suite.assertionResults.length !== report.numTotalTests ||
+    suite.assertionResults.some((a) => a.status !== 'passed' || (a.failureMessages?.length ?? 0) > 0)
+  )
+    throw new Error(`${id}: wrong test file or inconsistent assertion results`);
   const expected = taskEnvironment(m, leg, shard);
   if (
     runtime.runId !== m.runId ||

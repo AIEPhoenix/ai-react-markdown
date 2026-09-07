@@ -37,7 +37,7 @@ if (command === 'create') {
     if (runKind === 'fresh' && existsSync(registry)) {
       for (const line of readFileSync(registry, 'utf8').split('\n').filter(Boolean)) {
         const prior = JSON.parse(line);
-        if (prior.runKind === 'fresh' && seedOverlap({ seedBase, legs, shards }, prior)) {
+        if (['fresh', 'replay'].includes(prior.runKind) && seedOverlap({ seedBase, legs, shards }, prior)) {
           throw new Error(
             `fresh seed ${seedBase} already reserved for overlapping random stream(s) by ${prior.runId}; use RUN_KIND=replay to reproduce`
           );

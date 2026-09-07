@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath, URL } from 'node:url';
 import { spawnSync, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { LEGS, seedOverlap, taskEnvironment } from './soak-contract.mjs';
+import { LEGS, TASK_FILES, seedOverlap, taskEnvironment } from './soak-contract.mjs';
 
 const root = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const script = (name) => resolve(root, `scripts/soak/${name}.mjs`);
@@ -64,7 +64,13 @@ function fixture(dir) {
         numFailedTests: 0,
         numPendingTests: 0,
         numTodoTests: 0,
-        testResults: [{ status: 'passed' }],
+        testResults: [
+          {
+            name: `/fixture/src/${TASK_FILES[leg]}`,
+            status: 'passed',
+            assertionResults: [{ status: 'passed', failureMessages: [] }],
+          },
+        ],
       });
       put(`${dir}/${id}.runtime.json`, { id, runId: m.runId, environment: taskEnvironment(m, leg, shard) });
     }
@@ -77,7 +83,19 @@ test('accepts complete structured evidence', (t) => {
   fixture(dir);
   assert.equal(aggregate(dir).status, 0);
 });
-for (const fault of ['zero', 'missing', 'failed', 'skipped', 'environment', 'exit', 'count', 'log']) {
+for (const fault of [
+  'zero',
+  'missing',
+  'failed',
+  'skipped',
+  'environment',
+  'exit',
+  'count',
+  'log',
+  'wrong-file',
+  'empty-assertions',
+  'failed-assertion',
+]) {
   test(`rejects ${fault} evidence`, (t) => {
     const dir = temp(t);
     const { r } = fixture(dir);
@@ -111,6 +129,18 @@ for (const fault of ['zero', 'missing', 'failed', 'skipped', 'environment', 'exi
     if (fault === 'exit')
       edit('task', (d) => {
         d.exitCode = 1;
+      });
+    if (fault === 'wrong-file')
+      edit('vitest', (d) => {
+        d.testResults[0].name = '/wrong.test.ts';
+      });
+    if (fault === 'empty-assertions')
+      edit('vitest', (d) => {
+        d.testResults[0].assertionResults = [];
+      });
+    if (fault === 'failed-assertion')
+      edit('vitest', (d) => {
+        d.testResults[0].assertionResults = [{ status: 'failed' }];
       });
     if (fault === 'log') writeFileSync(`${dir}/fuzz-0.log`, 'Tests 1 failed | 1 passed\nTests 1 passed\n');
     assert.notEqual(aggregate(dir).status, 0);
@@ -243,3 +273,11 @@ test('interruption terminates workers and persists a non-passing result', { time
 
 test('fail-fast leaves unstarted shards unclaimed', { timeout: 20000 }, (t) => realRun(t, 1, false, true));
 test('collect mode runs remaining shards after failure', { timeout: 20000 }, (t) => realRun(t, 1, false, true, false));
+
+test('a previously replayed stream cannot become fresh evidence', (t) => {
+  const dir = temp(t);
+  const args = createArgs(dir, 900000);
+  args[args.indexOf('fresh')] = 'replay';
+  assert.equal(spawnSync('node', args).status, 0);
+  assert.notEqual(spawnSync('node', createArgs(dir, 900001)).status, 0);
+});
