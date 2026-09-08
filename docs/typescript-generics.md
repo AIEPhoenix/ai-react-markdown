@@ -18,7 +18,7 @@ For v1 code, remove the first generic argument: `AIMarkdownProps<MyConfig, MyMet
 
 ```tsx
 import { useRef } from 'react';
-import AIMarkdown, { useAIMarkdownMetadata, type AIMarkdownMetadata } from '@ai-react-markdown/core';
+import AIMarkdown, { useAIMarkdownMetadata, type AIMarkdownMetadata } from '@ai-markdown/react';
 
 interface ChatMeta extends AIMarkdownMetadata {
   messageId: string;
@@ -64,7 +64,7 @@ The cure is the same **wrapper-hook pattern** as always: pin the assertion once,
 
 ```ts
 // my-app/markdown/meta.ts
-import { useAIMarkdownMetadata } from '@ai-react-markdown/core';
+import { useAIMarkdownMetadata } from '@ai-markdown/react';
 import type { ChatMeta } from './types';
 
 export const useChatMeta = () => useAIMarkdownMetadata<ChatMeta>();
@@ -72,7 +72,7 @@ export const useChatMeta = () => useAIMarkdownMetadata<ChatMeta>();
 
 Every custom component imports `useChatMeta()`; the assertion lives in one file.
 
-For **behavior groups** — the v2 successor of the extended config — the same pattern is the _only_ channel, and it's baked into the API shape. `useAIMarkdownBehaviors()` is non-generic: it returns the three core switches plus an opaque extension record, and the single type assertion happens inside the wrapper's narrow hook. This is exactly what `@ai-react-markdown/mantine` ships for its `codeBlock` group:
+For **behavior groups** — the v2 successor of the extended config — the same pattern is the _only_ channel, and it's baked into the API shape. `useAIMarkdownBehaviors()` is non-generic: it returns the three core switches plus an opaque extension record, and the single type assertion happens inside the wrapper's narrow hook. This is exactly what `@ai-markdown/react-mantine` ships for its `codeBlock` group:
 
 ```ts
 // Equivalent narrow-hook pattern; use the package hook in application code.
@@ -122,7 +122,7 @@ import type {
   AIMarkdownExtensionGroups,
   AIMarkdownAggregate,
 
-  // Engine plugins (values live in '@ai-react-markdown/core/plugins')
+  // Engine plugins (values live in '@ai-markdown/react/plugins')
   AIMarkdownEnginePlugin,
   AIMarkdownEnginePluginName,
 
@@ -162,7 +162,7 @@ import type {
   LinkDef,
   RefRecord,
   RefKind,
-} from '@ai-react-markdown/core';
+} from '@ai-markdown/react';
 ```
 
 Mantine package additionally exports:
@@ -173,7 +173,7 @@ import type {
   MantineAIMarkdownMetadata,
   MantineCodeBlockOptions,
   MantineBehaviorProps, // widened defineMantineBehaviors input
-} from '@ai-react-markdown/mantine';
+} from '@ai-markdown/react-mantine';
 ```
 
 ---
@@ -225,7 +225,7 @@ A wrapper can extend `AIMarkdownProps<TMetadata>` and forward the metadata param
 
 ```tsx
 import { memo } from 'react';
-import AIMarkdown, { type AIMarkdownMetadata, type AIMarkdownProps } from '@ai-react-markdown/core';
+import AIMarkdown, { type AIMarkdownMetadata, type AIMarkdownProps } from '@ai-markdown/react';
 
 interface MessageMarkdownProps<T extends AIMarkdownMetadata> extends AIMarkdownProps<T> {
   compact?: boolean;
@@ -259,4 +259,4 @@ Optional fields deserve particular care in group hooks. `{ ...defaults, ...group
 
 Core also exports `AIMarkdownSmoothStreamProps<TMetadata>`, `UseSmoothStreamOptions`, `UseSmoothStreamResult`, and `UseDocumentSmoothStreamOptions`. The smooth shell preserves the same metadata generic; the hooks operate on strings and lifecycle state and do not need one. Controller types (`SmoothStreamController`, `SmoothStreamOptions`, `SmoothStreamPacing`, `SmoothStreamPacingParams`) describe the framework-independent pacing layer.
 
-The authoritative exported names are in [`core/src/index.tsx`](../packages/core/src/index.tsx), with payload types in [`context.tsx`](../packages/core/src/context.tsx). The [subpackage guide](./extending-via-subpackage.md) shows how a wrapper's props, group hook, and widened factory fit together.
+The authoritative exported names are in [`core/src/index.tsx`](../packages/react/src/index.tsx), with payload types in [`context.tsx`](../packages/react/src/context.tsx). The [subpackage guide](./extending-via-subpackage.md) shows how a wrapper's props, group hook, and widened factory fit together.

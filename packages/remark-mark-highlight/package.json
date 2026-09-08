@@ -1,5 +1,5 @@
 {
-  "name": "@ai-react-markdown/remark-mark-highlight",
+  "name": "@ai-markdown/remark-mark-highlight",
   "version": "1.0.1",
   "description": "remark plugin for ==mark== highlight syntax \u2014 first-party successor to remark-mark-highlight, with dual ESM/CJS output.",
   "publishConfig": {
@@ -11,14 +11,14 @@
     "node": ">=20"
   },
   "author": "Brian Lee <aiephoenixbl@gmail.com> (https://github.com/AIEPhoenix)",
-  "homepage": "https://github.com/AIEPhoenix/ai-react-markdown/tree/main/packages/remark-mark-highlight#readme",
+  "homepage": "https://github.com/ai-markdown/ai-markdown/tree/main/packages/remark-mark-highlight#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/AIEPhoenix/ai-react-markdown.git",
+    "url": "git+https://github.com/ai-markdown/ai-markdown.git",
     "directory": "packages/remark-mark-highlight"
   },
   "bugs": {
-    "url": "https://github.com/AIEPhoenix/ai-react-markdown/issues"
+    "url": "https://github.com/ai-markdown/ai-markdown/issues"
   },
   "keywords": [
     "remark",

@@ -1,7 +1,7 @@
 packages:
   - 'packages/*'
   # Benchmark apps and their kit. All private, none published. They are in the
-  # workspace so they resolve `@ai-react-markdown/*` through the same `exports`
+  # workspace so they resolve `@ai-markdown/*` through the same `exports`
   # a user gets from npm — a benchmark that imported our `src` would measure a
   # build no one ships. `build`/`packcheck` filter `./packages/*`, so these do
   # not join either; `pnpm -r typecheck` DOES pick them up, deliberately: an

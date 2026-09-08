@@ -1,5 +1,5 @@
 /**
- * The `@ai-react-markdown/core` benchmark app.
+ * The `@ai-markdown/react` benchmark app.
  *
  * THE INTEGRATION IS THE README'S, VERBATIM. The three lines below —
  * two stylesheet imports and `<AIMarkdown content={...} />` — are copied
@@ -20,9 +20,9 @@
 import { StrictMode, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import AIMarkdown from '@ai-react-markdown/core';
+import AIMarkdown from '@ai-markdown/react';
 import 'katex/dist/katex.min.css';
-import '@ai-react-markdown/core/typography/default.css';
+import '@ai-markdown/react/typography/default.css';
 
 import { driveScenario, installHarness, scenarioById, scriptedScroll, SCENARIOS } from '@bench/kit';
 

@@ -24,9 +24,7 @@ const fallback = {
   'retext-latin': 'retext',
   'retext-stringify': 'retext',
 };
-const sections = [
-  'Third-party code bundled in @ai-react-markdown/engine.\nThe engine project itself remains MIT licensed.',
-];
+const sections = ['Third-party code bundled in @ai-markdown/engine.\nThe engine project itself remains MIT licensed.'];
 for (const [name, { root, pkg }] of [...packages].sort(([a], [b]) => a.localeCompare(b))) {
   const files = readdirSync(root, { withFileTypes: true })
     .filter((file) => file.isFile() && /^(licen[cs]e|copying|notice)/i.test(file.name))

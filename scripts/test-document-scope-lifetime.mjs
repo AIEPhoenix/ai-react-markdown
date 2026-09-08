@@ -18,13 +18,13 @@ let browser;
 let server;
 try {
   await build({
-    entryPoints: ['packages/core/src/test-fixtures/documentScopeLifetime.fixture.tsx'],
+    entryPoints: ['packages/react/src/test-fixtures/documentScopeLifetime.fixture.tsx'],
     outfile: bundle,
     bundle: true,
     format: 'esm',
     platform: 'browser',
     jsx: 'automatic',
-    nodePaths: [resolve('packages/core/node_modules')],
+    nodePaths: [resolve('packages/react/node_modules')],
     define: { 'process.env.NODE_ENV': '"development"' },
     logLevel: 'silent',
   });

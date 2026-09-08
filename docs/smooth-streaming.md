@@ -8,7 +8,7 @@ fed in as usual, and a controller reveals it as a steadily growing prefix,
 grapheme by grapheme, at a rate that tracks the source's measured cadence.
 
 ```tsx
-import { AIMarkdownSmoothStream, AIMarkdownStreamingCursor } from '@ai-react-markdown/core';
+import { AIMarkdownSmoothStream, AIMarkdownStreamingCursor } from '@ai-markdown/react';
 
 <AIMarkdownSmoothStream
   content={message.markdown}
@@ -104,8 +104,8 @@ The shell is sugar over `useSmoothStream`, whose result is deliberately
 props-shaped — spread it into the base component or any wrapper:
 
 ```tsx
-import { useSmoothStream } from '@ai-react-markdown/core';
-import MantineAIMarkdown from '@ai-react-markdown/mantine';
+import { useSmoothStream } from '@ai-markdown/react';
+import MantineAIMarkdown from '@ai-markdown/react-mantine';
 
 function ChatMessage({ markdown, pending }: { markdown: string; pending: boolean }) {
   const smooth = useSmoothStream({ content: markdown, streaming: pending });
@@ -186,7 +186,7 @@ React (or DOM) dependency, exported for non-React hosts and future framework
 bindings:
 
 ```ts
-import { createSmoothStreamController } from '@ai-react-markdown/core';
+import { createSmoothStreamController } from '@ai-markdown/react';
 
 const controller = createSmoothStreamController({ pacing: 'balanced' });
 controller.update(''); // Initialize empty if the first append should animate.
@@ -426,4 +426,4 @@ The preset drain bases are 320 ms (`smooth`), 240 ms (`balanced`), and 150 ms (`
 
 If product behavior depends on completion, distinguish the source's done event from the reveal's drained callback. Persisting the answer can follow source completion; scrolling to the final visible text can follow reveal completion. Do not use `onSmoothDrained` as the sole success signal for empty responses, initial static text, replacements, or transport failures.
 
-Source: [controller](../packages/engine/src/components/smoothStream/controller.ts), [React hook](../packages/core/src/components/smoothStream/useSmoothStream.ts), and [document-aware hook](../packages/core/src/components/smoothStream/useDocumentSmoothStream.ts).
+Source: [controller](../packages/engine/src/components/smoothStream/controller.ts), [React hook](../packages/react/src/components/smoothStream/useSmoothStream.ts), and [document-aware hook](../packages/react/src/components/smoothStream/useDocumentSmoothStream.ts).

@@ -32,7 +32,7 @@ import remarkEmoji from 'remark-emoji';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import { remarkDefinitionList, defListHastHandlers } from 'remark-definition-list';
-import { remarkMark as remarkMarkHighlight } from '@ai-react-markdown/remark-mark-highlight';
+import { remarkMark as remarkMarkHighlight } from '@ai-markdown/remark-mark-highlight';
 import remarkSqueezeParagraphs from 'remark-squeeze-paragraphs';
 import remarkSmartypants from 'remark-smartypants';
 import remarkPangu from 'remark-pangu';

@@ -107,7 +107,7 @@ jobs:
           } | tee benchmarks/results-env.txt
 
       - name: Build the packages the apps consume
-        # The apps resolve `@ai-react-markdown/*` through `exports` to `dist`,
+        # The apps resolve `@ai-markdown/*` through `exports` to `dist`,
         # exactly as a user's install would. Without this they would resolve
         # to nothing.
         run: pnpm build

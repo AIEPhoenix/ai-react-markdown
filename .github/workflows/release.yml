@@ -1,6 +1,6 @@
 name: Release
 
-# Publishes both packages to npm with provenance attestation when a version
+# Publishes the four train packages and independently versioned plugin to npm with provenance attestation when a version
 # tag is pushed. Flow:
 #
 #   pnpm version-packages X.Y.Z && pnpm install
@@ -8,8 +8,8 @@ name: Release
 #   git tag vX.Y.Z && git push origin main vX.Y.Z
 #
 # Independent (non-lockstep) packages — e.g.
-# @ai-react-markdown/remark-mark-highlight — ride a train tag automatically
-# when their version was bumped (pnpm publish -r skips already-published
+# @ai-markdown/remark-mark-highlight — ride a train tag automatically
+# when their version was bumped (the publisher skips already-published
 # versions). To release ONE of them without a train, push a package tag:
 #
 #   git tag remark-mark-highlight-vX.Y.Z && git push origin remark-mark-highlight-vX.Y.Z
@@ -18,8 +18,8 @@ name: Release
 # package's package.json, publish with --filter, and use auto-generated
 # release notes.
 #
-# Auth is npm "trusted publishing" (OIDC): this repo+workflow is registered
-# as a trusted publisher for both packages on npmjs.com, so no token secret
+# Auth is npm "trusted publishing" (OIDC): register this repo+workflow
+# as a trusted publisher for each package on npmjs.com; no token secret
 # exists at all — npm mints a short-lived credential from the id-token
 # permission below, and provenance is attached automatically. pnpm's own
 # native OIDC support landed in 11.1.3, below the version pinned here, so the
@@ -65,81 +65,11 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Verify tag matches package version
-        run: |
-          case "$GITHUB_REF_NAME" in
-            v*)
-              TAG_VERSION="${GITHUB_REF_NAME#v}"
-              PKG_PATH="./package.json"
-              ;;
-            *-v*)
-              PKG_DIR="${GITHUB_REF_NAME%-v*}"
-              TAG_VERSION="${GITHUB_REF_NAME##*-v}"
-              PKG_PATH="./packages/${PKG_DIR}/package.json"
-              if [ ! -f "$PKG_PATH" ]; then
-                echo "::error::Tag ${GITHUB_REF_NAME} names no package directory (${PKG_PATH})"
-                exit 1
-              fi
-              # Package tags are for INDEPENDENTLY versioned packages only. A
-              # lockstep package must ride the train tag (`vX.Y.Z`), where the
-              # check below refuses a partial train — a `core-vX.Y.Z` tag
-              # would publish one lockstep package alone and bypass it (same
-              # set as LOCKSTEP in scripts/version-packages.mjs).
-              case "$PKG_DIR" in
-                core|engine|mantine)
-                  echo "::error::packages/${PKG_DIR} is a lockstep package — release it with a train tag (v${TAG_VERSION}), not ${GITHUB_REF_NAME}"
-                  exit 1
-                  ;;
-              esac
-              ;;
-          esac
-          PKG_VERSION="$(node -p "require('${PKG_PATH}').version")"
-          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
-            echo "::error::Tag ${GITHUB_REF_NAME} does not match ${PKG_PATH} version ${PKG_VERSION}"
-            exit 1
-          fi
-          # A train tag publishes the three lockstep packages together; a
-          # package left behind (hand edit, partial revert) would make
-          # `pnpm publish -r` skip it silently and ship a partial train.
-          if [ "$PKG_PATH" = "./package.json" ]; then
-            for dir in core engine mantine; do
-              V="$(node -p "require('./packages/${dir}/package.json').version")"
-              if [ "$V" != "$TAG_VERSION" ]; then
-                echo "::error::Lockstep package packages/${dir} is at ${V}, tag is ${TAG_VERSION}"
-                exit 1
-              fi
-            done
-            # mantine's core peer range must move with the train: a hand-
-            # bumped major that leaves `^<old>` behind ships a mantine whose
-            # peer is unmet on install (2026-08-19 review).
-            PEER="$(node -p "require('./packages/mantine/package.json').peerDependencies['@ai-react-markdown/core']")"
-            if [ "$PEER" != "^${TAG_VERSION}" ]; then
-              echo "::error::packages/mantine peer @ai-react-markdown/core is '${PEER}', expected '^${TAG_VERSION}'"
-              exit 1
-            fi
-            # The two other dependency edges that ship with the train (2026-08-19
-            # review r2 P2-17):
-            # - core pins engine EXACTLY (`workspace:*` → `X.Y.Z`); that promise
-            #   is documented in the engine README and has no other guard —
-            #   `workspace:^` would pass every other gate and widen it silently.
-            CORE_ENGINE="$(node -p "require('./packages/core/package.json').dependencies['@ai-react-markdown/engine']")"
-            if [ "$CORE_ENGINE" != "workspace:*" ]; then
-              echo "::error::packages/core must depend on @ai-react-markdown/engine as 'workspace:*' (exact pin), found '${CORE_ENGINE}'"
-              exit 1
-            fi
-            # - engine depends on remark-mark-highlight (its own version line)
-            #   via `workspace:^`, which publish expands to `^<local version>`;
-            #   that version must already exist on npm or the train's engine
-            #   is uninstallable.
-            RMH_VERSION="$(node -p "require('./packages/remark-mark-highlight/package.json').version")"
-            if ! npm view "@ai-react-markdown/remark-mark-highlight@${RMH_VERSION}" version >/dev/null 2>&1; then
-              echo "::error::@ai-react-markdown/remark-mark-highlight@${RMH_VERSION} is not on npm yet — publish it (tag remark-mark-highlight-v${RMH_VERSION}) before the train"
-              exit 1
-            fi
-          fi
+        run: node scripts/check-release.mjs "$GITHUB_REF_NAME"
 
       # Full quality gate — mirrors CI so a tag can't ship anything main
       # wouldn't accept. Build runs first: mantine's typecheck/tests resolve
-      # @ai-react-markdown/core through its exports map, which points at dist/.
+      # @ai-markdown/react through its exports map, which points at dist/.
       - name: Overrides in sync
         run: pnpm check:overrides
 
@@ -156,6 +86,9 @@ jobs:
       # resolution (attw) + manifest lint (publint) on the packed tarballs.
       - name: Package export checks (attw + publint)
         run: pnpm packcheck
+
+      - name: Packed consumers outside workspace
+        run: pnpm test:packed-consumers
 
       - name: Typecheck
         run: pnpm -r typecheck
@@ -206,13 +139,33 @@ jobs:
               echo "Pre-release ${VERSION}: publishing under dist-tag '${DIST_TAG_ARGS[1]}'"
               ;;
           esac
+          publish_one() {
+            local dir="$1"
+            local name version
+            name="$(node -p "require('./packages/${dir}/package.json').name")"
+            version="$(node -p "require('./packages/${dir}/package.json').version")"
+            if npm view "${name}@${version}" version >/dev/null 2>&1; then
+              echo "Already published: ${name}@${version}"
+              return
+            fi
+            pnpm --filter "./packages/${dir}" publish --access public --no-git-checks "${@:2}"
+            for attempt in $(seq 1 20); do
+              if npm view "${name}@${version}" version >/dev/null 2>&1; then return; fi
+              sleep 3
+            done
+            echo "::error::Published dependency is not resolvable: ${name}@${version}"
+            return 1
+          }
           case "$GITHUB_REF_NAME" in
             v*)
-              pnpm publish -r --access public --no-git-checks "${DIST_TAG_ARGS[@]}"
+              publish_one remark-mark-highlight --tag latest
+              for dir in engine core react react-mantine; do
+                publish_one "$dir" "${DIST_TAG_ARGS[@]}"
+              done
               ;;
             *-v*)
               PKG_DIR="${GITHUB_REF_NAME%-v*}"
-              pnpm publish --filter "./packages/${PKG_DIR}" --access public --no-git-checks "${DIST_TAG_ARGS[@]}"
+              publish_one "$PKG_DIR" "${DIST_TAG_ARGS[@]}"
               ;;
           esac
 
@@ -225,10 +178,15 @@ jobs:
         run: |
           if [ "${GITHUB_REF_NAME#v}" = "$GITHUB_REF_NAME" ]; then
             # Package tag — no release-highlights section; auto-generate notes.
-            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes --verify-tag
+            PACKAGE_VERSION="${GITHUB_REF_NAME##*-v}"
+            PACKAGE_RELEASE_ARGS=()
+            case "$PACKAGE_VERSION" in *-*) PACKAGE_RELEASE_ARGS=(--prerelease --latest=false);; esac
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes --verify-tag "${PACKAGE_RELEASE_ARGS[@]}"
             exit 0
           fi
           VERSION="${GITHUB_REF_NAME#v}"
+          RELEASE_ARGS=()
+          case "$VERSION" in *-*) RELEASE_ARGS=(--prerelease --latest=false);; esac
           # A `### <version>` heading followed by a space (title) or by end
           # of line; the section runs to the next `### `. If the same version
           # has more than one section, only the first is used — warn so the
@@ -244,8 +202,8 @@ jobs:
             echo "::warning::docs/release-highlights.md has ${SECTIONS} sections for ${VERSION}; only the first is used as release notes"
           fi
           if [ -s /tmp/release-notes.md ]; then
-            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file /tmp/release-notes.md --verify-tag
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file /tmp/release-notes.md --verify-tag "${RELEASE_ARGS[@]}"
           else
             echo "::warning::No '### ${VERSION}' section in docs/release-highlights.md — falling back to auto-generated release notes"
-            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes --verify-tag
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes --verify-tag "${RELEASE_ARGS[@]}"
           fi

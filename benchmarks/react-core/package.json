@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ai-react-markdown/core": "workspace:*",
+    "@ai-markdown/react": "workspace:*",
     "katex": "^0.16.25",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"

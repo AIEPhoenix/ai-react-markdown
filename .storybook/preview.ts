@@ -1,13 +1,13 @@
 import type { Preview } from '@storybook/react-vite';
 import { getUserPreferredColorTheme } from './utils/sb-theme';
-// The React-dependent story infrastructure lives under packages/core/stories/_shared.
+// The React-dependent story infrastructure lives under packages/react/stories/_shared.
 // It cannot live in this directory: pnpm's strict node_modules layout puts `react`
 // only in packages/*/node_modules, so a `.tsx` file here fails to resolve both
 // `react` and the JSX runtime under the dev server and vitest. This file stays a
 // plain `.ts` registration layer.
-import { armReactScan, withReactScan } from '../packages/core/stories/_shared/reactScan';
-import { withColorScheme } from '../packages/core/stories/_shared/withColorScheme';
-import { AimDocsContainer } from '../packages/core/stories/_shared/AimDocsContainer';
+import { armReactScan, withReactScan } from '../packages/react/stories/_shared/reactScan';
+import { withColorScheme } from '../packages/react/stories/_shared/withColorScheme';
+import { AimDocsContainer } from '../packages/react/stories/_shared/AimDocsContainer';
 
 armReactScan();
 

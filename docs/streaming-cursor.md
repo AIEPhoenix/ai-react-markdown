@@ -3,7 +3,7 @@
 `streamingCursor` is a component slot for a visual “still generating” indicator. Core mounts it inside the typography wrapper while `streaming` is true. The exported `AIMarkdownStreamingCursor` positions a small overlay after the final supported text anchor and keeps animating during pauses in delivery.
 
 ```tsx
-import AIMarkdown, { AIMarkdownStreamingCursor } from '@ai-react-markdown/core';
+import AIMarkdown, { AIMarkdownStreamingCursor } from '@ai-markdown/react';
 
 function StreamingMessage({ content, done }: { content: string; done: boolean }) {
   return (
@@ -74,7 +74,7 @@ The tail is derived from the **mdast**, not by looking backwards through the DOM
 The shell owns detection/positioning; the indicator owns pixels. Swap the visual without re-implementing any mechanics:
 
 ```tsx
-import AIMarkdown, { AIMarkdownStreamingCursor, type AIMarkdownStreamingIndicatorProps } from '@ai-react-markdown/core';
+import AIMarkdown, { AIMarkdownStreamingCursor, type AIMarkdownStreamingIndicatorProps } from '@ai-markdown/react';
 
 function MyIndicator({ height, width, lastMutationAt }: AIMarkdownStreamingIndicatorProps) {
   // height/width: rendered size (px) of the last character — match the line.

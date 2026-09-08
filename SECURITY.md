@@ -8,13 +8,13 @@
 
 Use GitHub's private advisory flow:
 
-→ [Report a vulnerability](https://github.com/AIEPhoenix/ai-react-markdown/security/advisories/new)
+→ [Report a vulnerability](https://github.com/ai-markdown/ai-markdown/security/advisories/new)
 
 This creates a private channel between you and the maintainer. We'll triage as soon as possible.
 
 ## What to include
 
-- The package and exact version (`@ai-react-markdown/core@x.y.z` / `@ai-react-markdown/engine@x.y.z` / `@ai-react-markdown/mantine@x.y.z`).
+- The package and exact version (`@ai-markdown/react@x.y.z` / `@ai-markdown/engine@x.y.z` / `@ai-markdown/react-mantine@x.y.z`).
 - A **minimal** markdown input that triggers the vulnerability — the smallest input that demonstrates the issue.
 - The relevant `<AIMarkdown>` / `<MantineAIMarkdown>` props (custom `urlTransform`, `sanitizeSchema`, etc.). If you're using defaults, say so.
 - The observed behavior (what was rendered) vs the expected (what should have been filtered).

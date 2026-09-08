@@ -1,7 +1,8 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "types": ["vitest/globals", "node"]
+    "lib": ["ESNext"],
+    "types": ["node", "vitest/globals"]
   },
   "include": ["src"]
 }

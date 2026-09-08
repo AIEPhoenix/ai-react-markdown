@@ -1,29 +1,29 @@
-# @ai-react-markdown/remark-mark-highlight
+# @ai-markdown/remark-mark-highlight
 
-[![npm version](https://img.shields.io/npm/v/@ai-react-markdown/remark-mark-highlight?logo=npm&color=cb3837)](https://www.npmjs.com/package/@ai-react-markdown/remark-mark-highlight)
-[![npm downloads](https://img.shields.io/npm/dm/@ai-react-markdown/remark-mark-highlight?color=blue)](https://www.npmjs.com/package/@ai-react-markdown/remark-mark-highlight)
-[![minzipped size](https://img.shields.io/bundlephobia/minzip/@ai-react-markdown/remark-mark-highlight?label=minzip)](https://bundlephobia.com/package/@ai-react-markdown/remark-mark-highlight)
-[![types](https://img.shields.io/npm/types/@ai-react-markdown/remark-mark-highlight?logo=typescript&logoColor=white&color=3178c6)](https://www.typescriptlang.org/)
+[![npm version](https://img.shields.io/npm/v/@ai-markdown/remark-mark-highlight?logo=npm&color=cb3837)](https://www.npmjs.com/package/@ai-markdown/remark-mark-highlight)
+[![npm downloads](https://img.shields.io/npm/dm/@ai-markdown/remark-mark-highlight?color=blue)](https://www.npmjs.com/package/@ai-markdown/remark-mark-highlight)
+[![minzipped size](https://img.shields.io/bundlephobia/minzip/@ai-markdown/remark-mark-highlight?label=minzip)](https://bundlephobia.com/package/@ai-markdown/remark-mark-highlight)
+[![types](https://img.shields.io/npm/types/@ai-markdown/remark-mark-highlight?logo=typescript&logoColor=white&color=3178c6)](https://www.typescriptlang.org/)
 
 [![Node ≥20](https://img.shields.io/badge/Node-%E2%89%A520-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![ESM + CJS](https://img.shields.io/badge/module-ESM%20%2B%20CJS-f7df1e?logo=javascript&logoColor=black)](#install)
 [![remark plugin](https://img.shields.io/badge/remark-plugin-2c1e60?logo=markdown&logoColor=white)](https://github.com/remarkjs/remark)
-[![license](https://img.shields.io/npm/l/@ai-react-markdown/remark-mark-highlight?color=green)](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/packages/remark-mark-highlight/LICENSE)
+[![license](https://img.shields.io/npm/l/@ai-markdown/remark-mark-highlight?color=green)](https://github.com/ai-markdown/ai-markdown/blob/main/packages/remark-mark-highlight/LICENSE)
 
-[![CI](https://img.shields.io/github/actions/workflow/status/AIEPhoenix/ai-react-markdown/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/AIEPhoenix/ai-react-markdown/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/actions/workflow/status/AIEPhoenix/ai-react-markdown/release.yml?label=release&logo=githubactions&logoColor=white)](https://github.com/AIEPhoenix/ai-react-markdown/actions/workflows/release.yml)
-[![part of ai-react-markdown](https://img.shields.io/badge/monorepo-ai--react--markdown-8a2be2?logo=github)](https://github.com/AIEPhoenix/ai-react-markdown)
+[![CI](https://img.shields.io/github/actions/workflow/status/ai-markdown/ai-markdown/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/ai-markdown/ai-markdown/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/actions/workflow/status/ai-markdown/ai-markdown/release.yml?label=release&logo=githubactions&logoColor=white)](https://github.com/ai-markdown/ai-markdown/actions/workflows/release.yml)
+[![part of ai-markdown](https://img.shields.io/badge/monorepo-ai--markdown-8a2be2?logo=github)](https://github.com/ai-markdown/ai-markdown)
 
 A [remark](https://github.com/remarkjs/remark) syntax plugin for highlighted text. `==text==` becomes an mdast `mark` node whose `data.hName` tells remark-rehype to produce `<mark>text</mark>`. The package registers both parsing and Markdown serialization extensions; it does not provide CSS or an HTML sanitizer.
 
 Use the named `remarkMarkHighlight` export with unified. The alias `remarkMark` retains the upstream export name, and lower-level micromark/mdast extensions are available for custom pipelines. The core renderer already enables this capability through its sealed `highlight` plugin, so core users do not need to register this package separately.
 
-First-party continuation of the unmaintained [`remark-mark-highlight`](https://www.npmjs.com/package/remark-mark-highlight), used internally by [`@ai-react-markdown/core`](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/packages/core)'s sealed `highlight` engine plugin — published standalone because it is useful outside this repo, and because the upstream's ESM-only exports map broke bare-Node CJS `require()` consumers.
+First-party continuation of the unmaintained [`remark-mark-highlight`](https://www.npmjs.com/package/remark-mark-highlight), used internally by [`@ai-markdown/react`](https://github.com/ai-markdown/ai-markdown/blob/main/packages/react)'s sealed `highlight` engine plugin — published standalone because it is useful outside this repo, and because the upstream's ESM-only exports map broke bare-Node CJS `require()` consumers.
 
 ## Install
 
 ```bash
-npm install @ai-react-markdown/remark-mark-highlight
+npm install @ai-markdown/remark-mark-highlight
 ```
 
 Dual ESM/CJS build: both `import` and `require` work, types included for both.
@@ -35,7 +35,7 @@ A parse-only processor produces an mdast tree. Call `parse` and `run` rather tha
 ```ts
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
-import { remarkMarkHighlight } from '@ai-react-markdown/remark-mark-highlight';
+import { remarkMarkHighlight } from '@ai-markdown/remark-mark-highlight';
 
 const processor = unified().use(remarkParse).use(remarkMarkHighlight);
 const tree = processor.runSync(processor.parse('==hi=='));
@@ -49,7 +49,7 @@ import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkRehype from 'remark-rehype';
 import rehypeStringify from 'rehype-stringify';
-import { remarkMarkHighlight } from '@ai-react-markdown/remark-mark-highlight';
+import { remarkMarkHighlight } from '@ai-markdown/remark-mark-highlight';
 
 const html = unified()
   .use(remarkParse)
@@ -62,7 +62,7 @@ console.log(String(html));
 // <p><mark><strong>bold</strong> inside</mark></p>
 ```
 
-No custom mdast-to-hast handler is required. If your full application pipeline uses rehype-sanitize, include `mark` in its allowed tags; core's default schema already does. For Markdown output, replace the HTML stages with remark-stringify. The plugin supplies the corresponding `==` serialization rules, including the escaping behavior described below.
+No custom mdast-to-hast handler is required. If your full application pipeline uses rehype-sanitize, include `mark` in its allowed tags; the React adapter's default schema already does. For Markdown output, replace the HTML stages with remark-stringify. The plugin supplies the corresponding `==` serialization rules, including the escaping behavior described below.
 
 ## Syntax at a glance
 
@@ -74,7 +74,7 @@ No custom mdast-to-hast handler is required. If your full application pipeline u
 | `` `==code==` ``            | `inlineCode` (code spans win)                                | `<code>==code==</code>`                     |
 | `=single=` / `===triple===` | plain text (exactly two `=` open/close)                      | unchanged                                   |
 
-Works with `remark-rehype` out of the box (`data.hName = 'mark'`); no custom handler needed. If you sanitize with `rehype-sanitize`, allow the `mark` tag (the `@ai-react-markdown/core` default schema already does).
+Works with `remark-rehype` out of the box (`data.hName = 'mark'`); no custom handler needed. If you sanitize with `rehype-sanitize`, allow the `mark` tag (the `@ai-markdown/react` default schema already does).
 
 ## Compatibility
 
@@ -105,7 +105,7 @@ Works with `remark-rehype` out of the box (`data.hName = 'mark'`); no custom han
 
 ## Versioning
 
-This package versions independently of the `@ai-react-markdown/core` release train — core depends on it through a normal semver range.
+This package versions independently of the `@ai-markdown/react` release train — core depends on it through a normal semver range.
 
 ## Integration boundaries and verification
 
@@ -115,8 +115,8 @@ Importing the plugin's types registers `Mark` in mdast's content maps. The resul
 
 The pinned 50-case parity corpus compares positional mdast and hast with `remark-mark-highlight@0.1.1`. It covers this plugin's standalone behavior; interactions with additional attention extensions such as GFM are not implied by that parity claim. Test your complete plugin combination if you depend on a particular nesting rule.
 
-For repository work, run `pnpm --filter @ai-react-markdown/remark-mark-highlight test` and the package build. When changing syntax or serialization, include both a parsed-tree example and a round-trip example: escaping every phrasing equals sign is an existing serializer contract, even where the source is not a highlight span. This package has independent semver, so its behavior changes are not automatically governed by core's version number.
+For repository work, run `pnpm --filter @ai-markdown/remark-mark-highlight test` and the package build. When changing syntax or serialization, include both a parsed-tree example and a round-trip example: escaping every phrasing equals sign is an existing serializer contract, even where the source is not a highlight span. This package has independent semver, so its behavior changes are not automatically governed by the React adapter's version number.
 
 ## License
 
-MIT. Derived from the MIT-licensed `remark-mark-highlight` and `micromark-extension-highlight-mark` / `mdast-util-highlight-mark`; see [LICENSE](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/packages/remark-mark-highlight/LICENSE) for attribution.
+MIT. Derived from the MIT-licensed `remark-mark-highlight` and `micromark-extension-highlight-mark` / `mdast-util-highlight-mark`; see [LICENSE](https://github.com/ai-markdown/ai-markdown/blob/main/packages/remark-mark-highlight/LICENSE) for attribution.

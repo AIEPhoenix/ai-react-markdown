@@ -5,8 +5,8 @@ import {
   buildCoreRemarkRehypeOptions,
   createDefLabelScanner,
   sanitizeSchema,
-  type RegistryInternal,
-} from '@ai-react-markdown/engine';
+  type RegistryController,
+} from '@ai-markdown/engine';
 import {
   createPipelineSession,
   createContributionSession,
@@ -17,13 +17,13 @@ import {
   buildAggregateTree,
   type PhantomTargets,
   type CoordinationPolicy,
-} from '@ai-react-markdown/runtime';
+} from '@ai-markdown/core';
 
 export interface ChunkInput {
   /** Already preprocessed, accumulated source. */
   content: string;
   documentId: string;
-  registry: RegistryInternal | null;
+  registry: RegistryController | null;
   /** Already resolved against any document-level override. */
   preserveOrphanReferences: boolean;
   incrementalParse: boolean;
@@ -40,7 +40,7 @@ export function useMarkdownChunk(input: () => ChunkInput) {
   const scanner = createDefLabelScanner();
   const provenance = globalThis.crypto.randomUUID();
   const chunkId = globalThis.crypto.randomUUID();
-  const allocation = shallowRef<{ registry: RegistryInternal; sym: symbol } | null>(null);
+  const allocation = shallowRef<{ registry: RegistryController; sym: symbol } | null>(null);
   const version = shallowRef(0);
   let targets: PhantomTargets | undefined;
   let policy: CoordinationPolicy | undefined;

@@ -444,7 +444,7 @@ const mdParser = unified().use(remarkParse).use(remarkMath);
  * give the same answer. It is the one expectation that compares a case
  * against itself, and it is the reason the scheme was worth importing.
  */
-const engine = await import('@ai-react-markdown/engine');
+const engine = await import('@ai-markdown/engine');
 const remarkRehype = (await import('remark-rehype')).default;
 const { defaultSchema } = await import('rehype-sanitize');
 

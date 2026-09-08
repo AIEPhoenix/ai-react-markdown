@@ -227,7 +227,7 @@ describe('prefix-freeze measurement', () => {
     // package, so these two tables — the entire measured output of this
     // harness, and the source of the numbers in this directory's README —
     // have been printing nothing. The real stream is not intercepted.
-    // (The README's run command also still points at `packages/core`, a path
+    // (The README's run command also still points at `packages/react`, a path
     // that moved with the engine split; `--disable-console-intercept` there
     // was one author's local workaround for this same drop, never
     // generalised. Both are noted rather than changed here.)

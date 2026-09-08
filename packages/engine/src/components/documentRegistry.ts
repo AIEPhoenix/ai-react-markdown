@@ -70,15 +70,9 @@ export interface ChunkData {
  *
  * Mutators — `registerChunk`, `allocateSymbol`, `releaseSymbol`,
  * `contributeLabels`, `contributeChunkData` — are intentionally off this
- * interface. Driving the registry directly is reserved for internal
- * coordinators (the package's own `MarkdownContent` renderer) and tests,
- * which import the wider `RegistryInternal` type from this module.
- * `RegistryInternal` is exported from this engine package (the core
- * renderer consumes it) but NOT from `@ai-react-markdown/core`'s public
- * barrel — keeping mutators off the consumer-facing surface prevents a
- * misbehaving consumer-component from corrupting refcounts, skipping
- * version bumps, or otherwise breaking the invariants the renderer relies
- * on.
+ * interface. Framework adapters use RegistryController for registration and
+ * publication; application hooks expose this read-only view. Mutable refcount
+ * and subscriber containers remain implementation-only source interfaces.
  */
 export interface Registry {
   /** Chunk mount-order Symbol list. **Read-only.** Direct mutation
@@ -134,21 +128,11 @@ export interface Registry {
   globalOccurrenceForRef(chunkSym: symbol, label: string, localOccurrence: number): number | null;
 }
 
-/**
- * Internal registry surface — extends {@link Registry} with the mutator
- * methods and implementation-private fields (reactId-keyed refcount table,
- * subscriber set, microtask-coalesce flag, `_notify` itself).
- *
- * Exported from this module (and the engine barrel) so internal
- * coordinators (`MarkdownContent`) and tests can hold a strongly-typed
- * reference, but **not** re-exported from `@ai-react-markdown/core`'s
- * barrel — a consumer flipping `_notifyScheduled = true`
- * or pushing into `chunkOrder` directly would silently break the
- * coalesce / numbering invariants. The runtime value returned by
- * {@link createRegistry} always satisfies this wider shape; public consumers
- * just see the narrowed {@link Registry} view.
- */
-export interface RegistryInternal extends Registry {
+/** Adapter write contract. Register in committed lifecycle work and pair each
+ * registration with releaseSymbol. Read state through Registry; never mutate
+ * snapshot containers directly. Internal storage and notification fields are
+ * intentionally absent from this public interface. */
+export interface RegistryController extends Registry {
   /** Allocate (or reuse, for Strict Mode remount) the chunk Symbol for
    *  `reactId` AND publish this chunk's own def labels (footnotes + links)
    *  in one call. Canonical pair API used by `MarkdownContent`'s allocate
@@ -168,14 +152,15 @@ export interface RegistryInternal extends Registry {
    *  Chunks that supply an index are kept sorted by it; chunks without one
    *  keep mount order after them. */
   allocateSymbol(reactId: string, documentIndex?: number): symbol;
-  /** @internal Insert a chunk Symbol at its document position. */
-  _placeChunk(sym: symbol, documentIndex?: number): void;
   releaseSymbol(reactId: string): void;
   contributeLabels(symbol: symbol, footnotes: Set<string>, links: Set<string>): void;
   contributeChunkData(symbol: symbol, data: ChunkData): void;
+}
 
+/** Implementation-only registry state. Tests import this source module. */
+export interface RegistryInternal extends RegistryController {
+  _placeChunk(sym: symbol, documentIndex?: number): void;
   _reactIdMap: Map<string, { symbol: symbol; refcount: number }>;
-  /** Symbol → the `documentIndex` its chunk supplied (see allocateSymbol). */
   _chunkIndex: Map<symbol, number>;
   _subscribers: Set<() => void>;
   _notifyScheduled: boolean;

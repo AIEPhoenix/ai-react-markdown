@@ -126,8 +126,8 @@ on the shared oracle in `incrementalParse/spliceArbiterHarness.ts`:
 Historical deep-run commands (deterministic, seed-controlled; the seed below reproduces an old diagnostic campaign and is not fresh release evidence):
 
 ```sh
-FUZZ_RUNS=50000 FUZZ_SEED=20260750 pnpm --filter @ai-react-markdown/engine fuzz:splice
-EXHAUSTIVE_K=4 EXHAUSTIVE_STRIDE=1 pnpm --filter @ai-react-markdown/engine exec vitest --run src/components/incrementalParse/spliceExhaustive.test.ts
+FUZZ_RUNS=50000 FUZZ_SEED=20260750 pnpm --filter @ai-markdown/engine fuzz:splice
+EXHAUSTIVE_K=4 EXHAUSTIVE_STRIDE=1 pnpm --filter @ai-markdown/engine exec vitest --run src/components/incrementalParse/spliceExhaustive.test.ts
 ```
 
 Counterexample workflow: fast-check shrinks every failure to a minimal

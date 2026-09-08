@@ -54,7 +54,7 @@ Other explicit schemes, including `javascript:`, `data:`, `vbscript:`, and `file
 For an application deep link, allow the protocol on `href` and keep image policy unchanged. Give the callback the exported `UrlTransform` type so its `node` argument has the correct hast shape:
 
 ```tsx
-import AIMarkdown, { defaultUrlTransform, extendSanitizeSchema, type UrlTransform } from '@ai-react-markdown/core';
+import AIMarkdown, { defaultUrlTransform, extendSanitizeSchema, type UrlTransform } from '@ai-markdown/react';
 
 const SCHEMA = extendSanitizeSchema((draft) => {
   draft.protocols ??= {};
@@ -138,7 +138,7 @@ Passing `null` is equivalent to omitting the prop entirely — `<AIMarkdown>` fa
 `extendSanitizeSchema` hands you a deep clone of the library default. Mutate it freely or return a replacement — the clone never aliases the singleton.
 
 ```ts
-import { extendSanitizeSchema } from '@ai-react-markdown/core';
+import { extendSanitizeSchema } from '@ai-markdown/react';
 
 // Mutate-style (recommended for additive changes).
 const SCHEMA = extendSanitizeSchema((s) => {

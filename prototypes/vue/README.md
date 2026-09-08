@@ -1,8 +1,8 @@
 # Vue lifecycle prototype
 
-Private integration experiment for the future `ai-markdown` framework adapters. It consumes the existing engine and private runtime workspace exports with real Vue 3 reactivity, component mounting/unmounting and server rendering. It is not an npm package or a production Markdown component.
+Private integration experiment for the future `ai-markdown` framework adapters. It consumes the existing engine and public shared-core workspace exports with real Vue 3 reactivity, component mounting/unmounting and server rendering. It is not an npm package or a production Markdown component.
 
-The purpose is to check whether shared preparation decisions work outside React before committing to the new core's public API. No Vue dependency is added to runtime, engine or the published React packages. The workspace is outside `packages/*`, so it does not join the legacy build/publish train; its tests and typecheck do participate in repository verification.
+The purpose is to check whether shared preparation decisions work outside React before committing to the new core's public API. No Vue dependency is added to shared core, engine or the published React packages. The workspace is outside `packages/*`, so it does not join the public build/publish train; its tests and typecheck do participate in repository verification.
 
 ## What the composable owns
 
@@ -27,8 +27,8 @@ From the repository root:
 ```bash
 pnpm install --frozen-lockfile
 pnpm build
-pnpm --filter @ai-react-markdown/prototype-vue typecheck
-pnpm --filter @ai-react-markdown/prototype-vue test
+pnpm --filter @ai-markdown/prototype-vue typecheck
+pnpm --filter @ai-markdown/prototype-vue test
 pnpm preflight
 ```
 

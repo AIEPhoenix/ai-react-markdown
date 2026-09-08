@@ -21,7 +21,7 @@ interface AIMarkdownTypographyProps {
 The `style` prop is **the critical part**. The core renderer injects CSS custom properties (currently `--aim-font-size-root`, more may be added in future minor versions) through `style`. Your typography component **must** merge `style` onto its root element — otherwise descendant CSS rules that reference `var(--aim-font-size-root)` (including the built-in `default` variant and all design tokens) will fall back to their inherited values.
 
 ```tsx
-import AIMarkdown, { type AIMarkdownTypographyComponent } from '@ai-react-markdown/core';
+import AIMarkdown, { type AIMarkdownTypographyComponent } from '@ai-markdown/react';
 
 const MyTypography: AIMarkdownTypographyComponent = ({ children, fontSize, colorScheme, style }) => (
   <div
@@ -44,7 +44,7 @@ const MyTypography: AIMarkdownTypographyComponent = ({ children, fontSize, color
 ### Theme-aware wrapper using a design system
 
 ```tsx
-import type { AIMarkdownTypographyComponent } from '@ai-react-markdown/core';
+import type { AIMarkdownTypographyComponent } from '@ai-markdown/react';
 import { useTheme } from 'my-design-system';
 
 const ThemedTypography: AIMarkdownTypographyComponent = ({ children, fontSize, colorScheme, style }) => {
@@ -159,7 +159,7 @@ The `variant` prop is typed as `'default' | (string & {})` — literal `'default
 Use it for CSS scope that should be **co-located with the rendered markdown** but **independent of typography theming**. The Mantine package uses it to scope `@mantine` CSS variable overrides without polluting the typography wrapper.
 
 ```tsx
-import type { AIMarkdownExtraStylesComponent } from '@ai-react-markdown/core';
+import type { AIMarkdownExtraStylesComponent } from '@ai-markdown/react';
 
 const MyExtraStyles: AIMarkdownExtraStylesComponent = ({ children }) => (
   <div className="my-markdown-extra-scope">{children}</div>
@@ -172,7 +172,7 @@ const MyExtraStyles: AIMarkdownExtraStylesComponent = ({ children }) => (
 
 ## Mantine: extending vs replacing
 
-`@ai-react-markdown/mantine` ships:
+`@ai-markdown/react-mantine` ships:
 
 - `MantineAIMarkdownTypography` — Mantine's `<Typography>` with `w="100%"` and `fz={fontSize}`
 - `MantineAIMDefaultExtraStyles` — `<div className="aim-mantine-extra-styles">` that activates the package's em-based CSS overrides
@@ -180,7 +180,7 @@ const MyExtraStyles: AIMarkdownExtraStylesComponent = ({ children }) => (
 Both are exported. You can re-use them, wrap them, or replace them:
 
 ```tsx
-import { MantineAIMarkdownTypography, MantineAIMDefaultExtraStyles } from '@ai-react-markdown/mantine';
+import { MantineAIMarkdownTypography, MantineAIMDefaultExtraStyles } from '@ai-markdown/react-mantine';
 
 // Wrap Mantine's typography (e.g. to add an outer container)
 const WrappedTypography: AIMarkdownTypographyComponent = (props) => (
@@ -245,7 +245,7 @@ const Explicit: AIMarkdownTypographyComponent = ({ children, fontSize, variant, 
 );
 ```
 
-If you add custom inline values that overlap the injected `style`, choose a spread order deliberately. `style={{ ...ownStyles, ...style }}` preserves core's injected values. Reversing the order lets your values replace them; that is appropriate only when you intend to take responsibility for the sizing contract.
+If you add custom inline values that overlap the injected `style`, choose a spread order deliberately. `style={{ ...ownStyles, ...style }}` preserves the React adapter's injected values. Reversing the order lets your values replace them; that is appropriate only when you intend to take responsibility for the sizing contract.
 
 ## Children, DOM structure, and cursor placement
 
@@ -283,4 +283,4 @@ const CompatibleTypography: AIMarkdownTypographyComponent = ({ children, fontSiz
 
 A custom variant name selects only CSS that you supply. It does not synthesize a new token scale. Likewise, a custom color-scheme string needs corresponding color rules. Test the wrapper with nested lists, blockquotes containing code, formulas inside headings, and a streaming tail; these expose inheritance and child-layout mistakes that plain prose does not.
 
-Implementation references: [`defs.ts`](../packages/core/src/defs.ts), [`Default.tsx`](../packages/core/src/components/typography/Default.tsx), and the `contentBody` composition in [`index.tsx`](../packages/core/src/index.tsx).
+Implementation references: [`defs.ts`](../packages/react/src/defs.ts), [`Default.tsx`](../packages/react/src/components/typography/Default.tsx), and the `contentBody` composition in [`index.tsx`](../packages/react/src/index.tsx).

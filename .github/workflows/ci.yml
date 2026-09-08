@@ -87,9 +87,9 @@ jobs:
       # isolated jobs.
       #
       # EVERY publishable package, not just core and what core depends on.
-      # `@ai-react-markdown/core...` walks core's dependencies DOWNWARD, and
+      # `@ai-markdown/react...` walks core's dependencies DOWNWARD, and
       # mantine is not one — it depends on core, not the other way round. The
-      # `react-mantine` benchmark app imports `@ai-react-markdown/mantine`,
+      # `react-mantine` benchmark app imports `@ai-markdown/react-mantine`,
       # which resolves through its `exports` to a `dist` nothing had built, so
       # `pnpm -r typecheck` failed on a module-not-found that no local run
       # reproduces (a developer has the dist from an earlier build). CI went
@@ -128,6 +128,10 @@ jobs:
       - name: Package export checks (attw + publint)
         if: matrix.task == 'build'
         run: pnpm packcheck
+
+      - name: Packed consumers outside workspace
+        if: matrix.task == 'build'
+        run: pnpm test:packed-consumers
 
       # The root vitest config's `storybook` project renders every story in
       # headless Chromium (via @storybook/addon-vitest) — the only gate that

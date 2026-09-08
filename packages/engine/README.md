@@ -1,29 +1,29 @@
-# @ai-react-markdown/engine
+# @ai-markdown/engine
 
-> **Legacy maintenance release:** 2.14.1 fixes lifecycle cleanup and completes shared preparation work after the 2.14.0 split. Existing imports remain supported; subsequent multi-framework development moves to `ai-markdown`. See the [transition and architecture guide](../../docs/framework-transition.md).
+> **3.0.0-beta.1:** the new `@ai-markdown` scope separates the shared core from the React adapter. Install framework packages with `@beta`; Vue remains a private prototype. See the [migration guide](../../docs/framework-transition.md).
 
-[![npm version](https://img.shields.io/npm/v/@ai-react-markdown/engine?logo=npm&color=cb3837)](https://www.npmjs.com/package/@ai-react-markdown/engine)
-[![npm downloads](https://img.shields.io/npm/dm/@ai-react-markdown/engine?color=blue)](https://www.npmjs.com/package/@ai-react-markdown/engine)
-[![minzipped size](https://img.shields.io/bundlephobia/minzip/@ai-react-markdown/engine?label=minzip)](https://bundlephobia.com/package/@ai-react-markdown/engine)
-[![types](https://img.shields.io/npm/types/@ai-react-markdown/engine?logo=typescript&logoColor=white&color=3178c6)](https://www.typescriptlang.org/)
+[![npm version](https://img.shields.io/npm/v/@ai-markdown/engine?logo=npm&color=cb3837)](https://www.npmjs.com/package/@ai-markdown/engine)
+[![npm downloads](https://img.shields.io/npm/dm/@ai-markdown/engine?color=blue)](https://www.npmjs.com/package/@ai-markdown/engine)
+[![minzipped size](https://img.shields.io/bundlephobia/minzip/@ai-markdown/engine?label=minzip)](https://bundlephobia.com/package/@ai-markdown/engine)
+[![types](https://img.shields.io/npm/types/@ai-markdown/engine?logo=typescript&logoColor=white&color=3178c6)](https://www.typescriptlang.org/)
 
 [![Node ≥20](https://img.shields.io/badge/Node-%E2%89%A520-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![ESM + CJS](https://img.shields.io/badge/module-ESM%20%2B%20CJS-f7df1e?logo=javascript&logoColor=black)](#install)
-[![license](https://img.shields.io/npm/l/@ai-react-markdown/engine?color=green)](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/LICENSE)
+[![license](https://img.shields.io/npm/l/@ai-markdown/engine?color=green)](https://github.com/ai-markdown/ai-markdown/blob/main/LICENSE)
 
-[![CI](https://img.shields.io/github/actions/workflow/status/AIEPhoenix/ai-react-markdown/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/AIEPhoenix/ai-react-markdown/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/actions/workflow/status/AIEPhoenix/ai-react-markdown/release.yml?label=release&logo=githubactions&logoColor=white)](https://github.com/AIEPhoenix/ai-react-markdown/actions/workflows/release.yml)
-[![part of ai-react-markdown](https://img.shields.io/badge/monorepo-ai--react--markdown-8a2be2?logo=github)](https://github.com/AIEPhoenix/ai-react-markdown)
+[![CI](https://img.shields.io/github/actions/workflow/status/ai-markdown/ai-markdown/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/ai-markdown/ai-markdown/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/actions/workflow/status/ai-markdown/ai-markdown/release.yml?label=release&logo=githubactions&logoColor=white)](https://github.com/ai-markdown/ai-markdown/actions/workflows/release.yml)
+[![part of ai-markdown](https://img.shields.io/badge/monorepo-ai--markdown-8a2be2?logo=github)](https://github.com/ai-markdown/ai-markdown)
 
-`@ai-react-markdown/engine` contains the string and syntax-tree processing used by ai-react-markdown: LaTeX preprocessing, the unified plugin chain, incremental parsing, and shared reference bookkeeping. It has no React dependency. A framework adapter supplies component lifecycle, DOM rendering, context subscriptions, and any presentation such as syntax highlighting.
+`@ai-markdown/engine` contains the string and syntax-tree processing used by ai-markdown: LaTeX preprocessing, the unified plugin chain, incremental parsing, and shared reference bookkeeping. It has no React dependency. A framework adapter supplies component lifecycle, DOM rendering, context subscriptions, and any presentation such as syntax highlighting.
 
-**This is an internal supplier package.** It is published because core depends on it, with the same exact version. Its exports follow core's needs and can change in any release before 3.0.0, including patches. React applications and design-system wrappers should install core and use its public API. A direct engine consumer should pin an exact version and review changes when upgrading.
+**This is the algorithm layer for adapter authors.** Shared core and React consume it at the exact same train version. The beta root exports parsing, preprocessing, registry and policy contracts; fixtures and private registry containers are excluded. Beta APIs may evolve before stable 3.0.0. React applications should install `@ai-markdown/react@beta`.
 
 The examples below demonstrate individual entry points. They do not assemble a complete framework adapter: URL transformation, coordinated placeholder rendering, effect timing, and CSS remain the adapter's responsibility.
 
 ## What's inside
 
-Everything is exported from the package root (`import { … } from '@ai-react-markdown/engine'`); the barrel is grouped by layer:
+Everything is exported from the package root (`import { … } from '@ai-markdown/engine'`); the barrel is grouped by layer:
 
 | Layer                    | Modules                                                                                                                                        | Highlights                                                                                                                                                                                                                                                                                     |
 | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -38,7 +38,7 @@ Everything is exported from the package root (`import { … } from '@ai-react-ma
 ## Install
 
 ```bash
-npm install @ai-react-markdown/engine
+npm install @ai-markdown/engine@beta
 ```
 
 Dual ESM/CJS build with types for both. ESM keeps pipeline dependencies external. The CJS build bundles ESM-only default-export plugins so Node receives callable plugins and does not try to resolve the import-only `remend` entry through `require`. Bundled third-party licenses ship in `dist/THIRD_PARTY_LICENSES.txt`. No React dependency. The only peer is `katex` (`^0.16 || ^0.17`, **optional** — needed only if you render math). The pipeline also receives KaTeX transitively through `rehype-katex`. If your application imports KaTeX CSS, declare KaTeX directly so the import resolves independently of dependency hoisting. A tree-only consumer does not need to load a browser stylesheet.
@@ -46,14 +46,14 @@ Dual ESM/CJS build with types for both. ESM keeps pipeline dependencies external
 ## Example: the LaTeX preprocessor on its own
 
 ```ts
-import { preprocessLaTeX } from '@ai-react-markdown/engine';
+import { preprocessLaTeX } from '@ai-markdown/engine';
 
 preprocessLaTeX('Price is $100, and \\(x^2\\) is inline math.');
 // → 'Price is \\$100, and $$x^2$$ is inline math.'
 // (currency `$` escaped; `\\(…\\)` normalized to the `$$…$$` form remark-math's inline rule accepts)
 ```
 
-The same function runs inside `@ai-react-markdown/core` before every parse; the incremental variant (`createIncrementalLatexPreprocessor`) reuses work across append-only frames.
+The same function runs inside `@ai-markdown/react` before every parse; the incremental variant (`createIncrementalLatexPreprocessor`) reuses work across append-only frames.
 
 ## Example: driving the incremental parser
 
@@ -67,7 +67,7 @@ import {
   sanitizeSchema,
   type IncrementalParseState,
   type AdvanceOptions,
-} from '@ai-react-markdown/engine';
+} from '@ai-markdown/engine';
 
 const remarkPlugins = buildCoreRemarkPlugins(defaultEnginePlugins);
 const rehypePlugins = buildCoreRehypePlugins(sanitizeSchema, 'example-user-content-');
@@ -104,16 +104,16 @@ Node, workers, and embedded JS runtimes (e.g. Hermes/JavaScriptCore).
 
 ## Versioning
 
-Lockstep with `@ai-react-markdown/core`, which pins this package **exactly** — the export surface follows what core consumes and may change in any release before 3.0.0 (see the status note above). Release notes: [release highlights](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/release-highlights.md).
+Lockstep with `@ai-markdown/react`, which pins this package **exactly** — the export surface follows what core consumes and may change in any release before 3.0.0 (see the status note above). Release notes: [release highlights](https://github.com/ai-markdown/ai-markdown/blob/main/docs/release-highlights.md).
 
 ## Package family
 
-| Package                                                                                                              | Role                                                                                                        | Version policy                                                      |
-| -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| [`@ai-react-markdown/core`](https://www.npmjs.com/package/@ai-react-markdown/core)                                   | The React renderer — `<AIMarkdown>`, `<AIMarkdownSmoothStream>`, `<AIMarkdownDocuments>`, hooks, providers  | Release train                                                       |
-| [`@ai-react-markdown/mantine`](https://www.npmjs.com/package/@ai-react-markdown/mantine)                             | Mantine UI bindings — themed typography, code-highlight tabs, Mermaid, color-scheme wiring                  | Release train (lockstep with core)                                  |
-| [`@ai-react-markdown/engine`](https://www.npmjs.com/package/@ai-react-markdown/engine)                               | Framework-agnostic engine — incremental parsing, LaTeX preprocessing, plugin pipeline, cross-chunk registry | Release train (lockstep, pinned exactly by core; internal supplier) |
-| [`@ai-react-markdown/remark-mark-highlight`](https://www.npmjs.com/package/@ai-react-markdown/remark-mark-highlight) | remark plugin for `==mark==` highlight syntax                                                               | Independent semver                                                  |
+| Package                                                                                                  | Role                                                                                                        | Version policy                                                      |
+| -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| [`@ai-markdown/react`](https://www.npmjs.com/package/@ai-markdown/react)                                 | The React renderer — `<AIMarkdown>`, `<AIMarkdownSmoothStream>`, `<AIMarkdownDocuments>`, hooks, providers  | Release train                                                       |
+| [`@ai-markdown/react-mantine`](https://www.npmjs.com/package/@ai-markdown/react-mantine)                 | Mantine UI bindings — themed typography, code-highlight tabs, Mermaid, color-scheme wiring                  | Release train (lockstep with core)                                  |
+| [`@ai-markdown/engine`](https://www.npmjs.com/package/@ai-markdown/engine)                               | Framework-agnostic engine — incremental parsing, LaTeX preprocessing, plugin pipeline, cross-chunk registry | Release train (lockstep, pinned exactly by core; internal supplier) |
+| [`@ai-markdown/remark-mark-highlight`](https://www.npmjs.com/package/@ai-markdown/remark-mark-highlight) | remark plugin for `==mark==` highlight syntax                                                               | Independent semver                                                  |
 
 ## Owning incremental state
 
@@ -121,7 +121,7 @@ Keep one parse state per logical input stream. Supply the full current source to
 
 A successful splice depends on both source continuity and pipeline compatibility. If your selected plugins, schema, namespace, or conversion options change, update the dependency key as well. Mutating a plugin array in place while retaining its identity can make a hand-built adapter reuse state under the wrong assumptions. The example creates its pipeline once and enables definition-list handling consistently in both parsing options and plugin selection.
 
-`advanceIncrementalParse` does not implicitly apply every preprocessing convenience exposed by core. Normalize raw input first when you need the core LaTeX behavior, and retain a separate incremental LaTeX preprocessor per stream if using its stateful form. User transforms run on the normalized string in core; reproducing only the parse call is not necessarily equivalent to reproducing core's entire input pipeline.
+`advanceIncrementalParse` does not implicitly apply every preprocessing convenience exposed by core. Normalize raw input first when you need the core LaTeX behavior, and retain a separate incremental LaTeX preprocessor per stream if using its stateful form. User transforms run on the normalized string in core; reproducing only the parse call is not necessarily equivalent to reproducing the React adapter's entire input pipeline.
 
 ## Adapter responsibilities
 
@@ -133,7 +133,7 @@ Use the React adapter as a source-level reference when building another host, an
 
 ## Repository commands
 
-After installing workspace dependencies, build with `pnpm --filter @ai-react-markdown/engine build` and type-check with `pnpm --filter @ai-react-markdown/engine typecheck`. The package's `fuzz:splice` command runs the splice property suite; `soak:coverage` validates the coverage map. Development soak runs use the smoke profile, and reused diagnostic seeds are marked as replay runs. Only complete release evidence can establish a release PASS.
+After installing workspace dependencies, build with `pnpm --filter @ai-markdown/engine build` and type-check with `pnpm --filter @ai-markdown/engine typecheck`. The package's `fuzz:splice` command runs the splice property suite; `soak:coverage` validates the coverage map. Development soak runs use the smoke profile, and reused diagnostic seeds are marked as replay runs. Only complete release evidence can establish a release PASS.
 
 The experimental README preserves the original L0–L4 study and later verification history. Its historical counts and tiers are not substitutes for the current production scanner, coverage map, or release runner configuration.
 

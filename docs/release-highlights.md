@@ -21,6 +21,18 @@ Patch headings identify fixes or maintenance; minor headings introduce features 
 
 ## 2.14.x — Final ai-react-markdown release line
 
+### 3.0.0-beta.1 — ai-markdown scope and public shared core
+
+The first new-scope beta moves the repository to `ai-markdown/ai-markdown` and publishes `@ai-markdown/engine`, `@ai-markdown/core`, `@ai-markdown/react` and `@ai-markdown/react-mantine` on one version train. Install the framework packages with `@beta`; the independent `@ai-markdown/remark-mark-highlight` plugin retains its 1.x version.
+
+The old React core becomes `@ai-markdown/react`. The previously private runtime becomes the new shared `@ai-markdown/core`, an external exact-version dependency alongside engine. React component/hook names, plugin and typography subpaths, Mantine stylesheet behavior, ESM/CJS and development/production entries are retained. React peers are bounded to the verified 19.x major.
+
+Public core exports are explicitly listed. Registry registration/publication is exposed through `RegistryController`; contribution sessions accept a minimal write capability. Smooth coordinators return the documented public interface. Internal registry containers and scenario fixtures are no longer public engine exports. Beta adapter APIs may evolve before stable 3.0.0.
+
+Vue remains a private lifecycle/SSR preparation prototype. A complete Vue renderer and the dedicated documentation site are subsequent milestones. See [the migration guide](./framework-transition.md) for old/new package paths and [the approved plan](./plans/ai-markdown-packages-and-release.md) for ownership and release policy.
+
+Publication requires the full preflight, packed consumer checks and a fresh six-leg release soak on the final candidate. GitHub marks this release as a prerelease; npm uses `beta` for the four train packages.
+
 ### 2.14.1 — Release abandoned document scopes and share preparation decisions
 
 - Fix document registries and smooth coordinators retained by a long-lived wrapper after React abandons a render before registration. Weak scope caches preserve live consumer identity while allowing unused allocations to be collected; explicit final-release eviction remains in place.

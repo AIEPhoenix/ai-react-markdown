@@ -44,8 +44,8 @@ Local investigations did identify the update-count floor and helped investigate 
 | Path             | What lives there                                                        |
 | ---------------- | ----------------------------------------------------------------------- |
 | `kit/`           | Scenarios and the measurement harness. Framework-agnostic.              |
-| `react-core/`    | The `@ai-react-markdown/core` README integration, instrumented.         |
-| `react-mantine/` | The `@ai-react-markdown/mantine` README integration, instrumented.      |
+| `react-core/`    | The `@ai-markdown/react` README integration, instrumented.              |
+| `react-mantine/` | The `@ai-markdown/react-mantine` README integration, instrumented.      |
 | `react-null/`    | React text-only control; large repeated pre updates have their own cost |
 | `runner/`        | Playwright driver, self-test, comparison.                               |
 
@@ -69,7 +69,7 @@ moment an app memoises the content or batches the updates, it stops
 describing the library and starts describing our cleverness — and the
 regression it then fails to catch is exactly the one a user hits.
 
-The apps depend on `@ai-react-markdown/*` as `workspace:*`, which resolves
+The apps depend on `@ai-markdown/*` as `workspace:*`, which resolves
 through each package's own `exports` to its built `dist` — the same entry
 point npm hands a user. It is not a source-level import and must not become
 one.

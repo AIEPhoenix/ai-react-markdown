@@ -1,14 +1,14 @@
 # Architecture Overview
 
-The repository separates Markdown computation from React rendering. `@ai-react-markdown/engine` owns normalization, parsing, tree transformation, incremental state, and document registries. The private `@ai-react-markdown/runtime` adds pipeline sessions, block planning, contribution publishing, aggregate footnote HAST and smooth reveal coordination. `@ai-react-markdown/core` consumes those results as a React adapter, supplies contexts and slots, and manages render caches. `@ai-react-markdown/mantine` composes core's public API to provide Mantine typography and code/diagram UI.
+The repository separates Markdown computation from React rendering. `@ai-markdown/engine` owns normalization, parsing, tree transformation, incremental state, and document registries. The shared `@ai-markdown/core` adds pipeline sessions, block planning, contribution publishing, aggregate footnote HAST and smooth reveal coordination. `@ai-markdown/react` consumes those results as a React adapter, supplies contexts and slots, and manages render caches. `@ai-markdown/react-mantine` composes the React adapter's public API to provide Mantine typography and code/diagram UI.
 
 Read this guide when tracing a rendering defect, changing an optimization, or building an integration. The important distinction is between an input changing, a syntax tree being recomputed, a block plan being rebuilt, and a React consumer rendering. Those are separate events with different dependencies. A context update need not reparse Markdown, and a successful incremental parse does not make all remaining work proportional to the latest token.
 
-## Shared runtime and the legacy release boundary
+## Shared core and framework adapters
 
-2.14.0 is the final planned `ai-react-markdown` release. Runtime is a private workspace package bundled into the old public core; engine remains external and exact-version pinned. No consumer import changes in this split. [The transition guide](./framework-transition.md) maps current ownership to the intended new scope and records what still needs a real second-framework validation.
+The legacy v2.14.1 release completed the private-runtime split. In 3.0.0-beta.1, that implementation is the public `@ai-markdown/core`, while the React implementation is `@ai-markdown/react`. Core depends on engine; adapters declare both core and engine as exact-version external dependencies. Mantine is a peer-based integration over React. [The migration guide](./framework-transition.md) lists consumer import and stylesheet changes.
 
-Runtime owns computation sessions, not React lifecycle. `MarkdownContent` keeps one pipeline session and planner per instance, resets retained state on render-policy invalidation, and delegates parsing without moving registration into render. `useRegistryContribution` invokes the shared publisher only after commit. React still owns cached nodes, context subscriptions, SSR/hydration behavior and cursor DOM measurement. The [runtime module map](../packages/runtime/README.md#responsibility-and-dependency-direction) is the source guide for this layer.
+Shared core owns computation sessions, not React lifecycle. `MarkdownContent` keeps one pipeline session and planner per instance, resets retained state on render-policy invalidation, and delegates parsing without moving registration into render. `useRegistryContribution` invokes the shared publisher only after commit. React still owns cached nodes, context subscriptions, SSR/hydration behavior and cursor DOM measurement. The [runtime module map](../packages/core/README.md#responsibility-and-dependency-direction) is the source guide for this layer.
 
 ## The component tree
 
@@ -89,7 +89,7 @@ React commit
 
 ### Stage A: Content preprocessing
 
-Core creates one incremental LaTeX preprocessor per mounted instance and memoizes the preprocessing result by source and caller-preprocessor identity. The built-in function protects supported code regions, normalizes math delimiters, distinguishes currency, escapes math pipes, and truncates incomplete display-math tails where the grammar permits an opener. It runs independently of the `streaming` flag.
+The React adapter creates one incremental LaTeX preprocessor per mounted instance and memoizes the preprocessing result by source and caller-preprocessor identity. The built-in function protects supported code regions, normalizes math delimiters, distinguishes currency, escapes math pipes, and truncates incomplete display-math tails where the grammar permits an opener. It runs independently of the `streaming` flag.
 
 Caller preprocessors receive the normalized complete string and run in order. They can alter source positions and the append relationship between consecutive parser inputs. A source append does not guarantee a parser-input append if a preprocessor rewrites earlier text or removes a synthetic closer. See [content preprocessors](./content-preprocessors.md).
 
@@ -171,7 +171,7 @@ The `Registry` interface exposes only read methods + selectors. Mutators (`regis
 
 ## Block memoization invariants
 
-Shared planning and fingerprints live in `packages/runtime/src/blockPlan.ts` and `blockPlanner.ts`; React node caching stays in `packages/core/src/components/blockMemo.ts`. Plan items use framework-neutral `key` values. The invariants:
+Shared planning and fingerprints live in `packages/core/src/blockPlan.ts` and `blockPlanner.ts`; React node caching stays in `packages/react/src/components/blockMemo.ts`. Plan items use framework-neutral `key` values. The invariants:
 
 1. **Planning is hast-driven with mdast attribution.** Only actual HTML-side output becomes a render item. Positions, ranges, generated nodes and raw-HTML ownership determine how that output maps to source; do not assume every mdast child produces exactly one element.
 2. **Two-tier offset lookup**. Position metadata (`startOffset`, `startLine`) goes into the cache key so identical content at different positions doesn't false-cache.
@@ -181,7 +181,7 @@ Shared planning and fingerprints live in `packages/runtime/src/blockPlan.ts` and
 
 These invariants are enforced by tests (`byteEquivalence.test.tsx` is the harness that verifies byte-identical output across every plugin permutation and `blockMemo` on/off).
 
-Before changing planning or rendering, read the [runtime contracts](../packages/runtime/README.md#planning-and-rendering-contracts). They document cache identity, ownership and commit timing; no untracked local design file is required.
+Before changing planning or rendering, read the [runtime contracts](../packages/core/README.md#planning-and-rendering-contracts). They document cache identity, ownership and commit timing; no untracked local design file is required.
 
 ---
 
@@ -195,7 +195,7 @@ The library default schema deep-clones and freezes an extension of `rehype-sanit
 
 Hand-rolling a schema via `{ ...defaultSchema, … }` silently drops these. `extendSanitizeSchema` always works on a deep clone of the **library**'s default (not `rehype-sanitize`'s), so the additions survive.
 
-The library default is **not** exported as a value from `@ai-react-markdown/core` — only the helper. This prevents the shallow-spread footgun by construction on the consumer-facing surface: there's no `sanitizeSchema` constant in the core API to shallow-spread _from_. (`@ai-react-markdown/engine` does export the singleton, because core builds its pipeline from it; it is deep-frozen; use the extension helper to obtain a mutable independent draft.)
+The library default is **not** exported as a value from `@ai-markdown/react` — only the helper. This prevents the shallow-spread footgun by construction on the consumer-facing surface: there's no `sanitizeSchema` constant in the core API to shallow-spread _from_. (`@ai-markdown/engine` does export the singleton, because core builds its pipeline from it; it is deep-frozen; use the extension helper to obtain a mutable independent draft.)
 
 See [URL Sanitization & Custom Schemes](./url-sanitization.md) for the two-gate model.
 
@@ -203,7 +203,7 @@ See [URL Sanitization & Custom Schemes](./url-sanitization.md) for the two-gate 
 
 ## The Mantine integration
 
-`@ai-react-markdown/mantine` is a thin wrapper that:
+`@ai-markdown/react-mantine` is a thin wrapper that:
 
 1. Ships the `codeBlock` behavior group (`defaultExpanded`, `autoDetectUnknownLanguage`, `formatJson`, `expandNestedJson`, `highlightIntervalMs`) — contributed through the additive `AIMarkdownBehaviorsProvider`, read via `useMantineCodeBlockOptions()`.
 2. Provides `MantineAIMarkdownTypography` (uses Mantine's `<Typography>`).
@@ -225,7 +225,7 @@ Every one of these uses **public** extension points from core. No internal acces
 
 ## Why a vendored `react-markdown`?
 
-The library imports `react-markdown` as an internal module, split along the engine boundary: the pure pipeline half (processor, transform, the parse/transform stages) lives in `packages/engine/src/components/markdown/`, and the React half (`renderHastSubtree`, the `<Markdown>` component) stays in `packages/core/src/components/markdown/`. This is a vendored fork: source is bundled and adapted for the library’s needs, with the repository’s attribution retained:
+The library imports `react-markdown` as an internal module, split along the engine boundary: the pure pipeline half (processor, transform, the parse/transform stages) lives in `packages/engine/src/components/markdown/`, and the React half (`renderHastSubtree`, the `<Markdown>` component) stays in `packages/react/src/components/markdown/`. This is a vendored fork: source is bundled and adapted for the library’s needs, with the repository’s attribution retained:
 
 - Block-level memoization needs control over the conversion stage (`toJsxRuntime`) that the upstream component encapsulates.
 - The pipeline is exposed as **three independent stages** (parse, plan, render) so block memoization can intercept between stages.
@@ -238,7 +238,7 @@ The fork is intentional and the surface area is small. Consumers don't need to i
 ## Module layout
 
 ```text
-packages/engine/src/                ← @ai-react-markdown/engine (framework-agnostic)
+packages/engine/src/                ← @ai-markdown/engine (framework-agnostic)
 ├── index.ts                    ← entry barrel (internal supplier for core)
 ├── plugins/
 │   ├── catalog.ts              ← the five sealed engine plugins + defaultEnginePlugins
@@ -275,7 +275,7 @@ packages/engine/src/                ← @ai-react-markdown/engine (framework-agn
 ```
 
 ```text
-packages/core/src/                  ← @ai-react-markdown/core (React)
+packages/react/src/                  ← @ai-markdown/react (React)
 ├── index.tsx                   ← <AIMarkdown> + public API re-exports
 ├── defs.ts                     ← prop payload types, variant/scheme types
 ├── resolveFlatProps.ts         ← single-point flat-prop resolution vs shipped defaults
@@ -300,7 +300,7 @@ packages/core/src/                  ← @ai-react-markdown/core (React)
 ```
 
 ```text
-packages/mantine/src/
+packages/react-mantine/src/
 ├── index.tsx                   ← barrel
 ├── defs.tsx                    ← codeBlock group type + shipped defaults, metadata type
 ├── define.ts                   ← defineMantineBehaviors (widened factory)
@@ -321,7 +321,7 @@ The trail of file names is intentionally descriptive — when you're debugging o
 
 ## Package boundary and verification ownership
 
-The engine's public npm visibility serves package distribution; its exports remain an internal supplier API before 3.0. Core pins the engine to its exact release-train version. A React design-system wrapper should import core's stable props, hooks and helper re-exports. A non-React adapter that imports engine primitives owns the assembly and validation of its pipeline.
+The engine's public npm visibility serves package distribution; its exports remain an internal supplier API before 3.0. Core pins the engine to its exact release-train version. A React design-system wrapper should import the React adapter's stable props, hooks and helper re-exports. A non-React adapter that imports engine primitives owns the assembly and validation of its pipeline.
 
 The principal verification layers answer different questions:
 

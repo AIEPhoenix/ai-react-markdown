@@ -38,7 +38,7 @@ const config: StorybookConfig = {
         ...viteConfig.css?.preprocessorOptions,
         scss: {
           ...viteConfig.css?.preprocessorOptions?.scss,
-          // packages/mantine/stories/globals.scss needs `@import` to scope the
+          // packages/react-mantine/stories/globals.scss needs `@import` to scope the
           // highlight.js themes per color scheme — `@use` cannot nest inside a
           // selector. Sass 1.80+ warns on every `@import`; the file documents
           // the migration plan for when Sass 3.0 removes it.

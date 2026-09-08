@@ -1,46 +1,46 @@
-# ai-react-markdown
+# ai-markdown
 
-> **Legacy maintenance release:** 2.14.1 fixes lifecycle cleanup and completes shared preparation work after the 2.14.0 split. Existing imports remain supported; subsequent multi-framework development moves to `ai-markdown`. See the [transition and architecture guide](./docs/framework-transition.md).
+> **3.0.0-beta.1:** the new `@ai-markdown` scope separates the shared core from the React adapter. Install framework packages with `@beta`; Vue remains a private prototype. See the [migration guide](./docs/framework-transition.md).
 
-> React Markdown rendering for AI responses: GFM, KaTeX math, CJK-aware parsing, incremental streaming, and shared references across logical document sections. Use core with your own UI, or the Mantine integration for highlighted code, JSON presentation, and Mermaid diagrams.
+> React Markdown rendering for AI responses: GFM, KaTeX math, CJK-aware parsing, incremental streaming, and shared references across logical document sections. Use the React adapter with your own UI, or the Mantine integration for highlighted code, JSON presentation, and Mermaid diagrams.
 
-[![@ai-react-markdown/core npm](https://img.shields.io/npm/v/@ai-react-markdown/core?label=%40ai-react-markdown%2Fcore&logo=npm&color=cb3837)](https://www.npmjs.com/package/@ai-react-markdown/core)
-[![@ai-react-markdown/mantine npm](https://img.shields.io/npm/v/@ai-react-markdown/mantine?label=%40ai-react-markdown%2Fmantine&logo=npm&color=cb3837)](https://www.npmjs.com/package/@ai-react-markdown/mantine)
-[![@ai-react-markdown/engine npm](https://img.shields.io/npm/v/@ai-react-markdown/engine?label=%40ai-react-markdown%2Fengine&logo=npm&color=cb3837)](https://www.npmjs.com/package/@ai-react-markdown/engine)
-[![@ai-react-markdown/remark-mark-highlight npm](https://img.shields.io/npm/v/@ai-react-markdown/remark-mark-highlight?label=%40ai-react-markdown%2Fremark-mark-highlight&logo=npm&color=cb3837)](https://www.npmjs.com/package/@ai-react-markdown/remark-mark-highlight)
+[![@ai-markdown/react npm](https://img.shields.io/npm/v/@ai-markdown/react?label=%40ai-markdown%2Freact&logo=npm&color=cb3837)](https://www.npmjs.com/package/@ai-markdown/react)
+[![@ai-markdown/react-mantine npm](https://img.shields.io/npm/v/@ai-markdown/react-mantine?label=%40ai-markdown%2Freact-mantine&logo=npm&color=cb3837)](https://www.npmjs.com/package/@ai-markdown/react-mantine)
+[![@ai-markdown/engine npm](https://img.shields.io/npm/v/@ai-markdown/engine?label=%40ai-markdown%2Fengine&logo=npm&color=cb3837)](https://www.npmjs.com/package/@ai-markdown/engine)
+[![@ai-markdown/remark-mark-highlight npm](https://img.shields.io/npm/v/@ai-markdown/remark-mark-highlight?label=%40ai-markdown%2Fremark-mark-highlight&logo=npm&color=cb3837)](https://www.npmjs.com/package/@ai-markdown/remark-mark-highlight)
 
-[![core downloads](https://img.shields.io/npm/dm/@ai-react-markdown/core?label=%40ai-react-markdown%2Fcore%20downloads&color=blue)](https://www.npmjs.com/package/@ai-react-markdown/core)
-[![mantine downloads](https://img.shields.io/npm/dm/@ai-react-markdown/mantine?label=%40ai-react-markdown%2Fmantine%20downloads&color=blue)](https://www.npmjs.com/package/@ai-react-markdown/mantine)
-[![core minzip](https://img.shields.io/bundlephobia/minzip/@ai-react-markdown/core?label=core%20minzip)](https://bundlephobia.com/package/@ai-react-markdown/core)
+[![core downloads](https://img.shields.io/npm/dm/@ai-markdown/react?label=%40ai-markdown%2Freact%20downloads&color=blue)](https://www.npmjs.com/package/@ai-markdown/react)
+[![mantine downloads](https://img.shields.io/npm/dm/@ai-markdown/react-mantine?label=%40ai-markdown%2Freact-mantine%20downloads&color=blue)](https://www.npmjs.com/package/@ai-markdown/react-mantine)
+[![core minzip](https://img.shields.io/bundlephobia/minzip/@ai-markdown/react?label=core%20minzip)](https://bundlephobia.com/package/@ai-markdown/react)
 
-[![CI](https://img.shields.io/github/actions/workflow/status/AIEPhoenix/ai-react-markdown/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/AIEPhoenix/ai-react-markdown/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/actions/workflow/status/AIEPhoenix/ai-react-markdown/release.yml?label=release&logo=githubactions&logoColor=white)](https://github.com/AIEPhoenix/ai-react-markdown/actions/workflows/release.yml)
+[![CI](https://img.shields.io/github/actions/workflow/status/ai-markdown/ai-markdown/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/ai-markdown/ai-markdown/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/actions/workflow/status/ai-markdown/ai-markdown/release.yml?label=release&logo=githubactions&logoColor=white)](https://github.com/ai-markdown/ai-markdown/actions/workflows/release.yml)
 [![npm provenance](https://img.shields.io/badge/npm-trusted%20publishing%20%2B%20provenance-cb3837?logo=npm)](https://docs.npmjs.com/generating-provenance-statements)
-[![types: TypeScript](https://img.shields.io/npm/types/@ai-react-markdown/core?label=types&logo=typescript&logoColor=white&color=3178c6)](https://www.typescriptlang.org/)
+[![types: TypeScript](https://img.shields.io/npm/types/@ai-markdown/react?label=types&logo=typescript&logoColor=white&color=3178c6)](https://www.typescriptlang.org/)
 [![code style: prettier](https://img.shields.io/badge/code_style-prettier-ff69b4?logo=prettier&logoColor=white)](https://prettier.io/)
 
-[![React 19+](https://img.shields.io/badge/React-%E2%89%A519-149eca?logo=react&logoColor=white)](https://react.dev/)
+[![React 19](https://img.shields.io/badge/React-19-149eca?logo=react&logoColor=white)](https://react.dev/)
 [![Node ≥20](https://img.shields.io/badge/Node-%E2%89%A520-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![ESM + CJS](https://img.shields.io/badge/module-ESM%20%2B%20CJS-f7df1e?logo=javascript&logoColor=black)](#installation)
 [![Mantine ≥9](https://img.shields.io/badge/Mantine-%E2%89%A59-339af0?logo=mantine&logoColor=white)](https://mantine.dev/)
 [![KaTeX](https://img.shields.io/badge/math-KaTeX-0b7285)](https://katex.org/)
 [![Mermaid](https://img.shields.io/badge/diagrams-Mermaid-ff3670?logo=mermaid&logoColor=white)](https://mermaid.js.org/)
-[![license](https://img.shields.io/npm/l/@ai-react-markdown/core?color=green)](./LICENSE)
+[![license](https://img.shields.io/npm/l/@ai-markdown/react?color=green)](./LICENSE)
 
-[![GitHub release](https://img.shields.io/github/v/release/AIEPhoenix/ai-react-markdown?logo=github&label=release)](https://github.com/AIEPhoenix/ai-react-markdown/releases)
-[![GitHub stars](https://img.shields.io/github/stars/AIEPhoenix/ai-react-markdown?style=flat&logo=github)](https://github.com/AIEPhoenix/ai-react-markdown/stargazers)
+[![GitHub release](https://img.shields.io/github/v/release/ai-markdown/ai-markdown?logo=github&label=release)](https://github.com/ai-markdown/ai-markdown/releases)
+[![GitHub stars](https://img.shields.io/github/stars/ai-markdown/ai-markdown?style=flat&logo=github)](https://github.com/ai-markdown/ai-markdown/stargazers)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](#contributing)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/AIEPhoenix/ai-react-markdown)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/ai-markdown/ai-markdown)
 
 > **Upgrading from 1.x?** v2.0.0 removes the 1.x object-based `config` channel (and its integrator default channel) in favor of flat props, a sealed engine-plugin catalog, and five narrow hooks. Every removed symbol has a one-to-one destination with before/after code in the [migration guide](./docs/migrating-to-v2.md).
 
 ---
 
-## Why ai-react-markdown?
+## Why ai-markdown?
 
 An AI response changes while the user reads it. A fence may be incomplete, a citation definition may arrive after its reference, and a large answer may receive many small updates. The renderer needs to preserve the meaning of those intermediate snapshots while keeping repeated work manageable.
 
-ai-react-markdown addresses those concerns at distinct layers:
+ai-markdown addresses those concerns at distinct layers:
 
 - **Accumulated streaming input.** Pass the complete current Markdown string to one component. The engine reuses a verified prefix when the input is an append and the grammar permits it; otherwise it uses a full parse.
 - **Reusable rendered blocks.** Core retains React elements for unchanged plans. Custom components can still update through state and context, so streaming status and application callbacks remain live.
@@ -56,8 +56,8 @@ Choose core for React rendering with your own presentation. Choose Mantine when 
 | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **GFM**                      | tables, strikethrough, task lists, autolinks (via `remark-gfm`)                                                                                                                                                                                                                                                                    |
 | **LaTeX math**               | inline `$…$` and display `$$…$$` via KaTeX, with smart preprocessing for currency `$`, bracket delimiters (`\[…\]`, `\(…\)`), pipe escaping, and [mhchem](https://mhchem.github.io/MathJax-mhchem/) commands (chemistry formulas like `\ce{H2O}`)                                                                                  |
-| **Mermaid diagrams**         | interactive SVG with dark/light themes, source toggle, copy, open-in-new-window (in `@ai-react-markdown/mantine`)                                                                                                                                                                                                                  |
-| **Syntax highlighting**      | language-labelled tabs, expand/collapse, optional `highlight.js` auto-detection for unlabelled blocks (in `@ai-react-markdown/mantine`)                                                                                                                                                                                            |
+| **Mermaid diagrams**         | interactive SVG with dark/light themes, source toggle, copy, open-in-new-window (in `@ai-markdown/react-mantine`)                                                                                                                                                                                                                  |
+| **Syntax highlighting**      | language-labelled tabs, expand/collapse, optional `highlight.js` auto-detection for unlabelled blocks (in `@ai-markdown/react-mantine`)                                                                                                                                                                                            |
 | **CJK-friendly**             | CJK-aware emphasis and strikethrough parsing, source newlines rendered as breaks, plus optional [pangu](https://github.com/vinta/pangu.js) auto-spacing between CJK and half-width characters                                                                                                                                      |
 | **Streaming-aware**          | `streaming` flag is propagated via context; custom renderers can show cursors, skip animations, or disable copy buttons during streaming                                                                                                                                                                                           |
 | **Streaming cursor**         | built-in `streamingCursor` slot renders a "still generating" indicator after the last streamed character — visible through token stalls, pure-CSS animation, zero impact on the parse pipeline                                                                                                                                     |
@@ -76,55 +76,56 @@ Choose core for React rendering with your own presentation. Choose Mantine when 
 
 ## Packages
 
-| Package                                                                        | Description                                                                                                                                                                                                   |
-| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`@ai-react-markdown/core`](./packages/core)                                   | UI-library-agnostic React renderer. GFM, LaTeX, CJK, streaming, metadata context, custom components, cross-chunk coordination.                                                                                |
-| [`@ai-react-markdown/mantine`](./packages/mantine)                             | Mantine UI integration. Adds themed typography, code highlighting via `@mantine/code-highlight`, Mermaid diagrams, JSON pretty-print, and automatic color scheme detection.                                   |
-| [`@ai-react-markdown/engine`](./packages/engine)                               | Framework-agnostic Markdown engine — incremental parsing, LaTeX preprocessing, the unified plugin pipeline. Internal supplier for `core`; install `core` instead unless you are building a framework adapter. |
-| [`@ai-react-markdown/remark-mark-highlight`](./packages/remark-mark-highlight) | Standalone remark plugin for `==mark==` highlight syntax. Independently versioned; usable in any unified/remark pipeline outside this repo (the `highlight` engine plugin uses it).                           |
+| Package                                                                  | Description                                                                                                                                                                               |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`@ai-markdown/core`](./packages/core)                                   | Framework-independent sessions, block planning, committed contributions and smooth coordination for adapter authors.                                                                      |
+| [`@ai-markdown/react`](./packages/react)                                 | UI-library-agnostic React renderer. GFM, LaTeX, CJK, streaming, metadata context, custom components, cross-chunk coordination.                                                            |
+| [`@ai-markdown/react-mantine`](./packages/react-mantine)                 | Mantine UI integration. Adds themed typography, code highlighting via `@mantine/code-highlight`, Mermaid diagrams, JSON pretty-print, and automatic color scheme detection.               |
+| [`@ai-markdown/engine`](./packages/engine)                               | Framework-agnostic Markdown engine — incremental parsing, LaTeX preprocessing, the unified plugin pipeline. Consumed by shared core and adapters; applications install the React package. |
+| [`@ai-markdown/remark-mark-highlight`](./packages/remark-mark-highlight) | Standalone remark plugin for `==mark==` highlight syntax. Independently versioned; usable in any unified/remark pipeline outside this repo (the `highlight` engine plugin uses it).       |
 
 ## Installation
 
-### Core (React, any UI library)
+### React (any UI library)
 
-`@ai-react-markdown/engine` comes along as a pinned transitive dependency — you never install or declare it yourself.
+`@ai-markdown/core` and `@ai-markdown/engine` arrive as exact-version dependencies. Applications install only the framework package; adapter authors may install the shared layers explicitly.
 
 ```bash
 # npm
-npm install @ai-react-markdown/core
+npm install @ai-markdown/react@beta
 
 # pnpm
-pnpm add @ai-react-markdown/core
+pnpm add @ai-markdown/react@beta
 
 # yarn
-yarn add @ai-react-markdown/core
+yarn add @ai-markdown/react@beta
 ```
 
 ### Mantine integration
 
 ```bash
 # pnpm (illustrative — the same applies to npm / yarn)
-pnpm add @ai-react-markdown/mantine @ai-react-markdown/core \
+pnpm add @ai-markdown/react-mantine@beta @ai-markdown/react@beta \
          @mantine/core @mantine/code-highlight highlight.js
 ```
 
 ### Peer Dependencies
 
-| Peer                      | Required by                                            | Version                |
-| ------------------------- | ------------------------------------------------------ | ---------------------- |
-| `react` / `react-dom`     | `core`, `mantine`                                      | `>=19.0.0`             |
-| `katex`                   | `core` + `engine` (optional — only if you render math) | `^0.16.0 \|\| ^0.17.0` |
-| `@mantine/core`           | `mantine`                                              | `^9.0.0`               |
-| `@mantine/code-highlight` | `mantine`                                              | `^9.0.0`               |
-| `highlight.js`            | `mantine`                                              | `^11.11.2`             |
+| Peer                      | Required by                                             | Version                |
+| ------------------------- | ------------------------------------------------------- | ---------------------- |
+| `react` / `react-dom`     | `react`, `react-mantine`                                | `^19.0.0`              |
+| `katex`                   | `react` + `engine` (optional — only if you render math) | `^0.16.0 \|\| ^0.17.0` |
+| `@mantine/core`           | `mantine`                                               | `^9.0.0`               |
+| `@mantine/code-highlight` | `mantine`                                               | `^9.0.0`               |
+| `highlight.js`            | `mantine`                                               | `^11.11.2`             |
 
-> `katex` is an **optional peer**, declared by both `core` and `engine` (the engine owns the `rehype-katex` step, core owns the CSS contract). It ships transitively via `rehype-katex`, so hoisted installations resolve `'katex/dist/katex.min.css'` automatically. Strict-isolation installers (yarn PnP, `pnpm --node-linker=isolated`) must install it explicitly, in your own app — not alongside the engine. Skip this only if you never render math.
+> `katex` is an **optional peer**, declared by both `react` and `engine` (the engine owns the `rehype-katex` step, React owns the CSS contract). It ships transitively via `rehype-katex`, so hoisted installations resolve `'katex/dist/katex.min.css'` automatically. Strict-isolation installers (yarn PnP, `pnpm --node-linker=isolated`) must install it explicitly, in your own app — not alongside the engine. Skip this only if you never render math.
 
 ### React version & framework compatibility
 
 | Question                        | Answer                                                                                                                                                                                                                                                                             |
 | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Does it work with React 18?** | No. The library uses `useId()` and React 19's stricter Strict Mode semantics; the `peerDependencies` are pinned to `>=19.0.0`. If you're on React 18, [`react-markdown`](https://github.com/remarkjs/react-markdown) is the safer choice until you upgrade                         |
+| **Does it work with React 18?** | No. The library uses `useId()` and React 19's stricter Strict Mode semantics; the `peerDependencies` are pinned to `^19.0.0`. If you're on React 18, [`react-markdown`](https://github.com/remarkjs/react-markdown) is the safer choice until you upgrade                          |
 | **Next.js (App Router)?**       | Yes. The core package marks `'use client'` at its barrel; the Mantine package's sub-components mark it where needed. In practice, import either component from a file you've marked `'use client'` yourself. CSS imports (KaTeX, typography, Mantine) go in your root `layout.tsx` |
 | **Next.js (Pages Router)?**     | Yes — standard CSR usage. The library is SSR-safe (`useId()` is SSR-stable), so server-rendering a static markdown string also works                                                                                                                                               |
 | **React Native?**               | No. The renderer depends on the DOM (`<div>`, `<span>`, KaTeX CSS). React Native would need a separate renderer                                                                                                                                                                    |
@@ -160,7 +161,7 @@ other conditional-exports package in the test process.
 **Footgun (all dual-build packages — react and redux share it):** resolution
 conditions must be consistent within one process. If part of your toolchain inlines
 this package under the `development` condition while another part — say an
-externalized wrapper like `@ai-react-markdown/mantine` in a partially-inlined
+externalized wrapper like `@ai-markdown/react-mantine` in a partially-inlined
 Vitest setup — resolves it through Node without that condition, two copies load
 and React contexts split across them: cross-chunk coordination appears silently
 dead. Align `deps.inline` / aliases so everything in the process resolves the
@@ -170,21 +171,21 @@ same build.
 
 Pick the set that matches the package you installed.
 
-**If you installed `@ai-react-markdown/core` only:**
+**If you installed `@ai-markdown/react` only:**
 
 ```tsx
 import 'katex/dist/katex.min.css'; // required for math
-import '@ai-react-markdown/core/typography/default.css'; // default variant only
-// or: import '@ai-react-markdown/core/typography/all.css'; // every shipped variant
+import '@ai-markdown/react/typography/default.css'; // default variant only
+// or: import '@ai-markdown/react/typography/all.css'; // every shipped variant
 ```
 
-**If you installed `@ai-react-markdown/mantine`** — the Mantine package provides its own typography wrapper, so you do **not** need the core typography CSS unless you also render the standalone `<AIMarkdown>` somewhere:
+**If you installed `@ai-markdown/react-mantine`** — the Mantine package provides its own typography wrapper, so you do **not** need the core typography CSS unless you also render the standalone `<AIMarkdown>` somewhere:
 
 ```tsx
 import 'katex/dist/katex.min.css';
 import '@mantine/core/styles.css';
 import '@mantine/code-highlight/styles.css';
-import '@ai-react-markdown/mantine/styles.css';
+import '@ai-markdown/react-mantine/styles.css';
 ```
 
 ## Quick Start
@@ -192,9 +193,9 @@ import '@ai-react-markdown/mantine/styles.css';
 ### Core
 
 ```tsx
-import AIMarkdown from '@ai-react-markdown/core';
+import AIMarkdown from '@ai-markdown/react';
 import 'katex/dist/katex.min.css';
-import '@ai-react-markdown/core/typography/default.css';
+import '@ai-markdown/react/typography/default.css';
 
 export default function App() {
   return <AIMarkdown content="Hello **world**! Math: $E = mc^2$" />;
@@ -207,11 +208,11 @@ export default function App() {
 import { MantineProvider } from '@mantine/core';
 import { CodeHighlightAdapterProvider, createHighlightJsAdapter } from '@mantine/code-highlight';
 import hljs from 'highlight.js';
-import MantineAIMarkdown from '@ai-react-markdown/mantine';
+import MantineAIMarkdown from '@ai-markdown/react-mantine';
 
 import '@mantine/core/styles.css';
 import '@mantine/code-highlight/styles.css';
-import '@ai-react-markdown/mantine/styles.css';
+import '@ai-markdown/react-mantine/styles.css';
 import 'katex/dist/katex.min.css';
 
 const highlightJsAdapter = createHighlightJsAdapter(hljs);
@@ -234,7 +235,7 @@ export default function App() {
 The `streaming` flag describes the source lifecycle and controls the cursor slot — pass `true` while tokens are still arriving so descendants can adapt (deferred copy buttons, skipped animations, etc.). The renderer itself remains stable across re-renders thanks to block-level memoization. Add `streamingCursor` for a built-in "still generating" indicator that tracks the last streamed character and stays visible through token stalls ([docs](./docs/streaming-cursor.md)):
 
 ```tsx
-import AIMarkdown, { AIMarkdownStreamingCursor } from '@ai-react-markdown/core';
+import AIMarkdown, { AIMarkdownStreamingCursor } from '@ai-markdown/react';
 
 function ChatMessage({ message }: { message: { content: string; pending: boolean } }) {
   return (
@@ -251,7 +252,7 @@ function ChatMessage({ message }: { message: { content: string; pending: boolean
 Network chunks land in bursts; if the lurching bothers you, swap in `<AIMarkdownSmoothStream>` — same props, plus typewriter pacing that adapts to the source's cadence (pick a `smoothPacing` preset: `smooth`, `balanced`, or `responsive` — [docs](./docs/smooth-streaming.md)):
 
 ```tsx
-import { AIMarkdownSmoothStream, AIMarkdownStreamingCursor } from '@ai-react-markdown/core';
+import { AIMarkdownSmoothStream, AIMarkdownStreamingCursor } from '@ai-markdown/react';
 
 <AIMarkdownSmoothStream
   content={message.content}
@@ -267,7 +268,7 @@ Empty-mounted smooth chunks that share a `documentId` inside `<AIMarkdownDocumen
 When a single logical document is delivered in multiple `<AIMarkdown>` instances (e.g. one per chunk, or one per turn within a thread), wrap them in `<AIMarkdownDocuments>` and pass the **same** `documentId` so footnotes, link refs, and image refs resolve across chunks:
 
 ```tsx
-import AIMarkdown, { AIMarkdownDocuments } from '@ai-react-markdown/core';
+import AIMarkdown, { AIMarkdownDocuments } from '@ai-markdown/react';
 
 function StreamedMessage({ chunks, id, done }: { chunks: string[]; id: string; done: boolean }) {
   return (
@@ -299,19 +300,19 @@ graph TD
 ```
 ````
 
-The Mantine integration renders this as an interactive SVG with dark/light theme switching, a source toggle, copy button, and "open in new window" — no extra setup. The `mermaid` package is a direct dependency of `@ai-react-markdown/mantine`.
+The Mantine integration renders this as an interactive SVG with dark/light theme switching, a source toggle, copy button, and "open in new window" — no extra setup. The `mermaid` package is a direct dependency of `@ai-markdown/react-mantine`.
 
 ### CJK text with auto pangu spacing
 
 Pangu spacing automatically inserts a regular ASCII space between CJK characters and half-width letters/digits, when its mixed-script rules match. Applications can choose whether that spacing fits their language and editorial conventions. It's on by default. Turn it off by filtering the `pangu` plugin out of the default engine-plugin set:
 
 ```tsx
-import { defaultEnginePlugins, pangu } from '@ai-react-markdown/core/plugins';
+import { defaultEnginePlugins, pangu } from '@ai-markdown/react/plugins';
 
 // Module scope — stable reference keeps the memo cache warm.
 const PLUGINS = defaultEnginePlugins.filter((p) => p !== pangu);
 
-<AIMarkdown content="今天我用 React 19 重构了 ai-react-markdown 的 streaming 实现。" enginePlugins={PLUGINS} />;
+<AIMarkdown content="今天我用 React 19 重构了 ai-markdown 的 streaming 实现。" enginePlugins={PLUGINS} />;
 ```
 
 ### Allow a custom URL scheme (e.g. `myapp://`)
@@ -319,7 +320,7 @@ const PLUGINS = defaultEnginePlugins.filter((p) => p !== pangu);
 Sanitization runs through **two independent gates** for defense in depth: `rehype-sanitize` schema (per-protocol allowlist, runs first in the rehype chain) and `urlTransform` (per-attribute rewriter, runs second at render time). Both must permit a scheme for it to render.
 
 ```tsx
-import AIMarkdown, { defaultUrlTransform, extendSanitizeSchema, type UrlTransform } from '@ai-react-markdown/core';
+import AIMarkdown, { defaultUrlTransform, extendSanitizeSchema, type UrlTransform } from '@ai-markdown/react';
 
 // Module-scope: defined once, stable across renders, keeps the memo cache warm.
 const ALLOWED = /^myapp:/i;
@@ -340,7 +341,7 @@ export default function App({ content }: { content: string }) {
 ### Replace specific HTML element renderers
 
 ```tsx
-import AIMarkdown, { type AIMarkdownCustomComponents } from '@ai-react-markdown/core';
+import AIMarkdown, { type AIMarkdownCustomComponents } from '@ai-markdown/react';
 
 const components: AIMarkdownCustomComponents = {
   a: ({ href, children }) => (
@@ -366,7 +367,7 @@ import AIMarkdown, {
   useAIMarkdownMetadata,
   type AIMarkdownMetadata,
   type AIMarkdownCustomComponents,
-} from '@ai-react-markdown/core';
+} from '@ai-markdown/react';
 
 interface ChatMeta extends AIMarkdownMetadata {
   messageId: string;
@@ -405,7 +406,7 @@ The copy example reads text from the actual code element and keeps the toolbar o
 Narrow hooks subscribe per system — this component subscribes to streaming state and theme changes. Ordinary parent renders and its own state can also cause renders:
 
 ```tsx
-import { useAIMarkdownState, useAIMarkdownTheme } from '@ai-react-markdown/core';
+import { useAIMarkdownState, useAIMarkdownTheme } from '@ai-markdown/react';
 
 function MyCodeBlock({ children }: { children?: React.ReactNode }) {
   const { streaming } = useAIMarkdownState();
@@ -417,7 +418,7 @@ function MyCodeBlock({ children }: { children?: React.ReactNode }) {
 ### Strip frontmatter (or any other transform) before rendering
 
 ```tsx
-import type { AIMDContentPreprocessor } from '@ai-react-markdown/core';
+import type { AIMDContentPreprocessor } from '@ai-markdown/react';
 
 // Narrow LF-delimited frontmatter format; use a parser for a broader dialect.
 const stripFrontmatter: AIMDContentPreprocessor = (content) => content.replace(/^---\n[\s\S]*?\n---(?:\n|$)/, '');
@@ -445,7 +446,7 @@ The README covers the 90% case. For deep customization — replacing element ren
 | [Smooth streaming](./docs/smooth-streaming.md)                    | Typewriter pacing for bursty token streams — shell, hook, non-React controller   |
 | [TypeScript generics](./docs/typescript-generics.md)              | Typed `metadata` via the `TMetadata` generic; wrapper extension patterns         |
 | [Migrating to v2](./docs/migrating-to-v2.md)                      | Complete 1.x → 2.0.0 mapping — every removed symbol with before/after code       |
-| [Extending via a sub-package](./docs/extending-via-subpackage.md) | Ship your own `@yourorg/ai-react-markdown-<integration>`                         |
+| [Extending via a sub-package](./docs/extending-via-subpackage.md) | Ship your own `@yourorg/ai-markdown-<integration>`                               |
 | [Architecture overview](./docs/architecture.md)                   | Render pipeline, context layering, registry design                               |
 | [Streaming chat: end-to-end](./docs/streaming-chat-example.md)    | Copy-runnable SSE chat example — backend route, React client, Next.js App Router |
 | [CJK typography](./docs/cjk-typography.md)                        | Chinese / Japanese / Korean text — line breaking, pangu spacing, font stack      |
@@ -456,7 +457,7 @@ The README covers the 90% case. For deep customization — replacing element ren
 
 ## `<AIMarkdown>` Props
 
-The full list with all subtleties lives in [`@ai-react-markdown/core` README](./packages/core/README.md). Quick reference:
+The full list with all subtleties lives in [`@ai-markdown/react` README](./packages/react/README.md). Quick reference:
 
 | Prop                       | Type                                | Default                           | Purpose                                                                                                                                                                                                                              |
 | -------------------------- | ----------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -475,22 +476,22 @@ The full list with all subtleties lives in [`@ai-react-markdown/core` README](./
 | `documentIndex`            | `number`                            | mount order                       | This chunk's position among instances sharing a `documentId` under `<AIMarkdownDocuments>`; pass a stable ordinal when chunks can mount out of order or remount — see [Cross-chunk Coordination](./docs/cross-chunk-coordination.md) |
 | `urlTransform`             | `UrlTransform \| null`              | `defaultUrlTransform`             | Second sanitization gate — per-attribute URL rewriter (runs at render time)                                                                                                                                                          |
 | `sanitizeSchema`           | `SanitizeSchema`                    | library default                   | First gate — `rehype-sanitize` schema, per-protocol allowlist (build with `extendSanitizeSchema`)                                                                                                                                    |
-| `enginePlugins`            | `readonly AIMarkdownEnginePlugin[]` | `defaultEnginePlugins` (all five) | Sealed engine-plugin selection, imported from `@ai-react-markdown/core/plugins`; passing an array replaces the set wholesale — see [Engine Plugins](#engine-plugins)                                                                 |
+| `enginePlugins`            | `readonly AIMarkdownEnginePlugin[]` | `defaultEnginePlugins` (all five) | Sealed engine-plugin selection, imported from `@ai-markdown/react/plugins`; passing an array replaces the set wholesale — see [Engine Plugins](#engine-plugins)                                                                      |
 | `blockMemo`                | `boolean`                           | `true`                            | Per-block memoization. Output is byte-identical when disabled; set `blockMemo={false}` only for debugging                                                                                                                            |
 | `incrementalParse`         | `boolean`                           | `true`                            | Prefix-freeze incremental parsing for append-only streaming — see [Behavior props](#behavior-props)                                                                                                                                  |
 | `preserveOrphanReferences` | `boolean`                           | `true`                            | Protect orphan `[^x]: …` defs from being silently dropped during streaming when the reference hasn't arrived yet                                                                                                                     |
 
 An explicitly passed prop (`v != null`) overrides the shipped default; an absent prop falls to the shipped default. Passing `null` counts as absent — this guards against serialization boundaries (RSC, persistence) materializing "not passed" as `null` and punching through defaults.
 
-> The Mantine package extends this with a `codeBlock` prop. See its [props table](./packages/mantine/README.md#props-api-reference).
+> The Mantine package extends this with a `codeBlock` prop. See its [props table](./packages/react-mantine/README.md#props-api-reference).
 
 ## Engine Plugins
 
-Optional pipeline features are selected through the `enginePlugins` prop, which accepts **sealed plugin objects** exported from the `@ai-react-markdown/core/plugins` subpath:
+Optional pipeline features are selected through the `enginePlugins` prop, which accepts **sealed plugin objects** exported from the `@ai-markdown/react/plugins` subpath:
 
 ```tsx
-import AIMarkdown from '@ai-react-markdown/core';
-import { highlight, pangu } from '@ai-react-markdown/core/plugins';
+import AIMarkdown from '@ai-markdown/react';
+import { highlight, pangu } from '@ai-markdown/react/plugins';
 
 const PLUGINS = [highlight, pangu]; // module scope — stable reference
 
@@ -508,7 +509,7 @@ const PLUGINS = [highlight, pangu]; // module scope — stable reference
 Omitting the prop means `defaultEnginePlugins` (all five). Passing an array **replaces the selection wholesale** — there is no merging. The recommended "turn one off" idiom:
 
 ```tsx
-import { defaultEnginePlugins, pangu } from '@ai-react-markdown/core/plugins';
+import { defaultEnginePlugins, pangu } from '@ai-markdown/react/plugins';
 
 const PLUGINS = defaultEnginePlugins.filter((p) => p !== pangu);
 ```
@@ -542,7 +543,7 @@ The Mantine package additionally surfaces a `codeBlock` prop (group value replac
 Integration-time values can be packaged as frozen, reference-stable fragments and spread into the component. Runtime-varying fields go after the spreads (later props win):
 
 ```tsx
-import { defineTheme, defineBehaviors, definePipeline } from '@ai-react-markdown/core';
+import { defineTheme, defineBehaviors, definePipeline } from '@ai-markdown/react';
 
 const THEME = defineTheme({ fontSize: 15, variant: 'default' });
 const BEHAVIORS = defineBehaviors({ blockMemo: false });
@@ -555,7 +556,7 @@ Factories are identity + types + `Object.freeze`, zero logic — bare flat props
 
 ## Hooks
 
-State is split across five per-system contexts, each with a narrow hook that re-renders only when its own system changes (a `streaming` flip no longer wakes every consumer). Available from `@ai-react-markdown/core`:
+State is split across five per-system contexts, each with a narrow hook that re-renders only when its own system changes (a `streaming` flip no longer wakes every consumer). Available from `@ai-markdown/react`:
 
 | Hook                                 | Returns                                                                      | When to use                                                                                              |
 | ------------------------------------ | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
@@ -605,14 +606,14 @@ Token groups:
 
 > **Stability contract**: token _names_ and _roles_ follow semver. Exact default _values_ may shift under minor bumps as the visual design evolves — override what you need locked.
 
-For a fully custom typography wrapper, replace the `Typography` prop; remember to forward `style` so injected CSS custom properties reach descendants. Full recipe in the [core README](./packages/core/README.md#custom-typography-component).
+For a fully custom typography wrapper, replace the `Typography` prop; remember to forward `style` so injected CSS custom properties reach descendants. Full recipe in the [core README](./packages/react/README.md#custom-typography-component).
 
 ## TypeScript
 
 The component accepts one generic type parameter — `TMetadata` for metadata:
 
 ```tsx
-import AIMarkdown, { type AIMarkdownMetadata } from '@ai-react-markdown/core';
+import AIMarkdown, { type AIMarkdownMetadata } from '@ai-markdown/react';
 
 interface MyMetadata extends AIMarkdownMetadata {
   messageId: string;
@@ -621,7 +622,7 @@ interface MyMetadata extends AIMarkdownMetadata {
 <AIMarkdown<MyMetadata> content={markdown} metadata={{ messageId: '123' }} />;
 ```
 
-`useAIMarkdownMetadata<MyMetadata>()` reads it back typed. Sub-packages like `@ai-react-markdown/mantine` extend the flat prop surface directly (`MantineAIMarkdownProps<TMetadata> extends AIMarkdownProps<TMetadata>` adds `codeBlock`), transport their groups through `AIMarkdownBehaviorsProvider`, and apply group defaults inside their own narrow hook — see [Extending via a sub-package](./docs/extending-via-subpackage.md).
+`useAIMarkdownMetadata<MyMetadata>()` reads it back typed. Sub-packages like `@ai-markdown/react-mantine` extend the flat prop surface directly (`MantineAIMarkdownProps<TMetadata> extends AIMarkdownProps<TMetadata>` adds `codeBlock`), transport their groups through `AIMarkdownBehaviorsProvider`, and apply group defaults inside their own narrow hook — see [Extending via a sub-package](./docs/extending-via-subpackage.md).
 
 ## Security: Two-Gate URL Sanitization
 
@@ -634,7 +635,7 @@ Two gates run in sequence:
 
 For a scheme to render, **both must permit it**. This is intentional defense-in-depth. Use `defaultUrlTransform` + `extendSanitizeSchema` (see the [recipe above](#allow-a-custom-url-scheme-eg-myapp)) to opt into additional schemes without breaking other invariants (cross-chunk tags, KaTeX classes, `<mark>`).
 
-> Full sanitize-schema reference, footguns, and the asymmetric reference-stability rules for `urlTransform` vs `sanitizeSchema` are documented in the [core README's security section](./packages/core/README.md#custom-url-schemes-and-sanitization).
+> Full sanitize-schema reference, footguns, and the asymmetric reference-stability rules for `urlTransform` vs `sanitizeSchema` are documented in the [core README's security section](./packages/react/README.md#custom-url-schemes-and-sanitization).
 
 ## Cross-Chunk Coordination Reference
 
@@ -650,17 +651,17 @@ The `preserveOrphanReferences` prop on `<AIMarkdownDocuments>` unconditionally o
 
 ## Exported API at a Glance
 
-### `@ai-react-markdown/core`
+### `@ai-markdown/react`
 
 ```ts
 // Default export
-import AIMarkdown from '@ai-react-markdown/core';
+import AIMarkdown from '@ai-markdown/react';
 
 // Components
-import { AIMarkdownDocuments, AIMarkdownStreamingCursor } from '@ai-react-markdown/core';
+import { AIMarkdownDocuments, AIMarkdownStreamingCursor } from '@ai-markdown/react';
 
 // Additive Providers (extension-group transport for wrappers / apps)
-import { AIMarkdownBehaviorsProvider, AIMarkdownStateProvider } from '@ai-react-markdown/core';
+import { AIMarkdownBehaviorsProvider, AIMarkdownStateProvider } from '@ai-markdown/react';
 
 // Hooks — five narrow hooks + the aggregate
 import {
@@ -673,7 +674,7 @@ import {
   useDocumentRegistry,
   useStableValue,
   useStableRecord,
-} from '@ai-react-markdown/core';
+} from '@ai-markdown/react';
 
 // Factories, constants & helpers
 import {
@@ -684,7 +685,7 @@ import {
   extendSanitizeSchema,
   createRemendPreprocessor,
   AIMarkdownStabilityPolicy,
-} from '@ai-react-markdown/core';
+} from '@ai-markdown/react';
 
 // Sealed engine plugin catalog (subpath export)
 import {
@@ -694,7 +695,7 @@ import {
   pangu,
   removeComments,
   defaultEnginePlugins,
-} from '@ai-react-markdown/core/plugins';
+} from '@ai-markdown/react/plugins';
 
 // Types
 import type {
@@ -720,23 +721,23 @@ import type {
   LinkDef,
   RefRecord,
   RefKind,
-} from '@ai-react-markdown/core';
+} from '@ai-markdown/react';
 ```
 
-### `@ai-react-markdown/mantine`
+### `@ai-markdown/react-mantine`
 
 ```ts
 // Default export
-import MantineAIMarkdown from '@ai-react-markdown/mantine';
+import MantineAIMarkdown from '@ai-markdown/react-mantine';
 
 // Components
-import { MantineAIMarkdownTypography, MantineAIMDefaultExtraStyles } from '@ai-react-markdown/mantine';
+import { MantineAIMarkdownTypography, MantineAIMDefaultExtraStyles } from '@ai-markdown/react-mantine';
 
 // Hooks
-import { useMantineCodeBlockOptions, useMantineAIMarkdownMetadata } from '@ai-react-markdown/mantine';
+import { useMantineCodeBlockOptions, useMantineAIMarkdownMetadata } from '@ai-markdown/react-mantine';
 
 // Factory & constants
-import { defineMantineBehaviors, defaultMantineCodeBlockOptions } from '@ai-react-markdown/mantine';
+import { defineMantineBehaviors, defaultMantineCodeBlockOptions } from '@ai-markdown/react-mantine';
 
 // Types
 import type {
@@ -744,7 +745,7 @@ import type {
   MantineAIMarkdownMetadata,
   MantineCodeBlockOptions,
   MantineBehaviorProps,
-} from '@ai-react-markdown/mantine';
+} from '@ai-markdown/react-mantine';
 ```
 
 `preloadMantineCodeAssets()` is also exported by Mantine. It starts the lazy Mermaid and auto-detection imports ahead of first use. It does not replace the highlight adapter provider or stylesheet imports, and module preloading does not eliminate diagram rendering cost.
@@ -795,8 +796,8 @@ pnpm format
 pnpm format:check
 
 # Per-package tests (vitest)
-pnpm --filter @ai-react-markdown/core test
-pnpm --filter @ai-react-markdown/core typecheck
+pnpm --filter @ai-markdown/react test
+pnpm --filter @ai-markdown/react typecheck
 ```
 
 ## Contributing
@@ -805,7 +806,7 @@ Issues and pull requests are welcome. For non-trivial changes, please open an is
 
 Reporting a bug helps most when it includes:
 
-- The package and version (`@ai-react-markdown/core@2.14.1` …)
+- The package and version (`@ai-markdown/react@3.0.0-beta.1` …)
 - The relevant `<AIMarkdown>` / `<MantineAIMarkdown>` props
 - A minimal markdown sample that reproduces the issue
 - For streaming-related bugs: the chunk sequence (one string per chunk)

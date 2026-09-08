@@ -5,7 +5,7 @@ A logical document can be displayed by several `<AIMarkdown>` instances: for exa
 This is a reference-coordination layer, not a parser for arbitrarily split transport data. Accumulate SSE/token deltas into one string for the usual chat interface. Use multiple renderers only when each chunk is a meaningful Markdown unit: a fence, paragraph, table, or emphasis span cannot begin in one renderer and finish in another.
 
 ```tsx
-import AIMarkdown, { AIMarkdownDocuments } from '@ai-react-markdown/core';
+import AIMarkdown, { AIMarkdownDocuments } from '@ai-markdown/react';
 
 interface Message {
   id: string;
@@ -127,7 +127,7 @@ Returns:
 > ℹ️ **The hook can allocate a scope, but does not register or publish.** Calling `useDocumentRegistry(documentId)` can create an empty registry during render. The wrapper caches a `WeakRef` so concurrent renders and mounted consumers holding the object share its identity, while a discarded render cannot leave the object strongly retained by the wrapper. Garbage collection can reclaim an unused shell; a finalizer removes its stale cache key without deleting a newer scope for that id. Registered chunks still use explicit, microtask-deferred release for prompt eviction. GC timing is not part of reference resolution or registration correctness.
 
 ```tsx
-import { useDocumentRegistry, defaultUrlTransform } from '@ai-react-markdown/core';
+import { useDocumentRegistry, defaultUrlTransform } from '@ai-markdown/react';
 
 function BacklinkPanel({ documentId, label }: { documentId: string; label: string }) {
   const registry = useDocumentRegistry(documentId);
@@ -184,7 +184,7 @@ If you find yourself wanting one of these, the supported path is usually to driv
 
 ```tsx
 import { useSyncExternalStore } from 'react';
-import { useDocumentRegistry, type Registry } from '@ai-react-markdown/core';
+import { useDocumentRegistry, type Registry } from '@ai-markdown/react';
 
 function useRegistryVersion(registry: Registry | null): number {
   return useSyncExternalStore(
@@ -207,7 +207,7 @@ Renders a sidebar listing every cross-chunk link reference and its resolved URL 
 
 ```tsx
 import { useSyncExternalStore } from 'react';
-import { useDocumentRegistry, defaultUrlTransform } from '@ai-react-markdown/core';
+import { useDocumentRegistry, defaultUrlTransform } from '@ai-markdown/react';
 
 // urlTransform's third argument is the hast node; a minimal stand-in is fine.
 const A_NODE: Parameters<typeof defaultUrlTransform>[2] = {
@@ -428,4 +428,4 @@ Verify more than the happy path: add a definition after its reference, edit its 
 
 For a custom registry reader, always subscribe before relying on later contributions. The first `BacklinkPanel` example demonstrates URL selection only; combine it with `useRegistryVersion` for live updates, as in the full sidebar recipe. `defaultUrlTransform` supplies the library's default URL policy for your manually constructed link; it does not reproduce an arbitrary consuming chunk's custom schema or transform.
 
-Implementation references: [document wrapper](../packages/core/src/components/AIMarkdownDocuments.tsx), [registry](../packages/engine/src/components/documentRegistry.ts), and [render lifecycle](../packages/core/src/components/MarkdownContent.tsx).
+Implementation references: [document wrapper](../packages/react/src/components/AIMarkdownDocuments.tsx), [registry](../packages/engine/src/components/documentRegistry.ts), and [render lifecycle](../packages/react/src/components/MarkdownContent.tsx).

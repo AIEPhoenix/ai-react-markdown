@@ -3,7 +3,7 @@
 `metadata` carries application data to custom Markdown components through a dedicated React context. Use it for message IDs, callbacks, citation records, and other information that a renderer needs without changing the Markdown parser's configuration. The library passes the value through without cloning or deep comparison.
 
 ```tsx
-import AIMarkdown, { useAIMarkdownMetadata, type AIMarkdownCustomComponents } from '@ai-react-markdown/core';
+import AIMarkdown, { useAIMarkdownMetadata, type AIMarkdownCustomComponents } from '@ai-markdown/react';
 
 interface ChatMeta {
   messageId: string;
@@ -191,7 +191,7 @@ The recommended pattern is to define your shape in one place and write a project
 
 ```ts
 // my-chat/metadata.ts
-import { useAIMarkdownMetadata } from '@ai-react-markdown/core';
+import { useAIMarkdownMetadata } from '@ai-markdown/react';
 
 export interface ChatMeta {
   messageId: string;
@@ -209,7 +209,7 @@ function MyCodeBlock() {
 }
 ```
 
-This mirrors the pattern `@ai-react-markdown/mantine` uses for `useMantineAIMarkdownMetadata`. See [TypeScript Generics](./typescript-generics.md) and [Extending via a Sub-package](./extending-via-subpackage.md) for the same idea applied to behavior groups.
+This mirrors the pattern `@ai-markdown/react-mantine` uses for `useMantineAIMarkdownMetadata`. See [TypeScript Generics](./typescript-generics.md) and [Extending via a Sub-package](./extending-via-subpackage.md) for the same idea applied to behavior groups.
 
 ---
 
@@ -308,4 +308,4 @@ Metadata belongs to the nearest Markdown instance's provider. A sibling outside 
 
 A custom citation component that replaces `cite://42` with a URL from metadata creates a new destination after the Markdown URL pass. Validate the citation store's destination according to the application's link policy. Permitting the marker protocol through both gates validates the marker's route through Markdown; it does not validate arbitrary values later read from application state.
 
-When reviewing a metadata integration, change the callback while keeping `content` fixed, omit metadata entirely, and mount two messages with different IDs and callbacks. Those checks establish callback freshness, absent-value handling, and scope isolation. The implementation and regression references are [`context.tsx`](../packages/core/src/context.tsx), [`context.test.tsx`](../packages/core/src/context.test.tsx), and [`contextsV2.test.tsx`](../packages/core/src/contextsV2.test.tsx).
+When reviewing a metadata integration, change the callback while keeping `content` fixed, omit metadata entirely, and mount two messages with different IDs and callbacks. Those checks establish callback freshness, absent-value handling, and scope isolation. The implementation and regression references are [`context.tsx`](../packages/react/src/context.tsx), [`context.test.tsx`](../packages/react/src/context.test.tsx), and [`contextsV2.test.tsx`](../packages/react/src/contextsV2.test.tsx).

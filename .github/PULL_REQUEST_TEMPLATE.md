@@ -30,8 +30,8 @@ How can a reviewer verify this works?
 ## Checklist
 
 - [ ] I've read [`CONTRIBUTING.md`](../CONTRIBUTING.md)
-- [ ] Tests pass locally (`pnpm --filter @ai-react-markdown/core test`)
-- [ ] Typecheck passes (`pnpm --filter @ai-react-markdown/core typecheck`)
+- [ ] Tests pass locally (`pnpm --filter @ai-markdown/react test`)
+- [ ] Typecheck passes (`pnpm --filter @ai-markdown/react typecheck`)
 - [ ] Lint passes (`pnpm lint`)
 - [ ] Format check passes (`pnpm format:check`)
 - [ ] Docs updated if the public API or behavior changed (`README.md` / `docs/` / JSDoc)

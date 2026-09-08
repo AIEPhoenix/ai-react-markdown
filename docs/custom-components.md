@@ -3,7 +3,7 @@
 `customComponents` lets you replace the React renderer for an HTML element produced by the Markdown pipeline. Use it for links, images, tables, headings, task controls, and code blocks that need application behavior. The parser still owns Markdown syntax; your component receives the resulting element's attributes, React children, and an optional hast `node`.
 
 ```tsx
-import AIMarkdown, { type AIMarkdownCustomComponents } from '@ai-react-markdown/core';
+import AIMarkdown, { type AIMarkdownCustomComponents } from '@ai-markdown/react';
 
 const COMPONENTS = {
   a: ({ node, children, ...props }) => (
@@ -102,7 +102,7 @@ A `pre` renderer usually receives a React `<code>` element as its child. `String
 
 ```tsx
 import { useRef, useState } from 'react';
-import { useAIMarkdownState, type AIMarkdownCustomComponents } from '@ai-react-markdown/core';
+import { useAIMarkdownState, type AIMarkdownCustomComponents } from '@ai-markdown/react';
 
 type PreRenderer = NonNullable<AIMarkdownCustomComponents['pre']>;
 
@@ -193,7 +193,7 @@ function Parent({ content }) {
 
 ## Interaction with Mantine defaults
 
-`@ai-react-markdown/mantine` ships its own `customComponents.pre` that powers code highlighting, Mermaid, and JSON pretty-print. Caller-provided components are **merged on top** of the Mantine defaults — your overrides take precedence:
+`@ai-markdown/react-mantine` ships its own `customComponents.pre` that powers code highlighting, Mermaid, and JSON pretty-print. Caller-provided components are **merged on top** of the Mantine defaults — your overrides take precedence:
 
 ```tsx
 // Mantine handles <pre>, you handle <a>:
@@ -211,7 +211,7 @@ If you supply `pre` yourself, you fully replace Mantine's code-block pipeline:
 
 That's sometimes what you want (you have your own highlighter) — just be aware of the consequence.
 
-The reverse holds too: because Mantine's `pre` renders the fenced block through its own `CodeHighlight` / Mermaid / JSON pipeline, it does **not** mount the `code` element inside — so a `customComponents.code` override only reaches **inline** code (`` `like this` ``), never fenced blocks. To customize fenced-block rendering under `@ai-react-markdown/mantine`, override `pre` (and take over highlighting), or use the `codeBlock` group prop (`defaultExpanded`, `autoDetectUnknownLanguage`) documented in the package README.
+The reverse holds too: because Mantine's `pre` renders the fenced block through its own `CodeHighlight` / Mermaid / JSON pipeline, it does **not** mount the `code` element inside — so a `customComponents.code` override only reaches **inline** code (`` `like this` ``), never fenced blocks. To customize fenced-block rendering under `@ai-markdown/react-mantine`, override `pre` (and take over highlighting), or use the `codeBlock` group prop (`defaultExpanded`, `autoDetectUnknownLanguage`) documented in the package README.
 
 ---
 
@@ -237,7 +237,7 @@ const components: AIMarkdownCustomComponents = {
 The library namespaces every clobberable attribute (`id="…"` / `href="#…"`) with a per-document prefix so footnote anchors and hash hrefs don't collide across `<AIMarkdown>` instances. If your custom component emits its own ids — e.g. anchor links on headings — you should use the same prefix instead of inventing one. Read `clobberPrefix` from the document context:
 
 ```tsx
-import { useAIMarkdownDocument } from '@ai-react-markdown/core';
+import { useAIMarkdownDocument } from '@ai-markdown/react';
 
 import { Children, isValidElement, type ReactNode } from 'react';
 
@@ -340,4 +340,4 @@ The slug example demonstrates namespace composition only. Two headings with the 
 
 When checking a replacement, include the constructs whose attributes it may receive: an ordinary link, a hash link, a repeated footnote reference, a fenced block, inline code, and raw `<pre>` HTML. Check that the original text survives, that controls can be operated by keyboard, and that changing metadata updates the callback without requiring a new component function.
 
-Source pointers: [`markdown/Markdown.tsx`](../packages/core/src/components/markdown/Markdown.tsx) owns JSX conversion; [`crossChunkPlaceholders.tsx`](../packages/core/src/components/crossChunkPlaceholders.tsx) adapts coordinated references to the same component map; [`MantineAIMarkdown.tsx`](../packages/mantine/src/MantineAIMarkdown.tsx) demonstrates guarded extraction of code blocks.
+Source pointers: [`markdown/Markdown.tsx`](../packages/react/src/components/markdown/Markdown.tsx) owns JSX conversion; [`crossChunkPlaceholders.tsx`](../packages/react/src/components/crossChunkPlaceholders.tsx) adapts coordinated references to the same component map; [`MantineAIMarkdown.tsx`](../packages/react-mantine/src/MantineAIMarkdown.tsx) demonstrates guarded extraction of code blocks.

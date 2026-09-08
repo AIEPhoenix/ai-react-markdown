@@ -1,63 +1,87 @@
 # From ai-react-markdown to ai-markdown
 
-**2.14.x is the final planned release line under the `ai-react-markdown` project identity and package scope.** Version 2.14.0 introduces an internal framework-neutral orchestration layer while retaining the existing React and Mantine APIs, imports, stylesheet paths and installation commands. The next development phase moves to `ai-markdown`; this release does not rename installed packages or claim support for a second UI framework.
+**v2.14.1 is the final planned legacy release; 3.0.0-beta.1 starts the new `@ai-markdown` package train.** The GitHub repository has moved to `ai-markdown/ai-markdown`. Package names, directory ownership and shared-core distribution change together. React components, hooks, configuration names and stylesheet behavior retain their existing shape.
 
-This document distinguishes the architecture implemented in the legacy release from the subsequent package migration. Keep using the existing package READMEs to integrate 2.14.1. This maintenance patch fixes abandoned-render scope retention and shares preparation decisions with a private Vue lifecycle prototype. The future names below describe the intended destination and are not installation instructions for already-published replacements.
+The beta establishes the new package boundaries. It does not claim a complete Vue renderer or freeze the advanced engine/core APIs before stable 3.0.0. Use the explicit `beta` tag when installing the new framework packages. Existing legacy versions and Git tags remain available.
 
-## Why split before migrating names?
+## Package and import mapping
 
-The current `@ai-react-markdown/core` is a React adapter. It contains React contexts, hooks, node caches, component conversion and browser cursor behavior. Renaming that whole package to `@ai-markdown/core` would make the new shared core depend on React and leave every additional framework to repeat the same parsing and coordination policies.
+| Legacy package or path                          | New package or path                        | Responsibility                                                                   |
+| ----------------------------------------------- | ------------------------------------------ | -------------------------------------------------------------------------------- |
+| `@ai-react-markdown/engine`                     | `@ai-markdown/engine`                      | Grammar, tree transforms, incremental algorithms, registry and URL primitives    |
+| Private `@ai-react-markdown/runtime`            | `@ai-markdown/core`                        | Sessions, plans, committed contributions, aggregate HAST and reveal coordination |
+| `@ai-react-markdown/core`                       | `@ai-markdown/react`                       | React components, hooks, contexts, node caches and DOM integration               |
+| `@ai-react-markdown/core/plugins`               | `@ai-markdown/react/plugins`               | React-facing plugin and preprocessing exports                                    |
+| `@ai-react-markdown/core/typography/<name>.css` | `@ai-markdown/react/typography/<name>.css` | Existing typography stylesheets                                                  |
+| `@ai-react-markdown/mantine`                    | `@ai-markdown/react-mantine`               | Mantine typography and code/diagram presentation                                 |
+| `@ai-react-markdown/mantine/styles.css`         | `@ai-markdown/react-mantine/styles.css`    | Mantine integration stylesheet                                                   |
+| `@ai-react-markdown/remark-mark-highlight`      | `@ai-markdown/remark-mark-highlight`       | Independently versioned unified plugin                                           |
 
-The split instead extracts reusable orchestration into a private runtime package. React consumes that implementation before any public package name changes. Existing equivalence, SSR, streaming, coordination and browser tests can therefore validate the boundary against a working adapter. Source reorganization and consumer import migration remain separately reviewable changes.
+**The old React core becomes `react`, not the new shared `core`.** Applications should install the framework package. Engine and shared core are normal dependencies and arrive automatically. Custom adapter authors can depend on both explicitly. No alias wrapper joins the old and new graphs; update application imports and integration dependencies together.
 
-## Current ownership and intended package names
+## React installation and API continuity
 
-| Legacy package/layer                       | Role after this split                                                                                                       | Intended ai-markdown destination                                          |
-| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `@ai-react-markdown/engine`                | Grammar, tree transforms, incremental algorithms, registry and policy primitives                                            | `@ai-markdown/engine`                                                     |
-| Private `@ai-react-markdown/runtime`       | Pipeline sessions, block plans, contribution publishing, aggregate HAST, reveal coordination and source-tail classification | `@ai-markdown/core`                                                       |
-| `@ai-react-markdown/core`                  | React components, hooks, contexts, node caches and DOM integration                                                          | `@ai-markdown/react`                                                      |
-| `@ai-react-markdown/mantine`               | React/Mantine typography and code/diagram presentation                                                                      | A React-specific Mantine integration; final name belongs to the migration |
-| `@ai-react-markdown/remark-mark-highlight` | Framework-independent unified plugin on its own version track                                                               | A separately versioned plugin under the new scope                         |
+```bash
+pnpm remove @ai-react-markdown/core
+pnpm add @ai-markdown/react@beta react@^19 react-dom@^19
+```
 
-Dependency direction is engine → consumed by runtime → consumed by adapters → consumed by UI integrations. Adapters may also use engine primitives directly. Runtime does not re-export the engine wholesale, and neither shared package imports an adapter. A future Vue, Svelte or other adapter must own its framework's nodes and lifecycle; it should consume shared decisions instead of copying React's hooks.
+```tsx
+import AIMarkdown from '@ai-markdown/react';
+import '@ai-markdown/react/typography/default.css';
 
-DOM positioning is still in the React adapter for this release. A separate browser-only utility entry may be justified once a second adapter needs it. It must not make the shared root depend on `document`, `HTMLElement`, or the browser's layout cycle. The current runtime root is typechecked without DOM libraries and exercised by a Node consumer with UI framework imports rejected.
+export function Answer({ content, streaming }: { content: string; streaming: boolean }) {
+  return <AIMarkdown content={content} streaming={streaming} />;
+}
+```
 
-## What 2.14.0 actually changes
+Continue passing the complete accumulated Markdown string. `AIMarkdown`, the narrow hooks, `AIMarkdownDocuments`, component slots and flat configuration names retain their React API. Existing custom typography uses the same variant filename under the new package path. Import preprocessors and plugin helpers through the new root or `/plugins` entry as appropriate for their existing exports.
 
-The renderer now delegates its full/incremental pipeline session, phantom suffix assembly, block planning, reference fingerprints, contribution comparison/body harvest, aggregate footnote tree assembly and smooth queue state machine to runtime. Runtime returns trees, plans and coordination facts; React converts them into elements and manages cache ownership.
+React 19 is the supported initial peer range. ESM/CJS, development/production conditions, declarations and the React `use client` directive are retained. KaTeX remains an optional peer; install it and import its stylesheet when using math rendering, following the [React README](../packages/react/README.md). Custom renderers must still apply the documented final-element URL policy.
 
-The split preserves the distinction between computation and committed side effects. Parsing and planning do not register or publish anything. The React adapter registers a chunk during its lifecycle and publishes through the runtime contribution session from an effect. A discarded render must not publish. SSR retains local footnote behavior because commit effects have not allocated a coordinated symbol.
+## Mantine integration
 
-The public installation remains the existing engine/core/mantine release train. Runtime is `private: true`, stays out of npm publishing and is bundled into core. Core's declarations are resolved during the build, and distribution checks reject leaked private runtime imports. Engine remains external and version-pinned; a second inlined engine copy could split registry identity and is explicitly forbidden.
+```bash
+pnpm remove @ai-react-markdown/mantine
+pnpm add @ai-markdown/react@beta @ai-markdown/react-mantine@beta
+```
 
-Detailed ownership, APIs and invariants live in the [runtime README](../packages/runtime/README.md). The [architecture guide](./architecture.md) follows the production React path, and [cross-chunk coordination](./cross-chunk-coordination.md) explains the user-facing reference behavior.
+Keep the existing React 19, Mantine 9 and highlight.js peers. The beta integration requires the exact React adapter beta version, so upgrade the two together. Import `@ai-markdown/react-mantine/styles.css` after the Mantine styles and retain the providers shown in the [Mantine README](../packages/react-mantine/README.md). `MantineAIMarkdown`, `codeBlock` and caller slot precedence are unchanged.
 
-## Validation and the limits of this milestone
+The integration remains React-specific; it cannot render Vue nodes. Mermaid loading and the optional math stylesheet follow the existing integration behavior.
 
-The split is validated through the existing React adapter and a framework-free Node consumer. The Node checks load production/development ESM and CJS artifacts, reject framework module resolution, run parsing/planning and exercise coordination. Session tests compare incremental output with a full engine pipeline and cover reset, fallback and explicit commit behavior. React tests remain responsible for node identity, hydration/SSR, Strict Mode and browser interaction.
+## Shared core ownership
 
-A headless consumer proves that shared code can execute without React or a DOM. It does not prove that the API is ergonomic for every UI framework. The first real second adapter should validate lifecycle mapping, scheduler behavior, hydration, slots/components, styling, cursor placement and reference synchronization before the new shared core promises long-term public API stability.
+The legacy split extracted reusable computation before changing public imports. The new core now ships separately, with an explicit export list, instead of being bundled into React. Engine and core are exact-version dependencies of the adapter. They do not import React, Vue or DOM APIs; adapters may consume engine directly without routing every primitive through a core re-export.
 
-## The migration that follows
+Core owns pipeline sessions, phantom preparation, block planning, contribution fingerprints, post-transform body harvesting, aggregate footnote HAST, smooth queue state and source-tail classification. It returns syntax trees and coordination facts. React owns nodes, cached React output, context subscriptions, provenance credentials, lifecycle timing, final placeholder conversion and DOM cursor measurement.
 
-1. Freeze the legacy release with its complete API documentation, release notes and verification record. Keep the tag available as the reference for existing consumers.
-2. Move repository identity and package metadata to the new organization/scope. Update workspace dependency names, package exports, release tags, provenance/trusted publishing configuration, examples and documentation links together.
-3. Rename the extracted runtime to the new shared core and the existing public core to the React adapter. Resolve the integration naming scheme before publishing its first new-scope version, so consumers do not have to migrate twice.
-4. Implement and test a second framework adapter against the shared layer. Adjust the shared API where the adapter demonstrates a concrete lifecycle or rendering requirement.
-5. Publish the dedicated documentation site with separate installation paths for each supported framework and a legacy-to-new migration guide. Present only frameworks and packages that actually ship.
+`createRegistry` exposes engine's `RegistryController` write contract without private subscriber/refcount containers. Core's contribution publisher requires only a `ContributionRegistry` capability. `createSmoothCoordinator` exposes documented state and methods through `SmoothCoordinator`. These type boundaries do not deep-freeze returned values. The [core README](../packages/core/README.md) documents ownership, invalidation and read-only snapshot rules.
 
-The organization and npm scope have been reserved. That establishes ownership of the destination; it does not transfer the current repository, configure each npm trusted publisher, or publish the new package names automatically. Those changes belong to the next phase.
+## Cross-chunk references and SSR
 
-## Documentation site scope
+Keep the existing logical `documentId`, stable chunk identity and document ordering when changing imports. `AIMarkdownDocuments` still scopes coordination. Registration and contribution publication occur in committed lifecycle work; parsing and planning must not publish. A discarded concurrent render cannot retain a permanently owned document scope.
 
-The site should offer a framework selector, runnable getting-started examples, streaming integration guides, API reference, customization and security policy guidance, architecture/contributor material, migration mappings and a versioned legacy documentation path. Shared concepts—Markdown grammar, streaming completion, reference coordination and URL policy—should have one canonical explanation, with framework-specific examples beside it.
+SSR does not run the registration effects and retains local footnote behavior. The host chooses one-shot parsing for server output; a later client frame must establish its own session and registration. Do not serialize a mutable registry or planner from one request into another. The beta keeps the existing React SSR behavior; a future Vue hydration implementation needs separate validation.
 
-Keep the repository's package READMEs useful after the site launches: installation, a minimal complete example, supported environments, important limitations and direct links to deeper material still belong with the published npm package. The site expands navigation and examples; it should not make the installed package documentation depend on finding a separate website first.
+## Public API and release policy
 
-## Second-framework preparation experiment
+Engine, core, react and react-mantine use one version train starting at `3.0.0-beta.1`, published under `beta`. The highlight plugin remains on its independent 1.x line; the existing rehype/raw forks retain their own repositories and upstream-related versions. A beta release must not move the npm `latest` tag or become a stable GitHub release.
 
-The private [Vue lifecycle prototype](../prototypes/vue/README.md) now consumes runtime's shared phantom-target derivation, handler/body-harvest policy and contribution invalidation tuple. React uses the same functions in its production adapter. The prototype adds Vue only to its own workspace; the legacy runtime and published packages remain free of that dependency.
+Advanced engine/core contracts may evolve during beta. Test fixtures and implementation containers are excluded from the public root. Framework apps should avoid importing source paths or undocumented helpers. Stable 3.0.0 requires signature review, supported consumer checks and the complete release gate. See the [approved package and release plan](./plans/ai-markdown-packages-and-release.md).
 
-Its tests mount real Vue components with a memory renderer and execute Vue SSR. They check preparation without publication, two-chunk definition sharing, reactive definition updates, retained parse identity, document switching and unmount cleanup. This is evidence for the shared preparation boundary. A complete Vue renderer, final placeholder conversion, DOM hydration, customization, styles and streaming cursor remain future work; the new core API is not frozen by this experiment.
+The repository transfer is complete. Each new npm package still needs its own first-publication credentials and trusted-publisher configuration for organization `ai-markdown`, repository `ai-markdown`, workflow `release.yml`. Organization ownership alone does not create those configurations. Releases retain provenance and use CI as the publication path.
+
+## Validation and second-framework limits
+
+Shared-core tests load production/development ESM and CJS in fresh Node processes, reject framework resolution and execute parsing/planning without browser globals. Session tests compare incremental output with a full engine pipeline and cover reset, fallback and explicit contribution timing. React tests cover node identity, SSR, Strict Mode, coordination and browser interaction. Published artifacts must additionally resolve outside the workspace, including declarations, plugin entries and CSS paths.
+
+The private [Vue prototype](../prototypes/vue/README.md) consumes the same phantom-target, handler/harvest and contribution-chain decisions. Its real Vue lifecycle and memory-renderer tests exercise cross-chunk definitions, updates, document switching and cleanup; SSR tests validate preparation. Vue is only a dependency of that private workspace.
+
+That experiment has no complete HAST-to-VNode renderer, DOM hydration, slots, styling or cursor support. `@ai-markdown/vue` joins the public train after those paths are implemented and verified. A framework-independent Node consumer demonstrates a valid boundary, not universal framework readiness.
+
+## Documentation site
+
+The dedicated site follows this package migration. It should provide shared concepts, framework-specific installation and examples, API reference, streaming and customization guides, security policy, architecture/contributor pages and a versioned legacy path. The repository plan records the page mapping; no public site or domain is claimed by this beta.
+
+Package READMEs continue to include complete installation, minimal examples, environment requirements and important limitations. Legacy 1.x-to-2.x guidance remains historical material; new users should start with the current framework README and this migration guide.

@@ -1,7 +1,8 @@
+import { createRegistry } from '../../../packages/engine/src/components/documentRegistry';
 import { createRenderer, createSSRApp, defineComponent, h, nextTick, shallowRef } from 'vue';
 import { renderToString } from '@vue/server-renderer';
 import { expect, test } from 'vitest';
-import { createRegistry } from '@ai-react-markdown/engine';
+
 import { useMarkdownChunk, type ChunkInput } from './useMarkdownChunk';
 
 interface HostNode {

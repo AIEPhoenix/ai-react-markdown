@@ -1,5 +1,5 @@
 /**
- * The `@ai-react-markdown/mantine` benchmark app.
+ * The `@ai-markdown/react-mantine` benchmark app.
  *
  * Same rule as its sibling: THE INTEGRATION IS THE README'S, VERBATIM —
  * `MantineProvider` wrapping `CodeHighlightAdapterProvider` wrapping
@@ -21,11 +21,11 @@ import { createRoot } from 'react-dom/client';
 import { MantineProvider } from '@mantine/core';
 import { CodeHighlightAdapterProvider, createHighlightJsAdapter } from '@mantine/code-highlight';
 import hljs from 'highlight.js';
-import MantineAIMarkdown from '@ai-react-markdown/mantine';
+import MantineAIMarkdown from '@ai-markdown/react-mantine';
 
 import '@mantine/core/styles.css';
 import '@mantine/code-highlight/styles.css';
-import '@ai-react-markdown/mantine/styles.css';
+import '@ai-markdown/react-mantine/styles.css';
 import 'katex/dist/katex.min.css';
 
 import { driveScenario, installHarness, scenarioById, scriptedScroll, SCENARIOS } from '@bench/kit';

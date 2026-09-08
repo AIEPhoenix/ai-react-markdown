@@ -6,7 +6,7 @@ import { createRequire } from 'node:module';
 import { performance } from 'node:perf_hooks';
 import { createRegistry } from '../../packages/engine/dist/index.js';
 
-const require = createRequire(new URL('../../packages/mantine/package.json', import.meta.url));
+const require = createRequire(new URL('../../packages/react-mantine/package.json', import.meta.url));
 const hljs = require('highlight.js');
 const source = 'const result = items.map((item) => ({ ...item, score: item.value * 2 }));\n'.repeat(1000);
 for (const stride of [1, 10]) {

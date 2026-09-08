@@ -1,9 +1,9 @@
 {
-  "name": "ai-react-markdown",
-  "version": "2.14.1",
+  "name": "ai-markdown",
+  "version": "3.0.0-beta.1",
   "private": true,
   "type": "module",
-  "description": "A React component for rendering AI-generated Markdown with LaTeX math, GFM, syntax highlighting and more.",
+  "description": "Framework-independent Markdown engine and shared core with React rendering and Mantine integration.",
   "scripts": {
     "build": "pnpm --filter './packages/*' run build",
     "lint": "eslint .",
@@ -21,11 +21,12 @@
     "bench:web:scale": "node benchmarks/runner/scale.mjs --prefix scale-",
     "bench:web:scale:cold": "node benchmarks/runner/scale.mjs --prefix cold-",
     "bench:web:scale:steps": "node benchmarks/runner/scale.mjs --prefix steps-",
-    "preflight": "pnpm check:overrides && pnpm check:soak-coverage && pnpm lint && pnpm format:check && pnpm build && pnpm test:soak-control && pnpm packcheck && pnpm -r typecheck && pnpm typecheck && pnpm vitest run && pnpm test:document-lifetime",
+    "preflight": "pnpm check:overrides && pnpm check:soak-coverage && pnpm lint && pnpm format:check && pnpm build && pnpm test:soak-control && pnpm packcheck && pnpm -r typecheck && pnpm typecheck && pnpm vitest run && pnpm test:document-lifetime && pnpm test:packed-consumers",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "test:soak-control": "node --test scripts/soak/soak-control.test.mjs",
-    "test:document-lifetime": "node scripts/test-document-scope-lifetime.mjs"
+    "test:document-lifetime": "node scripts/test-document-scope-lifetime.mjs",
+    "test:packed-consumers": "node scripts/check-packed-consumers.mjs"
   },
   "keywords": [
     "react",
@@ -40,13 +41,13 @@
   ],
   "author": "Brian Lee <aiephoenixbl@gmail.com> (https://github.com/AIEPhoenix)",
   "license": "MIT",
-  "homepage": "https://github.com/AIEPhoenix/ai-react-markdown#readme",
+  "homepage": "https://github.com/ai-markdown/ai-markdown#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/AIEPhoenix/ai-react-markdown.git"
+    "url": "git+https://github.com/ai-markdown/ai-markdown.git"
   },
   "bugs": {
-    "url": "https://github.com/AIEPhoenix/ai-react-markdown/issues"
+    "url": "https://github.com/ai-markdown/ai-markdown/issues"
   },
   "packageManager": "pnpm@11.20.0",
   "devDependencies": {

@@ -1,25 +1,26 @@
-# Contributing to ai-react-markdown
+# Contributing to ai-markdown
 
 Thanks for your interest in contributing. This file covers the practical "how" — for "what" and "why", see [`README.md`](./README.md) and the topic docs under [`docs/`](./docs/).
 
 ## Quick orientation
 
-This is a **pnpm monorepo** with four packages:
+This is a **pnpm monorepo** with five public packages:
 
 - [`packages/engine`](./packages/engine) — the Markdown engine: incremental parsing, LaTeX preprocessing, the definition/footnote machinery, and the unified plugin pipeline. No React anywhere in its tree.
-- [`packages/core`](./packages/core) — the React renderer built on the engine (the public entry point most users install).
-- [`packages/mantine`](./packages/mantine) — Mantine UI integration (lives on top of core).
+- [`packages/core`](./packages/core) — shared framework-independent sessions, planning and coordination.
+- [`packages/react`](./packages/react) — the React renderer built on the engine (the public entry point most users install).
+- [`packages/react-mantine`](./packages/react-mantine) — Mantine UI integration (lives on top of the React adapter).
 - [`packages/remark-mark-highlight`](./packages/remark-mark-highlight) — standalone `==highlight==` remark plugin, published on its own semver track.
 
-The engine/core line is where most orientation mistakes happen. **Anything that turns Markdown text into a hast tree belongs in the engine; anything that turns a hast tree into React belongs in core.** If a change needs `useState`, a context, or a DOM node, it is core-side by construction. `core` depends on `engine` at an exact version (pnpm rewrites `workspace:*` to the published version), so the two always ship in lockstep.
+The engine/core/adapter boundary is where most orientation mistakes happen. **Anything that turns Markdown text into a hast tree belongs in the engine; anything that turns a hast tree into React belongs in the React adapter.** If a change needs `useState`, a context, or a DOM node, it is adapter-side by construction. `core` depends on `engine` at an exact version (pnpm rewrites `workspace:*` to the published version), so the two always ship in lockstep.
 
 Source of truth for the public API surface, sanitization model, cross-chunk coordination, and block-level memoization invariants is in [`docs/`](./docs/). If you're touching internals, **read [`docs/architecture.md`](./docs/architecture.md) first** — its module-layout tree shows which package owns which file.
 
 ## Setup
 
 ```bash
-git clone https://github.com/AIEPhoenix/ai-react-markdown.git
-cd ai-react-markdown
+git clone https://github.com/ai-markdown/ai-markdown.git
+cd ai-markdown
 pnpm install
 pnpm build
 ```
@@ -38,8 +39,8 @@ You'll need:
 pnpm storybook
 
 # Run tests once — one package, or `pnpm -r test` for all of them
-pnpm --filter @ai-react-markdown/core test
-pnpm --filter @ai-react-markdown/engine test
+pnpm --filter @ai-markdown/react test
+pnpm --filter @ai-markdown/engine test
 
 # Typecheck
 pnpm -r typecheck
@@ -55,9 +56,9 @@ pnpm preflight
 
 CI runs lint + format:check + typecheck + test + build on every PR.
 
-### Changing the shared runtime
+### Changing the shared core
 
-`packages/runtime` is private and bundled into the legacy React adapter. Keep production imports framework-neutral and do not add it to core’s published dependencies. Build before running its distribution tests (`pnpm exec vitest run --project unit packages/runtime/src/runtime.test.ts`): these execute the actual ESM/CJS artifacts in Node without a UI framework or DOM. Its build checks import boundaries; core’s build rejects unresolved runtime references in JavaScript and declarations. See the [runtime README](./packages/runtime/README.md) and [transition guide](./docs/framework-transition.md) before moving state or lifecycle work across this boundary.
+`packages/core` is public and framework-independent. React declares it as a normal exact-version dependency; it is external in both JavaScript and declarations. Build before running its distribution tests (`pnpm exec vitest run --project unit packages/core/src/runtime.test.ts`): these execute actual ESM/CJS artifacts in Node without a framework or DOM. Its build checks source import boundaries, and the React build checks external core/engine references. See the [core README](./packages/core/README.md) and [transition guide](./docs/framework-transition.md) before moving lifecycle work across packages.
 
 ### Changing the incremental-parse engine
 
@@ -65,7 +66,7 @@ CI runs lint + format:check + typecheck + test + build on every PR.
 
 ```bash
 # Fast feedback: the splice fuzz suite on its own
-pnpm --filter @ai-react-markdown/engine fuzz:splice
+pnpm --filter @ai-markdown/engine fuzz:splice
 
 # Release gate: the six-leg soak (fuzz + direction battery + def-label scanner
 # + bounded-exhaustive census + P1 conformance under ORACLE_RAW=1 + LaTeX
@@ -182,7 +183,7 @@ the gate exactly where it matters (this bug shipped once; see the history note
 in `useReferenceFlipWarning.ts`).
 
 What makes the bare text safe everywhere: `process.env.NODE_ENV` is resolved at
-**build time**. Both entries of core's `tsup.config.ts` — and both entries of
+**build time**. Both entries of the React adapter's `tsup.config.ts` — and both entries of
 engine's, which repeats the arrangement for the same reason — carry
 `env: { NODE_ENV: ... }`. Those keys are **load-bearing**; removing any of them
 would ship a dist that evaluates `process.env` at import and crashes no-bundler
@@ -202,7 +203,7 @@ By participating in this project you agree to abide by the [Contributor Covenant
 
 ## Releasing (maintainer-only)
 
-Releases publish from CI via [npm trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC — no token secret anywhere) with provenance attached automatically. Pushing a `v*` tag triggers `.github/workflows/release.yml`, which re-runs the full quality gate (lint, format, typecheck, tests, build), verifies the tag matches `package.json`, and publishes every package whose version is not yet on the registry (`pnpm publish -r` skips the rest). Packages on an independent semver track — `remark-mark-highlight` — either ride the train tag when their version was bumped, or get released alone via a `<pkg>-vX.Y.Z` tag:
+Releases publish from CI via [npm trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC — no token secret anywhere) with provenance attached automatically. Each new npm package must first have its publisher configured for `ai-markdown/ai-markdown` and `release.yml`; the scope registration does not configure it. Pushing a `v*` tag triggers `.github/workflows/release.yml`, which re-runs the full quality gate (lint, format, typecheck, tests, build), verifies the tag matches `package.json`, and publishes missing versions in dependency order: independent highlight plugin, engine, core, react, react-mantine. The registry is checked between steps. Packages on an independent semver track — `remark-mark-highlight` — either ride the train tag when their version was bumped, or get released alone via a `<pkg>-vX.Y.Z` tag:
 
 ```bash
 # Sync versions across the monorepo (also rewrites README version refs)
@@ -213,13 +214,15 @@ git tag vX.Y.Z
 git push origin main vX.Y.Z
 ```
 
+For the new train, `3.0.0-beta.1` uses the npm `beta` tag and a GitHub prerelease. The independent highlight plugin stays on its own stable 1.x tag.
+
 Run `pnpm preflight` before tagging to catch gate failures locally — it is the same check suite the workflow runs, minus the publish. There is deliberately no local publish path: a local `npm publish` cannot attach provenance, so publishing happens only via the tag flow.
 
 The workflow also creates the GitHub release, with notes taken from the version's section in `docs/release-highlights.md` — write that section before tagging (it falls back to auto-generated notes otherwise).
 
 ## Questions?
 
-- Usage / how-do-I → [Discussions / Q&A](https://github.com/AIEPhoenix/ai-react-markdown/discussions/categories/q-a)
-- Ideas / proposals → [Discussions / Ideas](https://github.com/AIEPhoenix/ai-react-markdown/discussions/categories/ideas)
-- Bugs → [Issues](https://github.com/AIEPhoenix/ai-react-markdown/issues/new/choose)
-- Security → [Private advisory](https://github.com/AIEPhoenix/ai-react-markdown/security/advisories/new)
+- Usage / how-do-I → [Discussions / Q&A](https://github.com/ai-markdown/ai-markdown/discussions/categories/q-a)
+- Ideas / proposals → [Discussions / Ideas](https://github.com/ai-markdown/ai-markdown/discussions/categories/ideas)
+- Bugs → [Issues](https://github.com/ai-markdown/ai-markdown/issues/new/choose)
+- Security → [Private advisory](https://github.com/ai-markdown/ai-markdown/security/advisories/new)

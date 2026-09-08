@@ -1,18 +1,7 @@
-/**
- * @ai-react-markdown/engine — framework-agnostic Markdown engine.
- *
- * Entry barrel (boundary action ⑤): pure re-exports only. Populated batch
- * by batch as modules migrate in from core (M1–M3); no runtime logic may
- * ever live in this file.
- *
- * Contract: this package is the internal supplier for
- * `@ai-react-markdown/core`. Its export surface tracks what core (and
- * core's stories/tests) consume — no public API stability is promised
- * before 3.0.0.
+/** Framework-independent algorithm contracts for ai-markdown adapters.
+ * Beta APIs may evolve before stable 3.0.0. Test fixtures and implementation
+ * registry storage are intentionally source-only, outside this root entry.
  */
-
-// ── Fixtures (boundary action ⑦) ─────────────────────────────────────────
-export * from './fixtures/scenarios';
 
 // ── M3: incremental-parse engine + definition machinery ──────────────────
 export * from './components/incrementalParse';
@@ -25,7 +14,8 @@ export {
 } from './components/collectDefLabels';
 export * from './components/extractDefBodiesFromHast';
 export * from './components/extractContributions';
-export * from './components/documentRegistry';
+export { createRegistry } from './registry';
+export type { Registry, RegistryController, ChunkData, FootnoteDef, LinkDef, RefKind, RefRecord } from './registry';
 
 // ── M2: pipeline assembly ────────────────────────────────────────────────
 export * from './components/markdown';

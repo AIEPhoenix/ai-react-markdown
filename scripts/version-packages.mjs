@@ -5,11 +5,11 @@
 //
 // Usage: node scripts/version-packages.mjs <new-version>
 //
-// - Updates "version" in every LOCKSTEP package (core, engine, mantine — the
+// - Updates "version" in every LOCKSTEP package (engine, core, react, react-mantine — the
 //   release train); independently versioned packages (remark-mark-highlight)
 //   are reported and skipped
-// - For non-core lockstep packages, updates peerDependencies["@ai-react-markdown/core"] to ^<new-version>
-// - Rewrites core version references in README files (install snippets, examples)
+// - For integration lockstep packages, updates peerDependencies["@ai-markdown/react"] to ^<new-version>
+// - Rewrites React version references in README files (install snippets, examples)
 
 import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -27,15 +27,15 @@ if (!/^\d+\.\d+\.\d+(-[\w.]+)?$/.test(newVersion)) {
 
 const ROOT = resolve(import.meta.dirname, '..');
 const PACKAGES_DIR = join(ROOT, 'packages');
-const CORE_PKG_NAME = '@ai-react-markdown/core';
+const REACT_PKG_NAME = '@ai-markdown/react';
 
 // Release-train LOCKSTEP set: these ship together at the train version and
-// get their core peer range rewritten. Every other workspace package (e.g.
-// plugin packages like @ai-react-markdown/remark-mark-highlight) versions
+// get their React peer range rewritten. Every other workspace package (e.g.
+// plugin packages like @ai-markdown/remark-mark-highlight) versions
 // INDEPENDENTLY: it is skipped here, published from a train tag only when
 // its own version was bumped (`pnpm publish -r` skips already-published
 // versions), or standalone via a `<pkg>-vX.Y.Z` tag.
-const LOCKSTEP = new Set([CORE_PKG_NAME, '@ai-react-markdown/mantine', '@ai-react-markdown/engine']);
+const LOCKSTEP = new Set([REACT_PKG_NAME, '@ai-markdown/core', '@ai-markdown/react-mantine', '@ai-markdown/engine']);
 
 // Update root package.json
 const rootPkgPath = join(ROOT, 'package.json');
@@ -67,23 +67,23 @@ for (const dir of packageDirs) {
 
   pkg.version = newVersion;
 
-  // For non-core packages, sync peerDependencies on core
-  if (pkg.name !== CORE_PKG_NAME && pkg.peerDependencies?.[CORE_PKG_NAME]) {
-    pkg.peerDependencies[CORE_PKG_NAME] = `^${newVersion}`;
+  // For integration packages, sync peerDependencies on React
+  if (pkg.name !== REACT_PKG_NAME && pkg.peerDependencies?.[REACT_PKG_NAME]) {
+    pkg.peerDependencies[REACT_PKG_NAME] = newVersion.includes('-') ? newVersion : `^${newVersion}`;
   }
 
   writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
   console.log(`${pkg.name}: ${oldVersion} → ${newVersion}`);
 }
 
-// Sync core version references in READMEs (peer-dep install snippets like
-// `"@ai-react-markdown/core": "^1.4.5"` and inline examples like
-// `@ai-react-markdown/core@1.4.5`) so docs don't drift behind releases.
+// Sync React version references in READMEs (peer-dep install snippets like
+// `"@ai-markdown/react": "^1.4.5"` and inline examples like
+// `@ai-markdown/react@1.4.5`) so docs don't drift behind releases.
 const readmePaths = [join(ROOT, 'README.md'), ...packageDirs.map((dir) => join(PACKAGES_DIR, dir, 'README.md'))];
 const VERSION = String.raw`\d+\.\d+\.\d+(?:-[\w.]+)?`;
 const README_PATTERNS = [
-  [new RegExp(`("${CORE_PKG_NAME}":\\s*"\\^)${VERSION}(")`, 'g'), `$1${newVersion}$2`],
-  [new RegExp(`(${CORE_PKG_NAME}@)${VERSION}`, 'g'), `$1${newVersion}`],
+  [new RegExp(`("${REACT_PKG_NAME}":\\s*"\\^)${VERSION}(")`, 'g'), `$1${newVersion}$2`],
+  [new RegExp(`(${REACT_PKG_NAME}@)${VERSION}`, 'g'), `$1${newVersion}`],
 ];
 for (const readmePath of readmePaths) {
   if (!existsSync(readmePath)) continue;
@@ -94,7 +94,7 @@ for (const readmePath of readmePaths) {
   }
   if (after !== before) {
     writeFileSync(readmePath, after);
-    console.log(`${readmePath.slice(ROOT.length + 1)}: core version refs → ${newVersion}`);
+    console.log(`${readmePath.slice(ROOT.length + 1)}: React version refs → ${newVersion}`);
   }
 }
 

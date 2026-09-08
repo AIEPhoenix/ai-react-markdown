@@ -32,7 +32,7 @@ CJK characters are full-width; Latin letters and digits are half-width. Without 
 ### Turning pangu off
 
 ```tsx
-import { defaultEnginePlugins, pangu } from '@ai-react-markdown/core/plugins';
+import { defaultEnginePlugins, pangu } from '@ai-markdown/react/plugins';
 
 // Module scope — stable reference. pangu filtered out → spacing disabled.
 const PLUGINS = defaultEnginePlugins.filter((p) => p !== pangu);
@@ -119,7 +119,7 @@ This is a personal/brand decision; there's no "correct" value.
 The default schema also has shared attribute rules; tag support and attribute support are separate decisions. If you need attributes (e.g. `lang` on `<rt>` for screen readers, `class` for styling), extend the schema explicitly:
 
 ```ts
-import { extendSanitizeSchema } from '@ai-react-markdown/core';
+import { extendSanitizeSchema } from '@ai-markdown/react';
 
 const SCHEMA = extendSanitizeSchema((s) => {
   s.attributes ??= {};
@@ -151,8 +151,8 @@ If you have a concrete CJK rendering need that's not covered here, opening an is
 A complete config for a Chinese-language site, using brand fonts and slightly looser line-height:
 
 ```tsx
-import AIMarkdown from '@ai-react-markdown/core';
-import '@ai-react-markdown/core/typography/default.css';
+import AIMarkdown from '@ai-markdown/react';
+import '@ai-markdown/react/typography/default.css';
 import './my-cjk-overrides.css'; // contains the CSS below
 
 function Article({ content }: { content: string }) {
@@ -195,7 +195,7 @@ The same applies to SmartyPants — and more than quotes: with the pinned `remar
 When you pass `enginePlugins={[...]}`, your array **replaces** the default selection wholesale; it isn't merged. To disable just pangu, keep the rest:
 
 ```tsx
-import { defaultEnginePlugins, pangu } from '@ai-react-markdown/core/plugins';
+import { defaultEnginePlugins, pangu } from '@ai-markdown/react/plugins';
 
 // ⚠️ Disables ALL engine plugins (loses comment removal + SmartyPants +
 // highlight + definition lists too).
@@ -228,4 +228,4 @@ Use `lang="zh-Hans"`, `lang="zh-Hant"`, `lang="ja"`, or `lang="ko"` on an applic
 
 For verification, include source with Chinese punctuation next to emphasis, Japanese brackets, Korean/Latin identifiers, currency next to math, inline code, table cells, and ruby annotations. Check both a completed string and prefixes that stop inside a delimiter. A final snapshot alone does not show how intermediate source is interpreted.
 
-The implementation reference is [`pluginChain.ts`](../packages/engine/src/components/pluginChain.ts); default CSS lives in [`default.scss`](../packages/core/src/components/typography/variants/default.scss). These files separate parser configuration from typography rules.
+The implementation reference is [`pluginChain.ts`](../packages/engine/src/components/pluginChain.ts); default CSS lives in [`default.scss`](../packages/react/src/components/typography/variants/default.scss). These files separate parser configuration from typography rules.

@@ -1,5 +1,5 @@
 {
-  "name": "@ai-react-markdown/prototype-vue",
+  "name": "@ai-markdown/prototype-vue",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -8,8 +8,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@ai-react-markdown/runtime": "workspace:*",
-    "@ai-react-markdown/engine": "workspace:*",
+    "@ai-markdown/core": "workspace:*",
+    "@ai-markdown/engine": "workspace:*",
     "vue": "^3.5.0",
     "@vue/server-renderer": "^3.5.0"
   },

@@ -3,7 +3,7 @@
 A content preprocessor is a synchronous `(content: string) => string` function. It runs before Markdown parsing and is suitable for source-format cleanup: removing a known frontmatter header, translating an application marker, or normalizing a controlled dialect. It receives text, not syntax nodes or React context.
 
 ```tsx
-import AIMarkdown, { type AIMDContentPreprocessor } from '@ai-react-markdown/core';
+import AIMarkdown, { type AIMDContentPreprocessor } from '@ai-markdown/react';
 
 const stripFrontmatter: AIMDContentPreprocessor = (content) => {
   if (!content.startsWith('---\n')) return content;
@@ -39,7 +39,7 @@ An empty input bypasses the preprocessing call in core. A preprocessor is conseq
 While a response streams, the tail of the source is frequently mid-construct — `**bold` without its closer, an unterminated `` `code `` span, a half-typed `[link](url`. By default those frames render literally (asterisks and all) until the closing bytes arrive. The library ships an opt-in factory wrapping [`remend`](https://www.npmjs.com/package/remend) (the markdown-termination engine extracted from Vercel's Streamdown; zero-dependency, Apache-2.0) that completes the unterminated syntax so every frame renders styled:
 
 ```tsx
-import AIMarkdown, { createRemendPreprocessor } from '@ai-react-markdown/core';
+import AIMarkdown, { createRemendPreprocessor } from '@ai-markdown/react';
 
 // Module scope — see “Reference stability” below.
 const PREPROCESSORS = [createRemendPreprocessor()];
@@ -219,7 +219,7 @@ For very large documents, use cheap, single-pass regex transforms; profile with 
 Select between stable arrays at the call site when repair should stop at completion:
 
 ```tsx
-import AIMarkdown, { createRemendPreprocessor } from '@ai-react-markdown/core';
+import AIMarkdown, { createRemendPreprocessor } from '@ai-markdown/react';
 
 const REPAIR = [createRemendPreprocessor()];
 
@@ -236,4 +236,4 @@ With smooth streaming, decide whether repair follows source completion or visibl
 
 For each transform, test empty input, partial headers or markers, a completed document, and the same text inside code fences. For streaming use, compare a sequence of accumulated prefixes rather than independent deltas. Include a replacement update: append-aware functions must discard stale state when a message is regenerated.
 
-The orchestration lives in [`preprocessors/index.ts`](../packages/engine/src/preprocessors/index.ts), with the per-instance wrapper created in [`core/src/index.tsx`](../packages/core/src/index.tsx). [`latex.ts`](../packages/engine/src/preprocessors/latex.ts) owns normalization and its incremental implementation; [`remend.ts`](../packages/engine/src/preprocessors/remend.ts) fixes the repair options. The LaTeX entry-equivalence and soft-atom differential suites test the built-in implementations against their reference paths. They do not validate arbitrary caller functions.
+The orchestration lives in [`preprocessors/index.ts`](../packages/engine/src/preprocessors/index.ts), with the per-instance wrapper created in [`core/src/index.tsx`](../packages/react/src/index.tsx). [`latex.ts`](../packages/engine/src/preprocessors/latex.ts) owns normalization and its incremental implementation; [`remend.ts`](../packages/engine/src/preprocessors/remend.ts) fixes the repair options. The LaTeX entry-equivalence and soft-atom differential suites test the built-in implementations against their reference paths. They do not validate arbitrary caller functions.

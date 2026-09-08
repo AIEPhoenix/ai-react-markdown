@@ -7,7 +7,7 @@ Start with one `<AIMarkdown>` per assistant message. Use separate renderers only
 The examples use React 19, browser Fetch/Streams APIs, and a Next.js-compatible route handler. Install core and explicitly install KaTeX when importing its stylesheet:
 
 ```sh
-pnpm add @ai-react-markdown/core katex
+pnpm add @ai-markdown/react@beta katex
 ```
 
 ## What you'll build
@@ -127,7 +127,7 @@ The component starts a new request when `id` or `prompt` changes. The effect's `
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import AIMarkdown, { AIMarkdownStreamingCursor } from '@ai-react-markdown/core';
+import AIMarkdown, { AIMarkdownStreamingCursor } from '@ai-markdown/react';
 import { readSseData } from './read-sse';
 import { parseChatEvent } from './chat-protocol';
 
@@ -242,7 +242,7 @@ A root layout is a predictable place to establish shared stylesheet order:
 // app/layout.tsx
 import type { ReactNode } from 'react';
 import 'katex/dist/katex.min.css';
-import '@ai-react-markdown/core/typography/default.css';
+import '@ai-markdown/react/typography/default.css';
 import './globals.css';
 
 export default function RootLayout({ children }: { children: ReactNode }) {
@@ -254,7 +254,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 }
 ```
 
-This is an organizational choice for the example, not a claim that all component-level stylesheet imports are forbidden. A Mantine integration also needs its provider/adapter setup and the three Mantine-related stylesheets shown in the [package README](../packages/mantine/README.md#css-dependencies).
+This is an organizational choice for the example, not a claim that all component-level stylesheet imports are forbidden. A Mantine integration also needs its provider/adapter setup and the three Mantine-related stylesheets shown in the [package README](../packages/react-mantine/README.md#css-dependencies).
 
 ### Streaming API route
 
@@ -364,7 +364,7 @@ function applyChunk(previous: Chunk[], event: ChunkEvent): Chunk[] {
 Use the same request cancellation, HTTP checks, SSE reader, and overall completion/error handling as Approach A. An overall `done` event should arrive only after all logical sections are complete. On error or cancellation, clear the active lifecycle flags in your state so no chunk remains permanently generating.
 
 ```tsx
-import AIMarkdown, { AIMarkdownDocuments, AIMarkdownStreamingCursor } from '@ai-react-markdown/core';
+import AIMarkdown, { AIMarkdownDocuments, AIMarkdownStreamingCursor } from '@ai-markdown/react';
 
 function ChunkedMessage({ id, chunks, pending }: { id: string; chunks: Chunk[]; pending: boolean }) {
   return (
@@ -393,7 +393,7 @@ Cross-chunk coordination shares footnote numbering and reference definitions. It
 Pass raw accumulated source to the smooth shell, or use the hook for a custom wrapper. Its returned `streaming` describes the visible reveal, which can remain active after source completion:
 
 ```tsx
-import AIMarkdown, { useSmoothStream, AIMarkdownStreamingCursor } from '@ai-react-markdown/core';
+import AIMarkdown, { useSmoothStream, AIMarkdownStreamingCursor } from '@ai-markdown/react';
 
 function SmoothMessage({ content, pending }: { content: string; pending: boolean }) {
   const { flush, ...visible } = useSmoothStream({ content, streaming: pending, pacing: 'balanced' });

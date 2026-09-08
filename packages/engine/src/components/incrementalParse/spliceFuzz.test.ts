@@ -20,7 +20,7 @@
  * constructs actually occur, so a generator edit can't hollow the corpus.
  *
  * Determinism: fixed default seed; override scale/seed via env for soak —
- *   FUZZ_RUNS=50000 FUZZ_SEED=42 pnpm --filter @ai-react-markdown/core fuzz:splice
+ *   FUZZ_RUNS=50000 FUZZ_SEED=42 pnpm --filter @ai-markdown/react fuzz:splice
  * On failure fast-check prints the SHRUNK minimal counterexample + seed;
  * copy the shrunk doc/schedule into spliceEquivalence.test.ts as a fixed
  * regression fixture (that suite is the permanent record, this one hunts).

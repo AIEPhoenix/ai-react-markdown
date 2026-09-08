@@ -17,7 +17,7 @@ Since the v2 context split, a `streaming` flip wakes **only `useAIMarkdownState(
 ### Common uses
 
 ```tsx
-import { useAIMarkdownState } from '@ai-react-markdown/core';
+import { useAIMarkdownState } from '@ai-markdown/react';
 
 function CodeWithCopy({ children, onCopy }: { children?: React.ReactNode; onCopy: () => void }) {
   const { streaming } = useAIMarkdownState();
@@ -157,7 +157,7 @@ Block-memoization treats several props as cache dependencies. A new identity on 
 | `enginePlugins`        | `DEEP_EQUAL` (elements are module singletons)  | Module scope                                          |
 | `metadata`             | `PASS_THROUGH` — deliberately exempted         | Doesn't affect block-memo (lives in separate context) |
 
-(Policies come from core's `useStableRecord` table — the single stabilization boundary; see [Extending via a Sub-package](./extending-via-subpackage.md) for how wrappers reuse it.)
+(Policies come from the React adapter's `useStableRecord` table — the single stabilization boundary; see [Extending via a Sub-package](./extending-via-subpackage.md) for how wrappers reuse it.)
 
 ### The function-valued exception (`urlTransform`, `contentPreprocessors`)
 
@@ -192,7 +192,7 @@ Returns a referentially stable version of `value` by deep-comparing (via lodash 
 Use it when you can't memoize a complex prop at the parent and want to break a chain of unnecessary re-renders downstream:
 
 ```tsx
-import { useStableValue } from '@ai-react-markdown/core';
+import { useStableValue } from '@ai-markdown/react';
 
 function MyChat({ rawMeta }: { rawMeta: ChatMeta }) {
   const stableMeta = useStableValue(rawMeta);
@@ -234,7 +234,7 @@ Each chunk has its own block-memo cache. Cross-chunk references coordinate via [
 ### Variant: streaming cursor
 
 ```tsx
-import AIMarkdown, { AIMarkdownStreamingCursor } from '@ai-react-markdown/core';
+import AIMarkdown, { AIMarkdownStreamingCursor } from '@ai-markdown/react';
 
 function StreamingMessage({ content, done }: { content: string; done: boolean }) {
   return <AIMarkdown content={content} streaming={!done} streamingCursor={AIMarkdownStreamingCursor} />;
@@ -315,8 +315,8 @@ If you suspect `blockMemo` enabled is producing different output than disabled, 
 Already covered above for `urlTransform`. The same anti-pattern applies to any prop with reference identity:
 
 ```tsx
-import AIMarkdown, { type AIMarkdownCustomComponents, type AIMDContentPreprocessor } from '@ai-react-markdown/core';
-import { highlight, pangu } from '@ai-react-markdown/core/plugins';
+import AIMarkdown, { type AIMarkdownCustomComponents, type AIMDContentPreprocessor } from '@ai-markdown/react';
+import { highlight, pangu } from '@ai-markdown/react/plugins';
 
 // ⚠️ All of these are new objects/functions every render.
 function Bad({ content }: { content: string }) {

@@ -1,0 +1,153 @@
+{
+  "name": "@ai-markdown/react",
+  "version": "3.0.0-beta.1",
+  "description": "React rendering, streaming components and hooks for ai-markdown.",
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "author": "Brian Lee <aiephoenixbl@gmail.com> (https://github.com/AIEPhoenix)",
+  "homepage": "https://github.com/ai-markdown/ai-markdown/tree/main/packages/react#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ai-markdown/ai-markdown.git",
+    "directory": "packages/react"
+  },
+  "bugs": {
+    "url": "https://github.com/ai-markdown/ai-markdown/issues"
+  },
+  "keywords": [
+    "react",
+    "react-component",
+    "markdown",
+    "markdown-renderer",
+    "ai",
+    "llm",
+    "chatgpt",
+    "chat",
+    "chatbot",
+    "streaming",
+    "streaming-markdown",
+    "typewriter",
+    "latex",
+    "katex",
+    "math",
+    "gfm",
+    "github-flavored-markdown",
+    "footnotes",
+    "mermaid",
+    "cjk",
+    "chinese",
+    "syntax-highlighting",
+    "remark",
+    "rehype",
+    "unified",
+    "incremental-parsing",
+    "typescript",
+    "ssr"
+  ],
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "plugins": [
+        "./dist/plugins/index.d.ts"
+      ]
+    }
+  },
+  "files": [
+    "dist",
+    "plugins"
+  ],
+  "exports": {
+    ".": {
+      "types": {
+        "import": "./dist/index.d.ts",
+        "require": "./dist/index.d.cts"
+      },
+      "development": {
+        "import": "./dist/index.dev.js",
+        "require": "./dist/index.dev.cjs"
+      },
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./plugins": {
+      "types": {
+        "import": "./dist/plugins/index.d.ts",
+        "require": "./dist/plugins/index.d.cts"
+      },
+      "development": {
+        "import": "./dist/plugins/index.dev.js",
+        "require": "./dist/plugins/index.dev.cjs"
+      },
+      "import": "./dist/plugins/index.js",
+      "require": "./dist/plugins/index.cjs"
+    },
+    "./typography/*.css": "./dist/typography/*.css",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build:js": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsup && node scripts/assert-dist-clean.mjs && node scripts/assert-prod-diagnostic-inert.mjs",
+    "build:css": "sass src/components/typography/variants/:dist/typography/ && postcss dist/typography/*.css --replace",
+    "build": "pnpm run build:js && pnpm run build:css",
+    "test": "vitest --run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "katex": "^0.16.0 || ^0.17.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "katex": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "@ai-markdown/engine": "workspace:*",
+    "@types/hast": "^3.0.5",
+    "hast-util-to-jsx-runtime": "^2.3.6",
+    "unist-util-visit": "^5.1.0",
+    "@ai-markdown/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@ai-markdown/rehype-raw": "7.0.3",
+    "@ai-markdown/remark-mark-highlight": "workspace:^",
+    "@types/lodash-es": "^4.17.12",
+    "@types/mdast": "^4.0.4",
+    "@types/node": "^25.9.5",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "lodash-es": "^4.18.0",
+    "react": "^19",
+    "react-dom": "^19",
+    "rehype-katex": "^7.0.1",
+    "rehype-sanitize": "^6.0.0",
+    "rehype-unwrap-images": "^1.0.0",
+    "remark-breaks": "^4.0.0",
+    "remark-cjk-friendly": "^2.3.1",
+    "remark-cjk-friendly-gfm-strikethrough": "^2.3.1",
+    "remark-definition-list": "^2.0.0",
+    "remark-emoji": "^5.0.2",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
+    "remark-pangu": "^2.2.0",
+    "remark-parse": "^11.0.0",
+    "remark-rehype": "^11.1.2",
+    "remark-remove-comments": "^1.1.1",
+    "remark-smartypants": "^3.0.3",
+    "remark-squeeze-paragraphs": "^6.0.0",
+    "remark-toc": "^9.0.0",
+    "unified": "^11.0.5",
+    "vfile": "^6.0.3"
+  }
+}

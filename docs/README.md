@@ -1,8 +1,8 @@
-# ai-react-markdown — Extending & Customization Guide
+# ai-markdown — Extending & Customization Guide
 
-For the final legacy release and the subsequent multi-framework package migration, read [From ai-react-markdown to ai-markdown](./framework-transition.md). The [private runtime README](../packages/runtime/README.md) documents the extracted shared layer.
+For the final legacy release and the subsequent multi-framework package migration, read [From ai-markdown to ai-markdown](./framework-transition.md). The [private runtime README](../packages/core/README.md) documents the extracted shared layer.
 
-These guides explain how to integrate, customize, and maintain ai-react-markdown against the code in this repository. Start with the [project README](../README.md) for package selection and installation, or a package's README for its full public API. This directory goes deeper into rendering contracts, lifecycle behavior, implementation boundaries, and verification.
+These guides explain how to integrate, customize, and maintain ai-markdown against the code in this repository. Start with the [project README](../README.md) for package selection and installation, or a package's README for its full public API. This directory goes deeper into rendering contracts, lifecycle behavior, implementation boundaries, and verification.
 
 The examples use the current 2.x flat-prop API unless explicitly labeled as historical. The [migration guide](./migrating-to-v2.md) includes removed 1.x APIs for comparison; [release highlights](./release-highlights.md) and benchmark records preserve the behavior and measurements of the versions they describe.
 
@@ -27,7 +27,7 @@ Most readers come in with a task, not a curriculum. Pick the row that matches wh
 | **Adding typed metadata / behavior-group fields**                           | [TypeScript generics](./typescript-generics.md)              | [Extending via a sub-package](./extending-via-subpackage.md) (if you'll publish it)                                                                               |
 | **Upgrading from 1.x**                                                      | [Migrating from 1.x to 2.0](./migrating-to-v2.md)            | [TypeScript generics](./typescript-generics.md)                                                                                                                   |
 | **Transforming raw markdown before render**                                 | [Content preprocessors](./content-preprocessors.md)          | —                                                                                                                                                                 |
-| **Building your own `@yourorg/ai-react-markdown-…` integration**            | [Extending via a sub-package](./extending-via-subpackage.md) | [Architecture](./architecture.md), [TypeScript generics](./typescript-generics.md)                                                                                |
+| **Building your own `@yourorg/ai-markdown-…` integration**                  | [Extending via a sub-package](./extending-via-subpackage.md) | [Architecture](./architecture.md), [TypeScript generics](./typescript-generics.md)                                                                                |
 | **Debugging unexpected render output**                                      | [Architecture](./architecture.md)                            | [Streaming & performance](./streaming-and-performance.md) (cache invariants)                                                                                      |
 | **Tracking what changed across versions**                                   | [Release highlights](./release-highlights.md)                | —                                                                                                                                                                 |
 | **Evaluating the performance flags before enabling them**                   | [Benchmark](./benchmark.md)                                  | [Streaming & performance](./streaming-and-performance.md)                                                                                                         |
@@ -52,7 +52,7 @@ If none of these matches, the full topic index below covers every surface.
 | 9   | [Streaming cursor](./streaming-cursor.md)                    | Show a "still generating" indicator after the last streamed character — visible through token stalls         |
 | 10  | [Smooth streaming](./smooth-streaming.md)                    | Reveal bursty token chunks as a steady typewriter — pacing model, wrapper composition, non-React controller  |
 | 11  | [TypeScript generics](./typescript-generics.md)              | Type the metadata generic and the wrapper narrow-hook pattern for behavior groups                            |
-| 12  | [Extending via a sub-package](./extending-via-subpackage.md) | Build your own `@yourorg/ai-react-markdown-<integration>` package, following the Mantine model               |
+| 12  | [Extending via a sub-package](./extending-via-subpackage.md) | Build your own `@yourorg/ai-markdown-<integration>` package, following the Mantine model                     |
 | 13  | [Architecture overview](./architecture.md)                   | Mental model: render pipeline, context layering, registry design                                             |
 | 14  | [Migrating from 1.x to 2.0](./migrating-to-v2.md)            | The complete v2.0.0 breaking-change map — every removed symbol with its one-to-one destination               |
 | ★   | [Streaming chat: end-to-end](./streaming-chat-example.md)    | Complete SSE framing, cancellation, React state, and a Next.js-style route                                   |
@@ -83,9 +83,9 @@ The library follows semver:
 | `UrlTransform`, `SanitizeSchema` types                                                                               | Track upstream `react-markdown` / `rehype-sanitize`; may change with their majors   |
 | `Registry` interface                                                                                                 | Stable read-only surface; mutator methods are intentionally not exported            |
 | Internal byte-for-byte HTML output                                                                                   | Not stable — prefer semantic assertions for application tests; use semantic queries |
-| Everything exported by `@ai-react-markdown/engine`                                                                   | **Not stable before 3.0.0** — see below                                             |
+| Everything exported by `@ai-markdown/engine`                                                                         | **Not stable before 3.0.0** — see below                                             |
 
-**On `@ai-react-markdown/engine`.** Since 2.3.0 the Markdown engine ships as its own package. It is public on npm because `@ai-react-markdown/core` depends on it, not because it is a product: its export surface tracks whatever core happens to consume and may change in any release, patch bumps included. You get it automatically when you install `core`, pinned to core's exact version, and nothing in this guide asks you to import from it. Depend on it directly only if you are building a framework adapter of your own — and if you do, pin both packages to the same exact version.
+**On `@ai-markdown/engine`.** Since 2.3.0 the Markdown engine ships as its own package. It is public on npm because `@ai-markdown/react` depends on it, not because it is a product: its export surface tracks whatever core happens to consume and may change in any release, patch bumps included. You get it automatically when you install `core`, pinned to the React adapter's exact version, and nothing in this guide asks you to import from it. Depend on it directly only if you are building a framework adapter of your own — and if you do, pin both packages to the same exact version.
 
 When in doubt, pin your overrides explicitly rather than relying on defaults.
 
@@ -96,7 +96,7 @@ When in doubt, pin your overrides explicitly rather than relying on defaults.
 - **Code blocks** are labeled by purpose. Complete recipes include their required imports; smaller fragments assume the surrounding application values, and wrapper templates use explicitly named placeholder modules. Install the package peers and import required CSS before using them.
 - **Footguns** sections at the end of each document collect anti-patterns and stability traps. Read them once per surface.
 - `// ✅` and `// ⚠️` callouts mark recommended vs anti-pattern code lines.
-- Where a behavior is shared by `@ai-react-markdown/core` and `@ai-react-markdown/mantine`, the example uses `AIMarkdown` (core); apply identically to `MantineAIMarkdown`.
+- Where a behavior is shared by `@ai-markdown/react` and `@ai-markdown/react-mantine`, the example uses `AIMarkdown` (core); apply identically to `MantineAIMarkdown`.
 
 ---
 
@@ -105,11 +105,11 @@ When in doubt, pin your overrides explicitly rather than relying on defaults.
 If you find a documented API that doesn't behave as described, or a customization recipe that breaks at a version boundary, please open an issue with:
 
 - the document name and section,
-- the exact package version (`@ai-react-markdown/core@x.y.z` …),
+- the exact package version (`@ai-markdown/react@x.y.z` …),
 - a minimal reproduction,
 - the observed vs expected behavior.
 
-Issue tracker: <https://github.com/AIEPhoenix/ai-react-markdown/issues>
+Issue tracker: <https://github.com/ai-markdown/ai-markdown/issues>
 
 ## Reading the implementation alongside the guides
 

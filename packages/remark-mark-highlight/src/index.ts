@@ -1,18 +1,18 @@
 /**
- * `@ai-react-markdown/remark-mark-highlight` — remark plugin for `==mark==`
+ * `@ai-markdown/remark-mark-highlight` — remark plugin for `==mark==`
  * highlight syntax. First-party continuation of the unmaintained
  * `remark-mark-highlight`, byte-compatible with its 0.1.1 output (pinned by
  * the parity corpus) and shipping the dual ESM/CJS build the upstream
  * lacked.
  *
  * ```ts
- * import { remarkMarkHighlight } from '@ai-react-markdown/remark-mark-highlight';
+ * import { remarkMarkHighlight } from '@ai-markdown/remark-mark-highlight';
  *
  * unified().use(remarkParse).use(remarkMarkHighlight)
  * // ==text== → mdast `mark` node → <mark>text</mark>
  * ```
  *
- * @module @ai-react-markdown/remark-mark-highlight
+ * @module @ai-markdown/remark-mark-highlight
  */
 
 import type { Processor } from 'unified';

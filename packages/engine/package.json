@@ -1,7 +1,7 @@
 {
-  "name": "@ai-react-markdown/engine",
-  "version": "2.14.1",
-  "description": "Framework-agnostic Markdown engine for ai-react-markdown — incremental parsing, LaTeX preprocessing, and the unified plugin pipeline. Internal supplier for @ai-react-markdown/core; no public API stability promised before 3.0.0.",
+  "name": "@ai-markdown/engine",
+  "version": "3.0.0-beta.1",
+  "description": "Framework-independent Markdown parsing, incremental transforms, preprocessing and document registries for ai-markdown.",
   "publishConfig": {
     "access": "public"
   },
@@ -11,14 +11,14 @@
     "node": ">=20"
   },
   "author": "Brian Lee <aiephoenixbl@gmail.com> (https://github.com/AIEPhoenix)",
-  "homepage": "https://github.com/AIEPhoenix/ai-react-markdown/tree/main/packages/engine#readme",
+  "homepage": "https://github.com/ai-markdown/ai-markdown/tree/main/packages/engine#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/AIEPhoenix/ai-react-markdown.git",
+    "url": "git+https://github.com/ai-markdown/ai-markdown.git",
     "directory": "packages/engine"
   },
   "bugs": {
-    "url": "https://github.com/AIEPhoenix/ai-react-markdown/issues"
+    "url": "https://github.com/ai-markdown/ai-markdown/issues"
   },
   "keywords": [
     "markdown",
@@ -83,7 +83,7 @@
   },
   "dependencies": {
     "@ai-markdown/rehype-raw": "7.0.3",
-    "@ai-react-markdown/remark-mark-highlight": "workspace:^",
+    "@ai-markdown/remark-mark-highlight": "workspace:^",
     "@types/hast": "^3.0.5",
     "@types/mdast": "^4.0.4",
     "devlop": "^1.1.0",

@@ -29,7 +29,7 @@ Development runs use `SOAK_PROFILE=smoke`. A diagnostic rerun using a previously
 Only a complete release profile can produce a release PASS. The runner writes `.soak-logs/<run-id>/manifest.json` and `result.json`, which record the run identity and result needed by the aggregator. Full and split results are checked from the repository root with:
 
 ```sh
-pnpm --filter @ai-react-markdown/engine soak:aggregate -- \
+pnpm --filter @ai-markdown/engine soak:aggregate -- \
   .soak-logs/<main-run-id> .soak-logs/<census-run-id>
 ```
 

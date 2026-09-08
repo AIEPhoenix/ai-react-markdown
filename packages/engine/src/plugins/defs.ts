@@ -14,7 +14,7 @@
  * construct in the chain (see `computeFreezeBoundary`'s `defListEnabled`
  * option). Open plugin injection would void the engine's verification
  * record (50k-sample fuzz, direction batteries, byte equivalence), so
- * plugins are born where the certification rig lives: `packages/core`.
+ * plugins are born where the certification rig lives: `packages/react`.
  * Wrappers curate (bundle default sets, filter, facade sugar); consumers
  * select. New parse-level capability lands via an upstream PR into core.
  * Third-party *content* extension stays open through `contentPreprocessors`
@@ -52,7 +52,7 @@ export type AIMarkdownEnginePluginName = 'highlight' | 'definitionList' | 'smart
 
 /**
  * A sealed engine plugin. Values are core-exported singletons from
- * `@ai-react-markdown/core/plugins`; pass them to the `enginePlugins` prop
+ * `@ai-markdown/react/plugins`; pass them to the `enginePlugins` prop
  * of `<AIMarkdown>`.
  *
  * - Passing an array replaces the default set wholesale (array-atomic
