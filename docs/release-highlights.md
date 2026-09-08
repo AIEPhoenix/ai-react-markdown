@@ -29,7 +29,7 @@ Patch headings identify fixes or maintenance; minor headings introduce features 
 - Add a private Vue 3 lifecycle prototype that verifies two-chunk definition sharing, reactive updates, document switching, SSR preparation and cleanup. Vue remains outside the legacy published packages; this experiment is not a complete Vue renderer or a public new-scope release.
 - Update lifecycle documentation and record the shared preparation contracts and remaining DOM/hydration work.
 
-Validation: full local preflight passed **152 test files / 1,982 tests**, plus the explicit Chromium garbage-collection regression. Public `.d.ts` and `.d.cts` entry declarations remain byte-identical to 2.14.0. Final release-soak evidence is recorded after the fixed candidate completes its fresh six-leg campaign.
+Validation: full local preflight passed **152 test files / 1,982 tests**, plus the explicit Chromium garbage-collection regression. Public `.d.ts` and `.d.cts` entry declarations remain byte-identical to 2.14.0. The fresh, six-leg release soak passed all **84 shards** on clean source commit `5da773e5faa54c029d17c070710f5cb79426dd71`, using seed base `202649080`; the final report records `repositoryChanged: false` and aggregation reports PASS. Run ID: `legacy-patch-2.14.1-20260908T114553Z-5da773e-920560`. Final release preparation changes only this verification record.
 
 ### 2.14.0 — Shared runtime extraction before the ai-markdown migration
 
