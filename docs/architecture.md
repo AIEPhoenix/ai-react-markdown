@@ -1,8 +1,14 @@
 # Architecture Overview
 
-The repository separates Markdown computation from React rendering. `@ai-react-markdown/engine` owns normalization, parsing, tree transformation, incremental state, and document registries. `@ai-react-markdown/core` turns those results into React output, supplies contexts and slots, and manages render caches. `@ai-react-markdown/mantine` composes core's public API to provide Mantine typography and code/diagram UI.
+The repository separates Markdown computation from React rendering. `@ai-react-markdown/engine` owns normalization, parsing, tree transformation, incremental state, and document registries. The private `@ai-react-markdown/runtime` adds pipeline sessions, block planning, contribution publishing, aggregate footnote HAST and smooth reveal coordination. `@ai-react-markdown/core` consumes those results as a React adapter, supplies contexts and slots, and manages render caches. `@ai-react-markdown/mantine` composes core's public API to provide Mantine typography and code/diagram UI.
 
 Read this guide when tracing a rendering defect, changing an optimization, or building an integration. The important distinction is between an input changing, a syntax tree being recomputed, a block plan being rebuilt, and a React consumer rendering. Those are separate events with different dependencies. A context update need not reparse Markdown, and a successful incremental parse does not make all remaining work proportional to the latest token.
+
+## Shared runtime and the legacy release boundary
+
+2.14.0 is the final planned `ai-react-markdown` release. Runtime is a private workspace package bundled into the old public core; engine remains external and exact-version pinned. No consumer import changes in this split. [The transition guide](./framework-transition.md) maps current ownership to the intended new scope and records what still needs a real second-framework validation.
+
+Runtime owns computation sessions, not React lifecycle. `MarkdownContent` keeps one pipeline session and planner per instance, resets retained state on render-policy invalidation, and delegates parsing without moving registration into render. `useRegistryContribution` invokes the shared publisher only after commit. React still owns cached nodes, context subscriptions, SSR/hydration behavior and cursor DOM measurement. The [runtime module map](../packages/runtime/README.md#responsibility-and-dependency-direction) is the source guide for this layer.
 
 ## The component tree
 
@@ -101,7 +107,7 @@ With incremental parsing enabled, `advanceIncrementalParse` owns both parse and 
 
 The definition scan is coordinated-mode-only and append-aware. Registration and publication happen in effects, not during the syntax-tree calculation. The registration effect allocates the chunk symbol and records its ordering and own labels. A subsequent committed render can publish the parsed references and definition bodies under that symbol.
 
-`useRegistryContribution` compares a fingerprint of references, definitions, labels and phantom targets, together with the parse-policy dependency tuple. Equal contributions are not republished. Footnote bodies are harvested from post-pipeline hast so their math, raw HTML, and definition-list formatting survives aggregation. Link destinations enter the registry raw; the consuming renderer applies its own final-element policy.
+`useRegistryContribution` commits through a runtime contribution session, which compares a fingerprint of references, definitions, labels and phantom targets, together with the parse-policy dependency tuple. Equal contributions are not republished. Footnote bodies are harvested from post-pipeline hast so their math, raw HTML, and definition-list formatting survives aggregation. Link destinations enter the registry raw; the consuming renderer applies its own final-element policy.
 
 ### Stage D: Block planning
 
@@ -165,7 +171,7 @@ The `Registry` interface exposes only read methods + selectors. Mutators (`regis
 
 ## Block memoization invariants
 
-Located at `packages/core/src/components/blockMemo.ts`. The invariants:
+Shared planning and fingerprints live in `packages/runtime/src/blockPlan.ts` and `blockPlanner.ts`; React node caching stays in `packages/core/src/components/blockMemo.ts`. Plan items use framework-neutral `key` values. The invariants:
 
 1. **Planning is hast-driven with mdast attribution.** Only actual HTML-side output becomes a render item. Positions, ranges, generated nodes and raw-HTML ownership determine how that output maps to source; do not assume every mdast child produces exactly one element.
 2. **Two-tier offset lookup**. Position metadata (`startOffset`, `startLine`) goes into the cache key so identical content at different positions doesn't false-cache.
@@ -175,7 +181,7 @@ Located at `packages/core/src/components/blockMemo.ts`. The invariants:
 
 These invariants are enforced by tests (`byteEquivalence.test.tsx` is the harness that verifies byte-identical output across every plugin permutation and `blockMemo` on/off).
 
-If you're touching `blockMemo.ts` or `MarkdownContent.tsx`, read the design document at the top of `blockMemo.ts` first.
+Before changing planning or rendering, read the [runtime contracts](../packages/runtime/README.md#planning-and-rendering-contracts). They document cache identity, ownership and commit timing; no untracked local design file is required.
 
 ---
 

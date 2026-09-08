@@ -1,0 +1,47 @@
+{
+  "name": "@ai-react-markdown/runtime",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Private framework-neutral orchestration layer, bundled into the legacy React adapter.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": {
+        "import": "./dist/index.d.ts",
+        "require": "./dist/index.d.cts"
+      },
+      "development": {
+        "import": "./dist/index.dev.js",
+        "require": "./dist/index.dev.cjs"
+      },
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsup && node scripts/assert-boundary.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest --run"
+  },
+  "dependencies": {
+    "@ai-react-markdown/engine": "workspace:*",
+    "@types/hast": "^3.0.5",
+    "@types/mdast": "^4.0.4",
+    "unist-util-visit": "^5.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.5"
+  }
+}

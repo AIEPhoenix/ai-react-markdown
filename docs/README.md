@@ -1,5 +1,7 @@
 # ai-react-markdown — Extending & Customization Guide
 
+For the final legacy release and the subsequent multi-framework package migration, read [From ai-react-markdown to ai-markdown](./framework-transition.md). The [private runtime README](../packages/runtime/README.md) documents the extracted shared layer.
+
 These guides explain how to integrate, customize, and maintain ai-react-markdown against the code in this repository. Start with the [project README](../README.md) for package selection and installation, or a package's README for its full public API. This directory goes deeper into rendering contracts, lifecycle behavior, implementation boundaries, and verification.
 
 The examples use the current 2.x flat-prop API unless explicitly labeled as historical. The [migration guide](./migrating-to-v2.md) includes removed 1.x APIs for comparison; [release highlights](./release-highlights.md) and benchmark records preserve the behavior and measurements of the versions they describe.
@@ -111,7 +113,7 @@ Issue tracker: <https://github.com/AIEPhoenix/ai-react-markdown/issues>
 
 ## Reading the implementation alongside the guides
 
-Follow a value through its owner before changing its documentation. Public props are resolved in core; syntax and incremental state belong to engine; React providers, effects, and cached element construction belong to core; Mantine owns its code presentation and group defaults. An export in engine is not automatically a supported core API.
+Follow a value through its owner before changing its documentation. Public props are resolved in core; syntax and incremental algorithms belong to engine; pipeline sessions, plans and contribution orchestration belong to private runtime; React providers, effects, and cached element construction belong to core; Mantine owns its code presentation and group defaults. An export in engine is not automatically a supported core API.
 
 | Question                                   | Implementation to inspect                               | Guide to keep aligned                      |
 | ------------------------------------------ | ------------------------------------------------------- | ------------------------------------------ |

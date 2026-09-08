@@ -280,6 +280,9 @@ importers:
       '@ai-react-markdown/remark-mark-highlight':
         specifier: workspace:^
         version: link:../remark-mark-highlight
+      '@ai-react-markdown/runtime':
+        specifier: workspace:*
+        version: link:../runtime
       '@types/lodash-es':
         specifier: ^4.17.12
         version: 4.17.12
@@ -568,6 +571,25 @@ importers:
       remark-stringify:
         specifier: ^11.0.0
         version: 11.0.0
+
+  packages/runtime:
+    dependencies:
+      '@ai-react-markdown/engine':
+        specifier: workspace:*
+        version: link:../engine
+      '@types/hast':
+        specifier: ^3.0.5
+        version: 3.0.5
+      '@types/mdast':
+        specifier: ^4.0.4
+        version: 4.0.4
+      unist-util-visit:
+        specifier: ^5.1.0
+        version: 5.1.0
+    devDependencies:
+      '@types/node':
+        specifier: ^25.9.5
+        version: 25.9.5
 
 packages:
 

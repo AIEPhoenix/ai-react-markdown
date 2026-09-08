@@ -19,6 +19,19 @@ Verification counts are historical results reported for the corresponding candid
 
 Patch headings identify fixes or maintenance; minor headings introduce features or broader compatible changes. Exact rendered bytes and default visual values are not a blanket semver guarantee.
 
+## 2.14.x — Final ai-react-markdown release
+
+### 2.14.0 — Shared runtime extraction before the ai-markdown migration
+
+- Establish the final planned legacy release under `ai-react-markdown`. Existing React/Mantine imports, stylesheet paths and public configuration remain compatible; the new organization/scope migration follows separately.
+- Extract framework-neutral pipeline sessions, block planning and fingerprints, committed contribution publishing, aggregate footnote HAST, source-tail classification and smooth reveal coordination into a private runtime workspace.
+- Keep React components, contexts, lifecycle hooks, node caching and DOM cursor work in the existing core adapter. Bundle runtime into core; retain engine as an external, exact-version dependency and reject private runtime imports in distribution artifacts.
+- Add a headless consumer exercising actual production/development ESM and CJS entries without UI framework imports, alongside session fallback/reset, publication timing and aggregate immutability checks.
+- Correct the engine's CommonJS handling of ESM-only default-export plugins and the import-only `remend` entry.
+- Document the extracted contracts, intended new package mapping, remaining second-framework validation and dedicated documentation-site scope in the [transition guide](./framework-transition.md).
+
+Validation: full local preflight covers unit tests, browser stories, declaration/package checks and both production/development runtime distributions. See the release record for final counts and verification evidence.
+
 ## 2.13.x — Less repeated streaming work
 
 ### 2.13.3 — Documentation aligned with the implementation

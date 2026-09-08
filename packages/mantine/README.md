@@ -1,5 +1,7 @@
 # @ai-react-markdown/mantine
 
+> **Legacy final release:** 2.14.0 completes the planned `ai-react-markdown` release line. Existing imports remain supported by this version; subsequent multi-framework development moves to `ai-markdown`. See the [transition and architecture guide](../../docs/framework-transition.md).
+
 [![npm version](https://img.shields.io/npm/v/@ai-react-markdown/mantine?logo=npm&color=cb3837)](https://www.npmjs.com/package/@ai-react-markdown/mantine)
 [![npm downloads](https://img.shields.io/npm/dm/@ai-react-markdown/mantine?color=blue)](https://www.npmjs.com/package/@ai-react-markdown/mantine)
 [![minzipped size](https://img.shields.io/bundlephobia/minzip/@ai-react-markdown/mantine?label=minzip)](https://bundlephobia.com/package/@ai-react-markdown/mantine)
@@ -71,7 +73,7 @@ yarn add @ai-react-markdown/mantine @ai-react-markdown/core
 {
   "react": ">=19",
   "react-dom": ">=19",
-  "@ai-react-markdown/core": "^2.13.3",
+  "@ai-react-markdown/core": "^2.14.0",
   "@mantine/core": "^9.0.0",
   "@mantine/code-highlight": "^9.0.0",
   "highlight.js": "^11.11.2"

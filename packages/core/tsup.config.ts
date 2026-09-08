@@ -4,6 +4,10 @@ import { defineConfig, type Options } from 'tsup';
 // properties bypass excess-property checking at the use sites below.
 const shared: Options = {
   format: ['cjs', 'esm'],
+  // Bundle source separately per mode so dev gates are not pre-folded away.
+  esbuildOptions(options) {
+    options.alias = { ...options.alias, '@ai-react-markdown/runtime': '../runtime/src/index.ts' };
+  },
   sourcemap: true,
   // `@ai-react-markdown/engine` is external as a drift guard, not because
   // tsup would otherwise inline it (deps are auto-externalized): if a future
@@ -12,7 +16,7 @@ const shared: Options = {
   // bug that only surfaces in real distribution, never in the workspace.
   // assert-dist-clean.mjs holds the matching dist-side assertion.
   external: ['react', 'react-dom', '@ai-react-markdown/engine'],
-  noExternal: ['lodash-es'],
+  noExternal: ['lodash-es', '@ai-react-markdown/runtime'],
   // NO `treeshake: true` here: tsup's rollup treeshake pass strips the
   // module-level "use client" directive (verified), which would break RSC
   // consumers. The cost is that env replacement leaves inert `if (false)`
@@ -45,7 +49,7 @@ export default defineConfig([
   {
     ...shared,
     entry: { index: 'src/index.tsx', 'plugins/index': 'src/plugins/index.ts' },
-    dts: true,
+    dts: { resolve: ['@ai-react-markdown/runtime'] },
     clean: false,
     env: { NODE_ENV: 'production' },
   },

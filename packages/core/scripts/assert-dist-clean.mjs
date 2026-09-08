@@ -56,3 +56,13 @@ if (srcImportsEngine) {
     process.exit(1);
   }
 }
+
+// Runtime is private and bundled into the legacy adapter. Neither executable
+// entries nor declarations may ask an npm consumer to resolve that workspace.
+const leakedRuntime = readdirSync('dist', { recursive: true })
+  .map(String)
+  .filter((f) => /\.(?:[cm]?js|d\.[cm]?ts)$/.test(f))
+  .filter((f) => readFileSync(`dist/${f}`, 'utf8').includes('@ai-react-markdown/runtime'));
+if (leakedRuntime.length > 0) {
+  throw new Error(`Private runtime leaked into core distribution: ${leakedRuntime.join(', ')}`);
+}

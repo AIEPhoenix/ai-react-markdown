@@ -1,5 +1,7 @@
 # @ai-react-markdown/engine
 
+> **Legacy final release:** 2.14.0 completes the planned `ai-react-markdown` release line. Existing imports remain supported by this version; subsequent multi-framework development moves to `ai-markdown`. See the [transition and architecture guide](../../docs/framework-transition.md).
+
 [![npm version](https://img.shields.io/npm/v/@ai-react-markdown/engine?logo=npm&color=cb3837)](https://www.npmjs.com/package/@ai-react-markdown/engine)
 [![npm downloads](https://img.shields.io/npm/dm/@ai-react-markdown/engine?color=blue)](https://www.npmjs.com/package/@ai-react-markdown/engine)
 [![minzipped size](https://img.shields.io/bundlephobia/minzip/@ai-react-markdown/engine?label=minzip)](https://bundlephobia.com/package/@ai-react-markdown/engine)
@@ -39,7 +41,7 @@ Everything is exported from the package root (`import { … } from '@ai-react-ma
 npm install @ai-react-markdown/engine
 ```
 
-Dual ESM/CJS build with types for both. No React dependency. The only peer is `katex` (`^0.16 || ^0.17`, **optional** — needed only if you render math). The pipeline also receives KaTeX transitively through `rehype-katex`. If your application imports KaTeX CSS, declare KaTeX directly so the import resolves independently of dependency hoisting. A tree-only consumer does not need to load a browser stylesheet.
+Dual ESM/CJS build with types for both. ESM keeps pipeline dependencies external. The CJS build bundles ESM-only default-export plugins so Node receives callable plugins and does not try to resolve the import-only `remend` entry through `require`. Bundled third-party licenses ship in `dist/THIRD_PARTY_LICENSES.txt`. No React dependency. The only peer is `katex` (`^0.16 || ^0.17`, **optional** — needed only if you render math). The pipeline also receives KaTeX transitively through `rehype-katex`. If your application imports KaTeX CSS, declare KaTeX directly so the import resolves independently of dependency hoisting. A tree-only consumer does not need to load a browser stylesheet.
 
 ## Example: the LaTeX preprocessor on its own
 

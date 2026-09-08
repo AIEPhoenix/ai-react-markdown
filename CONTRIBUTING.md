@@ -55,6 +55,10 @@ pnpm preflight
 
 CI runs lint + format:check + typecheck + test + build on every PR.
 
+### Changing the shared runtime
+
+`packages/runtime` is private and bundled into the legacy React adapter. Keep production imports framework-neutral and do not add it to core’s published dependencies. Build before running its distribution tests (`pnpm exec vitest run --project unit packages/runtime/src/runtime.test.ts`): these execute the actual ESM/CJS artifacts in Node without a UI framework or DOM. Its build checks import boundaries; core’s build rejects unresolved runtime references in JavaScript and declarations. See the [runtime README](./packages/runtime/README.md) and [transition guide](./docs/framework-transition.md) before moving state or lifecycle work across this boundary.
+
 ### Changing the incremental-parse engine
 
 `packages/engine` carries its own falsification suites on top of the unit tests, because the splice path's contract (a spliced tree is deep-equal, positions included, to a full parse of the same content) cannot be covered by examples alone. Run these when you touch `spliceParse`, the boundary scanner, or the definition machinery:

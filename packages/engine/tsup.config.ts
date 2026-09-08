@@ -24,7 +24,7 @@ const shared: Options = {
  * published file contains a `process` reference, which would throw in
  * no-bundler runtimes (browser native ESM/CDN, Deno).
  */
-export default defineConfig([
+const builds: Options[] = [
   // Production build. `clean` must stay FALSE on both configs: tsup builds
   // array configs concurrently, so a clean here races the other config's
   // file writes. The build script rm -rf's dist BEFORE tsup starts instead.
@@ -43,4 +43,21 @@ export default defineConfig([
     clean: false, // see above — never clean from inside the array
     env: { NODE_ENV: 'development' },
   },
-]);
+];
+
+export default defineConfig(
+  builds.flatMap((config) =>
+    (['esm', 'cjs'] as const).map((format) => ({
+      ...config,
+      format: [format],
+      dts: config.dts,
+      // Keep ESM imports external as before; only CJS needs default-export
+      // adaptation. remark-pangu is CommonJS and must keep its own visit
+      // dependency, rather than binding to the engine's newer visit API.
+      noExternal:
+        format === 'cjs'
+          ? ['lodash-es', 'remend', /^remark-(?!pangu$)/, /^rehype-/, '@ai-markdown/rehype-raw']
+          : ['lodash-es'],
+    }))
+  )
+);

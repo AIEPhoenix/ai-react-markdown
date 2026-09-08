@@ -389,7 +389,7 @@ describe('renderBlocksWithCache — dev invariants', () => {
           {
             kind: 'block',
             el: fakeChild,
-            reactKey: 'block-0',
+            key: 'block-0',
             info: { raw: 'a', startOffset: 0, endOffset: 1, startLine: 1, startColumn: 1, hasReference: false },
           },
         ],
@@ -678,18 +678,18 @@ describe('buildBlocks — React key uniqueness', () => {
     const built = buildBlocks(mdast, hast, md);
     const blockKeys = built.plan
       .filter((p): p is Extract<typeof p, { kind: 'block' }> => p.kind === 'block')
-      .map((p) => p.reactKey);
+      .map((p) => p.key);
     expect(blockKeys.length).toBeGreaterThan(1);
     expect(new Set(blockKeys).size).toBe(blockKeys.length);
   });
 
-  test('all plan items have globally unique reactKey within the plan', () => {
+  test('all plan items have globally unique key within the plan', () => {
     // Stronger: any pair of plan items (block / inline / synthetic) must have
     // distinct React keys, otherwise React will warn and reuse fibers wrongly.
     const md = '<div>A</div><div>B</div>\n\nSee[^x].\n\n   <span>indented</span>\n\n[^x]: x';
     const { mdast, hast } = runPipeline(md);
     const built = buildBlocks(mdast, hast, md);
-    const allKeys = built.plan.map((p) => p.reactKey);
+    const allKeys = built.plan.map((p) => p.key);
     expect(new Set(allKeys).size).toBe(allKeys.length);
   });
 });
@@ -751,7 +751,7 @@ describe('renderBlocksWithCache — position triple validity', () => {
         {
           kind: 'block',
           el: baseEl,
-          reactKey: 'block-0',
+          key: 'block-0',
           info: {
             raw: 'p',
             startOffset: 0,
@@ -771,7 +771,7 @@ describe('renderBlocksWithCache — position triple validity', () => {
         {
           kind: 'block',
           el: driftedEl,
-          reactKey: 'block-0',
+          key: 'block-0',
           info: {
             raw: 'p',
             startOffset: 0,
@@ -874,7 +874,7 @@ describe('buildBlocks — inline (non-element) top-level children', () => {
     const built = buildBlocks(mdast, hast, md);
     const inline = built.plan.find((p) => p.kind === 'inline');
     expect(inline).toBeDefined();
-    expect(inline!.reactKey).toMatch(/^inline-(\d+|i\d+)$/);
+    expect(inline!.key).toMatch(/^inline-(\d+|i\d+)$/);
   });
 
   test('inline output stays equivalent while block nodes retain cache identity', () => {
@@ -908,7 +908,7 @@ describe('buildBlocks — inline (non-element) top-level children', () => {
     const built = buildBlocks(mdast, hast, md);
     const synthetic = built.plan.find((p) => p.kind === 'synthetic');
     expect(synthetic).toBeDefined();
-    expect(synthetic!.reactKey).toBe('__footnote_section__');
+    expect(synthetic!.key).toBe('__footnote_section__');
     expect(built.plan.findIndex((p) => p.kind === 'synthetic')).toBe(built.plan.length - 1);
   });
 });

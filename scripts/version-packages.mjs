@@ -55,6 +55,11 @@ for (const dir of packageDirs) {
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
   const oldVersion = pkg.version;
 
+  if (pkg.private) {
+    console.log(`${pkg.name}: ${oldVersion} (private workspace — not published)`);
+    continue;
+  }
+
   if (!LOCKSTEP.has(pkg.name)) {
     console.log(`${pkg.name}: ${oldVersion} (independent — not part of the release train)`);
     continue;

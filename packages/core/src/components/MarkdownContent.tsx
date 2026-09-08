@@ -41,7 +41,7 @@
  */
 
 import { Fragment, memo, useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import Markdown, { parseStage, transformStage, defaultUrlTransform, type Options as MarkdownOptions } from './markdown';
+import Markdown, { defaultUrlTransform, type Options as MarkdownOptions } from './markdown';
 
 type RemarkPlugins = NonNullable<MarkdownOptions['remarkPlugins']>;
 type RehypePlugins = NonNullable<MarkdownOptions['rehypePlugins']>;
@@ -54,7 +54,7 @@ import {
   buildCoreRemarkPlugins,
   buildCoreRemarkRehypeOptions,
 } from '@ai-react-markdown/engine';
-import { advanceIncrementalParse, type IncrementalParseState } from '@ai-react-markdown/engine';
+import { createPipelineSession } from '@ai-react-markdown/runtime';
 import { measureStage } from '@ai-react-markdown/engine';
 import { useAIMarkdownDocument, useAIMarkdownState } from '../context';
 import { useProvenanceCredential } from './provenance';
@@ -65,7 +65,6 @@ import { collectDefLabels, createDefLabelScanner, type DefLabelScanner } from '@
 import { useDocumentRegistry, usePreserveOrphanReferences } from './AIMarkdownDocuments';
 import type { RegistryInternal } from '@ai-react-markdown/engine';
 import type { SanitizeSchema } from '@ai-react-markdown/engine';
-import { buildPhantomSuffix, phantomSuffixCloser } from '@ai-react-markdown/engine';
 import { buildCrossChunkHandlers } from '@ai-react-markdown/engine';
 import { normalizeForMatch } from '@ai-react-markdown/engine';
 import { crossChunkComponents } from './crossChunkPlaceholders';
@@ -312,7 +311,7 @@ const BlockMemoizedRenderer = memo(
     // pattern as `defScannerRef`/`cacheRef`. Cleared by the G3 flush below
     // (belt-and-suspenders — the engine's own depsKey gate, which covers
     // MORE inputs than G3's 12 fields, is the primary invalidation).
-    const incrementalStateRef = useRef<IncrementalParseState | null>(null);
+    const [pipelineSession] = useState(createPipelineSession);
     const depsRef = useRef<{
       usedComponents: typeof usedComponents;
       remarkPlugins: typeof remarkPlugins;
@@ -355,7 +354,7 @@ const BlockMemoizedRenderer = memo(
       depsRef.current.symbol !== sym
     ) {
       cacheRef.current = createCache();
-      incrementalStateRef.current = null;
+      pipelineSession.reset();
       depsRef.current = {
         usedComponents,
         remarkPlugins,
@@ -492,138 +491,38 @@ const BlockMemoizedRenderer = memo(
     // because the incremental-parse engine owns both stages: on a splice it
     // reuses the frozen prefix of the previous frame's post-transform trees
     // and runs parse+transform over the tail only.
-    const pipeline = useMemo(() => {
-      // The suffix is APPENDED (the engine treats it as an always-tail
-      // input; prepending would shift every source position). A frame that
-      // ends inside an open fence / `$$` block would swallow it — sentinel
-      // lines rendered as code, every cross-chunk ref falling back to
-      // literal text for the block's whole streaming lifetime — so the
-      // engine first emits an output-neutral closer for that block (see
-      // phantomSuffixCloser; '' when nothing is open or the phase is
-      // untrusted). Only chunks with a non-empty suffix pay the line scan.
-      const phantomDefs = buildPhantomSuffix(targetPhantoms);
-      const phantomSuffix = phantomDefs === '' ? '' : phantomSuffixCloser(content ?? '') + phantomDefs;
-      const augmented = (content ?? '') + phantomSuffix;
-      const baseHandlers = remarkRehypeOptions?.handlers ?? {};
-      const mergedRemarkRehypeOptions = (
-        handlers
-          ? {
-              ...remarkRehypeOptions,
-              handlers: { ...baseHandlers, ...handlers },
-              // Phantom label sets are empty in standalone mode (no PASS 0.5
-              // injection happened); the footnoteDefinition handler still reads
-              // them via `state.options.phantomFootnoteLabels.has(id)`, which
-              // returns false for every id → orphan-protect path proceeds.
-              phantomFootnoteLabels: targetPhantoms.missingFootnotes,
-              phantomLinkLabels: targetPhantoms.missingLinks,
-              preserveOrphan: preserveForBodyHarvest,
-              documentId,
-              // The SAME value `buildCoreRehypePlugins` received — the
-              // verifier unwraps every placeholder stamped with anything else.
-              provenance,
-            }
-          : {
-              ...remarkRehypeOptions,
-            }
-      ) as RemarkRehypeOptions;
-
-      // Coordinated (registry) mode is incremental-eligible since v2: the
-      // engine takes the phantom suffix as a separate always-tail input (its
-      // frame-to-frame churn re-parses only the tail — the reference taint
-      // keeps every phantom-resolved ref out of the frozen prefix), and the
-      // contribute effect's inputs are covered by splice equivalence (mdast)
-      // plus the replay-regenerated footer (hast). When the flag is off, the
-      // state is CLEARED — a later eligible frame must never splice against
-      // trees parsed under different conditions.
-      //
-      // SSR takes this branch too: the engine's first-frame scan exists to
-      // seed the NEXT frame's checkpoint, and a per-request server render
-      // has no next frame — routing through the engine would pay a dead
-      // O(document) line-lex per request. Hydration is unaffected (the
-      // client's first frame rebuilds from null either way).
-      if (!incrementalParse || typeof window === 'undefined') {
-        incrementalStateRef.current = null;
-        // Dev-only stage telemetry (`ai-markdown:stage:*` performance
-        // measures; no-op in production). Wraps only the stage calls — the
-        // surrounding option assembly is trivial.
-        const parsed = measureHere('parse', () =>
-          parseStage({
-            children: augmented,
-            remarkPlugins,
-            rehypePlugins,
-            remarkRehypeOptions: mergedRemarkRehypeOptions,
-          })
-        );
-        const hastRoot = measureHere('transform', () => transformStage(parsed));
-        return { mdast: parsed.mdast, hast: hastRoot };
-      }
-
-      try {
-        const result = advanceIncrementalParse(incrementalStateRef.current, content ?? '', {
+    const pipeline = useMemo(
+      () =>
+        pipelineSession.parse({
+          content: content ?? '',
+          targetPhantoms,
           remarkPlugins,
           rehypePlugins,
-          remarkRehypeOptions: mergedRemarkRehypeOptions,
-          // Identity tuple over every parse input beyond the content itself.
-          // Deliberately covers MORE than the G3 flush's 12 fields (handlers /
-          // preserveForBodyHarvest / documentId can change without touching
-          // any G3 field — e.g. a `preserveOrphanReferences` flip). The
-          // phantom label sets are deliberately NOT here: their churn tracks
-          // the suffix (always re-parsed with the tail), never the prefix.
-          depsKey: [
-            remarkPlugins,
-            rehypePlugins,
-            remarkRehypeOptions,
-            handlers,
-            preserveForBodyHarvest,
-            documentId,
-            // Explicit even though `rehypePlugins` already carries it: a
-            // credential change must never reuse trees stamped under the
-            // old one.
-            provenance,
-          ],
+          remarkRehypeOptions,
+          handlers,
+          preserveForBodyHarvest,
+          documentId,
+          provenance,
+          incrementalParse: incrementalParse && typeof window !== 'undefined',
           defListEnabled,
-          phantomSuffix,
           measure: measureHere,
-        });
-        incrementalStateRef.current = result.nextState;
-        return { mdast: result.mdast, hast: result.hast };
-      } catch (error) {
-        // The engine mutates prev's scan checkpoint IN PLACE before the tail
-        // parse/splice — a throw mid-frame (an engine bug, or a plugin
-        // choking on the synthetic tail source) leaves the retained state's
-        // checkpoint describing content the state's trees do not. Clearing
-        // the ref restores the "state is CLEARED when unusable" discipline;
-        // the frame then renders via the ordinary full pipeline so one bad
-        // frame cannot take the surface down.
-        incrementalStateRef.current = null;
-        if (process.env.NODE_ENV !== 'production') {
-          console.error('[ai-react-markdown] incremental parse failed — full parse fallback for this frame:', error);
-        }
-        const parsed = measureHere('parse', () =>
-          parseStage({
-            children: augmented,
-            remarkPlugins,
-            rehypePlugins,
-            remarkRehypeOptions: mergedRemarkRehypeOptions,
-          })
-        );
-        const hastRoot = measureHere('transform', () => transformStage(parsed));
-        return { mdast: parsed.mdast, hast: hastRoot };
-      }
-    }, [
-      content,
-      targetPhantoms,
-      remarkPlugins,
-      rehypePlugins,
-      remarkRehypeOptions,
-      handlers,
-      preserveForBodyHarvest,
-      documentId,
-      provenance,
-      incrementalParse,
-      defListEnabled,
-      measureHere,
-    ]);
+        }),
+      [
+        pipelineSession,
+        content,
+        targetPhantoms,
+        remarkPlugins,
+        rehypePlugins,
+        remarkRehypeOptions,
+        handlers,
+        preserveForBodyHarvest,
+        documentId,
+        provenance,
+        incrementalParse,
+        defListEnabled,
+        measureHere,
+      ]
+    );
 
     // Cut hast into per-block units indexed back to mdast for cache identity,
     // and compute the document-wide ctx digest for cross-block invalidation.
@@ -741,8 +640,8 @@ const BlockMemoizedRenderer = memo(
     return (
       <CrossChunkUrlContext.Provider value={crossChunkUrlPolicy}>
         <ChunkSymbolContext.Provider value={sym}>
-          {rendered.map(({ node, reactKey }) => (
-            <Fragment key={reactKey}>{node}</Fragment>
+          {rendered.map(({ node, key }) => (
+            <Fragment key={key}>{node}</Fragment>
           ))}
           {registry && sym ? (
             <AggregateFootnotesIfLast

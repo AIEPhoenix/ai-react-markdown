@@ -1,5 +1,7 @@
 # @ai-react-markdown/core
 
+> **Legacy final release:** 2.14.0 completes the planned `ai-react-markdown` release line. Existing imports remain supported by this version; subsequent multi-framework development moves to `ai-markdown`. See the [transition and architecture guide](../../docs/framework-transition.md).
+
 [![npm version](https://img.shields.io/npm/v/@ai-react-markdown/core?logo=npm&color=cb3837)](https://www.npmjs.com/package/@ai-react-markdown/core)
 [![npm downloads](https://img.shields.io/npm/dm/@ai-react-markdown/core?color=blue)](https://www.npmjs.com/package/@ai-react-markdown/core)
 [![minzipped size](https://img.shields.io/bundlephobia/minzip/@ai-react-markdown/core?label=minzip)](https://bundlephobia.com/package/@ai-react-markdown/core)
