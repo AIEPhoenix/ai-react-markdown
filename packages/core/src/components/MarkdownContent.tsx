@@ -54,7 +54,13 @@ import {
   buildCoreRemarkPlugins,
   buildCoreRemarkRehypeOptions,
 } from '@ai-react-markdown/engine';
-import { createPipelineSession } from '@ai-react-markdown/runtime';
+import {
+  createPipelineSession,
+  derivePhantomTargets,
+  deriveCoordinationPolicy,
+  buildContributionChain,
+  type CoordinationPolicy,
+} from '@ai-react-markdown/runtime';
 import { measureStage } from '@ai-react-markdown/engine';
 import { useAIMarkdownDocument, useAIMarkdownState } from '../context';
 import { useProvenanceCredential } from './provenance';
@@ -65,8 +71,6 @@ import { collectDefLabels, createDefLabelScanner, type DefLabelScanner } from '@
 import { useDocumentRegistry, usePreserveOrphanReferences } from './AIMarkdownDocuments';
 import type { RegistryInternal } from '@ai-react-markdown/engine';
 import type { SanitizeSchema } from '@ai-react-markdown/engine';
-import { buildCrossChunkHandlers } from '@ai-react-markdown/engine';
-import { normalizeForMatch } from '@ai-react-markdown/engine';
 import { crossChunkComponents } from './crossChunkPlaceholders';
 import { CrossChunkUrlContext, type CrossChunkUrlPolicy } from './crossChunkUrlContext';
 import { AggregateFootnotesIfLast } from './aggregateFootnotesIfLast';
@@ -392,48 +396,10 @@ const BlockMemoizedRenderer = memo(
       missingLinks: new Set<string>(),
     });
     const targetPhantoms = useMemo(() => {
-      let nextFootnotes: Set<string>;
-      let nextLinks: Set<string>;
-      if (!registry) {
-        nextFootnotes = new Set<string>();
-        nextLinks = new Set<string>();
-      } else {
-        nextFootnotes = new Set<string>();
-        nextLinks = new Set<string>();
-        // Candidates first, normalization second: phantom targets can only
-        // be labels defined by OTHER chunks, and in the common case (single
-        // chunk, or no defs elsewhere) there are none. normalizeForMatch is
-        // two full-content regex passes plus toUpperCase — per token — so
-        // skipping it when there is nothing to look for removes the
-        // dominant PASS 0 cost left after the append-aware label scanner.
-        const candidateFootnotes: string[] = [];
-        for (const label of registry.labelSet.footnoteLabels) {
-          if (!ownLabels.footnoteLabels.has(label)) candidateFootnotes.push(label);
-        }
-        const candidateLinks: string[] = [];
-        for (const label of registry.labelSet.linkLabels) {
-          if (!ownLabels.linkLabels.has(label)) candidateLinks.push(label);
-        }
-        if (candidateFootnotes.length > 0 || candidateLinks.length > 0) {
-          const normalized = normalizeForMatch(content ?? '');
-          for (const label of candidateFootnotes) {
-            if (normalized.includes(label)) nextFootnotes.add(label);
-          }
-          for (const label of candidateLinks) {
-            if (normalized.includes(label)) nextLinks.add(label);
-          }
-        }
-      }
-      const prev = targetPhantomsRef.current;
-      if (
-        nextFootnotes.size === prev.missingFootnotes.size &&
-        nextLinks.size === prev.missingLinks.size &&
-        [...nextFootnotes].every((l) => prev.missingFootnotes.has(l)) &&
-        [...nextLinks].every((l) => prev.missingLinks.has(l))
-      ) {
-        return prev;
-      }
-      const next = { missingFootnotes: nextFootnotes, missingLinks: nextLinks };
+      const next = derivePhantomTargets(
+        { content: content ?? '', ownLabels, labels: registry?.labelSet ?? null },
+        targetPhantomsRef.current
+      );
       targetPhantomsRef.current = next;
       return next;
       // version is the freshness anchor (subscribe in placeholder components handles re-render)
@@ -447,7 +413,15 @@ const BlockMemoizedRenderer = memo(
     // extractDefBodiesFromHast can harvest their post-pipeline bodyHast; the
     // aggregate footer below still uses effectivePreserveOrphan to decide
     // whether unreferenced defs are visible.
-    const preserveForBodyHarvest = effectivePreserveOrphan || Boolean(registry && sym);
+    const previousPolicy = useRef<CoordinationPolicy | undefined>(undefined);
+    const { handlers, preserveForBodyHarvest } = useMemo(() => {
+      const next = deriveCoordinationPolicy(
+        { coordinated: Boolean(registry), registered: Boolean(sym), preserveOrphanReferences: effectivePreserveOrphan },
+        previousPolicy.current
+      );
+      previousPolicy.current = next;
+      return next;
+    }, [registry, sym, effectivePreserveOrphan]);
     // G3 supplement: the orphan policy is a to-hast input (footnote handler +
     // `preserveOrphan` option) that changes footer membership AND body sup
     // numbering without touching the mdast the block-memo ctx is derived
@@ -462,29 +436,8 @@ const BlockMemoizedRenderer = memo(
       preserveOrphanDepRef.current = preserveForBodyHarvest;
     }
 
-    // PASS 1: full parse on (possibly) augmented source, with custom handlers
-    // wired through remarkRehypeOptions.
-    //
-    // Two activation conditions:
-    //   1. `registry` present → coordinated mode → ALL 4 handlers (Direction A
-    //      orphan protection + Direction B cross-chunk ref placeholders).
-    //   2. `registry` absent + `effectivePreserveOrphan` → standalone mode →
-    //      ONLY `footnoteDefinition` handler (Direction A orphan protection
-    //      via state.footnoteOrder push). The other 3 handlers must NOT run in
-    //      standalone, otherwise:
-    //        - `footnoteReference` would emit `<footnote-sup>` placeholder
-    //          which depends on registry for the number → renders null → all
-    //          standalone footnotes disappear (regression).
-    //        - `linkReference`/`imageReference` would emit cross-chunk-*
-    //          placeholders that also depend on registry → broken links.
-    const handlers = useMemo(() => {
-      if (registry) return buildCrossChunkHandlers();
-      if (effectivePreserveOrphan) {
-        const { footnoteDefinition } = buildCrossChunkHandlers();
-        return { footnoteDefinition };
-      }
-      return undefined;
-    }, [registry, effectivePreserveOrphan]);
+    // Runtime selects coordinated handlers, orphan-only handling or normal
+    // standalone semantics. React owns policy memoization and commit timing.
 
     // Stage 1 + 2: parse → run remark/rehype pipeline, as ONE memo returning
     // `{ mdast, hast }`. Merged (formerly separate `parsed`/`hast` memos)
@@ -589,8 +542,27 @@ const BlockMemoizedRenderer = memo(
     );
 
     const contributionChain = useMemo(
-      () => [remarkPlugins, rehypePlugins, remarkRehypeOptions, handlers, preserveForBodyHarvest, clobberPrefix],
-      [remarkPlugins, rehypePlugins, remarkRehypeOptions, handlers, preserveForBodyHarvest, clobberPrefix]
+      () =>
+        buildContributionChain({
+          remarkPlugins,
+          rehypePlugins,
+          remarkRehypeOptions,
+          handlers,
+          preserveForBodyHarvest,
+          clobberPrefix,
+          documentId,
+          provenance,
+        }),
+      [
+        remarkPlugins,
+        rehypePlugins,
+        remarkRehypeOptions,
+        handlers,
+        preserveForBodyHarvest,
+        clobberPrefix,
+        documentId,
+        provenance,
+      ]
     );
     useRegistryContribution({
       pipeline,
@@ -721,10 +693,14 @@ const LegacyRenderer = memo(
     // empty so the handler's phantom check is always false.
     const mergedRemarkRehypeOptions = useMemo<RemarkRehypeOptions>(() => {
       if (!effectivePreserveOrphan) return remarkRehypeOptions;
-      const { footnoteDefinition } = buildCrossChunkHandlers();
+      const { handlers } = deriveCoordinationPolicy({
+        coordinated: false,
+        registered: false,
+        preserveOrphanReferences: true,
+      });
       return {
         ...remarkRehypeOptions,
-        handlers: { ...(remarkRehypeOptions?.handlers ?? {}), footnoteDefinition },
+        handlers: { ...(remarkRehypeOptions?.handlers ?? {}), ...handlers },
         phantomFootnoteLabels: new Set<string>(),
         phantomLinkLabels: new Set<string>(),
         preserveOrphan: true,

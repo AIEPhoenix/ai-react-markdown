@@ -124,7 +124,7 @@ Returns:
 - The shared `Registry` if both (a) called inside `<AIMarkdownDocuments>` and (b) `documentId` is non-empty.
 - `null` otherwise — treat as "run the standalone path; no coordination."
 
-> ℹ️ **The hook is allocating, not purely read-only.** Calling `useDocumentRegistry(documentId)` inside an `<AIMarkdownDocuments>` for a `documentId` that has no live chunks yet **creates an empty `Registry` shell** in the wrapper's `Map<documentId, Registry>` as a render-time side effect. A registry with registered chunks is evicted after its last chunk is released. A shell created by a render that never registers a chunk has no such release lifecycle and can remain until the wrapper unmounts. Use stable document ids; do not allocate speculative ids in a frequently rerendering reader.
+> ℹ️ **The hook can allocate a scope, but does not register or publish.** Calling `useDocumentRegistry(documentId)` can create an empty registry during render. The wrapper caches a `WeakRef` so concurrent renders and mounted consumers holding the object share its identity, while a discarded render cannot leave the object strongly retained by the wrapper. Garbage collection can reclaim an unused shell; a finalizer removes its stale cache key without deleting a newer scope for that id. Registered chunks still use explicit, microtask-deferred release for prompt eviction. GC timing is not part of reference resolution or registration correctness.
 
 ```tsx
 import { useDocumentRegistry, defaultUrlTransform } from '@ai-react-markdown/core';
@@ -345,7 +345,7 @@ Registration and contribution are commit-time effects. A render prepares trees a
 2. Registration publishes the chunk's own definition labels and optional `documentIndex`. These labels let other chunks parse references that would otherwise remain unresolved.
 3. Contribution effects publish parsed reference information, link definitions, and processed footnote bodies. A contribution fingerprint skips unchanged writes; a parent render does not necessarily mutate the store.
 4. Cleanup releases the symbol's reference count. Deletion is deferred to a microtask and rechecks the count, allowing Strict Mode's effect cleanup/setup cycle to retain the same live entry.
-5. Releasing the last registered chunk invokes the registry's empty callback and removes it from the wrapper map. A later mount starts a fresh document registry. This cleanup does not apply to speculative empty shells that never had a registered chunk.
+5. Releasing the last registered chunk invokes the registry's empty callback and removes it from the wrapper map. A later mount starts a fresh document registry. Speculative shells that never registered a chunk are weakly cached and can be garbage-collected once no render or consumer holds them.
 
 The aggregate footer and reference placeholders subscribe to the resulting store. Label subscriptions avoid waking an unrelated reference when its selected URL or numbering did not change; document-wide views still need global subscriptions. See the notification-routing section below for the distinction.
 

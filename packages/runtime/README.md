@@ -1,6 +1,6 @@
 # @ai-react-markdown/runtime
 
-Private, framework-neutral orchestration extracted for the final `ai-react-markdown` release, **2.14.0**. The React adapter uses this implementation today. The package is a workspace boundary, not an npm installation target: core bundles its implementation into its published JavaScript and resolves its types during declaration generation.
+Private, framework-neutral orchestration extracted in `ai-react-markdown` **2.14.0** and refined in the **2.14.1** maintenance release. The React adapter uses this implementation today. The package is a workspace boundary, not an npm installation target: core bundles its implementation into its published JavaScript and resolves its types during declaration generation.
 
 This name is temporary. In the future `ai-markdown` repository, this layer is intended to become `@ai-markdown/core`, while today's React-specific `@ai-react-markdown/core` becomes the React adapter. The new scope is a subsequent migration; importing `@ai-markdown/core` is not part of the legacy release. See the [transition guide](../../docs/framework-transition.md) for the package mapping and remaining work.
 
@@ -13,16 +13,17 @@ engine ← runtime ← React adapter ← Mantine integration
 
 The adapter may also consume engine primitives directly. Runtime does not duplicate the engine's public barrel or wrap every engine function merely to rename it. It owns reusable orchestration that would otherwise have to be copied into another framework adapter.
 
-| Module                  | Responsibility                                                                                                                                             | State owner                                         |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| `pipelineSession.ts`    | Merge coordinated parse options, append protected phantom suffixes, select full/incremental parsing, invalidate failed state and fall back to a full parse | One session per rendered chunk                      |
-| `blockPlan.ts`          | Associate transformed HAST with source MDAST, produce stable keys, classify reference dependencies and swallowed HTML, compute registry fingerprints       | Pure functions over the supplied trees and registry |
-| `blockPlanner.ts`       | Reuse eligible retained prefix plans while preserving whole-document reference context                                                                     | One planner per rendered chunk                      |
-| `contribution.ts`       | Compare source and policy fingerprints, harvest transformed definition bodies, publish changed committed contributions                                     | One publisher per mounted chunk                     |
-| `aggregateFootnotes.ts` | Assemble a document's ordered footnotes and occurrence backrefs as HAST                                                                                    | Returned tree belongs to the caller                 |
-| `cloneHastForRender.ts` | Clone node/children/properties containers before render-time mutation                                                                                      | Returned clone belongs to the caller                |
-| `smoothCoordinator.ts`  | Order chunk reveal, maintain sticky completion, defer cleanup and coalesce notifications                                                                   | One coordinator per logical document                |
-| `tailSignal.ts`         | Classify a source tail that renders inside a footnote or as an invisible link definition                                                                   | Pure function over MDAST                            |
+| Module                       | Responsibility                                                                                                                                             | State owner                                             |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| `coordinationPreparation.ts` | Derive phantom targets, select coordinated/orphan handlers and harvesting policy, build contribution invalidation tuples                                   | Pure decisions; previous snapshots belong to the caller |
+| `pipelineSession.ts`         | Merge coordinated parse options, append protected phantom suffixes, select full/incremental parsing, invalidate failed state and fall back to a full parse | One session per rendered chunk                          |
+| `blockPlan.ts`               | Associate transformed HAST with source MDAST, produce stable keys, classify reference dependencies and swallowed HTML, compute registry fingerprints       | Pure functions over the supplied trees and registry     |
+| `blockPlanner.ts`            | Reuse eligible retained prefix plans while preserving whole-document reference context                                                                     | One planner per rendered chunk                          |
+| `contribution.ts`            | Compare source and policy fingerprints, harvest transformed definition bodies, publish changed committed contributions                                     | One publisher per mounted chunk                         |
+| `aggregateFootnotes.ts`      | Assemble a document's ordered footnotes and occurrence backrefs as HAST                                                                                    | Returned tree belongs to the caller                     |
+| `cloneHastForRender.ts`      | Clone node/children/properties containers before render-time mutation                                                                                      | Returned clone belongs to the caller                    |
+| `smoothCoordinator.ts`       | Order chunk reveal, maintain sticky completion, defer cleanup and coalesce notifications                                                                   | One coordinator per logical document                    |
+| `tailSignal.ts`              | Classify a source tail that renders inside a footnote or as an invisible link definition                                                                   | Pure function over MDAST                                |
 
 The engine remains responsible for grammar, preprocessing, plugin chains, scanners, incremental parsing algorithms, registry storage/indexing, reference resolution and URL policy primitives. Runtime uses those algorithms to implement reusable rendering decisions.
 
@@ -70,6 +71,18 @@ This is an in-repository, standalone example. A coordinated adapter must obtain 
 The host chooses `incrementalParse: false` for a one-shot server render. Runtime does not inspect `window` to infer the host. A later incremental frame starts from fresh state after a non-incremental frame. Call `reset()` when the host invalidates retained parse state because render policy changed. Parse-input identities are also checked by the engine's dependency key; phantom suffix changes remain always-tail input rather than invalidating all retained source.
 
 An incremental failure clears the retained state before retrying the full pipeline. A failed full parse still propagates its exception to the host. The fallback is not a substitute for an error boundary, and the runtime does not silently return a stale frame. Each session and planner is mutable local computation state: do not share one across independent chunks or concurrently executing consumers.
+
+## Shared preparation decisions
+
+`coordinationPreparation.ts` contains the rules used by both the React adapter and the [private Vue lifecycle prototype](../../prototypes/vue/README.md):
+
+- `derivePhantomTargets({ content, ownLabels, labels }, previous?)` excludes locally owned definitions, then matches normalized source against external labels. Footnote and link namespaces remain separate. If no candidate exists, it skips source normalization; if the result sets match `previous`, it returns that same object. The matching remains the legacy substring over-approximation, not a new Markdown reference parser.
+- `deriveCoordinationPolicy({ coordinated, registered, preserveOrphanReferences }, previous?)` selects all coordinated handlers, only the orphan-footnote handler, or normal standalone behavior. Registration enables body harvesting even when visible orphan rendering is disabled. A harvesting-only change preserves handler identity. The host resolves any wrapper override before calling this function.
+- `buildContributionChain(inputs)` names the policy dependencies explicitly: remark/rehype arrays, remark-rehype options, handlers, body-harvest policy, clobber prefix, document id and provenance. Source, phantom sets, registry and symbol remain the publisher's own fingerprint inputs.
+
+These functions do not register, subscribe, publish or mutate their supplied snapshots. Treat label sets and returned objects as immutable; pass a previous result only from the same logical consumer. React retains the previous snapshots in refs and uses memoization; Vue uses local variables behind computed values. The engine and planner still own correctness when a source is replaced or a retained render is discarded.
+
+The Vue prototype validates these decisions with real component lifecycle and SSR execution, while keeping AST/registry objects out of deep reactive proxies. It is not a production Vue renderer and does not yet validate DOM hydration, slots, styling or cursor behavior.
 
 ## Preparation and commit have different effects
 

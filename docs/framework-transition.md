@@ -1,8 +1,8 @@
 # From ai-react-markdown to ai-markdown
 
-**2.14.0 is the final planned release under the `ai-react-markdown` project identity and package scope.** It introduces an internal framework-neutral orchestration layer while retaining the existing React and Mantine APIs, imports, stylesheet paths and installation commands. The next development phase moves to `ai-markdown`; this release does not rename installed packages or claim support for a second UI framework.
+**2.14.x is the final planned release line under the `ai-react-markdown` project identity and package scope.** Version 2.14.0 introduces an internal framework-neutral orchestration layer while retaining the existing React and Mantine APIs, imports, stylesheet paths and installation commands. The next development phase moves to `ai-markdown`; this release does not rename installed packages or claim support for a second UI framework.
 
-This document distinguishes the architecture implemented in the legacy release from the subsequent package migration. Keep using the existing package READMEs to integrate 2.14.0. The future names below describe the intended destination and are not installation instructions for already-published replacements.
+This document distinguishes the architecture implemented in the legacy release from the subsequent package migration. Keep using the existing package READMEs to integrate 2.14.1. This maintenance patch fixes abandoned-render scope retention and shares preparation decisions with a private Vue lifecycle prototype. The future names below describe the intended destination and are not installation instructions for already-published replacements.
 
 ## Why split before migrating names?
 
@@ -55,3 +55,9 @@ The organization and npm scope have been reserved. That establishes ownership of
 The site should offer a framework selector, runnable getting-started examples, streaming integration guides, API reference, customization and security policy guidance, architecture/contributor material, migration mappings and a versioned legacy documentation path. Shared concepts—Markdown grammar, streaming completion, reference coordination and URL policy—should have one canonical explanation, with framework-specific examples beside it.
 
 Keep the repository's package READMEs useful after the site launches: installation, a minimal complete example, supported environments, important limitations and direct links to deeper material still belong with the published npm package. The site expands navigation and examples; it should not make the installed package documentation depend on finding a separate website first.
+
+## Second-framework preparation experiment
+
+The private [Vue lifecycle prototype](../prototypes/vue/README.md) now consumes runtime's shared phantom-target derivation, handler/body-harvest policy and contribution invalidation tuple. React uses the same functions in its production adapter. The prototype adds Vue only to its own workspace; the legacy runtime and published packages remain free of that dependency.
+
+Its tests mount real Vue components with a memory renderer and execute Vue SSR. They check preparation without publication, two-chunk definition sharing, reactive definition updates, retained parse identity, document switching and unmount cleanup. This is evidence for the shared preparation boundary. A complete Vue renderer, final placeholder conversion, DOM hydration, customization, styles and streaming cursor remain future work; the new core API is not frozen by this experiment.

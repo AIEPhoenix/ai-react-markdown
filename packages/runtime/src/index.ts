@@ -6,3 +6,4 @@ export * from './tailSignal';
 export * from './aggregateFootnotes';
 export * from './cloneHastForRender';
 export * from './pipelineSession';
+export * from './coordinationPreparation';

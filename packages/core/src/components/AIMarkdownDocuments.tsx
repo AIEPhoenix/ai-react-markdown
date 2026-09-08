@@ -10,13 +10,13 @@
  *
  * @module components/AIMarkdownDocuments
  */
-import { createContext, useContext, useMemo, useRef, type PropsWithChildren, type FC } from 'react';
+import { createContext, useContext, useMemo, useState, type PropsWithChildren, type FC } from 'react';
 import { createRegistry, type Registry, type RegistryInternal } from '@ai-react-markdown/engine';
+import { createDocumentScopeCache } from './documentScopeCache';
 import {
   createSmoothCoordinator,
   SmoothCoordinatorContext,
   type SmoothCoordinatorContextValue,
-  type SmoothCoordinatorInternal,
 } from './smoothStream/coordinator';
 
 interface AIMarkdownDocumentsContextValue {
@@ -60,7 +60,7 @@ const NESTED_WRAPPER_MESSAGE =
   '<AIMarkdownDocuments> must not be nested inside another <AIMarkdownDocuments>. Use a single top-level wrapper per coordinated scope.';
 
 /**
- * The "happy path" implementation: allocates a per-instance registries Map
+ * The "happy path" implementation: allocates per-instance scope caches
  * and Provider value. Split out from `AIMarkdownDocuments` so the parent
  * component's pre-hook nesting gate (which may early-return) doesn't put
  * the hooks below behind a conditional — rules-of-hooks is then trivially
@@ -70,80 +70,19 @@ const NESTED_WRAPPER_MESSAGE =
 const AIMarkdownDocumentsRoot: FC<
   Required<Pick<AIMarkdownDocumentsProps, 'preserveOrphanReferences' | 'smoothTurnTaking'>> & PropsWithChildren
 > = ({ preserveOrphanReferences, smoothTurnTaking, children }) => {
-  // Registries are persistent across renders. Map<documentId, Registry>.
-  //
-  // Eviction: each registry receives an `onEmpty` callback that the
-  // wrapper invokes when the registry's last chunk just released its
-  // Symbol. The callback removes the registry from this Map iff the
-  // entry is STILL the one we created — a fresh `getRegistry(documentId)`
-  // racing the cleanup microtask would have already replaced it, in
-  // which case eviction is a no-op. This keeps the Map bounded by the
-  // number of `documentId` values with at least one chunk alive at any
-  // given moment.
-  //
-  // Known edge case (acceptable v1 limitation): `getRegistry` is called
-  // synchronously from `useDocumentRegistry` during render, and creates
-  // the registry + writes the Map entry as a render-time side effect.
-  // React 19's concurrent rendering allows aborting a render before
-  // commit; if a render is aborted AFTER `getRegistry(X)` has created a
-  // new registry but BEFORE any chunk's allocate effect commits, AND the
-  // next render uses a different `documentId`, the aborted render's
-  // registry leaks (no chunk ever attaches, so `onEmpty` never fires).
-  // The leak is bounded (one empty Registry shell per aborted-render-
-  // with-unique-documentId), the shell is small (a few empty Sets and a
-  // version counter), and concurrent aborts on documentId-bearing
-  // components are rare in practice. A proper fix would defer the Map
-  // insert to chunk-subscription time, but that breaks the synchronous-
-  // getter contract `useDocumentRegistry` relies on. Deferred.
-  const registriesRef = useRef<Map<string, RegistryInternal>>(new Map());
-  // Smooth turn-taking coordinators, one per documentId — a sibling
-  // structure to the registries Map with the same lifecycle: created
-  // lazily at render time by the getter, evicted via onEmpty with the
-  // identity check (a stale cleanup microtask must not evict a freshly
-  // re-created coordinator under the same documentId).
-  const coordinatorsRef = useRef<Map<string, SmoothCoordinatorInternal>>(new Map());
+  // Weak entries preserve synchronous identity while a render or mounted
+  // consumer owns the scope, without retaining objects from aborted renders.
+  // onEmpty still evicts promptly after the final committed registration.
+  const [registries] = useState(() => createDocumentScopeCache(createRegistry));
+  const [coordinators] = useState(() => createDocumentScopeCache(createSmoothCoordinator));
 
-  const smoothValue = useMemo<SmoothCoordinatorContextValue | null>(() => {
-    if (!smoothTurnTaking) return null;
-    return {
-      getCoordinator(documentId: string) {
-        let c = coordinatorsRef.current.get(documentId);
-        if (!c) {
-          const created = createSmoothCoordinator(() => {
-            if (coordinatorsRef.current.get(documentId) === created) {
-              coordinatorsRef.current.delete(documentId);
-            }
-          });
-          c = created;
-          coordinatorsRef.current.set(documentId, c);
-        }
-        return c;
-      },
-    };
-  }, [smoothTurnTaking]);
-
+  const smoothValue = useMemo<SmoothCoordinatorContextValue | null>(
+    () => (smoothTurnTaking ? { getCoordinator: coordinators.get } : null),
+    [smoothTurnTaking, coordinators]
+  );
   const value = useMemo<AIMarkdownDocumentsContextValue>(
-    () => ({
-      preserveOrphanReferences,
-      getRegistry(documentId: string) {
-        let r = registriesRef.current.get(documentId);
-        if (!r) {
-          // Capture `r` in the closure so the identity check below
-          // compares against the exact registry instance we created.
-          // A microtask-delayed onEmpty firing AFTER a subsequent
-          // getRegistry replaced the entry must NOT evict the new one.
-          const created = createRegistry(() => {
-            if (registriesRef.current.get(documentId) === created) {
-              registriesRef.current.delete(documentId);
-            }
-          });
-          r = created;
-          registriesRef.current.set(documentId, r);
-        }
-        return r;
-      },
-    }),
-    [preserveOrphanReferences]
+    () => ({ preserveOrphanReferences, getRegistry: registries.get }),
+    [preserveOrphanReferences, registries]
   );
 
   return (
@@ -176,7 +115,7 @@ export const AIMarkdownDocuments: FC<AIMarkdownDocumentsProps> = ({
     // to apply.
     //
     // Hooks-rules note: the outer component only calls `useContext` before
-    // the early return; the hooks that allocate state (`useRef`, `useMemo`)
+    // the early return; the hooks that allocate state (`useState`, `useMemo`)
     // live in `AIMarkdownDocumentsRoot`, which is only mounted on the
     // non-nested branch. Whichever branch this instance takes, it takes
     // for its entire lifetime — React's per-instance hook order stays

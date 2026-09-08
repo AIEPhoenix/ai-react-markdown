@@ -19,7 +19,17 @@ Verification counts are historical results reported for the corresponding candid
 
 Patch headings identify fixes or maintenance; minor headings introduce features or broader compatible changes. Exact rendered bytes and default visual values are not a blanket semver guarantee.
 
-## 2.14.x — Final ai-react-markdown release
+## 2.14.x — Final ai-react-markdown release line
+
+### 2.14.1 — Release abandoned document scopes and share preparation decisions
+
+- Fix document registries and smooth coordinators retained by a long-lived wrapper after React abandons a render before registration. Weak scope caches preserve live consumer identity while allowing unused allocations to be collected; explicit final-release eviction remains in place.
+- Add a real Chromium regression covering StrictMode, Suspense/transition aborts, same-document sibling identity, active ownership and unmount collection. Run it in local preflight, browser CI and the release workflow.
+- Extract phantom-target derivation, handler/body-harvest policy and contribution invalidation keys into the private runtime. Both React rendering paths consume the shared decisions; public React/Mantine configuration and types remain compatible.
+- Add a private Vue 3 lifecycle prototype that verifies two-chunk definition sharing, reactive updates, document switching, SSR preparation and cleanup. Vue remains outside the legacy published packages; this experiment is not a complete Vue renderer or a public new-scope release.
+- Update lifecycle documentation and record the shared preparation contracts and remaining DOM/hydration work.
+
+Validation: full local preflight passed **152 test files / 1,982 tests**, plus the explicit Chromium garbage-collection regression. Public `.d.ts` and `.d.cts` entry declarations remain byte-identical to 2.14.0. Final release-soak evidence is recorded after the fixed candidate completes its fresh six-leg campaign.
 
 ### 2.14.0 — Shared runtime extraction before the ai-markdown migration
 

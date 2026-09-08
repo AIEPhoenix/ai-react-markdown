@@ -180,6 +180,9 @@ jobs:
       - name: Browser smokes (storybook stories)
         run: pnpm vitest run --project=storybook
 
+      - name: Concurrent document scope lifetime
+        run: pnpm test:document-lifetime
+
       # pnpm delegates the actual upload to the npm CLI, and the OIDC token
       # exchange happens there — npm 10.x (bundled with Node 22) predates
       # trusted publishing and dies with ENEEDAUTH.

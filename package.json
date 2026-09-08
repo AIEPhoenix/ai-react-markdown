@@ -1,6 +1,6 @@
 {
   "name": "ai-react-markdown",
-  "version": "2.14.0",
+  "version": "2.14.1",
   "private": true,
   "type": "module",
   "description": "A React component for rendering AI-generated Markdown with LaTeX math, GFM, syntax highlighting and more.",
@@ -21,10 +21,11 @@
     "bench:web:scale": "node benchmarks/runner/scale.mjs --prefix scale-",
     "bench:web:scale:cold": "node benchmarks/runner/scale.mjs --prefix cold-",
     "bench:web:scale:steps": "node benchmarks/runner/scale.mjs --prefix steps-",
-    "preflight": "pnpm check:overrides && pnpm check:soak-coverage && pnpm lint && pnpm format:check && pnpm build && pnpm test:soak-control && pnpm packcheck && pnpm -r typecheck && pnpm typecheck && pnpm vitest run",
+    "preflight": "pnpm check:overrides && pnpm check:soak-coverage && pnpm lint && pnpm format:check && pnpm build && pnpm test:soak-control && pnpm packcheck && pnpm -r typecheck && pnpm typecheck && pnpm vitest run && pnpm test:document-lifetime",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
-    "test:soak-control": "node --test scripts/soak/soak-control.test.mjs"
+    "test:soak-control": "node --test scripts/soak/soak-control.test.mjs",
+    "test:document-lifetime": "node scripts/test-document-scope-lifetime.mjs"
   },
   "keywords": [
     "react",

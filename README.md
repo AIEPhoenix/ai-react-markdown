@@ -1,6 +1,6 @@
 # ai-react-markdown
 
-> **Legacy final release:** 2.14.0 completes the planned `ai-react-markdown` release line. Existing imports remain supported by this version; subsequent multi-framework development moves to `ai-markdown`. See the [transition and architecture guide](./docs/framework-transition.md).
+> **Legacy maintenance release:** 2.14.1 fixes lifecycle cleanup and completes shared preparation work after the 2.14.0 split. Existing imports remain supported; subsequent multi-framework development moves to `ai-markdown`. See the [transition and architecture guide](./docs/framework-transition.md).
 
 > React Markdown rendering for AI responses: GFM, KaTeX math, CJK-aware parsing, incremental streaming, and shared references across logical document sections. Use core with your own UI, or the Mantine integration for highlighted code, JSON presentation, and Mermaid diagrams.
 
@@ -805,7 +805,7 @@ Issues and pull requests are welcome. For non-trivial changes, please open an is
 
 Reporting a bug helps most when it includes:
 
-- The package and version (`@ai-react-markdown/core@2.14.0` …)
+- The package and version (`@ai-react-markdown/core@2.14.1` …)
 - The relevant `<AIMarkdown>` / `<MantineAIMarkdown>` props
 - A minimal markdown sample that reproduces the issue
 - For streaming-related bugs: the chunk sequence (one string per chunk)

@@ -140,3 +140,7 @@ jobs:
       - name: Browser smokes (storybook stories)
         if: matrix.task == 'browser-smoke'
         run: pnpm vitest run --project=storybook
+
+      - name: Concurrent document scope lifetime
+        if: matrix.task == 'browser-smoke'
+        run: pnpm test:document-lifetime

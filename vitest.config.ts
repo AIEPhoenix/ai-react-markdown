@@ -16,7 +16,7 @@ export default defineConfig({
         test: {
           name: 'unit',
           environment: 'node',
-          include: ['packages/*/src/**/*.{test,spec}.{ts,tsx}'],
+          include: ['packages/*/src/**/*.{test,spec}.{ts,tsx}', 'prototypes/*/src/**/*.test.ts'],
           benchmark: {
             include: ['packages/*/src/**/*.bench.{ts,tsx}'],
           },
