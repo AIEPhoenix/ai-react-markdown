@@ -1,87 +1,60 @@
 # Browser benchmarks
 
-What a user's browser actually does with this renderer: frame pacing while a
-long answer streams in, how much of the main thread a code-dense answer
-blocks, how big the DOM gets across a conversation, whether the page moves
-under a scroll.
+This directory measures the browser work of the published renderer integration: streaming duration, animation-frame gaps, long tasks, DOM growth, and movement of content relative to a reader's viewport. It uses small production apps loaded through package exports, so the result includes the selected integration's providers, styles, and rendering work.
 
-Every other performance number in this repo stops at the parse layer. Those
-answer "how long did the engine take"; none of them answers "does a user's
-scroll stutter". This directory is the second question, and it exists mostly
-so that optimisations aimed at it (workers, viewport priority) have something
-to be accepted against — without it, doing that work and claiming a win is
-guesswork.
+Use it to investigate a specific performance question. The engine microbenchmark isolates preprocessing; Storybook comparisons attribute pipeline and React commit work; this harness observes the application from the browser. Those measurements complement each other, and none alone proves that scrolling, selection, or streaming presentation feels responsive.
+
+Before quoting a result, identify the scenario's delivery schedule, document size, update count, browser, CPU throttle, and missing coverage. The historical findings below retain their dates and limitations. They are evidence from those runs, not refreshed measurements of the current release.
 
 ## Running
 
+Build workspace packages and install the workspace dependencies before running the harness; the apps consume built package exports.
+
 ```bash
-pnpm bench:web                     # every app x every scenario, 3 repeats
-pnpm bench:web --app react-core    # one app
+pnpm build
+pnpm bench:web:selftest            # Verify sensitivity to injected work.
+pnpm bench:web                    # All apps/scenarios; 5 retained repeats by default.
+pnpm bench:web --app react-core
 pnpm bench:web --scenario code-dense --repeats 5
-pnpm bench:web --headed            # watch it
-pnpm bench:web:selftest            # does the harness notice a slowdown?
+pnpm bench:web --app react-core --scenario throughput-code --throttle 4
+pnpm bench:web --headed
 ```
 
-Results land in `benchmarks/results/<timestamp>.json` (gitignored). Compare
-two runs with `node benchmarks/runner/compare.mjs <before.json> <after.json>`.
+The local runner defaults to 2 warm-up rounds and a 400 ms pause between samples. Warm-up samples are discarded. Results are written to the gitignored `benchmarks/results/<timestamp>.json`; compare matching cells with:
 
-**It gates nothing, and as of 2026-09-03 it does not run in CI at all.**
+```bash
+node benchmarks/runner/compare.mjs <before.json> <after.json>
+```
 
-Gating nothing was always the decision: a budget wired into CI before anyone
-knows the noise band goes red on the third honest run and is muted by the
-fifth. The plan behind it was to collect a baseline per release until there
-were enough to say what a real regression looks like. That plan is now
-withdrawn, because it never started — four workflow runs, zero successes,
-zero baselines — and because of what the four runs exposed while failing.
+There is no automatic renderer-performance budget. The GitHub [benchmark workflow](../.github/workflows/benchmark.yml) is **manual dispatch only**; automatic release-tag collection was removed on 2026-09-03. Its dispatch defaults are separate from the local runner's defaults. The workflow's self-test can fail a dispatched run because it validates the measuring instrument, not a library speed threshold.
 
-Read this before trusting a number from here, especially a small one:
+The earlier baseline-collection attempt had four workflow runs and no successful baseline: three tag runs failed around a leaked preview server, and one manual run reached the former 120-minute cap after 40 of 84 cells. The workflow now has a 240-minute cap, but this is not evidence that automatic collection has been validated or resumed.
 
-- **The scenarios whose names read like real usage are the ones that cannot
-  see a regression.** The seven `timer`-paced cells deliver on a fixed
-  16 ms schedule, and the schedule is the bound, not the renderer: measured
-  2026-08-30, `code-dense` took 21.2 s unthrottled and 20.6 s under a
-  verified 4x CPU throttle. A renderer has to get 16 ms/chunk slower before
-  these move at all. `frame` pacing has a smaller dead zone (one refresh
-  interval per chunk); `immediate` has none, at the price of amortizing
-  layout across up to 33x fewer passes than chunks. The details are in the
-  `Pacing` docstring in `kit/src/scenarios.ts`, and they are the first thing
-  to read, not the fiftieth.
-- **`smoothStream` is not exercised by any scenario.** Every schedule here
-  is perfectly uniform — 24 characters per chunk, zero jitter — which is the
-  one input on which a pacing algorithm has nothing to do.
-- **Two cells report the harness cap instead of a measurement**
-  (`react-null/scale-xlong`, `react-core/math-dense` at 4x throttle, both
-  180 s). `scale.mjs` excludes timed-out cells from its fit for exactly this
-  reason; `run.mjs` records them as data.
-- **`react-null` is slower than `react-core` on `scale-long`** (171.6 s
-  against 109.5 s). The control app accumulates the whole string into a
-  `<pre>` on every one of 6297 commits, so on the long cells it is a
-  bottleneck in its own right rather than a floor to measure against.
+Several historical results explain why focused runs are preferable:
 
-None of that makes the suite useless — it falsified the "Safari
-`smoothStream` is chunky" report as a dev-server artifact, and it produced
-the per-update floor finding on the scale axis. Both were local runs by a
-person asking one question, which is what `pnpm bench:web` is for. It is
-unattended collection that has earned nothing.
+- Seven timer-paced cells deliver every 16 ms. A change that still finishes within that delivery interval may not move their stream duration. On 2026-08-30, `code-dense` measured 21.2 s unthrottled and 20.6 s at a verified 4× CPU throttle.
+- Uniform 24-character delivery does not exercise the smooth-stream controller, which is not enabled in these apps. Scenario names alone are not feature coverage.
+- `react-null/scale-xlong` and throttled `react-core/math-dense` hit the historical 180 s per-cell cap. Those values are censored observations, not completed timing measurements; scale fitting excludes timeouts.
+- The control app itself can dominate: `react-null/scale-long` measured 171.6 s versus core's 109.5 s while repeatedly replacing a growing `<pre>` across 6,297 commits. It is not always a lower bound.
 
-The system is due a rethink after the corpus work. Until then, treat every
-cell as an instrument you have to argue for before quoting it.
+Local investigations did identify the update-count floor and helped investigate a Safari presentation report alongside separate production visual checks. Keep the question and evidence together: a result from this uniform Chromium harness cannot by itself validate Safari's smooth-stream behavior.
 
 ## Layout
 
-| Path             | What lives there                                                   |
-| ---------------- | ------------------------------------------------------------------ |
-| `kit/`           | Scenarios and the measurement harness. Framework-agnostic.         |
-| `react-core/`    | The `@ai-react-markdown/core` README integration, instrumented.    |
-| `react-mantine/` | The `@ai-react-markdown/mantine` README integration, instrumented. |
-| `runner/`        | Playwright driver, self-test, comparison.                          |
+| Path             | What lives there                                                        |
+| ---------------- | ----------------------------------------------------------------------- |
+| `kit/`           | Scenarios and the measurement harness. Framework-agnostic.              |
+| `react-core/`    | The `@ai-react-markdown/core` README integration, instrumented.         |
+| `react-mantine/` | The `@ai-react-markdown/mantine` README integration, instrumented.      |
+| `react-null/`    | React text-only control; large repeated pre updates have their own cost |
+| `runner/`        | Playwright driver, self-test, comparison.                               |
 
 Three rules hold this apart, and each of them was a decision:
 
 **Scenarios never import a renderer.** A scenario is content plus a delivery
 schedule. That is what lets the same scenario run under every app and be
 compared, and what will let a future framework adapter join without touching
-`kit/scenarios.ts`. An app that knows a scenario by name has already broken
+`kit/src/scenarios.ts`. An app that knows a scenario by name has already broken
 the split.
 
 **Each framework is its own app, not a prop.** The mantine variant pulls in a
@@ -89,8 +62,8 @@ provider tree, a highlight.js adapter and three more stylesheets. Sharing one
 app and branching inside it would put both dependency graphs into both
 bundles, and each measurement would describe the other.
 
-**The integration is the README's, verbatim.** The imports and the JSX in
-each `main.tsx` are copied from the package README's quick start; the
+**The integration follows the package quick start.** The imports and the JSX in
+each `main.tsx` follow the package README's provider and renderer setup; the
 instrumentation is placed around them, never between them and React. The
 moment an app memoises the content or batches the updates, it stops
 describing the library and starts describing our cleverness — and the
@@ -112,7 +85,7 @@ user never installs cannot answer "is our renderer fast", only "is our
 renderer plus Storybook fast", and the two drift apart silently as Storybook
 upgrades.
 
-## The self-test is the load-bearing part
+## Verify harness sensitivity with the self-test
 
 `pnpm bench:web:selftest` injects a known amount of main-thread work per chunk
 and requires the metrics to respond where they can and stay flat where they
@@ -149,7 +122,7 @@ packages doing different amounts of work, which is the whole reason both are
 measured. Compare a cell against ITSELF over time. `compare.mjs` keys on
 `app/scenario` and will never put two apps side by side; keep it that way.
 
-## Scale — one size axis, three families, and why one of them lies
+## Scale — separate document size from update count
 
 `pnpm bench:web:scale` runs one scale family and fits log(bytes) against
 log(streamMs + settleMs). The output is one number, the growth exponent:
@@ -207,9 +180,8 @@ interval runs at **1.48**. The tool now prints both and says which to believe.
 
 ### What the three families actually establish
 
-**Hold the update count still and cost is linear in size.** `steps-*` runs at
-0.94 across the top interval. The incremental parser earns its keep: each
-update costs roughly what its delta costs, not what the document costs.
+**With a fixed update count, this measured top interval is approximately linear.** `steps-*` runs at
+0.94 across the top interval. This is consistent with useful incremental reuse, but the aggregate timing does not attribute the cost to the parser or prove O(delta) work per update.
 
 **A single giant mount is the worse path.** `cold-*` is superlinear at the top
 (1.48), and at 1.15 MB one update (5009 ms) is slower than a hundred
@@ -248,7 +220,7 @@ Note where the existing scenarios sit: 11–36 KB. The suite reported health for
 as long as it did partly because it only ever measured one size, delivered one
 way.
 
-## How small a difference this can resolve
+## Resolution and measurement noise
 
 Measured 2026-08-30, twelve consecutive runs of each cell on an idle laptop:
 
@@ -436,8 +408,7 @@ fits in the 8.3 ms gap after being slowed four times.
 
 An `immediate`-paced scenario waits for nothing: the next chunk is queued on
 a MessageChannel port, which yields to the event loop without the 4 ms clamp
-that `setTimeout(0)` picks up. `streamMs` is then the renderer's own cost and
-nothing else. Same scenario, same machine:
+that `setTimeout(0)` picks up. `streamMs` becomes a throughput measurement without an intentional delivery delay. It still includes event-loop, React, and harness work, and can amortize layout across several updates. Same scenario, same machine:
 
 | pacing                |     1x |     4x | ratio | bounded by     |
 | --------------------- | -----: | -----: | ----: | -------------- |
@@ -464,7 +435,7 @@ The self-test asserts this directly (arm 3): if `immediate` pacing ever
 regresses into waiting for something, the 4x ratio collapses toward 1.0 and
 the run fails.
 
-## Throttle, or measure your own laptop
+## CPU throttle and comparison conditions
 
 `--throttle 4` applies a CPU multiplier through CDP before navigation, so the
 app's startup is throttled too.
@@ -532,7 +503,7 @@ benchmark's silence is otherwise indistinguishable from good news.
 
 ## Adding a scenario
 
-Add a row to `SCENARIOS` in `kit/scenarios.ts`. Nothing else needs to change —
+Add a row to `SCENARIOS` in `kit/src/scenarios.ts`. Nothing else needs to change —
 the apps expose the list, and the runner reads its work list from the app
 rather than keeping a copy, so a new scenario is picked up on the next run.
 
@@ -541,3 +512,13 @@ scaled without hand-editing and two runs are byte-identical. Keep it big
 enough to measure: `mermaid-dense` and `math-dense` were originally 1.2 s and
 5.2 s of streaming, which is not long enough for steady-state cost to show
 over startup noise.
+
+## Choose and record an investigation
+
+Start with a matching app/scenario pair from the before and after revisions. Use `cold-*` for one large mount, `steps-*` to hold update count fixed as size grows, and `scale-*` when the number of updates should grow with document size. Use timer/frame pacing to ask whether work exceeds a delivery or refresh budget, and immediate pacing for throughput headroom. Include more than one schedule when layout is a plausible bottleneck.
+
+Keep the browser version, machine, throttle, refresh rate, viewport, warm-up, repeats, and package build mode with the artifact. The comparison script enforces matching throttle, but does not make two machines or browser builds comparable. Record timeout status, unsupported metrics, and settle behavior rather than interpreting a cap as a completed sample or null as zero cost.
+
+For user-visible streaming claims, add evidence outside the current scenarios where needed: actual smooth-stream input with jitter, cross-chunk definitions, active selection or copy interactions, and the target browser. A scenario named after a feature does not cover it unless the app enables that feature. The current apps deliberately leave smoothing, document coordination, and the cursor off.
+
+When adding a scenario, update the time-budget estimate as well as its content. The runner discovers scenarios from the built app, so a new row silently expands the full matrix unless that operational cost is considered. Verify sensitivity with injected work, retain the seeded input and schedule, and document the class of regressions the new cell can and cannot detect.

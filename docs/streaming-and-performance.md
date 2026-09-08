@@ -1,13 +1,8 @@
 # Streaming & Performance
 
-`<AIMarkdown>` is built for **streaming-first** rendering — the same component re-renders dozens of times per second as LLM tokens arrive, and the output must stay flicker-free at 60fps even on mid-tier devices. Two mechanisms make this work:
+Streaming repeatedly renders a growing Markdown document. Core reduces that work at three levels: append-aware preprocessing, verified incremental parsing, and block-level React-node caching. The `streaming` prop describes lifecycle state; it does not enable those optimizations. `blockMemo` and `incrementalParse` are both on by default.
 
-1. **Block-level memoization** (the `blockMemo` prop, on by default) — splits the document into per-block units and memoizes each block's React subtree by source identity. Unchanged blocks skip `toJsxRuntime` and React reconcile work.
-2. **The `streaming` flag** — propagated via context, lets custom components adapt their behavior (show cursors, hide copy buttons, skip animations).
-
-This document covers both, plus the reference-stability rules that determine whether memoization helps or silently degrades into a full re-render per frame.
-
----
+This guide explains which work each mechanism saves and which changes invalidate it. It also covers cross-chunk costs, stable prop references, profiling, and the Mantine code-display cadence. The goal is to identify the expensive stage in your workload rather than infer performance from a flag or from a single historical benchmark.
 
 ## The streaming flag
 
@@ -15,7 +10,7 @@ This document covers both, plus the reference-stability rules that determine whe
 <AIMarkdown content={chunk} streaming={!done} />
 ```
 
-`streaming` is a plain boolean exposed via the `useAIMarkdownState()` narrow hook. The library itself doesn't change rendering behavior based on the flag — it's a signal for **custom components** to use as they see fit.
+`streaming` is a plain boolean exposed via the `useAIMarkdownState()` narrow hook. Core uses the flag to mount the cursor slot and expose a source-tail signal; custom components can also read it. Mantine uses it for code-display scheduling and diagram/language-detection behavior. The parser optimization gates are separate.
 
 Since the v2 context split, a `streaming` flip wakes **only `useAIMarkdownState()` subscribers** — components that read other narrow hooks (`useAIMarkdownTheme()`, `useAIMarkdownBehaviors()`, …) no longer re-render on stream start/end. The aggregate `useAIMarkdown()` subscribes to all five contexts and _does_ re-render on every flip; keep it out of per-block components.
 
@@ -24,13 +19,17 @@ Since the v2 context split, a `streaming` flip wakes **only `useAIMarkdownState(
 ```tsx
 import { useAIMarkdownState } from '@ai-react-markdown/core';
 
-function CodeWithCopy({ children }: { children: React.ReactNode }) {
+function CodeWithCopy({ children, onCopy }: { children?: React.ReactNode; onCopy: () => void }) {
   const { streaming } = useAIMarkdownState();
   return (
-    <pre>
-      {!streaming && <button>Copy</button>}
-      {children}
-    </pre>
+    <div>
+      {!streaming && (
+        <button type="button" onClick={onCopy}>
+          Copy
+        </button>
+      )}
+      <pre>{children}</pre>
+    </div>
   );
 }
 ```
@@ -42,7 +41,7 @@ function CodeWithCopy({ children }: { children: React.ReactNode }) {
 
 ### What `streaming` does NOT do
 
-It does **not** alter the parsing pipeline. The same remark/rehype plugins run; the same sanitization applies. Block-memoization is on whether or not `streaming === true`. The flag is purely informational for downstream consumers.
+It does **not** alter the parsing pipeline. The same remark/rehype plugins run; the same sanitization applies. Block-memoization is on whether or not `streaming === true`. It does not select a different Markdown grammar. Lifecycle-driven UI, including the cursor and Mantine code handling, can still change when the flag changes.
 
 ---
 
@@ -58,7 +57,7 @@ When `blockMemo` is `true` (the default), the rendering pipeline:
    - `ctx` digest (for blocks that depend on cross-block syntax like footnote refs / link defs)
    - `startOffset` and `startLine` (so identical content at different positions don't false-cache)
 
-Cached blocks skip `hast-util-to-jsx-runtime` and React reconcile work entirely — the cached `ReactNode` is returned directly. Output is **byte-identical** to the disabled path.
+A cache hit returns the existing `ReactNode` and skips its hast-to-JSX conversion. Unchanged element identity reduces reconciliation work, while descendants can still update through local state, context, or an external-store subscription. Output is **byte-identical** to the disabled path.
 
 ### What invalidates a block
 
@@ -90,7 +89,7 @@ Output is **structurally** unchanged for standalone use. Performance regresses t
 
 In production for streaming workloads: **leave it on**.
 
-> ⚠️ **Cross-chunk coordination requires `blockMemo` to stay `true`.** When the flag is `false`, the renderer takes the legacy path which **does not wire `Registry` through**. Wrapping `<AIMarkdown>` in `<AIMarkdownDocuments>` while keeping `blockMemo={false}` silently degrades — orphan footnote defs aren't protected, references across chunks resolve as empty placeholders, and the aggregate footnote footer doesn't render. If you need cross-chunk behavior, keep block memoization enabled (the default).
+> ⚠️ **Cross-chunk coordination requires `blockMemo` to stay `true`.** When the flag is `false`, the renderer takes the legacy path which **does not wire `Registry` through**. Wrapping `<AIMarkdown>` in `<AIMarkdownDocuments>` while keeping `blockMemo={false}` silently degrades — cross-chunk references remain unresolved with standalone semantics and the document-wide aggregate footer is not produced. If you need cross-chunk behavior, keep block memoization enabled (the default).
 
 ---
 
@@ -134,7 +133,7 @@ SSR always takes the full path (per-request state starts empty), so server outpu
 
 ### Measured effect
 
-On the Storybook benchmark payloads, the freeze boundary covers ~73–87% of realistic LLM streaming content, cutting the parse+transform stages to roughly the tail's share. Measured in a real browser (see [Benchmark](./benchmark.md) for full tables and methodology): **83–94% less pipeline stage time** — footnote-bearing payloads included since v2 (84% with the defs tail on, identical to plain payloads) — and with both flags on, 16×-payload p50 commit time drops from 32.4 ms to 7.5 ms. Coordinated documents measure smaller (26% at 1× — short per-chunk documents, cross-references pinned by design) and scale the same way. Use the `IncrementalParseCompare` / `BoostCompare` / `CrossChunkIncrementalCompare` stories to measure your own payloads.
+On the Storybook benchmark payloads, the freeze boundary covers ~73–87% of realistic LLM streaming content, cutting the parse+transform stages to roughly the tail's share. Measured in a real browser (see [Benchmark](./benchmark.md) for full tables and methodology): **83–94% less pipeline stage time in the historical July 2026 runs** — footnote-bearing payloads included since v2 (84% with the defs tail on, identical to plain payloads) — and with both flags on, 16×-payload p50 commit time drops from 32.4 ms to 7.5 ms. Coordinated documents measure smaller (26% at 1× — short per-chunk documents, cross-references pinned by design) and scale the same way. Use the `IncrementalParseCompare` / `BoostCompare` / `CrossChunkIncrementalCompare` stories to measure your own payloads.
 
 ### Footguns
 
@@ -152,8 +151,8 @@ Block-memoization treats several props as cache dependencies. A new identity on 
 | ---------------------- | ---------------------------------------------- | ----------------------------------------------------- |
 | `content`              | Not in the table — strings deep-equal by value | Plain string, no special handling                     |
 | `customComponents`     | `DEEP_EQUAL` backstop                          | Module scope or `useMemo` for zero-overhead           |
-| `contentPreprocessors` | `WARN_ONLY` — function array can't be compared | Module scope **required**                             |
-| `urlTransform`         | `WARN_ONLY` — functions can't be deep-compared | Module scope **required**                             |
+| `contentPreprocessors` | `WARN_ONLY` — function array can't be compared | Module scope or dependency-correct memoization        |
+| `urlTransform`         | `WARN_ONLY` — functions can't be deep-compared | Module scope or dependency-correct memoization        |
 | `sanitizeSchema`       | `DEEP_EQUAL` backstop                          | Module scope **recommended**                          |
 | `enginePlugins`        | `DEEP_EQUAL` (elements are module singletons)  | Module scope                                          |
 | `metadata`             | `PASS_THROUGH` — deliberately exempted         | Doesn't affect block-memo (lives in separate context) |
@@ -171,7 +170,8 @@ function MyApp() {
 }
 
 // ✅ Module scope — stable, cache stays warm.
-const URL_TRANSFORM = (url) => (/^myapp:/.test(url) ? url : '');
+const URL_TRANSFORM: UrlTransform = (url, key, node) =>
+  key === 'href' && /^myapp:/i.test(url) ? url : defaultUrlTransform(url, key, node);
 function MyApp() {
   return <AIMarkdown content={c} urlTransform={URL_TRANSFORM} />;
 }
@@ -251,18 +251,18 @@ The `streamingCursor` slot renders the given component after the content while `
 
 ## Profiling
 
-The library is structured so the dominant work during streaming is:
+Separate these stages when profiling; their cost depends on which paths are eligible:
 
-1. Parsing (`unified.parse` + `mdast-util-from-markdown`) — proportional to total content length, not delta.
+1. Parsing and transforming — the full source on a fallback, or the unfrozen tail on a successful splice.
 2. Walking mdast/hast to build the block plan — proportional to number of blocks.
-3. Rendering only the changed block(s) — proportional to delta.
+3. Constructing React elements for cache misses, then React updates and browser layout. A small source delta can change a large block or reference context.
 
-The first two are unavoidable per-frame work; the third is what block memoization optimizes. For a long document with small per-token deltas, (3) approaches zero and (1)+(2) dominate.
+That is the full-parse baseline, not the complete current cost model. Incremental parsing can reduce (1) to the active tail, and retained-prefix planning can reduce repeated per-block work in (2). Top-level traversal, some reference-context walks, caller preprocessing, registry notifications, React work, and layout remain. A single growing paragraph can keep most of the source in the active tail.
 
 If profiling shows `<AIMarkdown>` as the bottleneck:
 
 1. Check that `customComponents`, `urlTransform`, `sanitizeSchema`, `enginePlugins`, `contentPreprocessors` are all module-scope or stable. Inline props are the most common cause of perf regressions.
-2. Try `blockMemo={false}` to isolate whether the issue is in memoization or upstream.
+2. Compare `incrementalParse={false}` first while keeping memoization enabled. Use `blockMemo={false}` only as a standalone diagnostic: it also disables incremental parsing and coordination, so it changes more than one variable.
 3. Profile with React DevTools — a tree with most blocks under "Did not render" is healthy.
 
 ### Built-in stage timing (dev builds only)
@@ -337,7 +337,7 @@ function Bad({ content }: { content: string }) {
 }
 
 // ✅ Hoist — define once at module scope.
-const Link = ({ href, children }: { href?: string; children: React.ReactNode }) => (
+const Link = ({ href, children }: { href?: string; children?: React.ReactNode }) => (
   <a href={href} className="link">
     {children}
   </a>
@@ -376,7 +376,7 @@ Block memoization wins by dividing work into many small caches. If your content 
 
 ### Mistaking `streaming` for an in-progress signal that pauses rendering
 
-`streaming === true` does not delay rendering. Content is rendered immediately as it arrives. The flag is purely a _signal_ to your custom components that more content is coming. If you need a paused/buffered render (e.g. only update every 100ms), implement that in **your** component upstream of `<AIMarkdown>` — debounce the `content` you pass.
+`streaming === true` does not delay rendering. Content is rendered immediately as it arrives. The flag communicates lifecycle and controls associated UI. For buffered delivery, batch upstream updates with a bounded flush interval and flush on completion; a trailing debounce can postpone output indefinitely under continuous input. For visual typewriter pacing, use [smooth streaming](./smooth-streaming.md), which tracks source completion and reveal completion separately.
 
 ## Mantine code display cadence
 
@@ -385,3 +385,28 @@ Ordinary streaming code blocks coalesce appended display updates with `codeBlock
 The copy control reads the latest unformatted source independently of the displayed snapshot. Each block retains only its latest highlighting result, keyed by code, language, color scheme and highlighter function identity; outer adapter Provider renders therefore do not repeat identical highlighting. Adapter/theme changes still invalidate the result. Mermaid keeps its separate serial render queue.
 
 Retained reference-bearing prefix blocks can now reuse their block plans. Tail planning uses full-document reference context whenever the prefix contains references, preserving global context, ranks and occurrence counts. Raw HTML and definition ownership still use the conservative full planner. This reduces repeated per-block planning; document context walks and top-level array work remain.
+
+## Separate performance from delivery semantics
+
+Use the full accumulated source as `content`. If a network reader receives three pieces `"Hel"`, `"lo"`, and `" world"`, the renderer should normally receive `"Hel"`, `"Hello"`, and `"Hello world"`. Feeding only the latest piece is replacement, not append-only streaming. Likewise, a changing React key unmounts the instance and discards its caches even if the text is append-only.
+
+Application batching can be a valid optimization when update frequency exceeds the useful paint cadence. It trades freshness for fewer updates; block memoization does not make that trade unnecessary. Measure arrival-to-display delay as well as pipeline time, and deliver the final accumulated value immediately when the transport completes. Do not use an unbounded debounce for a continuously active stream.
+
+A smooth reveal intentionally adds visual updates between network arrivals. Its prefix often qualifies for incremental parsing, but a freeze-safe boundary is still required. A long unfinished fence, an unresolved early reference, or a rewriting preprocessor can keep frames on the full path. “Append-only” is the first gate, not a guarantee that the whole frame is constant-time.
+
+## A repeatable investigation
+
+1. Record package versions and the exact accumulated source sequence. Preserve replacements and completion events.
+2. Measure the default standalone path with stable component and policy references.
+3. Disable only `incrementalParse` to isolate parse reuse while keeping block memoization and coordination semantics available.
+4. For standalone output, compare `blockMemo={false}` separately. Do not interpret this comparison as a coordinated-mode performance toggle.
+5. Use stage timing to attribute parse/transform/plan/conversion cost, then a production browser workload to inspect layout and responsiveness.
+6. Recheck correctness on the same frame sequence. A fast result that omitted content is a failed run.
+
+The [historical benchmark tables](./benchmark.md) record a specific development-build experiment. The [browser harness](../benchmarks/README.md) measures published build entries and has explicit pacing and measurement limits. Neither supplies a universal frame-rate guarantee or proves that all cost is proportional to the newest token.
+
+## Context and cache boundaries
+
+A new metadata reference wakes metadata consumers without invalidating the parse/block cache. A new `urlTransform` reference invalidates rendered output even if the function body looks unchanged. A new preprocessor-array reference reruns preprocessing, but a primitive string that remains equal by value can still leave downstream memos intact. A changed slot component type can remount the subtree rather than merely invalidate a block.
+
+Use `useStableRecord` to understand these policies, not to suppress real updates. `DEEP_EQUAL` restores a previous reference only for equal values; it cannot rescue a newly created component function. `WARN_ONLY` diagnoses identity churn without altering it. `PASS_THROUGH` leaves opaque metadata untouched. Keep expensive work inside custom renderers memoized by its actual input, and keep their subscriptions as narrow as practical.

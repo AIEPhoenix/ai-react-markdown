@@ -1,29 +1,12 @@
 # Benchmark: block-memo × incremental parse
 
-Measured results for the two streaming optimizations — **block-level
-memoization** (`blockMemo`, default on) and **incremental
-prefix-freeze parsing** (`incrementalParse`, default on since
-v1.8.0) — individually and combined, against the legacy full pipeline.
-(Measurements were taken on 1.x builds, where the flags were the
-`config.blockMemoEnabled` / `config.incrementalParseEnabled` fields;
-the engines are semantically unchanged in 2.0.) Read
-[Streaming & Performance](./streaming-and-performance.md) first for what
-each mechanism does; this document is the numbers.
+This page preserves the in-browser comparison study for block memoization and incremental prefix-freeze parsing. It separates pipeline stage time from React commit time and keeps the measured payload sizes, run counts, and noise bands so the reported savings can be interpreted and reproduced.
 
-Everything here is reproducible from the Storybook comparison stories — the
-methodology section tells you exactly which story and which toggles. It is a
-manual, in-browser procedure (there is no CLI that emits these tables); the
-one scripted micro-benchmark in the repo is `pnpm bench` (Vitest bench —
-currently the LaTeX preprocessor's stateless vs incremental cost).
+The tables are a **2026-07-15 snapshot on 1.x development builds**. At that time the switches were `config.blockMemoEnabled` and `config.incrementalParseEnabled`; their current names are `blockMemo` and `incrementalParse`, both enabled by default. The “v2 regimes” label below refers to the second iteration of the incremental engine in that study, not a claim that package 2.0 was benchmarked on that date.
 
-> **Snapshot date.** The numbers below were measured on 2026-07-15 against
-> 1.x builds (React dev build). Later releases changed parts of the
-> streaming cost picture — notably 2.4.5's LaTeX incremental back-off (a
-> permanently-failing freeze went from ~3× the stateless cost to ~1×) and
-> the freeze-scanner model fixes since — without being re-measured here.
-> Treat the tables as the shape of the effect, not as current absolutes.
+Current releases have changed preprocessing, boundary detection, planning, registry subscriptions, and code presentation. The old measurements remain evidence for the tested implementations, not current latency promises. Read [streaming and performance](./streaming-and-performance.md) for the implementation now in the repository.
 
----
+There are three measurement tools with different scopes: Storybook comparison stories generated the manual tables here; `pnpm bench` runs the Vitest LaTeX microbenchmark; and [`benchmarks/`](../benchmarks/README.md) contains the production browser harness invoked by `pnpm bench:web`. None automatically regenerates another tool's historical tables.
 
 ## Methodology
 
@@ -103,13 +86,13 @@ the standalone axis.
 
 ## Results — 16× payload (11,872 chars, ~2,220 frames, single runs)
 
-| Comparison                | Headline metric | Result                                                                          |
-| ------------------------- | --------------- | ------------------------------------------------------------------------------- |
-| `BlockMemoCompare`        | commit-total Δ  | **4,094 ms saved (7.0%)**, beyond the ±2,347 ms noise band; p95 commit −12.4 ms |
-| `IncrementalParseCompare` | pipeline        | **1,706 ms vs 28,455 ms → 94% saved**; commit Δ +24,468 ms                      |
-| `BoostCompare`            | commit total    | **25,563 ms vs 57,353 ms → 31,790 ms saved (55%)**                              |
-| `BoostCompare`            | p50 commit      | **7.5 ms vs 32.4 ms (4.3×)** — typical frame back inside the 60 fps budget      |
-| `BoostCompare`            | p95 commit      | 71 ms vs 105 ms                                                                 |
+| Comparison                | Headline metric | Result                                                                                             |
+| ------------------------- | --------------- | -------------------------------------------------------------------------------------------------- |
+| `BlockMemoCompare`        | commit-total Δ  | **4,094 ms saved (7.0%)**, beyond the ±2,347 ms noise band; p95 commit −12.4 ms                    |
+| `IncrementalParseCompare` | pipeline        | **1,706 ms vs 28,455 ms → 94% saved**; commit Δ +24,468 ms                                         |
+| `BoostCompare`            | commit total    | **25,563 ms vs 57,353 ms → 31,790 ms saved (55%)**                                                 |
+| `BoostCompare`            | p50 commit      | **7.5 ms vs 32.4 ms (4.3×)** — typical React commit below 16.7 ms; total frame includes other work |
+| `BoostCompare`            | p95 commit      | 71 ms vs 105 ms                                                                                    |
 
 ## Correctness (all runs)
 
@@ -130,8 +113,7 @@ memo-enabled baseline).
 
 1. **Incremental parsing is the dominant win for long streaming documents,
    and it scales.** Pipeline savings grow from 84% (4×) to 94% (16×)
-   because the full-parse cost is O(document) per frame while the
-   incremental cost is O(tail). The measurement-study estimate (70–89%,
+   because a full parse revisits the document while a successful splice parses and transforms the unfrozen tail. This does not establish tail-only complexity for the complete renderer: planning and other document-wide work remain. The measurement-study estimate (70–89%,
    parse-only) is exceeded in the real pipeline because the transform
    plugin chain is skipped over the frozen prefix too.
 2. **Block-memo alone ties at small/medium payloads and wins clearly at
@@ -139,8 +121,7 @@ memo-enabled baseline).
    split its documentation describes. Its role is the render-layer
    guardrail and the host for incremental parsing.
 3. **The user-perceivable number is boost p50: 32.4 ms → 7.5 ms per commit at
-   16×** — from consistently blowing the frame budget to comfortably inside
-   it.
+   16×** — a substantial reduction in measured React work. A commit below 16.7 ms still shares a frame with layout, painting, other scripts, and browser work; it does not establish sustained 60 fps.
 
 ## Footguns — reading these numbers
 
@@ -183,3 +164,11 @@ spies off, hit **Run ×3**; read the verdict banner (block-memo axis) or the
 summary strip (incremental/boost/cross-chunk axes). For per-side
 browser-level metrics use the `*Isolated` variants from a loopback hostname
 on the dev machine.
+
+## Re-measure a current change
+
+Choose the question first. For an incremental-parser change, compare parse and transform stages with identical plugin selections and input snapshots. For a custom renderer or code-highlighting change, use a production browser app and include the same CSS and providers an application uses. For coordinated references, include multiple mounted chunks and definition changes; standalone numbers cannot estimate registry fanout.
+
+Record the commit, package versions, browser, device, build mode, payload, delivery schedule, and repetitions with the result. Preserve correctness checking alongside timing. Normalize generated document prefixes only where the equality harness requires it; do not erase a meaningful href, missing footer, or reordered node merely to make a comparison pass.
+
+Compare each scenario with itself before and after the change. Report medians or repeated runs with their spread, identify timeouts explicitly, and separate warm startup from steady streaming. A large relative parser saving can coexist with a small end-to-end improvement when highlighting or layout dominates; that is a useful attribution result, not a contradiction.

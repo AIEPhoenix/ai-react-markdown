@@ -15,7 +15,9 @@
 [![Release](https://img.shields.io/github/actions/workflow/status/AIEPhoenix/ai-react-markdown/release.yml?label=release&logo=githubactions&logoColor=white)](https://github.com/AIEPhoenix/ai-react-markdown/actions/workflows/release.yml)
 [![part of ai-react-markdown](https://img.shields.io/badge/monorepo-ai--react--markdown-8a2be2?logo=github)](https://github.com/AIEPhoenix/ai-react-markdown)
 
-Mantine UI integration for `@ai-react-markdown/core`. Provides a drop-in `<MantineAIMarkdown>` component that renders AI-generated markdown with Mantine-themed typography, syntax-highlighted code blocks, Mermaid diagrams, and automatic color scheme detection.
+`@ai-react-markdown/mantine` adds Mantine presentation to the core React renderer: theme-aware typography, expandable highlighted code, source-preserving JSON formatting, and Mermaid diagrams. Its `MantineAIMarkdown` wrapper accepts core's props and adds one `codeBlock` behavior group.
+
+Parsing, URL policy, metadata, and cross-chunk references remain core responsibilities. The integration supplies default slots and a `pre` renderer; caller overrides take precedence. Set up the stylesheet imports and both providers in the quick start before using the code-block features. If you replace `pre`, your component takes over the formatting, copy, highlighting, and diagram behavior described here.
 
 > **Upgrading from 1.x?** v2.0.0 removes the 1.x object-based `config` channel — the Mantine code-block options move to a flat `codeBlock` prop, and the render-state hook is replaced by narrow hooks plus `useMantineCodeBlockOptions()`. See the [migration guide](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/docs/migrating-to-v2.md).
 
@@ -24,7 +26,7 @@ Mantine UI integration for `@ai-react-markdown/core`. Provides a drop-in `<Manti
 - **Mantine typography** -- markdown content is wrapped in Mantine's `<Typography>` so it inherits the active theme's font family, line height, and color tokens
 - **Syntax highlighting** -- code blocks render via `@mantine/code-highlight` (powered by highlight.js), with language-labelled tabs, expand/collapse, and optional auto-detection for unlabelled blocks
 - **Mermaid diagrams** -- fenced `mermaid` code blocks render as interactive SVG diagrams with dark/light theme support, source toggle, copy, and open-in-new-window
-- **JSON pretty-print** -- fenced `json` code blocks are parsed and re-serialized with 2-space indent before highlighting; string values that are themselves JSON documents (an object or array — the tool-call transcript shape) are expanded too, primitive-looking strings (`"true"`, `"123"`) are left as written
+- **JSON pretty-print** -- fenced `json` code blocks are validated and formatted with 2-space indent while retaining numeric tokens, duplicate keys, and key order; string values that are themselves JSON documents (an object or array — the tool-call transcript shape) are expanded too, primitive-looking strings (`"true"`, `"123"`) are left as written
 - **Automatic color scheme** -- detects Mantine's computed color scheme (`useComputedColorScheme`) and forwards it to the core renderer when no explicit `colorScheme` prop is supplied
 - **Mantine-scoped CSS** -- extra-styles wrapper overrides Mantine spacing/font-size custom properties to use relative `em` units, giving consistent scaling at any base font size
 
@@ -48,7 +50,7 @@ All core features (GFM, LaTeX math, CJK support, streaming, metadata context, co
 | React          | ≥ 19                                                                                                   |
 | Node           | ≥ 20 (`engines.node`)                                                                                  |
 | Module formats | ESM and CJS with types; the compiled stylesheet is exported as `@ai-react-markdown/mantine/styles.css` |
-| Core           | Pinned by peer range to the same release train (`@ai-react-markdown/core ^2.x`)                        |
+| Core           | Core peer `^2.13.3` in this checkout; publish versions follow the core release train                   |
 
 ## Installation
 
@@ -69,7 +71,7 @@ yarn add @ai-react-markdown/mantine @ai-react-markdown/core
 {
   "react": ">=19",
   "react-dom": ">=19",
-  "@ai-react-markdown/core": "^2.13.2",
+  "@ai-react-markdown/core": "^2.13.3",
   "@mantine/core": "^9.0.0",
   "@mantine/code-highlight": "^9.0.0",
   "highlight.js": "^11.11.2"
@@ -146,17 +148,19 @@ function StreamingChat({ content, isStreaming }: { content: string; isStreaming:
 
 ## Configuration
 
-The Mantine package adds one behavior group on top of core's flat props: the `codeBlock` prop. All core flat props (`enginePlugins`, `blockMemo`, `incrementalParse`, `preserveOrphanReferences`, …) remain available unchanged.
+The `codeBlock` prop transports a partial behavior group. An absent or null group contributes no `codeBlock` key, so an outer `AIMarkdownBehaviorsProvider` can supply it. A present group replaces an outer group atomically: `{ defaultExpanded: false }` does not inherit the outer group's other fields. The narrow hook fills omitted fields from package defaults.
 
 ### `codeBlock` (`Partial<MantineCodeBlockOptions>`)
 
-| Field                       | Type      | Default | Description                                                                                                                                                                         |
-| --------------------------- | --------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `defaultExpanded`           | `boolean` | `true`  | Whether code blocks start in their expanded state. When `false`, long blocks are collapsed with an expand button.                                                                   |
-| `autoDetectUnknownLanguage` | `boolean` | `false` | When `true`, uses `highlight.js`'s `highlightAuto` to determine the language of code blocks lacking an explicit annotation.                                                         |
-| `formatJson`                | `boolean` | `true`  | Format JSON while preserving number tokens, key order and duplicate keys. Set `false` to display source text.                                                                       |
-| `expandNestedJson`          | `boolean` | `true`  | When JSON formatting is enabled, expand string values containing JSON objects or arrays. Set `false` for whitespace formatting only.                                                |
-| `highlightIntervalMs`       | `number`  | `50`    | Coalesce streaming code display updates over this interval in milliseconds; `0` updates every frame. Completion and replacement update immediately; copy always uses latest source. |
+| Field                       | Type      | Default | Behavior                                                                                 |
+| --------------------------- | --------- | ------- | ---------------------------------------------------------------------------------------- |
+| `defaultExpanded`           | `boolean` | `true`  | Initial expanded state; false starts long blocks collapsed with an expand action         |
+| `autoDetectUnknownLanguage` | `boolean` | `false` | Guess an unannotated block's language with highlight.js                                  |
+| `formatJson`                | `boolean` | `true`  | Format valid JSON for display while preserving numeric tokens, duplicate keys, and order |
+| `expandNestedJson`          | `boolean` | `true`  | While formatting, expand string values that contain JSON objects or arrays               |
+| `highlightIntervalMs`       | `number`  | `50`    | Coalesce appended code display updates during streaming; zero displays every update      |
+
+Explicit undefined fields retain their shipped defaults. The highlight interval must be finite and non-negative; invalid values fall back to 50 ms. Do not assume that null is a supported value for individual fields merely because null at the group boundary counts as absent.
 
 ### Example: Collapsed Code Blocks
 
@@ -164,17 +168,22 @@ The Mantine package adds one behavior group on top of core's flat props: the `co
 <MantineAIMarkdown content={markdown} codeBlock={{ defaultExpanded: false }} />
 ```
 
-The group value replaces **atomically** -- omitted fields fall to the shipped defaults (`defaultMantineCodeBlockOptions`), applied exactly once inside `useMantineCodeBlockOptions()`. There is no deep merge.
+The omitted options resolve to the defaults in the table. To keep JSON structure exactly as written apart from whitespace, set `expandNestedJson: false`; to display the original JSON text, set `formatJson: false`. Neither setting changes what the copy button copies.
 
-For integration-time packaging, the package re-exports a widened behaviors factory (core behavior fields + `codeBlock`):
+For a stable reusable fragment, use the widened factory:
 
 ```tsx
 import { defineMantineBehaviors } from '@ai-react-markdown/mantine';
 
-const BEHAVIORS = defineMantineBehaviors({ blockMemo: false, codeBlock: { defaultExpanded: false } });
+const BEHAVIORS = defineMantineBehaviors({
+  blockMemo: true,
+  codeBlock: { defaultExpanded: false, expandNestedJson: false },
+});
 
-<MantineAIMarkdown content={markdown} {...BEHAVIORS} />;
+<MantineAIMarkdown content={markdown} {...BEHAVIORS} streaming={isStreaming} />;
 ```
+
+The factory provides types and shallow freezing, not default resolution or recursive merging. Runtime props placed after a spread win in ordinary JSX order. Behavior-group defaults are applied only by `useMantineCodeBlockOptions()`, so custom code renderers should read that hook rather than reproduce the table locally.
 
 ## Hooks
 
@@ -283,7 +292,7 @@ This uses `highlight.js`'s `highlightAuto` to guess the language. Results may va
 
 ### Preloading the on-demand assets
 
-`mermaid` and (for auto-detection) `highlight.js` are loaded lazily by the code-block renderers. An app that would rather pay that cost at startup — a documentation page whose first screen shows a diagram, or a chat UI that wants zero first-diagram latency — calls the exported helper once at boot:
+`mermaid` and (for auto-detection) `highlight.js` are loaded lazily by the code-block renderers. An app that would rather pay that cost at startup — a documentation page whose first screen shows a diagram, or a chat UI that wants to reduce the first diagram’s module-loading delay — calls the exported helper once at boot:
 
 ```tsx
 import { preloadMantineCodeAssets } from '@ai-react-markdown/mantine';
@@ -295,7 +304,7 @@ Importing the modules yourself at app entry (`import 'mermaid'`) has the same ef
 
 ## Mermaid Diagrams
 
-Fenced code blocks with the `mermaid` language identifier render as interactive SVG diagrams. The `mermaid` module is loaded on demand — the first diagram that renders pays the import (the raw source shows as a code block while it loads), and an app whose content never contains a mermaid fence never downloads it:
+Fenced code blocks with the `mermaid` language identifier render as interactive SVG diagrams. The `mermaid` module is loaded on demand — the first diagram that renders pays the import (the raw source shows as a code block while it loads), and in a code-splitting bundler this can defer its chunk until needed. Actual delivery depends on your bundler and any eager imports or preload call:
 
 ````markdown
 ```mermaid
@@ -311,7 +320,7 @@ Features:
 - Automatic dark/light theme switching driven by Mantine's color scheme
 - Toggle between rendered diagram and raw source
 - Copy button for the Mermaid source
-- Click the rendered diagram to open the SVG in a new window
+- Use the header action to open the SVG in a new window; the diagram itself retains its graphics semantics
 - Chart type label displayed in the header
 - Graceful fallback to source-code display on parse errors; the last successful render is preserved across transient parse failures during streaming
 
@@ -321,7 +330,8 @@ The `mermaid` library is a direct dependency of this package -- no additional in
 
 `MantineAIMarkdown` resolves its color scheme in this order:
 
-1. Explicit `colorScheme` prop (always wins when supplied)
+1. Explicit non-null `colorScheme` prop
+   (undefined uses the wrapper default; runtime null reaches core’s fallback)
 2. Mantine's `useComputedColorScheme('light')` -- the live computed scheme from the active `MantineProvider`
 
 ```tsx
@@ -439,6 +449,10 @@ Caller-provided `Typography`, `ExtraStyles`, and `customComponents` props overri
 
 - `defaultMantineCodeBlockOptions` -- shipped defaults of the `codeBlock` behavior group (frozen)
 
+### Asset helpers
+
+- `preloadMantineCodeAssets()` — starts the lazy Mermaid and auto-detection imports; idempotent, with renderer fallback if loading fails
+
 ### Factories
 
 - `defineMantineBehaviors()` -- widened behaviors factory (core behavior fields + `codeBlock`); identity + types + `Object.freeze`, zero logic
@@ -470,6 +484,24 @@ Everything below applies unchanged through `<MantineAIMarkdown>`; the mantine-sp
 ## Core Package
 
 For base features, configuration options, content preprocessors, TypeScript generics, and architecture details, see the [`@ai-react-markdown/core` README](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/packages/core/README.md).
+
+## Streaming code: source, display, and asynchronous work
+
+Ordinary code highlighting has separate source and display values. The latest source updates immediately for copying, while append-only streaming display updates can be coalesced over `highlightIntervalMs`. This is a bounded pending update: new appends do not keep postponing the same deadline indefinitely. Completion, replacement, language changes, and non-streaming updates bypass the interval so the final view catches up immediately.
+
+The highlighter retains only its latest result for the same code, language, color scheme, and highlight function. It is not an unbounded cache of every streamed prefix. JSON formatting first validates a complete candidate, then formats tokens without converting number spellings through a stringify round trip. A nested JSON string expands only when it contains an object or array; primitive-looking strings stay strings. Nested expansion changes the display structure, so disable it when showing that distinction matters.
+
+Mermaid has a separate asynchronous lifecycle. Initialization, parsing, and rendering are serialized, with only the latest pending request retained per instance. During an incomplete stream, the last valid diagram remains visible after transient failures; before a valid diagram exists, source provides the fallback. Completion triggers the final corrective render. The renderer enforces strict Mermaid security configuration and handles diagram generation independently of ordinary highlight coalescing.
+
+Only a plain pre/code shape is eligible for replacement: one positioned code child containing text, no pre attributes, and no code attributes beyond language classes. Raw HTML with nested markup, siblings, or extra attributes remains a normal pre element, preserving information a highlighter would otherwise discard. A caller-provided `pre` override replaces this entire decision path; a `code` override alone does not intercept fences consumed by Mantine's pre renderer.
+
+## Verify an application setup
+
+Check light and dark schemes, a known language, an unannotated block, JSON with a large numeric literal, a nested JSON string, and a Mermaid fence that is incomplete before becoming valid. Copy each source and compare its whitespace with the original. Then replace a block with different content of the same length, complete a stream during a pending highlight interval, and change the theme after a diagram has rendered.
+
+For custom wrappers, test an outer behavior provider both with an absent `codeBlock` prop and a present partial group. For multiple logical chunks, use the same core `AIMarkdownDocuments` wrapper and explicit document ids; no Mantine-specific registry exists. Smooth presentation composes through core's hooks, whose returned streaming state includes the reveal drain.
+
+See [`src/MantineAIMarkdown.tsx`](./src/MantineAIMarkdown.tsx) for wrapper precedence and [`src/defs.tsx`](./src/defs.tsx) for the authoritative group defaults. The package's README describes its presentation layer; the [core README](../core/README.md) remains the reference for inherited parsing and coordination behavior.
 
 ## License
 

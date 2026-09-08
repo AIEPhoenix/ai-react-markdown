@@ -1,18 +1,22 @@
 # Streaming Cursor
 
-`streamingCursor` renders a "still generating" indicator right after the **last streamed character** — and keeps it visibly alive through token stalls (tool calls, long reasoning pauses, network hiccups), so users can tell "still generating" from "stuck" even when no new content reaches the frontend.
+`streamingCursor` is a component slot for a visual “still generating” indicator. Core mounts it inside the typography wrapper while `streaming` is true. The exported `AIMarkdownStreamingCursor` positions a small overlay after the final supported text anchor and keeps animating during pauses in delivery.
 
 ```tsx
 import AIMarkdown, { AIMarkdownStreamingCursor } from '@ai-react-markdown/core';
 
 function StreamingMessage({ content, done }: { content: string; done: boolean }) {
-  return <AIMarkdown content={content} streaming={!done} streamingCursor={AIMarkdownStreamingCursor} />;
+  return (
+    <div aria-busy={!done}>
+      <AIMarkdown content={content} streaming={!done} streamingCursor={AIMarkdownStreamingCursor} />
+    </div>
+  );
 }
 ```
 
-While `streaming === true`, the built-in cursor tracks the tail of the rendered content; when `streaming` flips to `false` it unmounts. That's the entire integration surface — no config flag, no CSS import.
+Keep `content` equal to the actual accumulated Markdown. The cursor is separate from the parser input, so copying text, extracting code, and incremental append checks receive the original source. The built-in indicator needs no stylesheet import. When streaming ends the slot unmounts; when no supported anchor exists it remains hidden even if streaming is still active.
 
----
+For a smooth-stream wrapper, the inner streaming flag remains active until the reveal drains. For a response that has not produced its first character, render a waiting placeholder outside the Markdown component.
 
 ## Why not append a cursor character?
 
@@ -30,7 +34,7 @@ Three layers, mechanics separated from visuals:
 
 1. **The slot** (`streamingCursor?: ComponentType` on `<AIMarkdown>`): core renders the given component after the content — inside the typography wrapper and both context providers — only while `streaming === true`. No props are injected; the slot controls only _when_ and _where_ the component mounts. Like `Typography`, it is compared by identity: **define it at module scope**.
 
-2. **The positioner shell** (`<AIMarkdownStreamingCursor />`): a zero-height overlay that finds the last text node of the rendered content (a whitelist DOM walk), measures its final character with the Range API (surrogate-pair aware, so emoji tails measure correctly), and imperatively translates an absolutely-positioned holder to sit right after it. Repositioning is driven by three pre-paint signals — a MutationObserver on the content root (tokens, tail-block morphs), a ResizeObserver (container reflow), and `document.fonts.ready` (font swap) — so the cursor moves in the same frame as the content, with no flicker. Pixels move, not DOM nodes: the cursor never enters the text flow, so select-all/copy never picks it up.
+2. **The positioner shell** (`<AIMarkdownStreamingCursor />`): a zero-height overlay that finds the last text node of the rendered content (a whitelist DOM walk), measures its final character with the Range API (surrogate-pair aware, so emoji tails measure correctly), and imperatively translates an absolutely-positioned holder to sit right after it. Repositioning is driven by three pre-paint signals — a MutationObserver on the content root (tokens, tail-block morphs), a ResizeObserver (container reflow), and `document.fonts.ready` (font swap) — so positioning responds to content and geometry changes without routing x/y coordinates through React state. Actual observer and paint timing remains browser-dependent. Pixels move, not DOM nodes: the cursor never enters the text flow, so select-all/copy never picks it up.
 
 3. **The indicator** (the actual visual): swappable via the shell's `indicator` prop, fed by a three-field contract (see [Custom indicators](#custom-indicators)).
 
@@ -47,17 +51,17 @@ A blinking dot sized to the current line (taller on headings, smaller on body te
 
 Detection is deliberately conservative: if the content tail can't anchor a cursor safely, the cursor hides for those frames and reappears when a text tail returns (the next mutation re-detects). Hiding triggers:
 
-| Tail situation                                                            | Why                                                                                                                                                  |
-| ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Fenced code / inline code (`pre`, `code`)                                 | Text-extracting custom renderers (e.g. mermaid) would be corrupted by injected markup — and an overlay inside a scrolling `pre` can't track reliably |
-| KaTeX output (`.katex`)                                                   | Position-less generated markup                                                                                                                       |
-| SVG (rendered mermaid)                                                    | Not text                                                                                                                                             |
-| Raw-HTML-produced unknown elements                                        | Whitelist walk — unknown structure is not entered                                                                                                    |
-| Void elements (`hr`, `br`, `img` as last node)                            | Nothing to anchor after                                                                                                                              |
-| Empty content (before the first token)                                    | No text at all — render your own placeholder next to `<AIMarkdown>` if you need one                                                                  |
-| Vertical writing modes                                                    | Not supported                                                                                                                                        |
-| A streaming link-reference definition (`[label]: …` at the tail)          | Renders nothing — there is no glyph to point at                                                                                                      |
-| A streaming footnote definition whose footer entry lives in another chunk | Under cross-chunk coordination the aggregate footer belongs to the last chunk; the cursor cannot truthfully point into another chunk's DOM           |
+| Tail situation                                                            | Why                                                                                                                                                                                            |
+| ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fenced code / inline code (`pre`, `code`)                                 | These are intentionally excluded anchors; a code renderer may own scrolling or replace source text with a different presentation. The overlay itself does not inject text into the code source |
+| KaTeX output (`.katex`)                                                   | Position-less generated markup                                                                                                                                                                 |
+| SVG (rendered mermaid)                                                    | Not text                                                                                                                                                                                       |
+| Raw-HTML-produced unknown elements                                        | Whitelist walk — unknown structure is not entered                                                                                                                                              |
+| Void elements (`hr`, `br`, `img` as last node)                            | Nothing to anchor after                                                                                                                                                                        |
+| Empty content (before the first token)                                    | No text at all — render your own placeholder next to `<AIMarkdown>` if you need one                                                                                                            |
+| Vertical writing modes                                                    | Not supported                                                                                                                                                                                  |
+| A streaming link-reference definition (`[label]: …` at the tail)          | Renders nothing — there is no glyph to point at                                                                                                                                                |
+| A streaming footnote definition whose footer entry lives in another chunk | Under cross-chunk coordination the aggregate footer belongs to the last chunk; the cursor cannot truthfully point into another chunk's DOM                                                     |
 
 Everything else — paragraphs, headings, list items, table cells, blockquotes, definition lists, inline formatting — anchors normally.
 
@@ -87,9 +91,9 @@ const MyCursor = () => <AIMarkdownStreamingCursor indicator={MyIndicator} />;
 
 Contract semantics:
 
-- `height` / `width` — rendered size of the anchor character, equality-short-circuited: they only change when the anchor enters a different font-size context (e.g. a heading), so size-only re-renders are rare.
+- `height` / `width` — rendered size of the anchor character, equality-short-circuited: they update when the measured dimensions differ. A different glyph, font, or layout can change them even at the same font size; equality avoids updates when the measurements stay equal.
 - **Vertical centering is the indicator's job.** The shell top-aligns its holder to the anchor character's box; an indicator shorter than `height` renders at the top of the line unless it centers itself — e.g. `marginTop: Math.round((height - size) / 2)` for a `size`-tall dot (exactly what the default indicator does). Full-`height` visuals (like the bar in the example above) need nothing.
-- `lastMutationAt` — updates once per mutation batch, meaning the indicator re-renders once per token. It's a leaf component, so this is negligible — and it's what lets a plain `useEffect` implement stall timers with no subscription machinery.
+- `lastMutationAt` — updates once per mutation batch, so a relevant DOM mutation batch can update the indicator. Mutation batches and transport tokens do not have a one-to-one relationship. It's a leaf component, so this is negligible — and it's what lets a plain `useEffect` implement stall timers with no subscription machinery.
 - Position (x/y) is **not** in the contract. It changes every token and must land in the same frame as the content change, so the shell applies it imperatively. Indicators never need to know where they are.
 
 ## Behavior details
@@ -141,3 +145,11 @@ Empty content has nothing to anchor to, so the cursor is hidden until the first 
 ### Wrapping the indicator in extra text-flow elements
 
 The indicator renders inside a zero-height, `pointer-events: none` overlay. If your custom indicator renders large content (a label, a toolbar), it will overlay the text below the anchor line — the shell reserves **no** layout space. Keep indicators glyph-sized; anything bigger belongs outside `<AIMarkdown>`.
+
+## Integrating a custom typography wrapper
+
+The shell locates the rendered content through its DOM parent. Preserve a real wrapper around the content and cursor siblings; a Fragment or `display: contents` changes the geometry assumptions even if ordinary Markdown still looks correct. Keep the cursor in the same content scope and avoid placing toolbars after the Markdown where a tail walk could mistake them for document content.
+
+To check positioning, use paragraphs that wrap, a heading-to-paragraph transition, RTL text, a final emoji, an asynchronous font load, and a streaming footnote. Also verify the deliberate hidden states: empty text, a code fence, math, and a final image. A hidden cursor in these states does not imply the request ended; the message's status UI owns that information.
+
+The built-in stall clock measures DOM activity under the content root, not transport health. Use your request state for errors, cancellation, and retries; a five-second spinner cannot distinguish those outcomes.

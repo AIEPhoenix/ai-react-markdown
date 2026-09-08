@@ -1,18 +1,16 @@
 # Custom Typography
 
-The `Typography` prop swaps the wrapper component that renders around all markdown output. Use it to integrate with a design system, apply theme-aware fonts/colors, or scope your own CSS.
+The `Typography` slot owns the outer presentation of a Markdown instance: its root element, font size, classes, and any surrounding design-system providers. Replace it when the built-in wrapper cannot express the structure you need. For changes limited to colors, spacing, or heading sizes, start with [design tokens](./design-tokens.md); those keep the existing wrapper and stylesheet.
 
-> Most theming needs are better served by **CSS custom property overrides** — see [Design Tokens](./design-tokens.md). Reach for a custom Typography component only when you need to change the **rendered structure** (e.g. an extra `<div>` for portaling, a Context provider, or non-standard DOM).
-
----
+A wrapper is part of the renderer's layout contract. It receives resolved theme values and injected CSS variables, and it must render its children intact. The children can contain Markdown blocks, a hidden tail signal, and an optional streaming cursor. A wrapper that drops styles or assumes a single child can break math sizing or cursor placement even if a short paragraph looks correct.
 
 ## The Typography contract
 
-A typography component receives four props and must wrap `children` in its root element:
+The exported type extends `PropsWithChildren`. It supplies `fontSize`, `variant`, `colorScheme`, and `style` in addition to `children`:
 
 ```ts
 interface AIMarkdownTypographyProps {
-  children: React.ReactNode;
+  children?: React.ReactNode;
   fontSize: string; // resolved (e.g. '0.9375rem')
   variant?: AIMarkdownVariant; // 'default' | string
   colorScheme?: AIMarkdownColorScheme; // 'light' | 'dark' | string
@@ -23,7 +21,7 @@ interface AIMarkdownTypographyProps {
 The `style` prop is **the critical part**. The core renderer injects CSS custom properties (currently `--aim-font-size-root`, more may be added in future minor versions) through `style`. Your typography component **must** merge `style` onto its root element — otherwise descendant CSS rules that reference `var(--aim-font-size-root)` (including the built-in `default` variant and all design tokens) will fall back to their inherited values.
 
 ```tsx
-import type { AIMarkdownTypographyComponent } from '@ai-react-markdown/core';
+import AIMarkdown, { type AIMarkdownTypographyComponent } from '@ai-react-markdown/core';
 
 const MyTypography: AIMarkdownTypographyComponent = ({ children, fontSize, colorScheme, style }) => (
   <div
@@ -47,7 +45,7 @@ const MyTypography: AIMarkdownTypographyComponent = ({ children, fontSize, color
 
 ```tsx
 import type { AIMarkdownTypographyComponent } from '@ai-react-markdown/core';
-import { ThemeProvider, useTheme } from 'my-design-system';
+import { useTheme } from 'my-design-system';
 
 const ThemedTypography: AIMarkdownTypographyComponent = ({ children, fontSize, colorScheme, style }) => {
   const theme = useTheme();
@@ -98,7 +96,7 @@ const GridFriendlyTypography: AIMarkdownTypographyComponent = ({ children, fontS
 );
 ```
 
-> Trade-off: `display: contents` removes the element from the layout tree, which can affect accessibility for assistive tech (the wrapper's semantic role is dropped). Use sparingly.
+> `display: contents` removes the wrapper’s layout box. Check the target browser’s accessibility behavior, and use a real layout box with the built-in cursor, whose coordinates depend on its content root. This pattern is for layouts that do not require that cursor geometry.
 
 ---
 
@@ -214,7 +212,7 @@ const Fixed: AIMarkdownTypographyComponent = ({ children, fontSize, style }) => 
 
 ### Changing the rendered root element on every render
 
-Typography is wrapped in React.memo internally via context; an inline JSX root that looks the same but has a new component identity each render defeats this. Define Typography components at module scope.
+The built-in typography component is memoized, but core does not automatically wrap every caller-provided slot in `memo`. React identifies a component by its function or class reference. Recreating that reference changes the component type, so React can unmount the old subtree and mount a new one, discarding state and caches. Define the slot at module scope; add `memo` only when its prop usage benefits from it.
 
 ```tsx
 // ⚠️ A new MyTypography reference every render = full re-render of the markdown tree.
@@ -234,17 +232,55 @@ function App() {
 
 ### Don't spread `...props` blindly onto the root if you also override children
 
+Forward the HTML attributes you intend to expose, not the entire slot-prop object. `fontSize`, `variant`, and `colorScheme` are component configuration, not native `<div>` attributes. Supplying children both in a spread and as JSX children is redundant; it does not make the wrapper disappear.
+
 ```tsx
-// ⚠️ `children` is spread twice — the second one wins and your wrapper is invisible.
+// Avoid forwarding component-only configuration as DOM attributes.
 const Broken: AIMarkdownTypographyComponent = (props) => <div {...props}>{props.children}</div>;
-```
 
-The safer pattern is to destructure explicitly:
-
-```tsx
-const OK: AIMarkdownTypographyComponent = ({ children, fontSize, variant, colorScheme, style }) => (
+const Explicit: AIMarkdownTypographyComponent = ({ children, fontSize, variant, colorScheme, style }) => (
   <div style={{ fontSize, ...style }} data-variant={variant} data-color-scheme={colorScheme}>
     {children}
   </div>
 );
 ```
+
+If you add custom inline values that overlap the injected `style`, choose a spread order deliberately. `style={{ ...ownStyles, ...style }}` preserves core's injected values. Reversing the order lets your values replace them; that is appropriate only when you intend to take responsibility for the sizing contract.
+
+## Children, DOM structure, and cursor placement
+
+Render `{children}` verbatim. Do not call `Children.only`, assume that the child is `<AIMarkdownContent>`, or clone it to attach a ref. Core supplies a Fragment containing the content and cursor slot. `ExtraStyles`, when present, receives that same group.
+
+The built-in cursor finds its content root through its DOM parent. Keep the cursor and rendered blocks beneath the same real element. Wrapping the entire group in one `<div>` works; moving selected children into separate containers or portals can make detection inspect the wrong subtree. A `display: contents` root can help a grid, but it has no ordinary layout box for the cursor's coordinate calculations. Use a regular layout element when combining custom typography with the built-in cursor.
+
+The actual structure is:
+
+```text
+Typography root
+└─ ExtraStyles root, when supplied
+   ├─ rendered Markdown blocks
+   ├─ hidden source-tail signal, when needed
+   └─ streamingCursor, while streaming is true
+```
+
+`ExtraStyles` receives children only. It can read the narrow theme hook if it needs theme data; it does not receive the typography `style` object as a prop. CSS variables reach it through inheritance from the typography root.
+
+## Reusing the default stylesheet with a custom wrapper
+
+The default stylesheet targets `.aim-typography-root`, with token declarations on `.default`, `.light`, and `.dark` variants. A custom wrapper named `.my-markdown` will not activate those selectors just because you imported the stylesheet. Either retain the expected classes or provide your own complete rules:
+
+```tsx
+const CompatibleTypography: AIMarkdownTypographyComponent = ({ children, fontSize, variant, colorScheme, style }) => (
+  <article
+    className={`aim-typography-root ${variant} ${colorScheme}`}
+    aria-label="Assistant message"
+    style={{ fontSize, ...style }}
+  >
+    {children}
+  </article>
+);
+```
+
+A custom variant name selects only CSS that you supply. It does not synthesize a new token scale. Likewise, a custom color-scheme string needs corresponding color rules. Test the wrapper with nested lists, blockquotes containing code, formulas inside headings, and a streaming tail; these expose inheritance and child-layout mistakes that plain prose does not.
+
+Implementation references: [`defs.ts`](../packages/core/src/defs.ts), [`Default.tsx`](../packages/core/src/components/typography/Default.tsx), and the `contentBody` composition in [`index.tsx`](../packages/core/src/index.tsx).

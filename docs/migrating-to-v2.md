@@ -1,16 +1,10 @@
 # Migrating from 1.x to 2.0
 
-v2.0.0 is a hard breaking upgrade of the configuration API. The `config` /
-`defaultConfig` object channel, its deep-merge machinery, and the
-render-state context are **removed outright** — there is no compatibility
-layer and no deprecation window. This guide is the complete migration
-story: every removed symbol has a one-to-one destination here, each with
-runnable before/after code.
+The 2.0 migration replaces `config` and `defaultConfig` with flat component props, a sealed engine-plugin selection, and separate contexts for document identity, metadata, state, theme, and behaviors. The old config types and render-state hooks were removed; upgrading requires updating imports and call sites rather than enabling a compatibility flag.
 
-What did NOT change: the rendering engine. The produced plugin chain is
-byte-equivalent to 1.8.x for equivalent selections, and the block-memo /
-incremental-parse machinery is semantically untouched. A migrated app
-renders the same bytes.
+Use the mapping tables below to preserve your selections, then migrate custom renderers and wrapper defaults. The before snippets intentionally use removed 1.x APIs; only the after snippets target 2.x. Template values such as `content`, `MY_SCHEMA`, and application wrapper types stand for code in your project.
+
+The original 2.0 change was designed to preserve the 1.8.x rendering pipeline for equivalent selections. That historical compatibility statement is not a promise that every later 2.x release emits identical HTML: later versions include parser, sanitization, coordination, and rendering fixes. When moving directly to the current release, read the subsequent [release highlights](./release-highlights.md) and verify your custom output semantically.
 
 ## Why the break
 
@@ -44,11 +38,11 @@ defaults, a sealed engine-plugin catalog, and five per-system contexts.
 | `config.codeBlock.*` (mantine)                               | `codeBlock` prop on `MantineAIMarkdown`                                        |
 | `defaultConfig` (integrator channel)                         | wrapper destructuring defaults + widened `define*` factories                   |
 
-Precedence in v2 has exactly two levels: an explicitly passed prop
+For core-resolved flat fields, precedence in v2 has two levels: an explicitly passed prop
 (`v != null`) overrides the shipped default; an absent prop falls to the
 shipped default. Passing `null` counts as absent — this guards against
 serialization boundaries (RSC, persistence) materializing "not passed" as
-`null` and punching through defaults.
+`null` and punching through defaults. Wrapper slot defaults and fields inside extension groups have their own policy: JavaScript destructuring defaults apply to undefined, and group defaults are owned by the wrapper hook. Do not generalize core’s null handling to every nested field.
 
 ### Behavior switches
 
@@ -216,6 +210,7 @@ import AIMarkdown, {
   useAIMarkdownBehaviors,
   useStableRecord,
   AIMarkdownStabilityPolicy,
+  type AIMarkdownProps,
   type AIMarkdownBehaviorGroups,
   type AIMarkdownStabilityTable,
 } from '@ai-react-markdown/core';
@@ -223,7 +218,11 @@ import AIMarkdown, {
 interface PanelOptions {
   compact: boolean;
 }
-const PANEL_DEFAULTS: PanelOptions = { compact: false };
+const PANEL_DEFAULTS: Readonly<PanelOptions> = Object.freeze({ compact: false });
+
+interface MyMarkdownProps extends AIMarkdownProps {
+  panel?: Partial<PanelOptions>;
+}
 
 const TABLE: AIMarkdownStabilityTable<{ panel: Partial<PanelOptions> | undefined }> = {
   panel: AIMarkdownStabilityPolicy.DEEP_EQUAL,
@@ -250,7 +249,7 @@ export function MyMarkdown({ panel, ...rest }: MyMarkdownProps) {
 export function usePanelOptions(): Required<PanelOptions> {
   const behaviors = useAIMarkdownBehaviors();
   const group = behaviors.panel as Partial<PanelOptions> | undefined;
-  return useMemo(() => ({ ...PANEL_DEFAULTS, ...group }), [group]);
+  return useMemo(() => ({ compact: group?.compact ?? PANEL_DEFAULTS.compact }), [group]);
 }
 ```
 
@@ -278,7 +277,7 @@ const PIPELINE = definePipeline({ sanitizeSchema: MY_SCHEMA });
 <AIMarkdown content={content} {...THEME} {...BEHAVIORS} {...PIPELINE} colorScheme={userScheme} />;
 ```
 
-Factories are identity + types + `Object.freeze`, zero logic — bare flat
+Factories return the same input with types and a shallow `Object.freeze`; they do not recursively freeze nested groups or resolve defaults — bare flat
 props are always equally legal. Core factories accept core fields only;
 wrappers re-export widened versions (e.g. `defineMantineBehaviors`, which
 adds `codeBlock`).
@@ -343,3 +342,16 @@ replacement (nothing on the v2 surface is deep-partial).
   [core README](../packages/core/README.md#props-api-reference)) before
   adding fields; collisions are compile errors for TS consumers but
   silent overrides for plain-JS consumers.
+
+## A practical migration sequence
+
+1. Upgrade core and the Mantine integration together, satisfy their React and UI-library peers, and rebuild your lockfile. Do not add an independent engine version to a React application; core already installs its matching supplier.
+2. Search source and wrapper packages for `defaultConfig`, `config=`, removed enum names, and both old render-state hooks. Include exported prop aliases and explicit component type arguments, not just JSX.
+3. Translate the two old plugin selections into one complete `enginePlugins` array. Passing only a highlight selection also removes the other optional plugins; start from `defaultEnginePlugins` when disabling just one feature.
+4. Move lifecycle, theme, and behavior reads to the corresponding narrow hooks. Preserve metadata as its own generic parameter. Keep all hooks unconditional in custom renderers.
+5. Replace wrapper config snapshots with prop defaults and a typed behavior group. Verify absent groups inherit outer providers and present groups replace them atomically. Apply group defaults in one hook, with a stated policy for explicit undefined fields.
+6. Check standalone and coordinated output, custom URL schemes, math, copied code, and streaming completion. Compare semantic structure and behavior; auto-generated namespaces and later correctness fixes can change literal HTML.
+
+If compilation passes but performance changes, inspect `incrementalParse` first: the omitted-field behavior intentionally changed from a possible 1.x opt-out to the shipped 2.x default. Then check function identities for `urlTransform`, preprocessors, and slots. Factories are optional; stable module constants or correctly memoized dynamic values express the same configuration.
+
+For a newly written wrapper, use the current [subpackage guide](./extending-via-subpackage.md) as the implementation template. This page retains the old-to-new mapping so a migration can be audited without reconstructing the removed API.

@@ -1,6 +1,6 @@
 # ai-react-markdown
 
-> A React component library purpose-built for rendering **AI-generated markdown** — LLM streaming, LaTeX math, Mermaid diagrams, GFM, syntax highlighting, CJK-friendly typography, and cross-chunk reference coordination. Batteries included, escape hatches everywhere.
+> React Markdown rendering for AI responses: GFM, KaTeX math, CJK-aware parsing, incremental streaming, and shared references across logical document sections. Use core with your own UI, or the Mantine integration for highlighted code, JSON presentation, and Mermaid diagrams.
 
 [![@ai-react-markdown/core npm](https://img.shields.io/npm/v/@ai-react-markdown/core?label=%40ai-react-markdown%2Fcore&logo=npm&color=cb3837)](https://www.npmjs.com/package/@ai-react-markdown/core)
 [![@ai-react-markdown/mantine npm](https://img.shields.io/npm/v/@ai-react-markdown/mantine?label=%40ai-react-markdown%2Fmantine&logo=npm&color=cb3837)](https://www.npmjs.com/package/@ai-react-markdown/mantine)
@@ -36,39 +36,41 @@
 
 ## Why ai-react-markdown?
 
-Most React markdown renderers were designed for **static documents** — blog posts, READMEs, CMS content. AI-generated markdown breaks several of their assumptions:
+An AI response changes while the user reads it. A fence may be incomplete, a citation definition may arrive after its reference, and a large answer may receive many small updates. The renderer needs to preserve the meaning of those intermediate snapshots while keeping repeated work manageable.
 
-- **Streaming**: content arrives token-by-token, and the same component must re-render dozens of times per second without flicker.
-- **Multi-chunk documents**: a single LLM response is often delivered in multiple chunks (chat UI), each rendered by its own component instance, yet references (`[^footnote]`, `[link][def]`, `![img][def]`) must still resolve across chunks.
-- **Math, diagrams, CJK**: AI assistants emit `$E=mc^2$`, `\`\`\`mermaid` blocks, mixed Chinese/English paragraphs, and HTML comments — by default vanilla pipelines mangle these.
-- **Untrusted output**: LLM markdown can contain `javascript:` URLs, malformed HTML, and broken footnote definitions. Sanitization needs to be airtight **and** customizable for app-specific schemes.
-- **Performance under streaming**: every keystroke from the model triggers a re-render of the full document. Block-level memoization is no longer "nice-to-have", it's table stakes.
+ai-react-markdown addresses those concerns at distinct layers:
 
-This library is opinionated around those problems. Out of the box you get safe LLM rendering with sane defaults; opt-in escape hatches let you customize anything from URL allowlists down to per-element renderers.
+- **Accumulated streaming input.** Pass the complete current Markdown string to one component. The engine reuses a verified prefix when the input is an append and the grammar permits it; otherwise it uses a full parse.
+- **Reusable rendered blocks.** Core retains React elements for unchanged plans. Custom components can still update through state and context, so streaming status and application callbacks remain live.
+- **Logical document sections.** When an application deliberately uses multiple renderers for one document, `AIMarkdownDocuments` shares footnote and link/image definitions under an explicit document id. It does not join syntax split across arbitrary network packets.
+- **Math and mixed-language text.** Built-in normalization handles common model-produced math delimiters and currency text. The pipeline includes CJK-aware delimiter parsing and optional pangu spacing; typography and source line breaks remain explicit presentation choices.
+- **Controlled output policy.** The sanitizer filters the tree before URL transformation. Schema extensions, custom components, and application URL schemes are supported through typed inputs whose scope and precedence are documented.
+
+Choose core for React rendering with your own presentation. Choose Mantine when you also want its providers, typography, highlighted code controls, and diagrams. Both expose the same underlying content, metadata, and coordination contracts.
 
 ## Features
 
-|                              |                                                                                                                                                                                                                                                                                                               |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **GFM**                      | tables, strikethrough, task lists, autolinks (via `remark-gfm`)                                                                                                                                                                                                                                               |
-| **LaTeX math**               | inline `$…$` and display `$$…$$` via KaTeX, with smart preprocessing for currency `$`, bracket delimiters (`\[…\]`, `\(…\)`), pipe escaping, and [mhchem](https://mhchem.github.io/MathJax-mhchem/) commands (chemistry formulas like `\ce{H2O}`)                                                             |
-| **Mermaid diagrams**         | interactive SVG with dark/light themes, source toggle, copy, open-in-new-window (in `@ai-react-markdown/mantine`)                                                                                                                                                                                             |
-| **Syntax highlighting**      | language-labelled tabs, expand/collapse, optional `highlight.js` auto-detection for unlabelled blocks (in `@ai-react-markdown/mantine`)                                                                                                                                                                       |
-| **CJK-friendly**             | proper line breaking for Chinese / Japanese / Korean text plus optional [pangu](https://github.com/vinta/pangu.js) auto-spacing between CJK and half-width characters                                                                                                                                         |
-| **Streaming-aware**          | `streaming` flag is propagated via context; custom renderers can show cursors, skip animations, or disable copy buttons during streaming                                                                                                                                                                      |
-| **Streaming cursor**         | built-in `streamingCursor` slot renders a "still generating" indicator after the last streamed character — visible through token stalls, pure-CSS animation, zero impact on the parse pipeline                                                                                                                |
-| **Smooth streaming**         | `<AIMarkdownSmoothStream>` reveals bursty token chunks as a steady grapheme-by-grapheme typewriter; a completion-deadline pacing law tracks the source's cadence — coarse proxy-buffered feeds included (three presets: smooth / balanced / responsive) and every frame rides the incremental-parse fast path |
-| **Cross-chunk coordination** | `<AIMarkdownDocuments>` wrapper lets chunked chat messages share a `documentId` so footnotes / link refs / image refs resolve across chunks                                                                                                                                                                   |
-| **Block-level memoization**  | each markdown block is memoized by source identity; unchanged blocks skip `toJsxRuntime` and React reconcile work during streaming. Output is byte-identical to the disabled path                                                                                                                             |
-| **Emoji shortcodes**         | `:smile:` → 😄 via `remark-emoji`                                                                                                                                                                                                                                                                             |
-| **Extra syntax**             | `==highlight==`, definition lists (PHP Markdown Extra)                                                                                                                                                                                                                                                        |
-| **Display optimizations**    | SmartyPants typography, HTML comment removal, pangu CJK spacing                                                                                                                                                                                                                                               |
-| **Customizable URL safety**  | two-gate XSS protection (`urlTransform` + `rehype-sanitize`); helper to extend the schema without breaking library invariants                                                                                                                                                                                 |
-| **Custom components**        | swap any HTML-element renderer with a typed component; library defaults are merged underneath                                                                                                                                                                                                                 |
-| **Custom typography**        | drop-in `Typography` slot with full CSS-variable token surface for spacing, headings, weight, colors                                                                                                                                                                                                          |
-| **Metadata context**         | pass arbitrary data to nested custom components without prop drilling — isolated from render state so updates don't re-render the document                                                                                                                                                                    |
-| **TypeScript**               | first-class metadata generic and fully typed flat props; full IDE autocompletion                                                                                                                                                                                                                              |
-| **React 19**                 | uses native `useId()`, properly typed for the current React version                                                                                                                                                                                                                                           |
+|                              |                                                                                                                                                                                                                                                                                                                                    |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **GFM**                      | tables, strikethrough, task lists, autolinks (via `remark-gfm`)                                                                                                                                                                                                                                                                    |
+| **LaTeX math**               | inline `$…$` and display `$$…$$` via KaTeX, with smart preprocessing for currency `$`, bracket delimiters (`\[…\]`, `\(…\)`), pipe escaping, and [mhchem](https://mhchem.github.io/MathJax-mhchem/) commands (chemistry formulas like `\ce{H2O}`)                                                                                  |
+| **Mermaid diagrams**         | interactive SVG with dark/light themes, source toggle, copy, open-in-new-window (in `@ai-react-markdown/mantine`)                                                                                                                                                                                                                  |
+| **Syntax highlighting**      | language-labelled tabs, expand/collapse, optional `highlight.js` auto-detection for unlabelled blocks (in `@ai-react-markdown/mantine`)                                                                                                                                                                                            |
+| **CJK-friendly**             | CJK-aware emphasis and strikethrough parsing, source newlines rendered as breaks, plus optional [pangu](https://github.com/vinta/pangu.js) auto-spacing between CJK and half-width characters                                                                                                                                      |
+| **Streaming-aware**          | `streaming` flag is propagated via context; custom renderers can show cursors, skip animations, or disable copy buttons during streaming                                                                                                                                                                                           |
+| **Streaming cursor**         | built-in `streamingCursor` slot renders a "still generating" indicator after the last streamed character — visible through token stalls, pure-CSS animation, zero impact on the parse pipeline                                                                                                                                     |
+| **Smooth streaming**         | `<AIMarkdownSmoothStream>` reveals bursty token chunks as a steady grapheme-by-grapheme typewriter; a completion-deadline pacing law tracks the source's cadence — coarse proxy-buffered feeds included (three presets: smooth / balanced / responsive) and append frames can use incremental parsing when its safety gates permit |
+| **Cross-chunk coordination** | `<AIMarkdownDocuments>` wrapper lets chunked chat messages share a `documentId` so footnotes / link refs / image refs resolve across chunks                                                                                                                                                                                        |
+| **Block-level memoization**  | each markdown block is memoized by source identity; unchanged plans reuse React elements during streaming; equivalence tests compare optimized and full paths. Child state/context can still update                                                                                                                                |
+| **Emoji shortcodes**         | `:smile:` → 😄 via `remark-emoji`                                                                                                                                                                                                                                                                                                  |
+| **Extra syntax**             | `==highlight==`, definition lists (PHP Markdown Extra)                                                                                                                                                                                                                                                                             |
+| **Display optimizations**    | SmartyPants typography, HTML comment removal, pangu CJK spacing                                                                                                                                                                                                                                                                    |
+| **Customizable URL safety**  | two-gate XSS protection (`urlTransform` + `rehype-sanitize`); helper to extend the schema without breaking library invariants                                                                                                                                                                                                      |
+| **Custom components**        | swap any HTML-element renderer with a typed component; library defaults are merged underneath                                                                                                                                                                                                                                      |
+| **Custom typography**        | drop-in `Typography` slot with full CSS-variable token surface for spacing, headings, weight, colors                                                                                                                                                                                                                               |
+| **Metadata context**         | pass arbitrary data to nested custom components without prop drilling — a separate context so its subscribers update independently of state-only consumers                                                                                                                                                                         |
+| **TypeScript**               | first-class metadata generic and fully typed flat props; full IDE autocompletion                                                                                                                                                                                                                                                   |
+| **React 19**                 | uses native `useId()`, properly typed for the current React version                                                                                                                                                                                                                                                                |
 
 ## Packages
 
@@ -114,7 +116,7 @@ pnpm add @ai-react-markdown/mantine @ai-react-markdown/core \
 | `@mantine/code-highlight` | `mantine`                                              | `^9.0.0`               |
 | `highlight.js`            | `mantine`                                              | `^11.11.2`             |
 
-> `katex` is an **optional peer**, declared by both `core` and `engine` (the engine owns the `rehype-katex` step, core owns the CSS contract). It ships transitively via `rehype-katex`, so hoisted installers (npm, yarn classic, default pnpm) resolve `'katex/dist/katex.min.css'` automatically. Strict-isolation installers (yarn PnP, `pnpm --node-linker=isolated`) must install it explicitly, in your own app — not alongside the engine. Skip this only if you never render math.
+> `katex` is an **optional peer**, declared by both `core` and `engine` (the engine owns the `rehype-katex` step, core owns the CSS contract). It ships transitively via `rehype-katex`, so hoisted installations resolve `'katex/dist/katex.min.css'` automatically. Strict-isolation installers (yarn PnP, `pnpm --node-linker=isolated`) must install it explicitly, in your own app — not alongside the engine. Skip this only if you never render math.
 
 ### React version & framework compatibility
 
@@ -227,7 +229,7 @@ export default function App() {
 
 ### Stream from an LLM
 
-The `streaming` flag is just a context boolean — pass `true` while tokens are still arriving so descendants can adapt (deferred copy buttons, skipped animations, etc.). The renderer itself remains stable across re-renders thanks to block-level memoization. Add `streamingCursor` for a built-in "still generating" indicator that tracks the last streamed character and stays visible through token stalls ([docs](./docs/streaming-cursor.md)):
+The `streaming` flag describes the source lifecycle and controls the cursor slot — pass `true` while tokens are still arriving so descendants can adapt (deferred copy buttons, skipped animations, etc.). The renderer itself remains stable across re-renders thanks to block-level memoization. Add `streamingCursor` for a built-in "still generating" indicator that tracks the last streamed character and stays visible through token stalls ([docs](./docs/streaming-cursor.md)):
 
 ```tsx
 import AIMarkdown, { AIMarkdownStreamingCursor } from '@ai-react-markdown/core';
@@ -256,7 +258,7 @@ import { AIMarkdownSmoothStream, AIMarkdownStreamingCursor } from '@ai-react-mar
 />;
 ```
 
-Smooth chunks that share a `documentId` inside `<AIMarkdownDocuments>` take turns automatically: chunk N reveals completely before chunk N+1 starts — one typewriter, one cursor, even when the sources stream concurrently ([details](./docs/smooth-streaming.md#multi-chunk-documents-turn-taking)).
+Empty-mounted smooth chunks that share a `documentId` inside `<AIMarkdownDocuments>` take turns automatically (existing text snaps on mount): chunk N reveals completely before chunk N+1 starts — one typewriter, one cursor, even when the sources stream concurrently ([details](./docs/smooth-streaming.md#multi-chunk-documents-turn-taking)).
 
 ### Render chunked chat messages with cross-chunk references
 
@@ -265,18 +267,24 @@ When a single logical document is delivered in multiple `<AIMarkdown>` instances
 ```tsx
 import AIMarkdown, { AIMarkdownDocuments } from '@ai-react-markdown/core';
 
-function StreamedMessage({ chunks, id }: { chunks: string[]; id: string }) {
+function StreamedMessage({ chunks, id, done }: { chunks: string[]; id: string; done: boolean }) {
   return (
     <AIMarkdownDocuments>
       {chunks.map((chunk, i) => (
-        <AIMarkdown key={i} content={chunk} documentId={id} streaming={i === chunks.length - 1} />
+        <AIMarkdown
+          key={i}
+          content={chunk}
+          documentId={id}
+          documentIndex={i}
+          streaming={!done && i === chunks.length - 1}
+        />
       ))}
     </AIMarkdownDocuments>
   );
 }
 ```
 
-Without the wrapper, each `<AIMarkdown>` is independent — its references only resolve within its own content. The wrapper is the **only** thing required to opt into coordination.
+Without the wrapper, each `<AIMarkdown>` is independent — its references only resolve within its own content. Coordination requires the wrapper, the same explicit non-empty document id, and `blockMemo` enabled. Each chunk must be a meaningful Markdown unit. This array-index key is suitable only for a fixed append-only list; use persistent chunk ids when inserting or reordering.
 
 ### Mermaid diagrams (via Mantine package)
 
@@ -293,7 +301,7 @@ The Mantine integration renders this as an interactive SVG with dark/light theme
 
 ### CJK text with auto pangu spacing
 
-Pangu spacing automatically inserts a regular ASCII space between CJK characters and half-width letters/digits, which is the de-facto convention in Chinese, Japanese, and Korean typography. It's on by default. Turn it off by filtering the `pangu` plugin out of the default engine-plugin set:
+Pangu spacing automatically inserts a regular ASCII space between CJK characters and half-width letters/digits, when its mixed-script rules match. Applications can choose whether that spacing fits their language and editorial conventions. It's on by default. Turn it off by filtering the `pangu` plugin out of the default engine-plugin set:
 
 ```tsx
 import { defaultEnginePlugins, pangu } from '@ai-react-markdown/core/plugins';
@@ -309,15 +317,15 @@ const PLUGINS = defaultEnginePlugins.filter((p) => p !== pangu);
 Sanitization runs through **two independent gates** for defense in depth: `rehype-sanitize` schema (per-protocol allowlist, runs first in the rehype chain) and `urlTransform` (per-attribute rewriter, runs second at render time). Both must permit a scheme for it to render.
 
 ```tsx
-import AIMarkdown, { defaultUrlTransform, extendSanitizeSchema } from '@ai-react-markdown/core';
+import AIMarkdown, { defaultUrlTransform, extendSanitizeSchema, type UrlTransform } from '@ai-react-markdown/core';
 
 // Module-scope: defined once, stable across renders, keeps the memo cache warm.
 const ALLOWED = /^myapp:/i;
-const URL_TRANSFORM = (url, key, node) => (ALLOWED.test(url) ? url : defaultUrlTransform(url, key, node));
+const URL_TRANSFORM: UrlTransform = (url, key, node) =>
+  key === 'href' && ALLOWED.test(url) ? url : defaultUrlTransform(url, key, node);
 
 const SCHEMA = extendSanitizeSchema((s) => {
   s.protocols!.href!.push('myapp');
-  s.protocols!.src!.push('myapp');
 });
 
 export default function App({ content }: { content: string }) {
@@ -348,43 +356,56 @@ In the Mantine package, caller `customComponents` are merged on top of Mantine d
 
 ### Pass metadata to nested custom components
 
-Metadata lives in a **separate React context** from render state, so updating it (e.g. swapping a `onCopyCode` callback) does not re-render the document body.
+Metadata is a dedicated context for application ids, callbacks, and other data needed by custom renderers. A new metadata value notifies its consumers; it does not require rebuilding the Markdown pipeline when pipeline inputs are unchanged.
 
 ```tsx
-import AIMarkdown, { useAIMarkdownMetadata, type AIMarkdownCustomComponents } from '@ai-react-markdown/core';
+import { useRef } from 'react';
+import AIMarkdown, {
+  useAIMarkdownMetadata,
+  type AIMarkdownMetadata,
+  type AIMarkdownCustomComponents,
+} from '@ai-react-markdown/core';
 
-interface ChatMeta {
+interface ChatMeta extends AIMarkdownMetadata {
   messageId: string;
   onCopyCode: (code: string) => void;
 }
 
-const components: AIMarkdownCustomComponents = {
+const COMPONENTS: AIMarkdownCustomComponents = {
   pre: ({ children }) => {
     const meta = useAIMarkdownMetadata<ChatMeta>();
+    const preRef = useRef<HTMLPreElement>(null);
     return (
-      <pre>
-        <button onClick={() => meta?.onCopyCode(String(children))}>Copy</button>
-        {children}
-      </pre>
+      <div>
+        <button
+          type="button"
+          onClick={() => {
+            meta?.onCopyCode(preRef.current?.textContent ?? '');
+          }}
+        >
+          Copy
+        </button>
+        <pre ref={preRef}>{children}</pre>
+      </div>
     );
   },
 };
 
-<AIMarkdown<ChatMeta>
-  content={markdown}
-  customComponents={components}
-  metadata={{ messageId: msg.id, onCopyCode: handleCopy }}
-/>;
+function Message({ markdown, metadata }: { markdown: string; metadata: ChatMeta }) {
+  return <AIMarkdown<ChatMeta> content={markdown} customComponents={COMPONENTS} metadata={metadata} />;
+}
 ```
+
+The copy example reads text from the actual code element and keeps the toolbar outside it. `String(children)` cannot recover source from a React element. If a renderer transforms the display, keep the original hast code text for copying instead; see [custom components](./docs/custom-components.md). Keep metadata stable when its values have not changed, and use an external-store subscription when a stable container carries rapidly changing reactive data.
 
 ### Adapt rendering based on streaming state
 
-Narrow hooks subscribe per system — this component re-renders when `streaming` flips or the theme changes, and nothing else:
+Narrow hooks subscribe per system — this component subscribes to streaming state and theme changes. Ordinary parent renders and its own state can also cause renders:
 
 ```tsx
 import { useAIMarkdownState, useAIMarkdownTheme } from '@ai-react-markdown/core';
 
-function MyCodeBlock({ children }: { children: React.ReactNode }) {
+function MyCodeBlock({ children }: { children?: React.ReactNode }) {
   const { streaming } = useAIMarkdownState();
   const { colorScheme } = useAIMarkdownTheme();
   return <pre className={`${colorScheme} ${streaming ? 'cursor' : ''}`}>{children}</pre>;
@@ -396,9 +417,11 @@ function MyCodeBlock({ children }: { children: React.ReactNode }) {
 ```tsx
 import type { AIMDContentPreprocessor } from '@ai-react-markdown/core';
 
-const stripFrontmatter: AIMDContentPreprocessor = (content) => content.replace(/^---[\s\S]*?---\n/, '');
+// Narrow LF-delimited frontmatter format; use a parser for a broader dialect.
+const stripFrontmatter: AIMDContentPreprocessor = (content) => content.replace(/^---\n[\s\S]*?\n---(?:\n|$)/, '');
+const PREPROCESSORS = [stripFrontmatter];
 
-<AIMarkdown content={raw} contentPreprocessors={[stripFrontmatter]} />;
+<AIMarkdown content={raw} contentPreprocessors={PREPROCESSORS} />;
 ```
 
 Preprocessors run after the built-in LaTeX normalizer, in array order.
@@ -554,7 +577,7 @@ The Mantine package adds:
 
 ## Typography & Theming
 
-The default typography is driven by CSS custom properties anchored to `--aim-font-size-root` — which means **changing the `fontSize` prop proportionally scales every rendered dimension** (spacing, headings, KaTeX, etc.). Override any token in your own stylesheet:
+The default typography is driven by CSS custom properties anchored to `--aim-font-size-root` — which means **changing the `fontSize` prop scales root-anchored dimensions** (spacing, headings, KaTeX, etc.). Override any token in your own stylesheet:
 
 ```css
 .aim-typography-root.default {
@@ -722,6 +745,8 @@ import type {
 } from '@ai-react-markdown/mantine';
 ```
 
+`preloadMantineCodeAssets()` is also exported by Mantine. It starts the lazy Mermaid and auto-detection imports ahead of first use. It does not replace the highlight adapter provider or stylesheet imports, and module preloading does not eliminate diagram rendering cost.
+
 ## Architecture
 
 ```text
@@ -738,7 +763,7 @@ import type {
 </AIMarkdown>
 ```
 
-State lives in **five separate per-system contexts** (document, metadata, state, theme, behaviors) so a change in one system — a metadata swap, a `streaming` flip — only re-renders that system's subscribers, not the whole tree.
+State lives in **five separate per-system contexts** (document, metadata, state, theme, behaviors) so a change in one system — a metadata swap, a `streaming` flip — notifies subscribers to that context rather than every narrow-hook consumer. This isolation does not suppress ordinary parent, local-state, or external-store updates.
 
 The Mantine package wraps `<AIMarkdown>` with:
 
@@ -778,10 +803,22 @@ Issues and pull requests are welcome. For non-trivial changes, please open an is
 
 Reporting a bug helps most when it includes:
 
-- The package and version (`@ai-react-markdown/core@2.13.2` …)
+- The package and version (`@ai-react-markdown/core@2.13.3` …)
 - The relevant `<AIMarkdown>` / `<MantineAIMarkdown>` props
 - A minimal markdown sample that reproduces the issue
 - For streaming-related bugs: the chunk sequence (one string per chunk)
+
+## Development and verification workflow
+
+Use the workspace's pinned pnpm version and install with `pnpm install --frozen-lockfile` when reproducing a checkout. `pnpm build` generates package artifacts used by package exports, browser benchmarks, and packaging checks. Make changes in source, not in generated dist files.
+
+The repository has several kinds of checks. Package typechecks and unit tests cover local contracts; the root Vitest configuration also contains Storybook browser tests, which package-only test commands do not replace. `pnpm preflight` combines coverage-map checks, linting, formatting, builds, soak-runner control tests, package validation, typechecks, and the root test run. Stateful parser changes additionally need the oracle and release-soak evidence described in [soak coverage](./docs/soak-coverage.md).
+
+Choose performance measurements by question. `pnpm bench` measures the LaTeX preprocessing microbenchmark, Storybook comparison stories attribute pipeline and React work, and `pnpm bench:web` measures production browser scenarios. Historical percentages in [the benchmark study](./docs/benchmark.md) retain their original date and build mode; they are not current device-independent budgets. Read the [browser harness limitations](./benchmarks/README.md) before interpreting a result.
+
+For a documentation or integration change, check public exports and defaults against the package source, verify complete examples with the current types, and inspect relative links and Markdown fences. A successful build alone cannot establish that a code sample copies the right source, an SSE reader handles split frames, or a lifecycle callback fires in every state. Target those behaviors directly when the recipe depends on them.
+
+The [developer guide index](./docs/README.md) covers customization, architecture, migration, streaming lifecycle, and maintenance. Bug reports are most useful with full accumulated snapshots or an exact delta sequence and completion/replacement events, since the final Markdown alone can hide an intermediate streaming defect.
 
 ## License
 

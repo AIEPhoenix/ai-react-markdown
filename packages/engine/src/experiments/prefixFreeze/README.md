@@ -1,32 +1,19 @@
 # Experiment: prefix-freeze boundary detection for streaming parse
 
-**Status: PRODUCTIONIZED** — the shipped implementation lives in
-`src/components/incrementalParse/` (flat prop `incrementalParse`);
-this directory stays frozen as the ablation record and falsification
-evidence behind it. The harness imports the production
-`attributeHastChildren` and `pluginChain` builders so prefixes and plugin
-order can never drift from production.
+This directory preserves the original prefix-freeze boundary experiment and the verification campaigns that followed it. The production implementation now lives in [`../../components/incrementalParse/`](../../components/incrementalParse/), enabled through core's `incrementalParse` prop. The experiment is an ablation and falsification record, not a second production implementation or a current API specification.
 
-**Known divergence (intentional)**: the shipped detector evolved past the
-L4 tier recorded here in BOTH directions. Stricter: post-review blockers
-A1-A6, definition-list awareness, truncated tags, `normalizeIdentifier`.
-Looser: inline code-span MASKING — this record counts `` `[x]` ``/`` `<div>` ``
-inside code spans as taint/markup, production (correctly) masks them and
-can freeze past inputs L4 pins at 0. The directional pin
-`incrementalParse/detectorConsistency.test.ts` therefore holds
-`production boundary <= experiment L4` only ON ITS CORPORA (which carry no
-bracket/tag-bearing code spans), not universally — and the freeze-coverage
-tables below are indicative for the shipped rule, not bounds. Safety
-authority for the shipped detector is the production splice-equivalence
-arbiter, not this record. Nothing here is imported by `src/index.tsx` or
-shipped.
+The L0–L4 tiers below isolate candidate rules so their failures and coverage can be compared. The harness shares production attribution and plugin-chain builders, but its boundary detector intentionally retains the study's rules. Production has since become stricter around several HTML, definition, and continuation hazards, and less conservative where inline code spans can safely mask brackets and tags.
+
+Consequently, `production boundary <= experiment L4` holds only on the corpus in the directional consistency test. It is not a universal ordering: production can freeze beyond text that the historical L4 tier marks as tainted. The recorded coverage percentages describe the study inputs and implementations; they are neither present-day guarantees nor bounds on every document.
+
+Nothing in this experimental directory is imported by the engine's production `src/index.ts`. The production splice-equivalence arbiter, sensitivity tests, coverage map, and current release runner establish the active verification contract. Use this record to understand why the rules and tests exist, and use [soak coverage](../../../../../docs/soak-coverage.md) for the current leg ownership and release-evidence requirements.
 
 ## Question
 
 `@ant-design/x-markdown-mini` (2026-07 blog post) freezes a "stable prefix" at
 the last blank-line boundary and re-lexes only the tail, cutting cumulative
 streaming parse cost from O(N²) to O(N). Our block-memoization already avoids
-re-RENDERING unchanged blocks, but `unified.parse` still runs over the full
+re-RENDERING unchanged blocks, but, at the start of this study, `unified.parse` still ran over the full
 document every frame (docs/streaming-and-performance.md, "Profiling").
 
 Could a prefix-freeze rule be **safe** for our CommonMark/unified pipeline —
@@ -66,24 +53,13 @@ Their rule is safe only because of three properties we don't share:
 Run with:
 
 ```sh
-npx vitest --run --project unit \
+pnpm exec vitest --run --project unit \
   packages/engine/src/experiments/prefixFreeze/prefixFreeze.test.ts
 ```
 
-Two things changed in that command on 2026-08-28, and the reasons are worth
-more than the edit. The path said `packages/core` — this directory moved to
-`packages/engine` with the v2.3.0 split and the command had been unrunnable
-ever since, so the repro for the findings below could not be repeated by
-anyone who tried it. And `--disable-console-intercept` is gone because it is
-no longer needed: the two tables now write to the real stream instead of
-`console.table`, which vitest 4 drops for a test that PASSES.
+The command uses the engine path introduced by the 2.3.0 package split. Run it from the repository root; the root Vitest `unit` project selects the workspace's test configuration. The report tables write to the real stream, so a passing test no longer requires `--disable-console-intercept` to make its diagnostics visible.
 
-That flag is also the whole reason this package's diagnostics went dark
-without anyone noticing. Someone hit the drop here, worked around it locally
-by adding the flag to this one command, and the knowledge never left this
-file — so the census and oracle legs, which pass no such flag, printed
-nothing for months while this one experiment still worked when run by hand.
-A local workaround is what kept the global problem from being found.
+That output path matters operationally. A previous command-local console workaround hid the underlying Vitest reporting issue from the census and oracle legs, which used different commands. Verification tooling should make its diagnostics visible consistently across entry points; a locally visible table does not establish that unattended run logs contain the same evidence.
 
 ## Findings (2026-07-14)
 
@@ -147,11 +123,11 @@ on the shared oracle in `incrementalParse/spliceArbiterHarness.ts`:
 | directional | `boundaryDirection.test.ts`  | the "detector only over-blocks" claim as a tested property: frozen output stable under a 20-future hazard battery                                                         |
 | sensitivity | `arbiterSensitivity.test.ts` | planted faults (historical under-block boundary, gutted checkpoint, single-node corruption) MUST fail — the suite that tests the suite                                    |
 
-Soak / deep runs (all deterministic, seed-controlled):
+Historical deep-run commands (deterministic, seed-controlled; the seed below reproduces an old diagnostic campaign and is not fresh release evidence):
 
 ```sh
-FUZZ_RUNS=50000 FUZZ_SEED=<n> pnpm --filter @ai-react-markdown/core fuzz:splice
-EXHAUSTIVE_K=4 EXHAUSTIVE_STRIDE=1 pnpm --filter @ai-react-markdown/core exec vitest --run src/components/incrementalParse/spliceExhaustive.test.ts
+FUZZ_RUNS=50000 FUZZ_SEED=20260750 pnpm --filter @ai-react-markdown/engine fuzz:splice
+EXHAUSTIVE_K=4 EXHAUSTIVE_STRIDE=1 pnpm --filter @ai-react-markdown/engine exec vitest --run src/components/incrementalParse/spliceExhaustive.test.ts
 ```
 
 Counterexample workflow: fast-check shrinks every failure to a minimal
@@ -421,7 +397,7 @@ sensitivity meta-suite (`arbiterSensitivity.test.ts`) already pins the
 classes that MUST die (under-block boundary, checkpoint corruption,
 output corruption).
 
-## Footguns for a future production implementation
+## Lessons retained from the production design
 
 - Freezing must happen at the PARSE level to pay off; the frozen prefix's
   mdast/hast must be spliced with the tail's, which shifts no offsets
@@ -431,5 +407,16 @@ output corruption).
 - The synthetic footnote section is never freeze-eligible (production handles
   it via `FootnoteSectionEntry` / `aggregateFootnotesIfLast`, not the block
   cache).
-- Detector approximations are conservative (inline code spans not masked;
-  prose brackets count as reference taint). They cost coverage, not safety.
+- The experimental detector over-blocks brackets and tags in code spans; production now masks eligible spans. Treat every approximation as a hypothesis to test against full parsing. A conservative-looking rule is not proof of safety when multiple grammars interact.
+
+## Read the verification record by evidence type
+
+The tables and campaign notes serve different purposes. An adversarial fixture demonstrates a concrete failure mode; a randomized run samples the generator's reachable shapes; a bounded census exhausts only its specified alphabet, token length, and cut schedules. A direction battery attacks a claimed boundary with selected future inputs, while a sensitivity test proves that known faults are detectable. None makes the others redundant.
+
+Historical “clean” campaigns retain their seeds, sample counts, shard counts, and dates above. Later findings do not invalidate those recorded outcomes; they expose the scope of the corpora that passed. Several campaigns found new defects only after new generator families made the relevant grammar interaction reachable. Preserve the exact append schedule with a minimized counterexample, because a final document can parse correctly while one intermediate splice is wrong.
+
+For a present-day change, first identify the source grammar and the optimized state it can affect. Add a deterministic oracle comparison, ensure the randomized or census corpus can reach the shape, and prove engagement with the optimized path. A full-parse fallback can hide a broken optimization behind equal output, which is why anti-vacuity floors belong alongside equality assertions.
+
+Run exploratory work as a smoke profile and mark reused seeds as replay. A release campaign needs the complete current profile and aggregated manifests/results; the old three- or four-leg commands mentioned in the chronology describe earlier runner versions. Consult the root [coverage map](../../../../../scripts/soak/coverage-map.json) and [runner](../../../../../scripts/soak/soak.sh) before planning a new campaign.
+
+When interpreting mutation scores, separate output-changing survivors from mutants that only reduce freeze coverage or force fallback. The historical 64.55% result is not a universal adequacy threshold, and the expected conservative class still needs disposition before an individual survivor can be dismissed. The sensitivity suite pins the classes that must fail: under-blocked boundaries, corrupted checkpoints, and corrupted output.

@@ -1,14 +1,10 @@
 # Extending via a Sub-package
 
-`@ai-react-markdown/mantine` is the reference implementation of a **third-party integration** built on `@ai-react-markdown/core`. If you want to ship your own — Chakra, MUI, Tailwind-themed, Tamagui, your in-house design system — this document is the recipe.
+Build a React integration by wrapping `@ai-react-markdown/core` and defining the design-system behavior around it. Mantine is the reference implementation: it supplies typography, code-block presentation, theme defaults, and typed behavior options while core continues to own parsing, sanitization, references, and streaming.
 
-The pattern composes only the public extension points of core: `Typography`, `ExtraStyles`, `customComponents`, the additive Providers (`AIMarkdownBehaviorsProvider` / `AIMarkdownStateProvider`), the stability firewall (`useStableRecord`), and the widened `define*` factories. No internal API access required.
+This guide follows that same construction in nine steps, from a behavior-group interface to the package's public barrel and peer dependencies. The `Your…` components and `your-design-system` imports are template names to implement in your package; they are not installed modules. Examples show the contracts you need to preserve, with the source of defaults and the ownership of each prop made explicit.
 
-> **Depend on `core`, not on `@ai-react-markdown/engine`.** Since 2.3.0 the Markdown engine ships as its own package, and it is visible on npm — but a React integration has no reason to reach for it. Everything below goes through core's public surface, and core already re-exports the engine types you might need (`Registry`, the payload types, …). Importing from the engine directly buys you nothing and costs you its stability: its exports track what core consumes and can change in any release before 3.0.0.
->
-> The one case that _is_ engine-level: a **non-React renderer** — a Vue or Svelte adapter, or Markdown-to-hast in a worker with no rendering at all. That is a different document than this one; this recipe is about composing core in React. If you go there, pin the engine to an exact version and expect to move with it.
-
----
+Use core's public props, slots, additive providers, stable-value helpers, and factories. A React design-system integration does not need direct engine imports. The engine is a separately published internal supplier whose exports may change in any release before 3.0.0. A non-React adapter is a different project: it consumes syntax trees directly, pins an exact engine version, and takes responsibility for its own rendering lifecycle.
 
 ## The extension points, at a glance
 
@@ -180,7 +176,9 @@ const YourAIMarkdownComponent = <TMetadata extends YourAIMarkdownMetadata = Your
   );
 };
 
-export const YourAIMarkdown = memo(YourAIMarkdownComponent);
+export const YourAIMarkdown = memo(YourAIMarkdownComponent) as typeof YourAIMarkdownComponent & {
+  displayName?: string;
+};
 YourAIMarkdown.displayName = 'YourAIMarkdown';
 export default YourAIMarkdown as typeof YourAIMarkdownComponent;
 ```
@@ -209,9 +207,17 @@ export function useYourCodeBlockOptions(): Required<YourCodeBlockOptions> {
   // The single assertion: the `codeBlock` group key is owned by this package,
   // contributed by `YourAIMarkdown` via its behaviors Provider.
   const group = behaviors.codeBlock as Partial<YourCodeBlockOptions> | undefined;
-  return useMemo(() => ({ ...defaultYourCodeBlockOptions, ...group }), [group]);
+  return useMemo(
+    () => ({
+      showCopyButton: group?.showCopyButton ?? defaultYourCodeBlockOptions.showCopyButton,
+      defaultLanguage: group?.defaultLanguage ?? defaultYourCodeBlockOptions.defaultLanguage,
+    }),
+    [group]
+  );
 }
 ```
+
+This example treats nullish fields as absent. Define this policy deliberately: a simple object spread lets an explicit `undefined` erase a default. Mantine skips undefined fields and separately validates its numeric highlight interval.
 
 Group values replace atomically at the transport layer; a partial group (`codeBlock={{ showCopyButton: false }}`) resolves its omitted fields to the shipped defaults here. Read sites must consume this hook and never re-apply defaults with bare `??` (see [Footguns](#footguns)).
 
@@ -304,34 +310,56 @@ Ship a corresponding CSS file with selectors under `.your-integration-scope` for
 
 ### The pre/code component (if you override code blocks)
 
-This is where most of an integration's value lives — syntax highlighting, copy button, expand/collapse, Mermaid, JSON pretty-print. Read the narrow hooks:
+A `pre` override receives both rendered children and the hast node. Inspect the node before replacing the element. Markdown fences normally produce one `<code>` child with text children; arbitrary raw HTML may have a different shape or attributes your highlighter cannot preserve.
 
 ```tsx
 // packages/your-integration/src/components/PreCode.tsx
+import type { ComponentProps } from 'react';
+import type { Element } from 'hast';
 import { useAIMarkdownState } from '@ai-react-markdown/core';
 import { useYourCodeBlockOptions } from '../hooks/useYourCodeBlockOptions';
+import YourHighlightedBlock from './HighlightedBlock';
+import YourMermaidBlock from './MermaidBlock';
+import YourJsonBlock from './JsonBlock';
 
-interface PreCodeProps {
-  node?: any; // hast Element
-  children?: React.ReactNode;
-}
+type PreProps = ComponentProps<'pre'> & {
+  node?: Element;
+};
 
-function YourPreCode({ node, children }: PreCodeProps) {
+function YourPreCode({ node, children, ...props }: PreProps) {
   const { streaming } = useAIMarkdownState();
   const { showCopyButton, defaultLanguage } = useYourCodeBlockOptions();
-  const code = node?.children?.[0];
-  if (code?.tagName !== 'code') return <pre>{children}</pre>;
+  const code = node?.children.length === 1 ? node.children[0] : undefined;
+  if (
+    !node ||
+    Object.keys(node.properties).length !== 0 ||
+    code?.type !== 'element' ||
+    code.tagName !== 'code' ||
+    !node.position ||
+    !code.position ||
+    Object.keys(code.properties).some((key) => key !== 'className') ||
+    code.children.some((child) => child.type !== 'text')
+  ) {
+    return <pre {...props}>{children}</pre>;
+  }
+  const classes = code.properties.className;
+  if (
+    classes != null &&
+    (!Array.isArray(classes) || classes.some((c) => typeof c !== 'string' || !c.startsWith('language-')))
+  )
+    return <pre {...props}>{children}</pre>;
 
-  const className = (code.properties?.className as string[] | undefined) ?? [];
-  const language = className.find((c) => c.startsWith('language-'))?.slice('language-'.length);
-  const text = (code.children?.map((c: any) => c.value ?? '').join('') ?? '').trimEnd();
+  const language = Array.isArray(classes)
+    ? classes.find((c): c is string => typeof c === 'string')?.slice('language-'.length)
+    : undefined;
+  const source = code.children.map((child) => (child.type === 'text' ? child.value : '')).join('');
 
-  if (language === 'mermaid') return <YourMermaidBlock source={text} />;
-  if (language === 'json') return <YourJsonBlock source={text} />;
+  if (language === 'mermaid') return <YourMermaidBlock source={source} />;
+  if (language === 'json') return <YourJsonBlock source={source} />;
   return (
     <YourHighlightedBlock
+      source={source}
       language={language ?? defaultLanguage}
-      source={text}
       showCopy={!streaming && showCopyButton}
     />
   );
@@ -340,9 +368,11 @@ function YourPreCode({ node, children }: PreCodeProps) {
 export default YourPreCode;
 ```
 
-> Notice this component reads two narrow hooks — `useAIMarkdownState()` for `streaming` and your group hook for the code-block options. Both are valid simultaneously; they subscribe to different contexts, so a `streaming` flip re-renders this component but not consumers that only read behaviors.
+Declare `@types/hast` as a development dependency (and make it available to consumers if your emitted declarations expose it). The `node` prop is renderer metadata and must not be spread onto the DOM element.
 
----
+The three presentation components are integration-owned modules. Their `source` is the exact code text, including its trailing newline. Derive a separate display string if you format JSON or hide a final blank line; the copy action should retain the original. Do not call `trimEnd()` on your only copy of the source.
+
+Both hooks run unconditionally before shape checks. State and behaviors use separate contexts, so a streaming transition wakes this component without forcing behavior-only consumers to update. Put copy buttons and toolbars outside the actual `<pre>` so fallback DOM text extraction does not include their labels.
 
 ## Step 6: Payload policy (declare it per payload)
 
@@ -383,7 +413,7 @@ Match the shape of `@ai-react-markdown/mantine`'s barrel for consistency. Re-exp
 // packages/your-integration/package.json
 {
   "peerDependencies": {
-    "@ai-react-markdown/core": "^2.0.0",
+    "@ai-react-markdown/core": "^2.13.2",
     "react": ">=19",
     "react-dom": ">=19",
     "your-design-system": "^1.0.0",
@@ -473,7 +503,7 @@ Don't fork `MarkdownContent` or the remark/rehype plugin chain. The core's pipel
 
 ### Pinning to a patch version of `@ai-react-markdown/core`
 
-Use a caret range (`^2.0.0`). Minor and patch versions of core are non-breaking. A strict pin causes resolution headaches for downstream consumers.
+Use a caret range whose minimum includes every API you consume (for example, `^2.13.2` for an integration tested against this checkout). Minor and patch versions of core are non-breaking. A strict pin causes resolution headaches for downstream consumers.
 
 ### Re-exporting internal core types
 
@@ -508,8 +538,16 @@ Publishing a `@yourorg/ai-react-markdown-…` package is the natural unit of dis
 When you publish, consider:
 
 - A README following the structure of `@ai-react-markdown/mantine`.
-- A peer-dep statement that's permissive enough (`>=19` for React, `^2.0.0` for core).
+- A peer-dep statement that's permissive enough (`>=19` for React, `^2.13.2` for the APIs used here).
 - npm keywords: `react`, `markdown`, `ai`, `llm`, `<your-design-system>`, `ai-react-markdown-integration`.
 - Bundle size disclosure (bundlephobia badges).
 
 Optionally, propose to add a row to the parent project's "Integrations" section if/when one exists.
+
+## Validate the published integration contract
+
+Before publishing, exercise the wrapper through its public entry point. Confirm caller component overrides win, an absent behavior group allows an outer provider through, a present partial group replaces the outer group, and omitted fields resolve once inside the narrow hook. Test explicit `false`, explicit `undefined`, and the null policy you document.
+
+Render both a standalone document and two coordinated chunks, including a reference defined later. Check an ordinary code fence, raw `<pre>` with attributes, an incomplete streaming fence, a final complete block, and a copy action that preserves trailing whitespace. Theme changes and streaming completion should update presentation without requiring a new Markdown string.
+
+Finally inspect packed ESM/CJS entry points, emitted types, stylesheet exports, peer ranges, and `sideEffects` declarations. Your README should name required providers and CSS imports, explain lazy assets, list every public helper, and link to core for inherited props. The package's defaults and copy policy should be testable statements rather than assumptions about how a design-system component happens to work.

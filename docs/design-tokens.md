@@ -1,14 +1,12 @@
 # Design Tokens (CSS Custom Properties)
 
-The built-in `default` typography variant is driven entirely by CSS custom properties. **You can retheme the entire output without writing a single line of JavaScript** — override the tokens you care about in your own stylesheet and the library picks them up.
+The default core typography stylesheet exposes CSS custom properties for spacing, text sizes, heading hierarchy, colors, and math. Override those properties to adapt Markdown to your design system while retaining the built-in element rules. The tokens belong to core's default stylesheet; Mantine uses its own typography and scoped Mantine variables.
 
-The token surface is also the supported way to make spacing, sizing, color, and typography respond to your design system's existing scale.
-
----
+Most dimensions derive from the instance's `fontSize`. That makes a compact message and a larger article use the same proportions without maintaining separate stylesheets. It does not mean every CSS length scales: the default radius uses `rem`, and several borders and inline paddings use pixels. This guide lists the actual token defaults, their consumers, and the cascade rules that determine whether an override takes effect.
 
 ## Token anchor: `--aim-font-size-root`
 
-All spacing, font-size, and heading tokens are anchored to `--aim-font-size-root`, which the core renderer injects from the `fontSize` prop. The default variant's tokens are defined as `calc(var(--aim-font-size-root) * k)` — meaning **changing the `fontSize` prop proportionally scales every dimension**.
+All spacing, font-size, and heading tokens are anchored to `--aim-font-size-root`, which the core renderer injects from the `fontSize` prop. The default variant's tokens are defined as `calc(var(--aim-font-size-root) * k)` — meaning **changing `fontSize` scales the dimensions expressed through the root token**.
 
 ```tsx
 <AIMarkdown content={c} fontSize="0.875rem" /> // 14px-ish — everything scales down
@@ -36,7 +34,7 @@ All tokens are scoped to `.aim-typography-root.default`. Override at that select
 
 | Token              | Default formula                           | Used by                                                       |
 | ------------------ | ----------------------------------------- | ------------------------------------------------------------- |
-| `--aim-spacing-xs` | `calc(var(--aim-font-size-root) * 0.625)` | Tight inline gaps                                             |
+| `--aim-spacing-xs` | `calc(var(--aim-font-size-root) * 0.625)` | Heading/image gaps, code padding, table vertical padding      |
 | `--aim-spacing-sm` | `calc(var(--aim-font-size-root) * 0.75)`  | Table cell horizontal padding                                 |
 | `--aim-spacing-md` | `calc(var(--aim-font-size-root) * 1)`     | Block margins for `<hr>`, `<pre>`, lists, tables, blockquotes |
 | `--aim-spacing-lg` | `calc(var(--aim-font-size-root) * 1.25)`  | Paragraph bottom margin; blockquote horizontal padding        |
@@ -44,13 +42,13 @@ All tokens are scoped to `.aim-typography-root.default`. Override at that select
 
 ### Font sizes (inline scale)
 
-| Token                | Default formula                           | Used by                |
-| -------------------- | ----------------------------------------- | ---------------------- |
-| `--aim-font-size-xs` | `calc(var(--aim-font-size-root) * 0.75)`  | Footnotes, attribution |
-| `--aim-font-size-sm` | `calc(var(--aim-font-size-root) * 0.875)` | Captions, small labels |
-| `--aim-font-size-md` | `calc(var(--aim-font-size-root) * 1)`     | Body                   |
-| `--aim-font-size-lg` | `calc(var(--aim-font-size-root) * 1.125)` | Larger inline emphasis |
-| `--aim-font-size-xl` | `calc(var(--aim-font-size-root) * 1.25)`  | Lead paragraphs        |
+| Token                | Default formula                           | Used by                                            |
+| -------------------- | ----------------------------------------- | -------------------------------------------------- |
+| `--aim-font-size-xs` | `calc(var(--aim-font-size-root) * 0.75)`  | Inline and block code; keyboard labels             |
+| `--aim-font-size-sm` | `calc(var(--aim-font-size-root) * 0.875)` | Table captions, headers, and cells                 |
+| `--aim-font-size-md` | `calc(var(--aim-font-size-root) * 1)`     | Body                                               |
+| `--aim-font-size-lg` | `calc(var(--aim-font-size-root) * 1.125)` | Blockquote text                                    |
+| `--aim-font-size-xl` | `calc(var(--aim-font-size-root) * 1.25)`  | Available scale token; no default element consumer |
 
 ### Heading sizes
 
@@ -67,10 +65,10 @@ The multipliers (`2.125`, `1.625`, …) mirror Mantine's heading scale. Override
 
 ### Heading metadata
 
-| Token                       | Default                         | Notes                                     |
-| --------------------------- | ------------------------------- | ----------------------------------------- |
-| `--aim-h{1..6}-line-height` | varies                          | Unitless; multiplied by element font-size |
-| `--aim-h{1..6}-font-weight` | `var(--aim-font-weight-strong)` | All headings share this by default        |
+| Token                       | Default                          | Notes                              |
+| --------------------------- | -------------------------------- | ---------------------------------- |
+| `--aim-h{1..6}-line-height` | `1.3, 1.35, 1.4, 1.45, 1.5, 1.5` | Unitless, in h1–h6 order           |
+| `--aim-h{1..6}-font-weight` | `var(--aim-font-weight-strong)`  | All headings share this by default |
 
 ### Shared weight
 
@@ -90,8 +88,8 @@ Lower to `500` or `600` for lighter visual hierarchy. This single token is usual
 
 | Token                         | Default                    | Used by                                            |
 | ----------------------------- | -------------------------- | -------------------------------------------------- |
-| `--aim-line-height`           | unitless                   | Body line height                                   |
-| `--aim-radius-sm`             | rem                        | Code block / image corner radius                   |
+| `--aim-line-height`           | `1.55`                     | Body and code line height                          |
+| `--aim-radius-sm`             | `0.25rem`                  | Code, keyboard, and blockquote corner radius       |
 | `--aim-font-family-monospace` | system mono stack          | `<code>`, `<pre>`                                  |
 | `--aim-font-family-headings`  | `inherit` (the body stack) | All headings (override to differentiate from body) |
 
@@ -255,22 +253,49 @@ If you write a [custom typography component](./custom-typography.md), you can al
 
 ### Specificity wars with downstream resets
 
-CSS frameworks (Tailwind reset, Bootstrap, etc.) often emit rules like `h1 { font-size: 2rem; font-weight: 600; }` with the same specificity as `.aim-typography-root.default h1`. Whichever is loaded **later** wins. If your H1 looks wrong, check load order — and if needed, increase specificity:
+Inspect the winning declaration in browser DevTools before increasing specificity. Cascade layers, `!important`, selector specificity, and source order are separate factors; a later rule does not automatically beat a more specific one in the same layer.
+
+The shipped element rules use selectors such as `.aim-typography-root :where(h1)`. The `:where(...)` part adds zero specificity; the root class still contributes one class. A plain `h1` selector is less specific, while an application-scoped selector can deliberately override it:
 
 ```css
-.aim-typography-root.default h1.aim-typography-root.default h1 {
-  /* won't help */
+.chat-message .aim-typography-root {
+  --aim-h1-font-size: calc(var(--aim-font-size-root) * 1.8);
 }
 
-/* Either: */
-:where(.aim-typography-root.default) h1 {
-  font-size: var(--aim-h1-font-size);
-}
-
-/* Or: */
-.aim-typography-root.default :is(h1) {
-  font-size: var(--aim-h1-font-size) !important;
+/* Use an element override only when a token cannot express the change. */
+.chat-message .aim-typography-root h1 {
+  letter-spacing: -0.02em;
 }
 ```
 
-The library's own CSS is written without `!important` to play well with consumer overrides — but that cuts both ways when third-party CSS has the same shape.
+For token declarations, the built-in `.aim-typography-root.default` has two classes. Add your own scope or load an equal-specificity override after the library stylesheet. Wrapping a selector in `:where()` reduces specificity; it does not increase it. Avoid reaching immediately for `!important`, which makes later application overrides harder to reason about.
+
+## Default color values
+
+The light and dark classes declare the same property names. This table records the current values so a designer can compare a proposed theme without reverse-engineering the compiled CSS:
+
+| Token suffix (`--aim-color-…`) | Light     | Dark        |
+| ------------------------------ | --------- | ----------- |
+| `text`                         | `inherit` | `#c9d1d9`   |
+| `dimmed`                       | `#868e96` | `#8b949e`   |
+| `anchor`                       | `#228be6` | `#58a6ff`   |
+| `border`                       | `#dee2e6` | `#30363d`   |
+| `code-bg`                      | `#f1f3f5` | `#161b22`   |
+| `code-text`                    | `inherit` | `#c9d1d9`   |
+| `blockquote-bg`                | `#f8f9fa` | `#161b22`   |
+| `mark-bg`                      | `#fff3bf` | `#bb800926` |
+| `mark-text`                    | `inherit` | `inherit`   |
+
+`inherit` means the visible result depends on the surrounding style, so validate colors against the actual message background. The stylesheet does not load fonts. Set body `font-family` on the root and supply any font assets through your application.
+
+## A predictable override workflow
+
+1. Import core's typography CSS, then your application stylesheet.
+2. Supply a valid absolute font-size value (`15`, `'15px'`, or `'0.9375rem'`) through the component prop. Numeric zero remains zero; an empty string uses the shipped default.
+3. Override semantic tokens under an application scope rather than repeating element rules.
+4. Check computed values for a heading, a table cell, inline code, and KaTeX in a blockquote.
+5. Check both light and dark mode. A color declared on `.light` or `.dark` may compete with a generic variant override of equal specificity.
+
+The root variable is supplied as an inline style. A normal stylesheet declaration will lose to that inline value immediately, not only after the next React render. Custom wrappers must forward `style` to preserve it. See [custom typography](./custom-typography.md) for the wrapper and Fragment contracts.
+
+The maintained source is [`default.scss`](../packages/core/src/components/typography/variants/default.scss). Token tables describe that file's current defaults; they do not promise that every generated or caller-supplied component consumes every token.

@@ -26,22 +26,13 @@ shell renders a plain `<AIMarkdown>` with a paced `content` string.
 
 ## Why this composes well here
 
-A typewriter reveal multiplies render frequency: instead of one render per
-network chunk, the document re-renders up to once per animation frame. Most
-markdown renderers pay a full reparse per render, which makes smoothing a
-performance trade-off. Here the revealed prefix grows append-only, which is
-exactly the incremental-parse engine's fast path — each frame re-tokenizes
-only the appended tail, and block-level memoization skips every settled
-block.
+A reveal can update content once per animation frame, much more frequently than network delivery. Each revealed prefix is still an accumulated Markdown string, so core can reuse a verified frozen prefix and previously planned blocks while parsing the mutable tail.
 
-Honest per-frame accounting: the _parse_ is O(appended tail), the built-in
-LaTeX normalizer is append-aware too (frozen-prefix caching, ~20µs/append
-on a 15k math-dense stream vs ~2ms for a full run), and coordinated mode's
-per-chunk definition scan is incremental as well (probe + frozen prefix).
-What remains O(full prefix) per frame is any **user-supplied
-`contentPreprocessors`** — they see the whole revealed string every frame,
-so keep them cheap or internally append-aware. The residual multi-chunk
-consideration is registry fanout — see Footguns.
+This makes smoothing practical on many long documents, but it does not make every frame O(new characters). A frame may still scan or parse a long unfrozen tail; edits and syntax hazards can trigger a full parse. The block planner traverses the document's blocks, and references, raw HTML, or definitions can require broader context. React reconciliation, custom renderers, highlighting, layout, and observers add work beyond parsing.
+
+The built-in LaTeX preprocessor and coordinated definition scanner also retain append-aware state. Historical microbenchmarks measured roughly 20 µs per LaTeX append on a 15k-character math stream versus roughly 2 ms for the stateless path; this describes one corpus, not a render-time budget. User `contentPreprocessors` receive the full visible string and run before parsing, so a whole-string transform can dominate a frame even when the parser reuses its prefix.
+
+Keep `blockMemo` and `incrementalParse` enabled, stabilize processor inputs, and profile the actual message shape. For many coordinated siblings, also account for registry-wide subscribers; the final Footguns section explains why label-local subscriptions only remove part of that work.
 
 ## How pacing works
 
@@ -61,15 +52,12 @@ slow gaps in a row are enough to adapt to a coarser feed.
   tiny anti-freeze floor keeps visible progress whenever anything is
   pending.
 - **Pauses need no special case.** A gap longer than the lag cap saturates
-  the horizon and cannot change any further decision — `maxLagMs` is both
-  the max-lag promise and the whole pause story. The cap is pay-per-use: a
+  the horizon and cannot change any further decision — `maxLagMs` caps the scheduling horizon used by the controller. It cannot guarantee wall-clock latency when the browser suspends animation frames or the main thread is blocked. The cap is pay-per-use: a
   fine-grained stream's horizon tracks its own small cadence and never
   goes near it.
 - **After the stream ends** — the deadline window is sized for rate
   continuity: the tail reveals at roughly twice the stream's measured
-  throughput, clamped to `[drainMs, 3 × drainMs]`. The backlog empties
-  _by_ the deadline — a hard bound, not an asymptotic decay — and the
-  ending is brisker than the body, never a pour.
+  throughput, clamped to `[drainMs, 3 × drainMs]`. The controller targets that finite deadline instead of asymptotically approaching the end. The next scheduled frame at or after the deadline completes the reveal; background-tab throttling and a busy main thread can delay that frame.
 
 The tuning surface is three named presets (`smoothPacing`), a deliberate
 echo of audio-plugin buffer settings — perceptual trade-offs resist
@@ -98,7 +86,7 @@ combining sequence, or emoji ZWJ family is revealed atomically, never as a
 lone half that would reach the parser as U+FFFD garbage. (In the rare
 runtime without `Intl.Segmenter`, a code-point fallback still keeps
 surrogate pairs intact, but ZWJ families and combining sequences may reveal
-in steps.) The final grapheme of the source is held back until it is
+in steps.) During append animation, the final grapheme of the source is held back until it is
 _confirmed_ — by more text arriving behind it, or by the stream ending —
 because a trailing emoji sequence may still be growing.
 
@@ -108,8 +96,7 @@ The value you pass describes the **source** stream: `true` while tokens are
 still arriving. The inner `<AIMarkdown>` — and therefore the
 `streamingCursor` slot and every context consumer — sees `streaming === true`
 until the _reveal_ has also drained. The cursor keeps tracking the animated
-tail instead of vanishing while text is still appearing. Once the backlog
-empties, the inner flag follows yours and `onSmoothDrained` fires.
+tail instead of vanishing while text is still appearing. Once the backlog empties, the inner flag follows yours. `onSmoothDrained` fires for a completed reveal round that had backlog; an already complete mount or a snapped replacement is not a drained round.
 
 ## Composing with wrappers
 
@@ -175,9 +162,7 @@ Behavior notes:
   renders instantly — the mount snap — and never blanks out or replays. It
   still holds its queue slot: later empty-mounted chunks wait for it.
 - **A gated chunk renders nothing** (no text, no cursor) until its turn;
-  its backlog then plays out through the normal drain law — a fast,
-  continuous pour bounded by `drainMs`, not a flash and not per-character
-  grinding.
+  its backlog then plays out through the normal drain law — a paced drain whose target duration lies between `drainMs` and `3 × drainMs`, subject to frame scheduling. `drainMs` alone is not its maximum duration.
 - **Completion is sticky.** A finished chunk that streams again (tool-call
   round 2) does not re-gate successors that already started — hiding
   visible text is worse than the brief overlap you get instead.
@@ -204,9 +189,12 @@ bindings:
 import { createSmoothStreamController } from '@ai-react-markdown/core';
 
 const controller = createSmoothStreamController({ pacing: 'balanced' });
-controller.subscribe(() => render(controller.getVisible()));
+controller.update(''); // Initialize empty if the first append should animate.
+const unsubscribe = controller.subscribe(() => render(controller.getVisible()));
+render(controller.getVisible()); // subscribe does not emit the initial snapshot.
 socket.on('token', (accumulated) => controller.update(accumulated));
 socket.on('done', () => controller.finish());
+// On host teardown: remove socket listeners, unsubscribe(), controller.dispose().
 ```
 
 Contract highlights (full JSDoc on the export):
@@ -227,7 +215,7 @@ Contract highlights (full JSDoc on the export):
 | Prop                 | Type                                     | Default      | Description                                                                                  |
 | -------------------- | ---------------------------------------- | ------------ | -------------------------------------------------------------------------------------------- |
 | `smoothPacing`       | `'smooth' \| 'balanced' \| 'responsive'` | `'balanced'` | Latency-vs-smoothness preset (see the table above); read live                                |
-| `onSmoothDrained`    | `() => void`                             | —            | Fires when the post-stream drain completes — once per stream round                           |
+| `onSmoothDrained`    | `() => void`                             | —            | Fires when the post-stream drain completes — once per completed backlog round                |
 | `smoothWaiting`      | `boolean`                                | `false`      | Reserve an empty chunk's queue slot while awaiting input; clear on start or empty completion |
 | `smoothCoordination` | `boolean`                                | `true`       | Document turn-taking for this chunk; `false` = reveal independently                          |
 
@@ -294,7 +282,7 @@ progress.
   the stream's short horizon rather than stretching it out — the deadline
   law keeps its promise to stay current. Steady streams of any coarseness
   never exhibit this; it is a one-frame event on a pathological delivery.
-- **`onSmoothDrained` fires at end-of-stream, once per stream round.** The
+- **`onSmoothDrained` fires at end-of-stream, once per completed backlog round.** The
   held-back trailing grapheme keeps the reveal one step short of the source
   for as long as the stream is live, so mid-stream catch-ups (during source
   stalls) do _not_ fire it — only the post-`finish` drain does. In a
@@ -388,7 +376,7 @@ Turn-taking already gives you the single-typewriter shape, and gated
 chunks contribute nothing while they wait; if you still see fanout cost
 with very many mounted siblings, smoothing the message _before_ it enters
 coordinated chunking (one paced stream, split downstream) remains the
-zero-fanout alternative. Standalone usage has none of this — the scan
+way to reduce independent pacing controllers. Splitting the paced result into coordinated renderers still produces contribution updates and registry fanout; a single standalone renderer avoids coordination entirely. Standalone usage has none of this — the scan
 only runs in coordinated mode.
 
 ### Disabling block-memo while smoothing
@@ -422,3 +410,20 @@ Pacing is deadline-based over an injectable clock. In unit tests, inject
 `now`/`schedule` (the hook accepts both as internal seams; the controller
 takes them in options) and advance time manually — racing real timers
 against assertions is exactly the flake the seams exist to prevent.
+
+## Choose the lifecycle deliberately
+
+| Input transition                  | Visible behavior                                       | Completion callback                                        |
+| --------------------------------- | ------------------------------------------------------ | ---------------------------------------------------------- |
+| Mount with existing text          | Show all text immediately, including its tail          | No callback for the initial snapshot                       |
+| Append while streaming            | Reveal confirmed graphemes toward the current deadline | No callback merely for catching up mid-stream              |
+| End with a pending reveal         | Confirm the trailing grapheme and drain                | Once when that backlog round completes                     |
+| Replace or shorten visible source | Snap after the synchronization effect                  | Replacement does not report the abandoned round as drained |
+| Append after an earlier finish    | Resume the same controller                             | A later backlog round can complete again                   |
+| Flush an open stream              | Reveal the confirmed prefix; retain the uncertain tail | Does not declare the source finished                       |
+
+The preset drain bases are 320 ms (`smooth`), 240 ms (`balanced`), and 150 ms (`responsive`). The finishing window may be up to three times that base. These are controller time targets, not frame-rate or network-service guarantees.
+
+If product behavior depends on completion, distinguish the source's done event from the reveal's drained callback. Persisting the answer can follow source completion; scrolling to the final visible text can follow reveal completion. Do not use `onSmoothDrained` as the sole success signal for empty responses, initial static text, replacements, or transport failures.
+
+Source: [controller](../packages/engine/src/components/smoothStream/controller.ts), [React hook](../packages/core/src/components/smoothStream/useSmoothStream.ts), and [document-aware hook](../packages/core/src/components/smoothStream/useDocumentSmoothStream.ts).

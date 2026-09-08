@@ -1,6 +1,6 @@
 # TypeScript Generics
 
-`<AIMarkdown>` accepts one generic type parameter:
+Core has one component generic: `TMetadata`. It describes the value supplied through `metadata`, while ordinary props describe theme, lifecycle, pipeline choices, and rendering slots. There is no configuration generic in v2.
 
 ```ts
 function AIMarkdown<TMetadata extends AIMarkdownMetadata = AIMarkdownMetadata>(
@@ -8,17 +8,16 @@ function AIMarkdown<TMetadata extends AIMarkdownMetadata = AIMarkdownMetadata>(
 ): ReactElement;
 ```
 
-- **`TMetadata`** — your extended metadata, which must include all fields of `AIMarkdownMetadata` (`Record<string, any>` — so any plain object satisfies it).
+`AIMarkdownMetadata` extends `Record<string, any>` and imposes no required application fields. A normal interface such as `{ messageId: string }` can be used directly. The component can infer that interface from `metadata`; an explicit type argument is useful when you want the object checked against a shared contract.
 
-It defaults to the base type, so you only opt into the generic when you need typed metadata.
+The consumer hook's type argument is separate. `useAIMarkdownMetadata<ChatMeta>()` tells TypeScript how to treat the nearest context value, but it cannot prove that the provider supplied that shape. Centralize this assertion in an application hook and keep its runtime absent-value handling explicit.
 
-> **Where did `TConfig` go?** v1.x took two parameters — `AIMarkdownProps<TConfig, TMetadata>` — the first being a caller-asserted extended render config. v2.0.0 deleted the `config` object channel and the generic with it; metadata moved to the **first (and only) position**, so explicit `<MyConfig, MyMeta>` arguments now fail to compile — drop the config argument. Behavior extension travels through typed flat props and behavior groups instead of an asserted config shape. See [Migrating from 1.x to 2.0](./migrating-to-v2.md) for the full mapping, and [the narrow-hook section below](#the-assertion-problem-and-where-it-lives-now) for where the residual assertion lives.
-
----
+For v1 code, remove the first generic argument: `AIMarkdownProps<MyConfig, MyMeta>` becomes `AIMarkdownProps<MyMeta>`. Behavior extensions now use wrapper props and provider groups, as shown below and in the [migration guide](./migrating-to-v2.md).
 
 ## Extending metadata
 
 ```tsx
+import { useRef } from 'react';
 import AIMarkdown, { useAIMarkdownMetadata, type AIMarkdownMetadata } from '@ai-react-markdown/core';
 
 interface ChatMeta extends AIMarkdownMetadata {
@@ -26,14 +25,17 @@ interface ChatMeta extends AIMarkdownMetadata {
   onCopyCode: (code: string) => void;
 }
 
-function MyCodeBlock({ children }: { children: React.ReactNode }) {
+function MyCodeBlock({ children }: { children?: React.ReactNode }) {
+  const pre = useRef<HTMLPreElement>(null);
   const meta = useAIMarkdownMetadata<ChatMeta>();
   //                                  ^^^^^^^^ caller-asserted
   return (
-    <pre>
-      <button onClick={() => meta?.onCopyCode(String(children))}>Copy</button>
-      {children}
-    </pre>
+    <div>
+      <button type="button" onClick={() => meta?.onCopyCode(pre.current?.textContent ?? '')}>
+        Copy
+      </button>
+      <pre ref={pre}>{children}</pre>
+    </div>
   );
 }
 
@@ -73,13 +75,25 @@ Every custom component imports `useChatMeta()`; the assertion lives in one file.
 For **behavior groups** — the v2 successor of the extended config — the same pattern is the _only_ channel, and it's baked into the API shape. `useAIMarkdownBehaviors()` is non-generic: it returns the three core switches plus an opaque extension record, and the single type assertion happens inside the wrapper's narrow hook. This is exactly what `@ai-react-markdown/mantine` ships for its `codeBlock` group:
 
 ```ts
-// packages/mantine/src/hooks/useMantineCodeBlockOptions.ts (real code)
+// Equivalent narrow-hook pattern; use the package hook in application code.
 export function useMantineCodeBlockOptions(): Required<MantineCodeBlockOptions> {
   const behaviors = useAIMarkdownBehaviors();
   // The single assertion: the `codeBlock` group key is owned by this
   // package, contributed by `MantineAIMarkdown` via its behaviors Provider.
   const group = behaviors.codeBlock as Partial<MantineCodeBlockOptions> | undefined;
-  return useMemo(() => ({ ...defaultMantineCodeBlockOptions, ...group }), [group]);
+  return useMemo(
+    () => ({
+      defaultExpanded: group?.defaultExpanded ?? true,
+      autoDetectUnknownLanguage: group?.autoDetectUnknownLanguage ?? false,
+      formatJson: group?.formatJson ?? true,
+      expandNestedJson: group?.expandNestedJson ?? true,
+      highlightIntervalMs:
+        Number.isFinite(group?.highlightIntervalMs) && group!.highlightIntervalMs! >= 0
+          ? group!.highlightIntervalMs!
+          : 50,
+    }),
+    [group]
+  );
 }
 ```
 
@@ -204,3 +218,45 @@ Same for `MantineAIMarkdownProps<MyMantineConfig, MyMeta>` → `MantineAIMarkdow
 ### Scattering `as` assertions at read sites
 
 If you find yourself writing `behaviors.myGroup as MyGroupOptions` in more than one file, you've skipped the narrow hook. Centralize: one hook, one assertion, defaults applied inside it (bare `??` fallbacks at multiple read sites will drift — see [Extending via a Sub-package](./extending-via-subpackage.md#footguns)).
+
+## Preserve inference in wrappers
+
+A wrapper can extend `AIMarkdownProps<TMetadata>` and forward the metadata parameter unchanged. If you memoize a generic component, retain its callable signature when exposing it; otherwise consumers may lose the ability to supply an explicit metadata type argument.
+
+```tsx
+import { memo } from 'react';
+import AIMarkdown, { type AIMarkdownMetadata, type AIMarkdownProps } from '@ai-react-markdown/core';
+
+interface MessageMarkdownProps<T extends AIMarkdownMetadata> extends AIMarkdownProps<T> {
+  compact?: boolean;
+}
+
+function MessageMarkdownImpl<T extends AIMarkdownMetadata = AIMarkdownMetadata>({
+  compact,
+  ...props
+}: MessageMarkdownProps<T>) {
+  return (
+    <div data-compact={compact || undefined}>
+      <AIMarkdown<T> {...props} />
+    </div>
+  );
+}
+
+export const MessageMarkdown = memo(MessageMarkdownImpl) as typeof MessageMarkdownImpl;
+```
+
+The final assertion restores the wrapper's own generic function signature. It does not validate metadata at runtime and should not be used to claim that unrelated props are compatible.
+
+## Check fragments without widening away useful types
+
+For a custom component map, use `satisfies AIMarkdownCustomComponents` to check element keys and props while keeping the object's inferred shape. For a callback, annotate `UrlTransform` instead of writing `node: unknown` and later passing it to `defaultUrlTransform`. The exported type includes the read-only hast element expected by that callback.
+
+`defineTheme`, `defineBehaviors`, and `definePipeline` return the same object after shallow `Object.freeze`. They check the fragment's declared fields; they do not merge defaults, deep-freeze nested values, or validate a configuration read from JSON. Decode persisted settings at the application boundary and map plugin names to the exported catalog objects before passing them to the component.
+
+Optional fields deserve particular care in group hooks. `{ ...defaults, ...group }` allows an explicitly supplied `undefined` to overwrite a default. Resolve supported fields individually or skip undefined entries, as the Mantine hook does. A return type of `Required<Group>` must describe the value actually returned.
+
+## Other typed streaming surfaces
+
+Core also exports `AIMarkdownSmoothStreamProps<TMetadata>`, `UseSmoothStreamOptions`, `UseSmoothStreamResult`, and `UseDocumentSmoothStreamOptions`. The smooth shell preserves the same metadata generic; the hooks operate on strings and lifecycle state and do not need one. Controller types (`SmoothStreamController`, `SmoothStreamOptions`, `SmoothStreamPacing`, `SmoothStreamPacingParams`) describe the framework-independent pacing layer.
+
+The authoritative exported names are in [`core/src/index.tsx`](../packages/core/src/index.tsx), with payload types in [`context.tsx`](../packages/core/src/context.tsx). The [subpackage guide](./extending-via-subpackage.md) shows how a wrapper's props, group hook, and widened factory fit together.

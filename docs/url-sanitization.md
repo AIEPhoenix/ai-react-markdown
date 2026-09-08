@@ -1,10 +1,8 @@
 # URL Sanitization & Custom Schemes
 
-`<AIMarkdown>` filters URLs in `href`, `src`, and similar attributes through **two independent gates** (defense in depth). Anything that's not on both allowlists is rewritten to `''` and rendered as a dead link/image. This protects against XSS in LLM-generated markdown — but it also means private schemes (`myapp://`, `tel:`, `web+share:`, …) need explicit opt-in.
+URL handling has two stages. The sanitize schema first decides which HTML elements, attributes, and protocols survive. The render-time `urlTransform` then evaluates each surviving URL-bearing attribute. To allow a private protocol such as `myapp:`, configure both stages for the particular attribute that needs it.
 
-This document covers what each gate does, how to safely extend them, and the subtle reference-stability rules that make the difference between a working override and one that silently breaks block-level memoization.
-
----
+These stages have different outputs. A schema rejection can remove an attribute before your callback runs. A callback can return an empty string, `null`, or `undefined`; these values should not be described as interchangeable HTML. A legal empty destination is also different from a blocked destination. This guide explains that distinction, shows a typed extension recipe, and describes how the same policy applies to coordinated references.
 
 ## The two-gate model
 
@@ -41,44 +39,41 @@ LLM-emitted URL string
 
 ### Default allowlist
 
-Mirrors `react-markdown` / GitHub:
+`defaultUrlTransform` recognizes these explicit schemes:
 
 ```text
 http  https  irc  ircs  mailto  xmpp
 ```
 
-Anything else — `javascript:`, `data:`, `vbscript:`, `file:`, your own scheme — is stripped.
+Other explicit schemes, including `javascript:`, `data:`, `vbscript:`, and `file:`, return an empty string from the default transform. Relative paths, protocol-relative URLs, fragments, and query strings are also accepted by that transform. Gate 1 has separate per-attribute protocol lists, so this list is not a promise that every scheme is valid for every HTML attribute.
 
 ---
 
 ## Allowing a custom scheme
 
-The recommended pattern is **both gates extended at module scope** so identity is stable across renders (the block-memo cache depends on this).
+For an application deep link, allow the protocol on `href` and keep image policy unchanged. Give the callback the exported `UrlTransform` type so its `node` argument has the correct hast shape:
 
 ```tsx
-import AIMarkdown, { defaultUrlTransform, extendSanitizeSchema } from '@ai-react-markdown/core';
+import AIMarkdown, { defaultUrlTransform, extendSanitizeSchema, type UrlTransform } from '@ai-react-markdown/core';
 
-// Gate 1: extend the library schema so it permits the scheme on href + src.
-// This is the per-protocol allowlist that runs in the rehype chain.
-const SCHEMA = extendSanitizeSchema((s) => {
-  s.protocols!.href!.push('myapp');
-  s.protocols!.src!.push('myapp');
+const SCHEMA = extendSanitizeSchema((draft) => {
+  draft.protocols ??= {};
+  draft.protocols.href = [...(draft.protocols.href ?? []), 'myapp'];
 });
 
-// Gate 2: compose with default so https/mailto/etc. still pass.
-// This is the per-attribute rewriter that runs at render time.
-const ALLOWED = /^myapp:/i;
-const URL_TRANSFORM = (url: string, key: string, node: unknown) =>
-  ALLOWED.test(url) ? url : defaultUrlTransform(url, key, node);
+const URL_TRANSFORM: UrlTransform = (url, key, node) => {
+  if (key === 'href' && /^myapp:/i.test(url)) return url;
+  return defaultUrlTransform(url, key, node);
+};
 
 function App({ content }: { content: string }) {
-  return <AIMarkdown content={content} urlTransform={URL_TRANSFORM} sanitizeSchema={SCHEMA} />;
+  return <AIMarkdown content={content} sanitizeSchema={SCHEMA} urlTransform={URL_TRANSFORM} />;
 }
 ```
 
-Both `URL_TRANSFORM` and `SCHEMA` are defined **once** at module load. Pass the same references to every `<AIMarkdown>` in the app.
+`[Open item](myapp://items/42)` can now reach your link renderer. To support the protocol on `src` too, add it to `draft.protocols.src` and explicitly permit the `src` key in the callback. A protocol rule does not validate an application's host, route, or item identifier; add those checks when your deep-link handler requires them.
 
----
+Keep both values at module scope when policy is fixed. If policy depends on application settings, memoize the schema and callback with those settings as dependencies. A real policy change must reach the renderer; preserving an obsolete function for performance would preserve the obsolete policy as well.
 
 ## `urlTransform` (Gate 2)
 
@@ -90,25 +85,26 @@ import type { Element } from 'hast';
 type UrlTransform = (url: string, key: string, node: Readonly<Element>) => string | null | undefined;
 ```
 
-| Parameter | Meaning                                                                                                                        |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `url`     | The raw URL string as it appears in the markdown                                                                               |
-| `key`     | Attribute name — `'href'`, `'src'`, `'cite'`, etc.                                                                             |
-| `node`    | The hast `Element` carrying the attribute, frozen as `Readonly` — useful when policy depends on tag name or sibling attributes |
+| Parameter | Meaning                                                                                                                       |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `url`     | The URL after parsing, normalization, schema filtering, and any hash rebasing                                                 |
+| `key`     | Attribute name — `'href'`, `'src'`, `'cite'`, etc.                                                                            |
+| `node`    | The hast `Element` carrying the attribute, typed as `Readonly` — useful when policy depends on tag name or sibling attributes |
 
 The return value can be:
 
 - The rewritten URL (a non-empty string) — used as-is.
-- `''`, `null`, or `undefined` — treated as "drop"; the attribute is removed.
+- `null` or `undefined` — no URL value is supplied for the rendered attribute.
+- `''` — an empty URL value. Serialization and browser behavior depend on the element and React; do not use it as a synonym for an absent attribute when that distinction matters.
 
-`null` and `undefined` are convenient when composing with a default — e.g. returning the default transform's verdict directly without coercing through `String(…)`.
+`Readonly` is a TypeScript contract, not runtime freezing. Do not mutate the node or its properties from your callback. A callback should compute a return value from its arguments and policy, without depending on how many times a cached tree has been visited.
 
 ### Key-aware policies
 
 A common need: permit `myapp:` on `<a href>` but not on `<img src>` (which would let an LLM embed a tracker pixel). The `key` parameter is exactly for this:
 
 ```ts
-const URL_TRANSFORM = (url, key, node) => {
+const URL_TRANSFORM: UrlTransform = (url, key, node) => {
   if (key === 'href' && /^myapp:/i.test(url)) return url;
   // src/cite paths still go through the default allowlist
   return defaultUrlTransform(url, key, node);
@@ -121,7 +117,8 @@ const URL_TRANSFORM = (url, key, node) => {
 
 ```ts
 // ✅ Whitelist your scheme; defer everything else to the default.
-const URL_TRANSFORM = (url, key, node) => (/^myapp:/i.test(url) ? url : defaultUrlTransform(url, key, node));
+const URL_TRANSFORM: UrlTransform = (url, key, node) =>
+  /^myapp:/i.test(url) ? url : defaultUrlTransform(url, key, node);
 
 // ⚠️ Reimplementing the safe set yourself — easy to miss a scheme.
 const URL_TRANSFORM = (url) => {
@@ -132,7 +129,7 @@ const URL_TRANSFORM = (url) => {
 
 ### Setting `urlTransform={null}`
 
-Passing `null` is equivalent to omitting the prop entirely — `<AIMarkdown>` falls back to `defaultUrlTransform` (`||` semantics in the vendored Markdown wrapper). There is no "disable the per-attribute pass" mode; the urlTransform stage always runs. If you need to widen the allowlist, compose with `defaultUrlTransform` as shown above.
+Passing `null` is equivalent to omitting the prop entirely — `<AIMarkdown>` falls back to `defaultUrlTransform` (core normalizes the absent value before forwarding it). There is no "disable the per-attribute pass" mode; the urlTransform stage always runs. If you need to widen the allowlist, compose with `defaultUrlTransform` as shown above.
 
 ---
 
@@ -148,29 +145,29 @@ const SCHEMA = extendSanitizeSchema((s) => {
   s.protocols!.href!.push('myapp');
   s.protocols!.src!.push('myapp');
   s.tagNames!.push('my-widget');
-  s.attributes!['my-widget'] = ['data-id', 'data-mode'];
+  s.attributes!['my-widget'] = ['dataId', 'dataMode'];
 });
 
-// Return-style (when you need a wider replacement).
-const SCHEMA = extendSanitizeSchema((s) => ({
+// Return-style alternative (when you need a wider replacement).
+const RETURNED_SCHEMA = extendSanitizeSchema((s) => ({
   ...s,
   tagNames: [...(s.tagNames ?? []), 'my-widget'],
 }));
 ```
 
-> ⚠️ **Return-style does no merging.** Whatever object you return is used as the schema verbatim. If you write `({ ...s, protocols: { href: ['myapp'] } })` thinking "I'll add one protocol", you'll actually **replace the entire `protocols` object** — losing `https`, `mailto`, `ircs`, the `src` allowlist, and so on. Mutate-style is safer for additive changes (push to existing arrays); reserve return-style for the rare case where you genuinely want to replace the whole schema and you accept the responsibility of re-supplying every field.
+> ⚠️ **Return-style does no merging.** Whatever object you return is used as the schema verbatim. If you write `({ ...s, protocols: { href: ['myapp'] } })` thinking "I'll add one protocol", you'll actually **replace the entire `protocols` object** — replacing the inherited `href` list and removing the explicit `src` and other protocol restrictions. Mutate-style is safer for additive changes (push to existing arrays); reserve return-style for the rare case where you genuinely want to replace the whole schema and you accept the responsibility of re-supplying every field.
 
 ### Why use the helper instead of building a schema from scratch?
 
-The library default extends `rehype-sanitize`'s `defaultSchema` with three additions that the renderer relies on:
+The library default extends `rehype-sanitize`'s `defaultSchema` with renderer-specific allowances and a raw-text stripping policy:
 
 | Addition                                                                                | Why it's needed                                                                                                                                                                                                                                                                              |
 | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `<mark>` tag + class allowlist                                                          | For `==highlight==` syntax to render                                                                                                                                                                                                                                                         |
+| `<mark>` tag allowance                                                                  | For `==highlight==` syntax to render                                                                                                                                                                                                                                                         |
 | Math className allowlist on `<code>` (`math-inline`, `math-display`)                    | For `remark-math` to mark code spans as math before `rehype-katex` consumes them. KaTeX's own output classes (`katex`, `katex-html`, …) are not in this allowlist — they survive because `rehype-katex` runs _after_ `rehype-sanitize`, so those classes aren't yet present at sanitize time |
 | Cross-chunk coordination tags (`cross-chunk-link`, `cross-chunk-image`, `footnote-sup`) | For [cross-chunk references](./cross-chunk-coordination.md) to resolve correctly                                                                                                                                                                                                             |
 
-Hand-rolling a schema (`{ ...defaultSchema, … }`) **silently drops these** — `==highlight==` becomes plain text, math disappears, cross-chunk footnotes fail. `extendSanitizeSchema` always works on a clone of the **library**'s default (not `rehype-sanitize`'s), so these survive.
+Hand-rolling a schema (`{ ...defaultSchema, … }`) **silently drops these** — `==highlight==` becomes plain text, math may remain code text instead of becoming a formula, and cross-chunk placeholders can be removed. `extendSanitizeSchema` always works on a clone of the **library**'s default (not `rehype-sanitize`'s), so these survive.
 
 ### Inspecting the default schema
 
@@ -186,7 +183,7 @@ extendSanitizeSchema((s) => {
 
 ### Why isn't the default schema exported as a value?
 
-Because the obvious extension pattern — `{ ...sanitizeSchema, protocols: { ...sanitizeSchema.protocols, href: [...] } }` — is a shallow spread. Nested arrays (`protocols.href`, `attributes.a`, `ancestors.*`) stay aliased to the singleton; `.push(...)` mutates it, and the mutation leaks into every other `<AIMarkdown>` in the app that doesn't override `sanitizeSchema`. `extendSanitizeSchema` always works on a deep clone, so this entire class of bug is impossible by construction.
+Because the obvious extension pattern — `{ ...sanitizeSchema, protocols: { ...sanitizeSchema.protocols, href: [...] } }` — is a shallow spread. A shallow spread retains nested object and array references. The engine singleton is now deep-frozen, so mutating one of those shared arrays can throw rather than producing an independent schema. Deep cloning provides a mutable graph with no shared nested state. `extendSanitizeSchema` always works on a deep clone, so this entire class of bug is impossible by construction.
 
 ---
 
@@ -231,19 +228,28 @@ This means **a permissive `urlTransform` in one chunk does not leak across chunk
 
 ## Regex-escaping for scheme names
 
-Per RFC 3986, scheme names may contain `+`, `-`, and `.` — all regex metacharacters. Write `/^web\+app:/i`, **not** `/^web+app:/i`:
+A literal `+` or `.` must be escaped when written in a regular expression. In `/^web+app:/i`, the `+` repeats the preceding `b`; it matches `webapp:` or `webbapp:`, not the intended `web+app:`.
 
 ```ts
-// ⚠️ Silently broadens the allowlist — matches we, wee, weee, ...
-const ALLOWED = /^web+app:/i;
-
-// ✅ Literal `+`.
-const ALLOWED = /^web\+app:/i;
+const WRONG = /^web+app:/i;
+const CORRECT = /^web\+app:/i;
 ```
 
-Real-world schemes that need escaping: `web+share`, `coap+tcp`, `application+xml` (in some MIME-like contexts), domain-specific dotted schemes.
+A hyphen is literal outside a character class. Inside a character class it can define a range, so its placement or escaping matters. Do not describe all three characters as having the same regular-expression behavior.
 
----
+For a dynamically configured scheme list, avoid building a regex from unescaped input. Extract and compare the scheme as data:
+
+```ts
+const EXTRA_SCHEMES = new Set(['myapp', 'web+share']);
+const URL_TRANSFORM: UrlTransform = (url, key, node) => {
+  const colon = url.indexOf(':');
+  const scheme = colon < 0 ? '' : url.slice(0, colon).toLowerCase();
+  if (key === 'href' && EXTRA_SCHEMES.has(scheme)) return url;
+  return defaultUrlTransform(url, key, node);
+};
+```
+
+The matching Gate 1 schema still needs those same protocol names. This is a policy for known application protocols, not a general URL parser.
 
 ## Footguns
 
@@ -309,18 +315,31 @@ The helper has no try/catch. A throw propagates uncaught to the call site. This 
 
 ### Forgetting that arrays in the schema are `readonly`-typed but mutable at runtime
 
-```ts
-// TypeScript will complain about this:
-extendSanitizeSchema((s) => {
-  s.protocols.href.push('myapp'); // ts(2540) Cannot assign to '0' because it is a read-only property
-});
+The helper returns the upstream `Schema` shape, whose fields can be optional. A TypeScript error about a possibly undefined `protocols` or `href` requires initialization or a justified non-null assertion. It is unrelated to readonly typing: `!` removes `null`/`undefined` from the expression's type and cannot make a readonly array mutable.
 
-// The runtime is fine with `.push` — the readonly-ness is only at the TypeScript level
-// because `rehype-sanitize`'s upstream types declare them as such. Use non-null assertions
-// or cast as needed:
-extendSanitizeSchema((s) => {
-  s.protocols!.href!.push('myapp');
+```ts
+const SCHEMA = extendSanitizeSchema((draft) => {
+  draft.protocols ??= {};
+  draft.protocols.href = [...(draft.protocols.href ?? []), 'myapp'];
 });
 ```
 
-The helper's signature can't relax upstream types without losing accuracy, so the consumer-side `!` is unavoidable.
+The default draft already contains the usual protocol lists, so the shorter `draft.protocols!.href!.push('myapp')` also works with the current type and default schema. Use the expanded form when writing a reusable helper that may operate on other schemas.
+
+## Final-element policy for cross-chunk references
+
+The registry stores the raw destination so the consuming chunk can apply its own policy exactly once. At resolution, the engine builds the final `a` or `img`, normalizes its URL, applies the schema, rebases a hash destination, and then calls the URL transform. Since 2.12, that resolution also respects final-tag membership, allowed attributes, and ancestor constraints. Checking only `protocols.href` would miss those parts of the standalone policy.
+
+Consequently, `urlTransform` may never see a URL that Gate 1 removed. It cannot restore a stripped attribute merely by allowing its protocol. If an entire link element is disallowed, the result can preserve its text or strip its contents according to the schema; an image has no equivalent text-child fallback. Test the final DOM shape, not only whether your callback ran.
+
+The engine's private placeholder tags are also checked for provenance between raw-HTML expansion and sanitization. Authored `<cross-chunk-link>` or `<footnote-sup>` HTML is not a supported way to create a coordinated reference. The shipped renderer creates and verifies its own credential; ordinary React integrations do not configure it.
+
+## Keep the policy boundary explicit
+
+Schema customization replaces the supplied schema; core does not merge it with defaults afterward. `extendSanitizeSchema` starts you from the complete library schema, but returning a different object or deleting material can still remove its invariants. In particular, removing a `protocols` restriction is not the same operation as blocking all protocols on that attribute.
+
+The default schema strips certain raw-text elements together with their content, including `script`, `style`, `title`, and `iframe`. KaTeX renders after sanitization, using the admitted math markers. A custom component or downstream HTML injection creates output outside that earlier sanitize pass. Assess such output at the point you introduce it.
+
+For a policy regression check, cover an HTTP link, a relative path, a query containing a colon, a namespaced hash, your private scheme, a blocked scheme, and a legal empty destination. Repeat link and image cases in standalone and coordinated mode, and verify policy changes without changing Markdown source. This catches callback composition, attribute-key, and stale-cache errors independently.
+
+Implementation: [`pluginChain.ts`](../packages/engine/src/components/pluginChain.ts), [`extendSanitizeSchema.ts`](../packages/engine/src/components/extendSanitizeSchema.ts), [`resolveCrossChunkReference.ts`](../packages/engine/src/components/resolveCrossChunkReference.ts), and [`markdown/transform.ts`](../packages/engine/src/components/markdown/transform.ts).

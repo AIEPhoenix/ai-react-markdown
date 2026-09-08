@@ -1,37 +1,38 @@
 # Content Preprocessors
 
-Content preprocessors are synchronous string-to-string functions applied to the raw markdown **before** the remark/rehype pipeline parses it. Use them when the input markdown needs a transformation that's simpler at the string level than as a remark plugin — frontmatter stripping, dialect normalization, regex fixes for upstream model quirks, custom dollar-sign escaping, etc.
+A content preprocessor is a synchronous `(content: string) => string` function. It runs before Markdown parsing and is suitable for source-format cleanup: removing a known frontmatter header, translating an application marker, or normalizing a controlled dialect. It receives text, not syntax nodes or React context.
 
-```ts
-import type { AIMDContentPreprocessor } from '@ai-react-markdown/core';
+```tsx
+import AIMarkdown, { type AIMDContentPreprocessor } from '@ai-react-markdown/core';
 
-const stripFrontmatter: AIMDContentPreprocessor = (content) =>
-  content.replace(/^---[\s\S]*?---\n/, '');
+const stripFrontmatter: AIMDContentPreprocessor = (content) => {
+  if (!content.startsWith('---\n')) return content;
+  const end = content.indexOf('\n---\n', 3);
+  return end < 0 ? content : content.slice(end + 5);
+};
+const PREPROCESSORS = [stripFrontmatter];
 
-<AIMarkdown content={raw} contentPreprocessors={[stripFrontmatter]} />
+<AIMarkdown content={raw} contentPreprocessors={PREPROCESSORS} />;
 ```
 
-The signature is intentionally minimal:
-
-```ts
-type AIMDContentPreprocessor = (content: string) => string;
-```
-
----
+This example deliberately handles a narrow LF-delimited frontmatter format. It keeps incomplete headers intact and does not claim to parse YAML. Define both the function and its array once, or memoize them when they depend on application settings. The API accepts synchronous results only; fetch data or perform asynchronous normalization before supplying `content`.
 
 ## Execution order
 
-1. **Built-in LaTeX preprocessor** (`preprocessLaTeX`) runs first, unconditionally. It normalizes `\(…\)`/`\[…\]` to `$…$`/`$$…$$`, escapes `|` inside math to survive GFM tables, handles `mhchem` commands, recognizes currency `$` so `$5.99` isn't treated as math, and truncates unclosed `$$` blocks during streaming.
-2. **Caller preprocessors** run next, in the order supplied to `contentPreprocessors`. Each receives the previous one's output (left-fold).
+The outer React component applies the built-in LaTeX stage first, then calls your preprocessors in array order. Each function receives the preceding function's output:
 
 ```ts
-contentPreprocessors={[a, b, c]}
-// applied as: c(b(a(latexPreprocessed(content))))
+// With contentPreprocessors={[a, b, c]}:
+const result = c(b(a(latexNormalizedContent)));
 ```
 
-You can rely on `$…$` and `$$…$$` already being normalized by the time your preprocessor sees content — useful when writing math-adjacent transforms.
+The built-in stage recognizes supported math delimiters and currency, protects code regions, normalizes bracket-delimited math, and escapes math pipes so they do not become GFM table separators. Inline `$x$` and `\(x\)` normalize to the inline `$$x$$` representation consumed by the configured `remark-math` instance (`singleDollarTextMath: false`). Display math uses line-oriented delimiters. Do not assume the caller slot receives the original dollar spelling.
 
----
+Unclosed display-math truncation is based on the source grammar, not the `streaming` prop: preprocessing does not receive that flag. It can therefore affect an incomplete static document too. Since the line-start fixes, a doubled dollar in the middle of a prose line is not treated as an opening display block merely because it is unpaired.
+
+Core owns one append-aware LaTeX preprocessor per mounted renderer. It reuses a verified prefix when possible and resets on non-append input; its result must equal the stateless `preprocessLaTeX` result for the same complete input. Your functions still receive the entire normalized string on every content change. The incremental parser cannot remove the cost of those full-string passes.
+
+An empty input bypasses the preprocessing call in core. A preprocessor is consequently not a reliable place to manufacture an empty-message placeholder. Render that placeholder in the application.
 
 ## Built-in optional: streaming tail repair (`createRemendPreprocessor`)
 
@@ -46,9 +47,9 @@ const PREPROCESSORS = [createRemendPreprocessor()];
 <AIMarkdown content={streamed} streaming contentPreprocessors={PREPROCESSORS} />;
 ```
 
-It is tree-shakeable: `remend` only enters your bundle if you import the factory.
+The factory is opt-in at runtime. Whether unused repair code is removed from a particular application bundle depends on the published build and the consuming bundler; inspect the built bundle before claiming a size reduction.
 
-What it repairs: bold/italic/bold-italic, inline code, strikethrough, links, images (incomplete images are **dropped**, not placeholder-rendered), setext-heading ambiguity, stray `>`/`~` false positives. It is a no-op on well-formed text, so the final frame renders identically with or without it.
+What it repairs: bold/italic/bold-italic, inline code, strikethrough, links, images (incomplete images are **dropped**, not placeholder-rendered), setext-heading ambiguity, stray `>`/`~` false positives. It is intended to preserve already complete Markdown, but its repair rules are dependency-version-specific. Keep representative completed and intentionally incomplete inputs in your integration checks when upgrading it.
 
 Two defaults differ from stock `remend`, one overridable and one not:
 
@@ -63,7 +64,7 @@ Two defaults differ from stock `remend`, one overridable and one not:
 ### Footguns
 
 - **Create the preprocessor once** (module scope or `useMemo`). A fresh factory call per render defeats `contentPreprocessors`' stable-value memoization and re-runs the whole pipeline every frame.
-- **Cost is per frame over the WHOLE content, and superlinear on some inputs.** `remend` re-runs on every streamed chunk; internally it makes ~a dozen full-string passes, and its false-positive guards (single `~` between word characters, `>` in list items) re-lex from the string start once per match. A very long answer dense in such characters (shell paths, `~50%`, quoted comparisons) can spend tens of milliseconds per token frame in the preprocessor — before the pipeline the incremental engine optimizes even starts. Profile with the DevTools Performance panel if your payloads are large; the repairs themselves only ever concern the tail.
+- **Measure repair cost over the whole input.** The caller slot invokes remend with the complete string on each update. The current dependency is remend 1.3.1, which includes scanning changes; older timing anecdotes do not establish its present cost. Profile long prose, code-heavy input, and incomplete inline syntax under your actual reveal cadence.
 - **Don't apply it to static content.** A document that legitimately ends inside an unterminated marker (a trailing lone `*`) gets it closed. Reserve it for streaming UIs, or swap it out when `streaming` flips false (see the streaming-state pattern below).
 - **Repair runs after `preprocessLaTeX`** (it lives in the caller slot). In the rare mid-stream frame where an unterminated code span contains currency (`` `$100 and… ``), the LaTeX pass may escape the `$` before the span is closed by the repair — a transient artifact on that frame only; it self-heals when the real closing backtick streams in.
 
@@ -76,12 +77,12 @@ Two defaults differ from stock `remend`, one overridable and one not:
 ```ts
 const stripFrontmatter: AIMDContentPreprocessor = (content) => {
   if (!content.startsWith('---\n')) return content;
-  const end = content.indexOf('\n---\n', 4);
+  const end = content.indexOf('\n---\n', 3);
   return end === -1 ? content : content.slice(end + 5);
 };
 ```
 
-Using `indexOf` is friendlier than regex on large inputs — frontmatter only lives at the start, so anchoring the search at offset 4 cuts work proportionally.
+The opening check limits this transform to a header at offset zero, and the closing search avoids consuming a partial header. Add explicit CRLF or end-of-file closing-marker support if your source format requires it. Neither this implementation nor an arbitrary regex is a general frontmatter parser.
 
 ### Normalize curly quotes back to straight
 
@@ -102,7 +103,7 @@ const explicitAutolinks: AIMDContentPreprocessor = (content) =>
 const normalizeBlankLines: AIMDContentPreprocessor = (content) => content.replace(/\n{3,}/g, '\n\n');
 ```
 
-Some models over-produce blank lines as they stream. CommonMark already treats 2+ blank lines as a single break, but stripping the noise upfront makes block-level memoization more effective (fewer position shifts).
+Apply this only to a source format where those blank lines are expendable. The global replacement also changes fenced code and can affect list layout and source positions. Fewer source bytes do not by themselves establish a cache improvement; benchmark the resulting stream, including transitions as a blank-line run grows.
 
 ### Replace `[[wikilink]]` syntax with standard markdown links
 
@@ -141,7 +142,7 @@ Compose by ordering, not by combining functions inside one preprocessor — this
 
 ## Reference stability
 
-`contentPreprocessors` is a **`WARN_ONLY`** prop in the stability firewall (see [streaming and performance → the function-valued exception](./streaming-and-performance.md#the-function-valued-exception-urltransform-contentpreprocessors)): a function array cannot be deep-compared, so there is no deep-equal safety net. An inline array is a fresh identity every render — it re-runs the whole preprocessing chain (a fresh `content` string) and invalidates everything downstream on every parent render; development builds warn after a few identity flips. Module scope is **required**, not merely recommended:
+`contentPreprocessors` is a **`WARN_ONLY`** prop in the stability firewall (see [streaming and performance → the function-valued exception](./streaming-and-performance.md#the-function-valued-exception-urltransform-contentpreprocessors)): a function array cannot be deep-compared, so there is no deep-equal safety net. An inline array is a fresh identity every render — it re-runs preprocessing on a parent render even when source text is unchanged; downstream work is invalidated when the resulting string or other dependencies actually change; development builds warn after a few identity flips. Use a stable module binding for fixed transforms, or `useMemo`/`useCallback` with complete dependencies for dynamic ones:
 
 ```ts
 // ✅ Stable identity — the chain runs only when `content` changes.
@@ -152,7 +153,7 @@ function App({ content }) {
 }
 ```
 
-The functions themselves should also be module-scope. A `function strip(content) {…}` declaration is identity-stable; a closure-over-render-state lambda isn't.
+A function declaration is stable only if its enclosing scope is stable. A function declared inside a component is recreated on that component's render. Memoize a closure when it must capture state; do not freeze an old closure merely to keep a cache warm.
 
 ---
 
@@ -170,9 +171,9 @@ my-frontmatter-looking-block
 ```
 ````
 
-A `stripFrontmatter` preprocessor that runs `content.replace(/^---[\s\S]*?---\n/, '')` against this input… is fine here (the `---` is not at the start). But a less careful regex might munge the fenced block. For **structural** transformations (changing how a fenced block renders, rewriting a specific node type), write a remark or rehype plugin instead — those operate on the AST and respect node types.
+A `stripFrontmatter` preprocessor that runs `content.replace(/^---[\s\S]*?---\n/, '')` against this input… is fine here (the `---` is not at the start). But a less careful regex might munge the fenced block. For changes to element presentation, use `customComponents`, which receives the parsed element. A true syntax transformation needs an AST-aware pipeline and a corresponding correctness contract.
 
-The library doesn't expose plugin slots directly because of the architectural constraints of block-level memoization (the pipeline plan is built once per content change). If you need plugin-level customization, [fork the pipeline via a custom sub-package](./extending-via-subpackage.md).
+Core exposes a sealed plugin selection, not arbitrary remark/rehype injection. The boundary scanner and equivalence tests cover that selected grammar. A [React integration package](./extending-via-subpackage.md) composes public slots and providers; it does not open a hidden plugin slot. Propose a new syntax feature upstream, or own a separate engine integration and its validation when a different grammar is required.
 
 ---
 
@@ -212,3 +213,27 @@ function StreamingDoc({ rawContent, isStreaming }) {
 The library re-runs the preprocessor chain whenever `content` changes — which during streaming is on every chunk. A preprocessor that does `O(n²)` work per call will be the dominant cost.
 
 For very large documents, use cheap, single-pass regex transforms; profile with React DevTools before optimizing.
+
+## Stream-only repair with explicit completion behavior
+
+Select between stable arrays at the call site when repair should stop at completion:
+
+```tsx
+import AIMarkdown, { createRemendPreprocessor } from '@ai-react-markdown/core';
+
+const REPAIR = [createRemendPreprocessor()];
+
+function RepairedMessage({ content, pending }: { content: string; pending: boolean }) {
+  return <AIMarkdown content={content} streaming={pending} contentPreprocessors={pending ? REPAIR : undefined} />;
+}
+```
+
+The final update intentionally re-evaluates the original source without synthetic closers. If that source ends in incomplete syntax, the final visual result can change. Keep repair active after completion only when completing such syntax is part of your application's contract.
+
+With smooth streaming, decide whether repair follows source completion or visible-reveal completion. Applying it after `useSmoothStream` with the returned `streaming` flag keeps intermediate revealed prefixes repaired while the backlog drains. Applying it before pacing repairs a different string and can produce different intermediate frames.
+
+## Verification and source locations
+
+For each transform, test empty input, partial headers or markers, a completed document, and the same text inside code fences. For streaming use, compare a sequence of accumulated prefixes rather than independent deltas. Include a replacement update: append-aware functions must discard stale state when a message is regenerated.
+
+The orchestration lives in [`preprocessors/index.ts`](../packages/engine/src/preprocessors/index.ts), with the per-instance wrapper created in [`core/src/index.tsx`](../packages/core/src/index.tsx). [`latex.ts`](../packages/engine/src/preprocessors/latex.ts) owns normalization and its incremental implementation; [`remend.ts`](../packages/engine/src/preprocessors/remend.ts) fixes the repair options. The LaTeX entry-equivalence and soft-atom differential suites test the built-in implementations against their reference paths. They do not validate arbitrary caller functions.

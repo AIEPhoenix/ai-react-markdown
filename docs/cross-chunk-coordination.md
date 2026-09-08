@@ -1,47 +1,41 @@
 # Cross-Chunk Coordination
 
-When a single logical markdown document is rendered by **multiple** `<AIMarkdown>` instances (e.g. one `<AIMarkdown>` per streamed chunk in a chat UI), references that span chunks would normally break:
+A logical document can be displayed by several `<AIMarkdown>` instances: for example, independently updated answer sections with references to a shared citation list. Each instance parses its own Markdown. `<AIMarkdownDocuments>` connects their reference definitions and footnote numbering when they share an explicit, non-empty `documentId`.
 
-- footnote `[^1]` in chunk B → footnote def `[^1]: …` in chunk D fails to resolve
-- link `[click][docs]` in chunk A → `[docs]: https://…` in chunk C produces an empty link
-- image `![alt][hero]` in chunk C → `[hero]: …` in chunk A renders nothing
-
-`<AIMarkdownDocuments>` is the wrapper that coordinates these references across chunks. It's opt-in — wrap your `<AIMarkdown>` instances, pass the **same** `documentId` to every chunk of the same logical document, and references resolve correctly across chunks.
+This is a reference-coordination layer, not a parser for arbitrarily split transport data. Accumulate SSE/token deltas into one string for the usual chat interface. Use multiple renderers only when each chunk is a meaningful Markdown unit: a fence, paragraph, table, or emphasis span cannot begin in one renderer and finish in another.
 
 ```tsx
 import AIMarkdown, { AIMarkdownDocuments } from '@ai-react-markdown/core';
 
 interface Message {
-  id: string; // stable per logical message
-  chunks: string[]; // markdown chunks as they arrived from the LLM
+  id: string;
+  chunks: { id: string; markdown: string }[];
 }
 
 function StreamedMessage({ message }: { message: Message }) {
   return (
     <AIMarkdownDocuments>
-      {message.chunks.map((chunk, i) => (
-        <AIMarkdown key={i} content={chunk} documentId={message.id} />
+      {message.chunks.map((chunk, index) => (
+        <AIMarkdown key={chunk.id} content={chunk.markdown} documentId={message.id} documentIndex={index} />
       ))}
     </AIMarkdownDocuments>
   );
 }
 ```
 
-Without the wrapper, each `<AIMarkdown>` is independent — its references resolve only within its own content (standalone behavior, unchanged).
+The wrapper allows a footnote reference in one chunk to find a later definition, and lets link and image references resolve a definition supplied elsewhere. Without it, unresolved reference syntax follows standalone Markdown behavior, generally remaining literal text; it does not inherently become an empty link or disappear.
 
-> ⚠️ **Prerequisite: keep `blockMemo` at `true` (the default).** Cross-chunk coordination is wired only through the block-memo render path. Setting `blockMemo={false}` falls back to the legacy renderer which does not connect to `Registry`, and coordination silently degrades — orphan defs are not protected, refs across chunks resolve as empty placeholders, and the aggregate footnote footer is not emitted.
-
----
+Keep `blockMemo` enabled (the default). Coordination belongs to that rendering path; `blockMemo={false}` selects the legacy standalone path and loses shared numbering, reference resolution, and the aggregate footer.
 
 ## When to use
 
-| Scenario                                                                                   | Use `<AIMarkdownDocuments>`?                                                                  |
-| ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
-| Single `<AIMarkdown>` per logical document (most non-streaming apps)                       | **No** — overhead with no benefit                                                             |
-| One `<AIMarkdown>` per chat message, references stay within the message                    | **No**                                                                                        |
-| Streamed message split into multiple `<AIMarkdown>` instances (e.g. one per network chunk) | **Yes** — same `documentId` across chunks                                                     |
-| Multiple distinct messages on the same page, each with its own internal references         | **No** — but auto-generated `documentId` namespaces still prevent cross-message id collisions |
-| One conceptual document split visually (collapsible sections, virtualized list rows)       | **Yes** if references span the splits                                                         |
+| Scenario                                                                                      | Use `<AIMarkdownDocuments>`?                                                                  |
+| --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Single `<AIMarkdown>` per logical document (most non-streaming apps)                          | **No** — overhead with no benefit                                                             |
+| One `<AIMarkdown>` per chat message, references stay within the message                       | **No**                                                                                        |
+| Streamed message split into multiple `<AIMarkdown>` instances (each a complete Markdown unit) | **Yes** — same `documentId` across chunks                                                     |
+| Multiple distinct messages on the same page, each with its own internal references            | **No** — but auto-generated `documentId` namespaces still prevent cross-message id collisions |
+| One conceptual document split visually (collapsible sections, virtualized list rows)          | **Yes** if references span the splits                                                         |
 
 ---
 
@@ -71,13 +65,13 @@ The shortening is purely a **rendered-HTML** concern. `useDocumentRegistry(docum
 
 Omit `documentId` and the library calls `useId()` to generate one. SSR-safe, stable across re-renders of the same instance. Different `<AIMarkdown>` instances get different ids — which is what you want for standalone mode, and exactly what you **don't** want for chunked-streaming mode.
 
-> **The single most common mistake**: wrapping chunks in `<AIMarkdownDocuments>` but forgetting to pass a shared `documentId`. Each chunk gets its own auto-generated id, the registry partitions them, and coordination silently does nothing.
+> **The single most common mistake**: wrapping chunks in `<AIMarkdownDocuments>` but forgetting to pass a shared `documentId`. Auto-generated ids namespace standalone HTML, but omitted `documentId` opts the renderer out of the shared registry. Pass the same explicit id to join it; an empty string or null also opts out.
 
 ---
 
 ## What gets coordinated
 
-Three independent reference kinds, each in its own namespace:
+Three forms of reference are coordinated through two namespaces. Footnotes have their own labels; links and images share the same Markdown link-definition namespace:
 
 | Kind      | Markdown syntax                           | Coordinated across chunks?                                |
 | --------- | ----------------------------------------- | --------------------------------------------------------- |
@@ -130,7 +124,7 @@ Returns:
 - The shared `Registry` if both (a) called inside `<AIMarkdownDocuments>` and (b) `documentId` is non-empty.
 - `null` otherwise — treat as "run the standalone path; no coordination."
 
-> ℹ️ **The hook is allocating, not purely read-only.** Calling `useDocumentRegistry(documentId)` inside an `<AIMarkdownDocuments>` for a `documentId` that has no live chunks yet **creates an empty `Registry` shell** in the wrapper's `Map<documentId, Registry>` as a render-time side effect. The shell is later evicted when the next mount/unmount cycle settles. In practice this is invisible — but avoid calling with a frequently-changing id (e.g. `documentId={\`tmp-${Date.now()}\`}`), which would accumulate empty shells in the Map until the next mount cycle.
+> ℹ️ **The hook is allocating, not purely read-only.** Calling `useDocumentRegistry(documentId)` inside an `<AIMarkdownDocuments>` for a `documentId` that has no live chunks yet **creates an empty `Registry` shell** in the wrapper's `Map<documentId, Registry>` as a render-time side effect. A registry with registered chunks is evicted after its last chunk is released. A shell created by a render that never registers a chunk has no such release lifecycle and can remain until the wrapper unmounts. Use stable document ids; do not allocate speculative ids in a frequently rerendering reader.
 
 ```tsx
 import { useDocumentRegistry, defaultUrlTransform } from '@ai-react-markdown/core';
@@ -159,7 +153,7 @@ function BacklinkPanel({ documentId, label }: { documentId: string; label: strin
 
 | Field/Method                                        | Returns                                        | Purpose                                                                                                                        |
 | --------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `chunkOrder`                                        | `readonly symbol[]`                            | Mount-order chunk identifiers                                                                                                  |
+| `chunkOrder`                                        | `readonly symbol[]`                            | Chunk identifiers in documentIndex order, with mount order as fallback/tie-breaker                                             |
 | `chunkData`                                         | `ReadonlyMap<symbol, ChunkData>`               | Per-chunk refs/defs/linkDefs                                                                                                   |
 | `labelSet`                                          | `{ footnoteLabels, linkLabels }` (ReadonlySet) | Union of own-def labels across chunks                                                                                          |
 | `version`                                           | `number`                                       | Monotonic counter; bumped on every mutation                                                                                    |
@@ -196,7 +190,7 @@ function useRegistryVersion(registry: Registry | null): number {
   return useSyncExternalStore(
     (cb) => (registry ? registry.subscribe(cb) : () => {}),
     () => registry?.version ?? 0,
-    () => registry?.version ?? 0
+    () => 0 // Server and hydration start before contribution effects.
   );
 }
 
@@ -216,7 +210,12 @@ import { useSyncExternalStore } from 'react';
 import { useDocumentRegistry, defaultUrlTransform } from '@ai-react-markdown/core';
 
 // urlTransform's third argument is the hast node; a minimal stand-in is fine.
-const A_NODE = { type: 'element', tagName: 'a', properties: {}, children: [] } as const;
+const A_NODE: Parameters<typeof defaultUrlTransform>[2] = {
+  type: 'element',
+  tagName: 'a',
+  properties: {},
+  children: [],
+};
 
 function BacklinkPanel({ documentId, labels }: { documentId: string; labels: string[] }) {
   const registry = useDocumentRegistry(documentId);
@@ -286,14 +285,20 @@ Link/image refs have no equivalent counter API — derive that yourself from `re
 
 The two cross-document patterns are also named in [Streaming chat: end-to-end](./streaming-chat-example.md) and [Streaming & performance](./streaming-and-performance.md) — same `Approach A` / `Approach B`, in the same direction (A = growing, B = chunked). The cross-chunk doc leads with B because that's the pattern that actually needs coordination.
 
-### Approach B: one `<AIMarkdown>` per network chunk (chunked)
+### Approach B: one `<AIMarkdown>` per logical Markdown chunk (chunked)
 
 ```tsx
 function StreamedMessage({ chunks, id, done }: { chunks: string[]; id: string; done: boolean }) {
   return (
     <AIMarkdownDocuments>
       {chunks.map((chunk, i) => (
-        <AIMarkdown key={i} content={chunk} documentId={id} streaming={!done && i === chunks.length - 1} />
+        <AIMarkdown
+          key={i}
+          content={chunk}
+          documentId={id}
+          documentIndex={i}
+          streaming={!done && i === chunks.length - 1}
+        />
       ))}
     </AIMarkdownDocuments>
   );
@@ -314,56 +319,41 @@ No wrapper needed — there's only one instance. Block-level memoization minimiz
 
 ### Variant: hybrid (chunked + virtualization)
 
-Use any virtualization library you already have — `react-window`, `@tanstack/react-virtual`, etc. The shape that matters is "list of chunks mounted/unmounted on demand, wrapped in a single `<AIMarkdownDocuments>`":
+Virtualization changes which contributions exist. `documentIndex` preserves the order of **mounted** chunks; it does not retain definitions, refs, or numbering from chunks that have unmounted. Consequently, a reference can become unresolved when its definition scrolls out of the mounted window, and the aggregate footer belongs to the last registered chunk rather than necessarily the final chunk in your full data set.
+
+Use a virtualizer only when these lifetime semantics fit the application. Keep required definition-bearing chunks mounted, or keep a complete renderer mounted if the whole document must remain navigable. Reserving an ordinal alone cannot supply missing content.
+
+For a virtualized row, the renderer-facing contract is:
 
 ```tsx
-// Example using @tanstack/react-virtual — substitute your own virtualizer.
-import { useVirtualizer } from '@tanstack/react-virtual';
-import { useRef } from 'react';
-
-function VirtualizedDoc({ chunks, id }: { chunks: string[]; id: string }) {
-  const parentRef = useRef<HTMLDivElement>(null);
-  const rowVirtualizer = useVirtualizer({
-    count: chunks.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => 200,
-  });
-
-  return (
-    <AIMarkdownDocuments>
-      <div ref={parentRef} style={{ height: '100vh', overflow: 'auto' }}>
-        {rowVirtualizer.getVirtualItems().map((row) => (
-          <div key={row.key} style={{ transform: `translateY(${row.start}px)` }}>
-            <AIMarkdown content={chunks[row.index]} documentId={id} />
-          </div>
-        ))}
-      </div>
-    </AIMarkdownDocuments>
-  );
+function DocumentRow({ id, index, markdown }: { id: string; index: number; markdown: string }) {
+  return <AIMarkdown content={markdown} documentId={id} documentIndex={index} />;
 }
 ```
 
-Useful for very long documents where mounting/unmounting chunks via virtualization is desirable. The registry handles chunks coming and going (mount allocates a symbol, unmount releases it; the aggregate footer follows the current last chunk).
+The surrounding virtualizer owns its scroll container, total-height spacer, absolute row positioning, measurements, and stable keys. Place one `<AIMarkdownDocuments>` above the mounted rows. The row's React key should identify the logical chunk even when it moves; `documentIndex` describes its current document position.
 
-**Order caveat.** The registry orders chunks by _registration_ order, and both footnote numbering and the "last chunk" (which renders the aggregate footer) follow that order. By default registration order is **mount** order, which is correct as long as each chunk mounts once, in document order. A chunk that unmounts and later remounts — scrolled out of a virtualizer's window and back, or given a new React key — is otherwise released and re-registered at the **end**: footnotes renumber document-wide and the aggregate footer moves to that chunk's tail, i.e. visually into the middle of the document. Pass **`documentIndex`** (any stable per-chunk ordinal, e.g. the message's index in your list) and the registry keeps chunks sorted by it instead, so mount order stops mattering: `<AIMarkdown documentId={id} documentIndex={i} …/>`. The prop is optional — omit it and the historical mount-order behaviour is unchanged. Chunks that supply an index sort ahead of chunks that do not (those keep mount order among themselves), so a partial rollout degrades predictably rather than interleaving.
+By default, registration order is mount order. A released chunk that later remounts would otherwise be appended to the registry's order, potentially moving its footnotes and footer into the middle of the visual document. Supplying a stable ordinal fixes this ordering problem. Indexed chunks sort ahead of unindexed chunks; equal indices and unindexed chunks use mount order. Supply indices consistently for predictable ordering.
 
----
+Smooth-stream turn-taking has its own mount-ordered queue. `documentIndex` does not reorder that queue; see [smooth streaming](./smooth-streaming.md#chunks-inserted-out-of-mount-order).
 
 ## Lifecycle: how chunks register with the registry
 
-1. **Mount** — each `<AIMarkdown>` calls `registry.registerChunk(reactId, footnoteLabels, linkLabels)`, which allocates a `Symbol` and contributes its own def labels.
-2. **Render** — `chunkData` for this chunk gets refs/defs/linkDefs from the parsed mdast.
-3. **Re-render** — on every content change, `contributeChunkData` overwrites the chunk's entry.
-4. **Unmount** — `releaseSymbol` synchronously decrements the chunk's refcount. When refcount reaches `0`, it schedules a microtask cleanup that re-checks the refcount before actually deleting the chunk's state. A same-frame remount increments the refcount back to `1` before the cleanup runs, so the symbol survives Strict Mode's double-mount.
-5. **Last chunk unmounts** — registry's `onEmpty` callback evicts the registry from the wrapper's `Map<documentId, Registry>`. The next mount with the same id allocates a fresh registry — which is the right behavior because the consumer is genuinely starting over.
+Registration and contribution are commit-time effects. A render prepares trees and contribution data; other renderers observe them only after effects publish them.
 
-The microtask deferral is **the** subtle part. React 19's Strict Mode mounts each component twice in development. A naive unmount-then-mount would release and re-allocate the symbol, causing footnote numbers to flicker. The deferral lets the re-mount cancel the release before it commits.
+1. The renderer obtains the registry for the current explicit document id and allocates its chunk identity through the registration lifecycle. Identity is paired with that registry so switching documents cannot publish an old symbol into a different store.
+2. Registration publishes the chunk's own definition labels and optional `documentIndex`. These labels let other chunks parse references that would otherwise remain unresolved.
+3. Contribution effects publish parsed reference information, link definitions, and processed footnote bodies. A contribution fingerprint skips unchanged writes; a parent render does not necessarily mutate the store.
+4. Cleanup releases the symbol's reference count. Deletion is deferred to a microtask and rechecks the count, allowing Strict Mode's effect cleanup/setup cycle to retain the same live entry.
+5. Releasing the last registered chunk invokes the registry's empty callback and removes it from the wrapper map. A later mount starts a fresh document registry. This cleanup does not apply to speculative empty shells that never had a registered chunk.
+
+The aggregate footer and reference placeholders subscribe to the resulting store. Label subscriptions avoid waking an unrelated reference when its selected URL or numbering did not change; document-wide views still need global subscriptions. See the notification-routing section below for the distinction.
 
 ### Server rendering and the first client frame
 
-Steps 1–3 run in effects, so on the server (and in the client's first render before effects) the registry exists but is **empty**. In that state every chunk renders with **standalone semantics** — its own footnote numbering (mark and local footer agree, byte-identical to rendering the chunk outside the wrapper), its own reference-style links and images resolved from its own definitions. Cross-chunk references — a `[^label]` or `[text][label]` whose definition lives in another chunk — cannot be resolved without the registry and render as literal text until the chunks have registered. Once the contribute effects run, marks switch to document-wide numbering, links resolve to the canonical (first-defining) chunk, and the aggregate footer replaces the local ones. Hydration is mismatch-free: the client's first frame reproduces the server's standalone output before switching.
+On the server, contribution effects do not run. Each chunk therefore renders with standalone semantics: local definitions resolve locally and local footnote marks agree with their local footer. A definition located only in another chunk is unavailable, so its reference remains unresolved during this phase.
 
----
+The first client render starts from the same empty registry, preserving hydration agreement. After effects register and contribute, references resolve against the canonical definitions in document order, footnotes receive shared numbers, and local footers give way to the aggregate footer. If cross-chunk resolution must be present in server HTML, render one complete Markdown string instead of expecting effects to run on the server.
 
 ## Footguns
 
@@ -431,3 +421,11 @@ Already covered above — dev throws, prod degrades. Don't.
 Placeholders use `subscribeLabel` and a scalar snapshot instead of receiving every registry notification. Link observers wake when their canonical owner, URL or title changes. Footnote observers wake when the canonical owner, number, reference count or per-chunk occurrence range changes, including indirect renumbering after another label is inserted earlier in document order. Labels are normalized by the same identifier rules as the selectors.
 
 Each microtask compares the observed labels against the current ordered index before invoking any callbacks. Multiple same-label placeholders share that comparison. Net-zero changes can produce no label callback; global `subscribe` still observes every mutation batch and is required for raw chunk data, footnote bodies and aggregate views. Unsubscribing the last listener removes the label group. Index rebuilding and comparison across subscribed labels still cost work; this removes unrelated callback fanout, not every document-wide scan.
+
+## Checking a coordinated integration
+
+Verify more than the happy path: add a definition after its reference, edit its URL/title, insert an earlier footnote, remove the canonical definition, and remount a chunk with its original `documentIndex`. Test link and image references using the same label, since both select from the link namespace. Check that separate document ids never exchange definitions.
+
+For a custom registry reader, always subscribe before relying on later contributions. The first `BacklinkPanel` example demonstrates URL selection only; combine it with `useRegistryVersion` for live updates, as in the full sidebar recipe. `defaultUrlTransform` supplies the library's default URL policy for your manually constructed link; it does not reproduce an arbitrary consuming chunk's custom schema or transform.
+
+Implementation references: [document wrapper](../packages/core/src/components/AIMarkdownDocuments.tsx), [registry](../packages/engine/src/components/documentRegistry.ts), and [render lifecycle](../packages/core/src/components/MarkdownContent.tsx).

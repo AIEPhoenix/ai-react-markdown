@@ -1,18 +1,12 @@
 # ai-react-markdown — Extending & Customization Guide
 
-This `docs/` directory documents the **customization and extension surfaces** of `ai-react-markdown`. The [project README](../README.md) covers installation, quick start, and the basic prop reference; everything below is for when you outgrow defaults.
+These guides explain how to integrate, customize, and maintain ai-react-markdown against the code in this repository. Start with the [project README](../README.md) for package selection and installation, or a package's README for its full public API. This directory goes deeper into rendering contracts, lifecycle behavior, implementation boundaries, and verification.
 
-> **Audience.** You've shipped `<AIMarkdown>` with default settings and now need to:
->
-> - replace specific HTML element renderers (e.g. a chat-specific `<pre>` with copy buttons),
-> - swap or theme the typography wrapper,
-> - allow private URL schemes through sanitization,
-> - coordinate footnotes/references across chunked chat messages,
-> - or build your own integration package on top of `@ai-react-markdown/core`.
->
-> If you only need defaults, you don't need this guide — `<AIMarkdown content={…} />` already does the right thing.
+The examples use the current 2.x flat-prop API unless explicitly labeled as historical. The [migration guide](./migrating-to-v2.md) includes removed 1.x APIs for comparison; [release highlights](./release-highlights.md) and benchmark records preserve the behavior and measurements of the versions they describe.
 
----
+For an ordinary chat message, accumulate transport deltas into one Markdown string and update one renderer. Add custom components for application behavior, tokens for visual adjustments, and `<AIMarkdownDocuments>` only when one logical document is deliberately split into multiple Markdown units. This distinction matters because reference coordination cannot join syntax split across component boundaries.
+
+The scenario index below is the shortest route to a working integration. The full index also includes architecture and maintenance material for contributors.
 
 ## By scenario (start here)
 
@@ -59,12 +53,14 @@ If none of these matches, the full topic index below covers every surface.
 | 12  | [Extending via a sub-package](./extending-via-subpackage.md) | Build your own `@yourorg/ai-react-markdown-<integration>` package, following the Mantine model               |
 | 13  | [Architecture overview](./architecture.md)                   | Mental model: render pipeline, context layering, registry design                                             |
 | 14  | [Migrating from 1.x to 2.0](./migrating-to-v2.md)            | The complete v2.0.0 breaking-change map — every removed symbol with its one-to-one destination               |
-| ★   | [Streaming chat: end-to-end](./streaming-chat-example.md)    | Copy-runnable example — SSE backend, React state, Next.js App Router                                         |
+| ★   | [Streaming chat: end-to-end](./streaming-chat-example.md)    | Complete SSE framing, cancellation, React state, and a Next.js-style route                                   |
 | ★   | [CJK typography](./cjk-typography.md)                        | Chinese / Japanese / Korean text — line breaking, pangu spacing, font stack                                  |
 | ★   | [Release highlights](./release-highlights.md)                | What's notable in each version — distilled from the commit log                                               |
 | ★   | [Benchmark](./benchmark.md)                                  | Measured numbers for block-memo × incremental parse, methodology, and how to reproduce them                  |
 
-The documents are independent — read them in any order. Cross-references are inlined where helpful.
+| ★ | [Soak coverage](./soak-coverage.md) | Map stateful optimizations to oracles, tests, release legs, and engagement checks |
+
+The documents can be read independently; code recipes that build on earlier definitions say so. Cross-references are inlined where helpful.
 
 </details>
 
@@ -74,18 +70,18 @@ The documents are independent — read them in any order. Cross-references are i
 
 The library follows semver:
 
-| Surface                                                                                                              | Stability under minor versions                                                    |
-| -------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| Component props (`AIMarkdownProps`, `MantineAIMarkdownProps`)                                                        | Stable. Additions are non-breaking; renames/removals require a major bump         |
-| Hook signatures (the five narrow hooks, `useAIMarkdown`, `useDocumentRegistry`, `useStableValue`, `useStableRecord`) | Stable                                                                            |
-| Flat prop **names** and **roles** (incl. the sealed plugin names)                                                    | Stable                                                                            |
-| Flat prop **default values**                                                                                         | May shift under minor bumps as defaults evolve — override what you need locked    |
-| CSS custom property **names** (e.g. `--aim-spacing-md`)                                                              | Stable                                                                            |
-| CSS custom property **default values**                                                                               | May shift under minor bumps as the visual design evolves                          |
-| `UrlTransform`, `SanitizeSchema` types                                                                               | Track upstream `react-markdown` / `rehype-sanitize`; may change with their majors |
-| `Registry` interface                                                                                                 | Stable read-only surface; mutator methods are intentionally not exported          |
-| Internal byte-for-byte HTML output                                                                                   | Not stable — never assert on raw HTML; use semantic queries                       |
-| Everything exported by `@ai-react-markdown/engine`                                                                   | **Not stable before 3.0.0** — see below                                           |
+| Surface                                                                                                              | Stability under minor versions                                                      |
+| -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Component props (`AIMarkdownProps`, `MantineAIMarkdownProps`)                                                        | Stable. Additions are non-breaking; renames/removals require a major bump           |
+| Hook signatures (the five narrow hooks, `useAIMarkdown`, `useDocumentRegistry`, `useStableValue`, `useStableRecord`) | Stable                                                                              |
+| Flat prop **names** and **roles** (incl. the sealed plugin names)                                                    | Stable                                                                              |
+| Flat prop **default values**                                                                                         | May shift under minor bumps as defaults evolve — override what you need locked      |
+| CSS custom property **names** (e.g. `--aim-spacing-md`)                                                              | Stable                                                                              |
+| CSS custom property **default values**                                                                               | May shift under minor bumps as the visual design evolves                            |
+| `UrlTransform`, `SanitizeSchema` types                                                                               | Track upstream `react-markdown` / `rehype-sanitize`; may change with their majors   |
+| `Registry` interface                                                                                                 | Stable read-only surface; mutator methods are intentionally not exported            |
+| Internal byte-for-byte HTML output                                                                                   | Not stable — prefer semantic assertions for application tests; use semantic queries |
+| Everything exported by `@ai-react-markdown/engine`                                                                   | **Not stable before 3.0.0** — see below                                             |
 
 **On `@ai-react-markdown/engine`.** Since 2.3.0 the Markdown engine ships as its own package. It is public on npm because `@ai-react-markdown/core` depends on it, not because it is a product: its export surface tracks whatever core happens to consume and may change in any release, patch bumps included. You get it automatically when you install `core`, pinned to core's exact version, and nothing in this guide asks you to import from it. Depend on it directly only if you are building a framework adapter of your own — and if you do, pin both packages to the same exact version.
 
@@ -95,7 +91,7 @@ When in doubt, pin your overrides explicitly rather than relying on defaults.
 
 ## Conventions used in this guide
 
-- **Code blocks** show the minimal version that compiles — apply your own imports for `katex` CSS, `MantineProvider`, etc.
+- **Code blocks** are labeled by purpose. Complete recipes include their required imports; smaller fragments assume the surrounding application values, and wrapper templates use explicitly named placeholder modules. Install the package peers and import required CSS before using them.
 - **Footguns** sections at the end of each document collect anti-patterns and stability traps. Read them once per surface.
 - `// ✅` and `// ⚠️` callouts mark recommended vs anti-pattern code lines.
 - Where a behavior is shared by `@ai-react-markdown/core` and `@ai-react-markdown/mantine`, the example uses `AIMarkdown` (core); apply identically to `MantineAIMarkdown`.
@@ -112,3 +108,18 @@ If you find a documented API that doesn't behave as described, or a customizatio
 - the observed vs expected behavior.
 
 Issue tracker: <https://github.com/AIEPhoenix/ai-react-markdown/issues>
+
+## Reading the implementation alongside the guides
+
+Follow a value through its owner before changing its documentation. Public props are resolved in core; syntax and incremental state belong to engine; React providers, effects, and cached element construction belong to core; Mantine owns its code presentation and group defaults. An export in engine is not automatically a supported core API.
+
+| Question                                   | Implementation to inspect                               | Guide to keep aligned                      |
+| ------------------------------------------ | ------------------------------------------------------- | ------------------------------------------ |
+| What does an omitted prop do?              | Core prop resolver and the wrapper's parameter defaults | Package props reference, migration guide   |
+| When can an old parse or block be reused?  | Incremental advance, block planner, MarkdownContent     | Architecture, streaming and performance    |
+| Which chunk owns a reference?              | Document registry and consuming placeholder             | Cross-chunk coordination, URL sanitization |
+| What text is displayed or copied?          | Core preprocessor chain and Mantine code renderer       | Content preprocessors, Mantine README      |
+| When is a streamed result complete?        | Transport state, smooth controller, document queue      | Chat example, smooth streaming             |
+| What proves an optimization was exercised? | Coverage map, oracle tests, soak manifests              | Soak coverage, experimental record         |
+
+When contributing documentation, retain useful examples and historical measurements, but identify their version and scope. Verify current API names, defaults, relative links, and commands against this checkout. A successful build establishes that package artifacts compile; it does not by itself validate every prose claim or performance estimate.

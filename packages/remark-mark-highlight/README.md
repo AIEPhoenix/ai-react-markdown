@@ -14,7 +14,9 @@
 [![Release](https://img.shields.io/github/actions/workflow/status/AIEPhoenix/ai-react-markdown/release.yml?label=release&logo=githubactions&logoColor=white)](https://github.com/AIEPhoenix/ai-react-markdown/actions/workflows/release.yml)
 [![part of ai-react-markdown](https://img.shields.io/badge/monorepo-ai--react--markdown-8a2be2?logo=github)](https://github.com/AIEPhoenix/ai-react-markdown)
 
-[remark](https://github.com/remarkjs/remark) plugin for `==mark==` highlight syntax: `==text==` parses to an mdast `mark` node and renders as `<mark>text</mark>`.
+A [remark](https://github.com/remarkjs/remark) syntax plugin for highlighted text. `==text==` becomes an mdast `mark` node whose `data.hName` tells remark-rehype to produce `<mark>text</mark>`. The package registers both parsing and Markdown serialization extensions; it does not provide CSS or an HTML sanitizer.
+
+Use the named `remarkMarkHighlight` export with unified. The alias `remarkMark` retains the upstream export name, and lower-level micromark/mdast extensions are available for custom pipelines. The core renderer already enables this capability through its sealed `highlight` plugin, so core users do not need to register this package separately.
 
 First-party continuation of the unmaintained [`remark-mark-highlight`](https://www.npmjs.com/package/remark-mark-highlight), used internally by [`@ai-react-markdown/core`](https://github.com/AIEPhoenix/ai-react-markdown/blob/main/packages/core)'s sealed `highlight` engine plugin — published standalone because it is useful outside this repo, and because the upstream's ESM-only exports map broke bare-Node CJS `require()` consumers.
 
@@ -28,17 +30,39 @@ Dual ESM/CJS build: both `import` and `require` work, types included for both.
 
 ## Use
 
+A parse-only processor produces an mdast tree. Call `parse` and `run` rather than `process`, since there is no compiler in this first pipeline:
+
 ```ts
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import { remarkMarkHighlight } from '@ai-react-markdown/remark-mark-highlight';
 
 const processor = unified().use(remarkParse).use(remarkMarkHighlight);
-// '==hi==' → mdast: { type: 'mark', data: { hName: 'mark' }, children: [...] }
-// → hast/HTML: <mark>hi</mark> (via data.hName — no custom handler needed)
+const tree = processor.runSync(processor.parse('==hi=='));
+// tree contains: { type: 'mark', data: { hName: 'mark' }, children: [...] }
 ```
 
-Serialization back to markdown (`remark-stringify`) is supported; `==` sequences round-trip.
+To render HTML, add the conversion and serialization stages (install their packages alongside unified and remark-parse):
+
+```ts
+import { unified } from 'unified';
+import remarkParse from 'remark-parse';
+import remarkRehype from 'remark-rehype';
+import rehypeStringify from 'rehype-stringify';
+import { remarkMarkHighlight } from '@ai-react-markdown/remark-mark-highlight';
+
+const html = unified()
+  .use(remarkParse)
+  .use(remarkMarkHighlight)
+  .use(remarkRehype)
+  .use(rehypeStringify)
+  .processSync('==**bold** inside==');
+
+console.log(String(html));
+// <p><mark><strong>bold</strong> inside</mark></p>
+```
+
+No custom mdast-to-hast handler is required. If your full application pipeline uses rehype-sanitize, include `mark` in its allowed tags; core's default schema already does. For Markdown output, replace the HTML stages with remark-stringify. The plugin supplies the corresponding `==` serialization rules, including the escaping behavior described below.
 
 ## Syntax at a glance
 
@@ -82,6 +106,16 @@ Works with `remark-rehype` out of the box (`data.hName = 'mark'`); no custom han
 ## Versioning
 
 This package versions independently of the `@ai-react-markdown/core` release train — core depends on it through a normal semver range.
+
+## Integration boundaries and verification
+
+The delimiter must be exactly two equals signs with valid attention-style flanking. A single or triple run remains text; code spans and escapes take precedence, and nested strong/emphasis can appear inside a mark. This package does not itself relax delimiter flanking for CJK text or replace the separate CJK plugins used by core.
+
+Importing the plugin's types registers `Mark` in mdast's content maps. The resulting node is phrasing content with children, so a tree visitor should recurse rather than assume a single text child. `data.hName` carries the HTML element mapping; removing that data in an intervening transform changes how the next stage renders the node.
+
+The pinned 50-case parity corpus compares positional mdast and hast with `remark-mark-highlight@0.1.1`. It covers this plugin's standalone behavior; interactions with additional attention extensions such as GFM are not implied by that parity claim. Test your complete plugin combination if you depend on a particular nesting rule.
+
+For repository work, run `pnpm --filter @ai-react-markdown/remark-mark-highlight test` and the package build. When changing syntax or serialization, include both a parsed-tree example and a round-trip example: escaping every phrasing equals sign is an existing serializer contract, even where the source is not a highlight span. This package has independent semver, so its behavior changes are not automatically governed by core's version number.
 
 ## License
 

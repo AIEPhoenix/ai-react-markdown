@@ -1,22 +1,20 @@
 # CJK Typography
 
-`ai-react-markdown` is **CJK-first** in a way most React markdown libraries aren't. The rendering pipeline is configured out of the box for the line-breaking rules, mixed-script spacing, and punctuation conventions of Chinese, Japanese, and Korean text — which matters because LLM output is increasingly multilingual and increasingly mixes scripts within a single paragraph.
+CJK rendering combines three separate concerns: recognizing Markdown delimiters beside Chinese, Japanese, or Korean punctuation; adding optional spaces at mixed-script boundaries; and laying out the result with an appropriate font and line height. The library supplies parser extensions and default typography, while your application chooses language, fonts, and editorial spacing policy.
 
-This document covers what the library does for CJK content, what you can tune, and what's intentionally **not** done.
-
----
+This guide distinguishes those responsibilities so that a punctuation problem is not treated as a CSS problem, and a line-break policy is not attributed to the wrong plugin. It also documents the limits of `==highlight==`, which does not use the CJK emphasis extension's delimiter rules.
 
 ## What works out of the box
 
 | Feature                                                             | Plugin                                  | Default                      |
 | ------------------------------------------------------------------- | --------------------------------------- | ---------------------------- |
-| Proper line-breaking between CJK characters and Latin words         | `remark-cjk-friendly`                   | ✅ Always on                 |
-| GFM strikethrough that respects CJK width                           | `remark-cjk-friendly-gfm-strikethrough` | ✅ Always on                 |
+| Emphasis delimiter recognition beside CJK punctuation               | `remark-cjk-friendly`                   | ✅ Always on                 |
+| GFM strikethrough delimiter recognition beside CJK punctuation      | `remark-cjk-friendly-gfm-strikethrough` | ✅ Always on                 |
 | Auto-insert spaces between CJK and half-width characters (pangu)    | `remark-pangu`                          | ✅ On by default; toggleable |
 | Smart punctuation (SmartyPants) — curly quotes, em-dashes, ellipses | `remark-smartypants`                    | ✅ On by default; toggleable |
 | HTML comment removal                                                | `remark-remove-comments`                | ✅ On by default; toggleable |
 
-These plugins run on every render. They're enabled by default precisely because LLM output for Chinese/Japanese/Korean users routinely needs them — turning them on by default means you don't think about typography until you specifically want different behavior.
+The parser extensions are installed through their `parseOnly` entry points. They affect how Markdown is recognized and do not themselves remove soft line breaks. The selected transforms run when the relevant source is parsed or transformed; incremental parsing can reuse the settled prefix, so this is not necessarily a full-document plugin run on every React render.
 
 ---
 
@@ -25,11 +23,11 @@ These plugins run on every render. They're enabled by default precisely because 
 CJK characters are full-width; Latin letters and digits are half-width. Without a separator, mixed-script text looks visually cramped:
 
 ```text
-今天我用 React19 重构了项目             ← no spacing applied
-今天我用 React 19 重构了项目            ← natural reading
+今天我用React19重构了项目             ← source
+今天我用 React19 重构了项目           ← mixed-script spacing
 ```
 
-`remark-pangu` (controlled by the `pangu` engine plugin) automatically inserts a regular ASCII space between any CJK boundary and an adjacent half-width character. The space appears in the rendered HTML; it's not a CSS visual hack, so it survives copy-paste, screen readers, and downstream processing.
+`remark-pangu` (controlled by the `pangu` engine plugin) applies its mixed-script spacing rules, inserting regular ASCII spaces at supported CJK/Latin boundaries. The space appears in the rendered HTML; it's not a CSS visual hack, so it survives copy-paste, screen readers, and downstream processing.
 
 ### Turning pangu off
 
@@ -46,31 +44,29 @@ const PLUGINS = defaultEnginePlugins.filter((p) => p !== pangu);
 
 ### When to keep pangu off
 
-- Content that's **already pre-spaced** by an upstream pipeline (you'd get double spaces — pangu is conservative and won't insert a second space, but it's still a no-op cost).
+- Content that's **already pre-spaced** by an upstream pipeline. Pangu normally preserves existing separation rather than adding a second space, so this may simply be redundant work.
 - Content where the model is mid-token-streaming and intermediate states would be jarring — though in practice pangu is fast enough that this rarely matters.
 - Tests that need to assert exact byte-for-byte content match without pangu's added whitespace.
 
-For 99% of LLM-output use cases involving Chinese/Japanese/Korean users, **leave it on**.
+Keep the default when its output matches your editorial rules. Japanese and Korean applications may choose a different spacing convention; compare representative sentences and punctuation before deciding.
 
 ---
 
 ## Line-breaking semantics
 
-Standard CommonMark / GFM treats a soft line break (single `\n` inside a paragraph) as a space. In CJK text, that's wrong — there's no space between adjacent CJK characters, so a soft line break should produce _no whitespace_ at all.
+The production chain always includes `remark-breaks`. Within a paragraph, a source line ending therefore becomes a rendered `<br>`; the CJK plugins do not join the lines. Both CJK extensions use their parsing-only entry points, which patch delimiter recognition without installing a soft-break removal transform.
 
-`remark-cjk-friendly` rewrites the line-break behavior so:
+| Source inside a paragraph       | Resulting structure                       |
+| ------------------------------- | ----------------------------------------- |
+| `这是一段\n中文内容`            | `这是一段<br>中文内容`                    |
+| `English with\na soft break`    | `English with<br>a soft break`            |
+| `中文 mixed with\nEnglish text` | A line break between the two source lines |
 
-| Markdown                        | Renders as                                                                     |
-| ------------------------------- | ------------------------------------------------------------------------------ |
-| `这是一段\n中文内容`            | `这是一段中文内容` (no space)                                                  |
-| `English with\na soft break`    | `English with a soft break` (one space)                                        |
-| `中文 mixed with\nEnglish text` | `中文 mixed with English text` (one space — the soft break sits next to Latin) |
+Here `\n` denotes an actual newline in the input. A blank line still separates blocks, and code blocks retain their own whitespace semantics. Browser wrapping caused by a narrow container is different again: it depends on CSS, font metrics, and available width.
 
-This is enabled unconditionally; there's no config flag to disable it because turning it off produces visibly broken CJK paragraphs.
+The CJK extensions matter for examples such as `前面**「重点」**后面` and the corresponding `~~…~~` form. They let the parser recognize emphasis or strikethrough around punctuation in places where the unpatched delimiter rules would leave literal markers. They do not provide fonts, change East Asian glyph widths, or define a browser line-wrapping algorithm.
 
-`remark-cjk-friendly-gfm-strikethrough` extends the same idea to GFM's `~~strikethrough~~` syntax — without it, `~~中文~~` may not strike correctly because GFM's strikethrough delimiter matching assumes Latin word boundaries.
-
----
+There is no public switch for the always-on break or CJK parser plugins. If an upstream source inserts editorial newlines that should not be displayed, normalize that source before rendering using a rule appropriate to its format. Do not remove all newlines indiscriminately: fences, tables, lists, and block boundaries depend on them.
 
 ## Fonts and CSS
 
@@ -104,7 +100,7 @@ CJK characters are visually denser than Latin — at the same nominal line-heigh
 
 ```css
 .aim-typography-root.default {
-  --aim-line-height: 1.8; /* default is around 1.6; CJK reads better at 1.7-1.9 */
+  --aim-line-height: 1.8; /* shipped default: 1.55; choose the value for your actual font */
 }
 ```
 
@@ -120,15 +116,16 @@ This is a personal/brand decision; there's no "correct" value.
 <ruby>漢<rt>kan</rt></ruby>字
 ```
 
-The default schema allows the tags but doesn't allow attributes on them. If you need attributes (e.g. `lang` on `<rt>` for screen readers, `class` for styling), extend the schema explicitly:
+The default schema also has shared attribute rules; tag support and attribute support are separate decisions. If you need attributes (e.g. `lang` on `<rt>` for screen readers, `class` for styling), extend the schema explicitly:
 
 ```ts
 import { extendSanitizeSchema } from '@ai-react-markdown/core';
 
 const SCHEMA = extendSanitizeSchema((s) => {
-  s.attributes!['ruby'] = ['lang', 'class'];
-  s.attributes!['rt'] = ['lang', 'class'];
-  s.attributes!['rp'] = ['class'];
+  s.attributes ??= {};
+  for (const tag of ['ruby', 'rt', 'rp']) {
+    s.attributes[tag] = [...(s.attributes[tag] ?? []), 'lang', 'className'];
+  }
 });
 ```
 
@@ -174,7 +171,7 @@ function Article({ content }: { content: string }) {
 }
 ```
 
-That's the whole setup. The rest — `remark-cjk-friendly`, pangu spacing, SmartyPants — runs automatically.
+That's the whole setup. The parser extensions, `remark-breaks`, pangu spacing, and SmartyPants remain active. Font loading and the page's `lang` attribute are application responsibilities.
 
 ---
 
@@ -216,3 +213,19 @@ Pangu in this library inserts a **regular ASCII space** (`U+0020`), not a typogr
 ### Font-family override forgetting `font-family` on the root
 
 The `--aim-font-family-headings` token controls heading fonts. There's no equivalent body-font token; body text inherits from the typography root. So if you want a different body font for a CJK layout, set `font-family` on `.aim-typography-root.default` directly (as shown in the Quick recipe above) — overriding only `--aim-font-family-headings` will leave body text using the system fallback.
+
+## Diagnosing multilingual output
+
+Start with the smallest source that reproduces the issue and classify the difference:
+
+1. Literal `**` or `~~` beside punctuation indicates delimiter recognition. Compare emphasis and strikethrough separately; `==` has a distinct parser.
+2. Extra spaces between scripts usually come from pangu. Remove only `pangu` from the selection and compare `textContent`.
+3. Curly quotes or changed dashes come from SmartyPants. Put command-line examples in code spans or fenced blocks when they must retain punctuation.
+4. Visible source newlines come from `remark-breaks`; wrapping at the viewport edge comes from CSS.
+5. Missing glyphs or mismatched character heights are font fallback issues. Inspect the font actually used, not just the first family in the CSS declaration.
+
+Use `lang="zh-Hans"`, `lang="zh-Hant"`, `lang="ja"`, or `lang="ko"` on an application container when appropriate to the content. This conveys language to browsers and assistive technology; it does not change the library's plugin selection. Mixed-language messages may need language annotations at a finer level.
+
+For verification, include source with Chinese punctuation next to emphasis, Japanese brackets, Korean/Latin identifiers, currency next to math, inline code, table cells, and ruby annotations. Check both a completed string and prefixes that stop inside a delimiter. A final snapshot alone does not show how intermediate source is interpreted.
+
+The implementation reference is [`pluginChain.ts`](../packages/engine/src/components/pluginChain.ts); default CSS lives in [`default.scss`](../packages/core/src/components/typography/variants/default.scss). These files separate parser configuration from typography rules.
