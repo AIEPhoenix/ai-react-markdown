@@ -30,7 +30,9 @@ Patch headings identify fixes or maintenance; minor headings introduce features 
 - Correct the engine's CommonJS handling of ESM-only default-export plugins and the import-only `remend` entry.
 - Document the extracted contracts, intended new package mapping, remaining second-framework validation and dedicated documentation-site scope in the [transition guide](./framework-transition.md).
 
-Validation: full local preflight covers unit tests, browser stories, declaration/package checks and both production/development runtime distributions. See the release record for final counts and verification evidence.
+Validation: full local preflight passed with **149 test files / 1,974 tests**, including browser stories, declaration/package checks and production/development runtime distributions. All six CI jobs passed on the verified source commit. An isolated tarball consumer passed four ESM/CJS server-rendering parity cases without installing the private runtime; published entry declarations (`.d.ts` and `.d.cts`) remain byte-identical to 2.13.3.
+
+The fresh-seed, six-leg release soak passed **all 84 shards** in 2 hours 52 minutes. It ran in a clean, detached worktree pinned to `9c216fa2a4d1cdc6bc246d1b107d484b46f75d26`, with seed base `202629080` and 14 shards per leg. The final report records `repositoryChanged: false`; aggregation confirms `Release soak: PASS`. Run ID: `legacy-final-2.14.0-20260908T075407Z-9c216fa-757019`. Final release preparation adds only this verification record; production source is unchanged from the soaked candidate.
 
 ## 2.13.x — Less repeated streaming work
 
