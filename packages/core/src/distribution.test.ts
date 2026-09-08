@@ -7,7 +7,7 @@ for (const entry of ['index.js', 'index.cjs']) {
     const entryPath = fileURLToPath(new URL(`../dist/${entry}`, import.meta.url));
     const coreDirectory = fileURLToPath(new URL('..', import.meta.url));
     const html = execFileSync(
-      process.execPath,
+      'node',
       [
         '--input-type=module',
         '-e',
