@@ -1,6 +1,6 @@
 # @ai-markdown/core
 
-Framework-independent orchestration for ai-markdown adapters, published on the **3.0.0-beta.1** train. It supplies pipeline sessions, block planning, cross-chunk contributions, aggregate footnote trees and streaming coordination. React applications install `@ai-markdown/react@beta`; adapter authors can install `@ai-markdown/core@beta` and `@ai-markdown/engine@beta` directly.
+Framework-independent orchestration for ai-markdown adapters, first published on the **3.0.0-beta.1** train; this checkout prepares **3.0.0-beta.2**. It supplies pipeline sessions, block planning, cross-chunk contributions, aggregate footnote trees and streaming coordination. React applications install `@ai-markdown/react@beta`; adapter authors can install `@ai-markdown/core@beta` and `@ai-markdown/engine@beta` directly.
 
 This package was the private runtime in the legacy v2.14.1 release. It is now a real external dependency of the React adapter, with an explicit public export list. The old `@ai-react-markdown/core` React package maps to `@ai-markdown/react`, not this package. See the [migration guide](../../docs/framework-transition.md). Beta contracts may change before stable 3.0.0; keep the shared packages at the same exact train version.
 
@@ -21,7 +21,7 @@ The adapter may also consume engine primitives directly. Shared core does not du
 | `blockPlanner.ts`            | Reuse eligible retained prefix plans while preserving whole-document reference context                                                                     | One planner per rendered chunk                          |
 | `contribution.ts`            | Compare source and policy fingerprints, harvest transformed definition bodies, publish changed committed contributions                                     | One publisher per mounted chunk                         |
 | `aggregateFootnotes.ts`      | Assemble a document's ordered footnotes and occurrence backrefs as HAST                                                                                    | Returned tree belongs to the caller                     |
-| `cloneHastForRender.ts`      | Clone node/children/properties containers before render-time mutation                                                                                      | Returned clone belongs to the caller                    |
+| `cloneHastForRender.ts`      | Clone node/children/properties/data and original-URL containers before render-time mutation                                                                | Returned clone belongs to the caller                    |
 | `smoothCoordinator.ts`       | Order chunk reveal, maintain sticky completion, defer cleanup and coalesce notifications                                                                   | One coordinator per logical document                    |
 | `tailSignal.ts`              | Classify a source tail that renders inside a footnote or as an invisible link definition                                                                   | Pure function over MDAST                                |
 
@@ -74,7 +74,7 @@ An incremental failure clears the retained state before retrying the full pipeli
 
 ## Shared preparation decisions
 
-`coordinationPreparation.ts` contains the rules used by both the React adapter and the [private Vue lifecycle prototype](../../prototypes/vue/README.md):
+`coordinationPreparation.ts` contains the rules used by both the React adapter and the [Vue adapter](../vue/README.md):
 
 - `derivePhantomTargets({ content, ownLabels, labels }, previous?)` excludes locally owned definitions, then matches normalized source against external labels. Footnote and link namespaces remain separate. If no candidate exists, it skips source normalization; if the result sets match `previous`, it returns that same object. The matching remains the legacy substring over-approximation, not a new Markdown reference parser.
 - `deriveCoordinationPolicy({ coordinated, registered, preserveOrphanReferences }, previous?)` selects all coordinated handlers, only the orphan-footnote handler, or normal standalone behavior. Registration enables body harvesting even when visible orphan rendering is disabled. A harvesting-only change preserves handler identity. The host resolves any wrapper override before calling this function.
@@ -92,7 +92,7 @@ In React, `useRegistryContribution` owns one session and invokes `commit` from a
 
 The contribution fingerprint covers ordered refs, definition source, raw link destinations, owned label sets, phantom target sets and the identity tuple of parse policy. Equal source with changed plugins is not an equal contribution. Equal source with a resolved phantom inside a definition body is not an equal contribution either. Only a changed fingerprint/policy triggers the more expensive body harvest from post-pipeline HAST.
 
-The publisher does not sanitize link URLs at contribution time: each consuming element applies its own final URL policy. Harvested footnote bodies retain plugin output. `buildAggregateTree` clones structural containers before appending backrefs, so assembly does not mutate registry-owned bodies. The clone intentionally shares `position`, `data` and individual property values; it is not an unrestricted deep clone for arbitrary consumer mutation.
+The publisher does not sanitize link URLs at contribution time: each consuming element applies its own final URL policy. Harvested footnote bodies retain plugin output. `buildAggregateTree` clones structural containers before appending backrefs, so assembly does not mutate registry-owned bodies. The clone copies `data` and its `originalUrls` container while sharing `position`, other nested plugin data and individual property values; it is not an unrestricted deep clone for arbitrary consumer mutation.
 
 Cleanup is also the host's responsibility. Release its registry registration and smooth coordinator slot when the chunk unmounts. The coordinator defers removal to a microtask so an immediate cleanup/re-register pair can revive the same slot without reordering it. Completion is sticky while registered; progress heartbeats do not notify every subscriber on each reveal frame.
 
@@ -118,7 +118,7 @@ Build before running distribution tests: they load the actual ESM/CJS production
 
 `assert-boundary.mjs` checks public-package identity, allowed production dependencies, source import direction and folded environment gates. The React distribution guard requires external core and engine imports. Core's declarations must not expose `RegistryInternal`, `SmoothCoordinatorInternal` or private refcount/subscriber containers.
 
-The release train is engine/core/react/react-mantine at the same version. Core depends on engine through `workspace:*`, which becomes the exact train version in the published manifest. Both ESM and CJS have production and development entries; every build folds environment gates separately. Core has no `use client` directive and does not inline a second engine implementation.
+The release train is engine/core/react/react-mantine at the same version. Vue now consumes the same shared contracts; see the [API review](../../docs/api/core-engine-contracts.md) for the current unreleased signature changes. Core depends on engine through `workspace:*`, which becomes the exact train version in the published manifest. Both ESM and CJS have production and development entries; every build folds environment gates separately. Core has no `use client` directive and does not inline a second engine implementation.
 
 ## Public API and write capabilities
 
@@ -126,4 +126,4 @@ The root entry explicitly lists supported beta exports. Session creation, parsin
 
 `createSmoothCoordinator` returns the read-only state and documented methods of `SmoothCoordinator`, excluding internal refcounts and notification containers. `ContributionOptions.registry` accepts only a `ContributionRegistry` write capability with `contributeChunkData`; it does not require an implementation registry. Create a registry through engine's `createRegistry`, whose `RegistryController` adds registration and publication to the read-only `Registry` contract. Pair every registration with release in the owning adapter.
 
-These are type-level API boundaries, not object freezing or arbitrary deep cloning. Mutating returned sets, tree data or undocumented implementation fields is unsupported. A beta upgrade can refine the contract; stable 3.0.0 will require another signature review and consumer validation.
+These are type-level API boundaries, not object freezing or arbitrary deep cloning. Mutating returned sets, tree data or undocumented implementation fields is unsupported. A beta upgrade can refine the contract; the current review and checked signatures are recorded in the [API contract document](../../docs/api/core-engine-contracts.md). Stable 3.0.0 still requires release approval and current-candidate validation.

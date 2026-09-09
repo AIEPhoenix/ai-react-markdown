@@ -594,24 +594,36 @@ importers:
         specifier: ^11.0.0
         version: 11.0.0
 
-  prototypes/vue:
+  packages/vue:
     dependencies:
       '@ai-markdown/core':
         specifier: workspace:*
-        version: link:../../packages/core
+        version: link:../core
       '@ai-markdown/engine':
         specifier: workspace:*
-        version: link:../../packages/engine
+        version: link:../engine
+      '@types/hast':
+        specifier: ^3.0.5
+        version: 3.0.5
+      katex:
+        specifier: ^0.16 || ^0.17
+        version: 0.17.0
+      property-information:
+        specifier: ^7.1.0
+        version: 7.1.0
+      unist-util-visit:
+        specifier: ^5.1.0
+        version: 5.1.0
+    devDependencies:
+      '@types/node':
+        specifier: ^25.9.5
+        version: 25.9.5
       '@vue/server-renderer':
         specifier: ^3.5.0
         version: 3.5.42
       vue:
         specifier: ^3.5.0
         version: 3.5.42(typescript@6.0.3)
-    devDependencies:
-      '@types/hast':
-        specifier: ^3.0.5
-        version: 3.0.5
 
 packages:
 

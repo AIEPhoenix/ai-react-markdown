@@ -10,7 +10,11 @@ The legacy v2.14.1 release completed the private-runtime split. In 3.0.0-beta.1,
 
 Shared core owns computation sessions, not React lifecycle. `MarkdownContent` keeps one pipeline session and planner per instance, resets retained state on render-policy invalidation, and delegates parsing without moving registration into render. `useRegistryContribution` invokes the shared publisher only after commit. React still owns cached nodes, context subscriptions, SSR/hydration behavior and cursor DOM measurement. The [shared core module map](../packages/core/README.md#responsibility-and-dependency-direction) is the source guide for this layer.
 
-## The component tree
+## Vue adapter
+
+The unreleased Vue adapter uses the same sessions, planner and contribution preparation as React. It keeps AST and registry identities outside deep reactive proxies, selects stable plugin/schema inputs through computed refs, and publishes only after mount. VNode conversion clones HAST before final URL policy; resolved cross-chunk links/images use the shared resolver. SSR and initial hydration do not allocate registries. Vue 3.5 useId supplies stable automatic IDs, and DOM observers belong to the Vue cursor component. See the [Vue README](../packages/vue/README.md) and [shared API review](./api/core-engine-contracts.md).
+
+## The React component tree
 
 ```text
 <AIMarkdown>

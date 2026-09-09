@@ -1,6 +1,6 @@
 # @ai-markdown/engine
 
-> **3.0.0-beta.1:** the new `@ai-markdown` scope separates the shared core from the React adapter. Install framework packages with `@beta`; Vue remains a private prototype. See the [migration guide](../../docs/framework-transition.md).
+> **3.0.0-beta.2 candidate (unreleased):** the new `@ai-markdown` scope separates the shared core from the React adapter. Install framework packages with `@beta`; The Vue adapter is implemented in source; its first npm publication is pending. See the [migration guide](../../docs/framework-transition.md).
 
 [![npm version](https://img.shields.io/npm/v/@ai-markdown/engine?logo=npm&color=cb3837)](https://www.npmjs.com/package/@ai-markdown/engine)
 [![npm downloads](https://img.shields.io/npm/dm/@ai-markdown/engine?color=blue)](https://www.npmjs.com/package/@ai-markdown/engine)

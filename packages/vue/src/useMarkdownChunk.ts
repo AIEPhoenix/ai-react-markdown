@@ -5,6 +5,8 @@ import {
   buildCoreRemarkRehypeOptions,
   createDefLabelScanner,
   sanitizeSchema,
+  type AIMarkdownEnginePlugin,
+  type SanitizeSchema,
   type RegistryController,
 } from '@ai-markdown/engine';
 import {
@@ -27,9 +29,13 @@ export interface ChunkInput {
   /** Already resolved against any document-level override. */
   preserveOrphanReferences: boolean;
   incrementalParse: boolean;
+  clobberPrefix: string;
+  documentIndex?: number;
+  enginePlugins: readonly AIMarkdownEnginePlugin[];
+  sanitizeSchema: SanitizeSchema;
 }
 
-/** Experimental Vue lifecycle binding, not a published renderer.
+/** Vue lifecycle binding for one mounted chunk.
  * Engine trees/registries stay outside deep reactive proxies. Vue tracks only
  * source inputs, allocation and the monotonic registry notification signal.
  */
@@ -45,10 +51,12 @@ export function useMarkdownChunk(input: () => ChunkInput) {
   let targets: PhantomTargets | undefined;
   let policy: CoordinationPolicy | undefined;
   const ownLabels = computed(() => scanner.scan(input().content));
-  const documentId = computed(() => input().documentId);
+  const selectedPlugins = computed(() => input().enginePlugins);
+  const selectedSchema = computed(() => input().sanitizeSchema);
+  const prefix = computed(() => input().clobberPrefix);
   const stablePlugins = computed(() => ({
-    remarkPlugins: buildCoreRemarkPlugins([]),
-    rehypePlugins: buildCoreRehypePlugins(sanitizeSchema, `${documentId.value}-`, { provenance }),
+    remarkPlugins: buildCoreRemarkPlugins(selectedPlugins.value),
+    rehypePlugins: buildCoreRehypePlugins(selectedSchema.value ?? sanitizeSchema, prefix.value, { provenance }),
     remarkRehypeOptions: buildCoreRemarkRehypeOptions(false),
   }));
   const prepared = computed(() => {
@@ -75,7 +83,7 @@ export function useMarkdownChunk(input: () => ChunkInput) {
       documentId: current.documentId,
       provenance,
       incrementalParse: current.incrementalParse,
-      defListEnabled: false,
+      defListEnabled: current.enginePlugins.some((plugin) => plugin.name === 'definitionList'),
     };
     const trees = pipeline.parse(frameOptions);
     return {
@@ -83,9 +91,9 @@ export function useMarkdownChunk(input: () => ChunkInput) {
       targets,
       sym,
       registry: current.registry,
-      clobberPrefix: `${current.documentId}-`,
+      clobberPrefix: current.clobberPrefix,
       ownLabels: ownLabels.value,
-      chain: buildContributionChain({ ...frameOptions, clobberPrefix: `${current.documentId}-` }),
+      chain: buildContributionChain({ ...frameOptions, clobberPrefix: current.clobberPrefix }),
       plan: planner(trees.mdast, trees.hast, current.content, { phantomFootnoteLabels: targets.missingFootnotes }),
     };
   });
@@ -93,7 +101,7 @@ export function useMarkdownChunk(input: () => ChunkInput) {
   let stopPublishing: (() => void) | undefined;
   onMounted(() => {
     stopRegistration = watch(
-      [() => input().registry, ownLabels],
+      [() => input().registry, ownLabels, () => input().documentIndex],
       ([registry, labels], _old, cleanup) => {
         if (!registry) {
           allocation.value = null;
@@ -102,7 +110,7 @@ export function useMarkdownChunk(input: () => ChunkInput) {
         const unsubscribe = registry.subscribe(() => {
           version.value++;
         });
-        const sym = registry.registerChunk(chunkId, labels.footnoteLabels, labels.linkLabels);
+        const sym = registry.registerChunk(chunkId, labels.footnoteLabels, labels.linkLabels, input().documentIndex);
         allocation.value = { registry, sym };
         cleanup(() => {
           unsubscribe();

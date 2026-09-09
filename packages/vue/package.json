@@ -1,13 +1,15 @@
 {
-  "name": "@ai-markdown/core",
+  "name": "@ai-markdown/vue",
   "version": "3.0.0-beta.2",
-  "description": "Framework-independent pipeline sessions, block planning, cross-chunk contributions and streaming coordination for ai-markdown adapters.",
+  "description": "Vue 3 Markdown rendering, document coordination and streaming composables for ai-markdown.",
   "type": "module",
   "license": "MIT",
   "engines": {
     "node": ">=20"
   },
-  "sideEffects": false,
+  "sideEffects": [
+    "**/*.css"
+  ],
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -27,20 +29,24 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./styles.css": "./dist/styles.css"
   },
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsup && node scripts/assert-boundary.mjs",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsup && node scripts/assert-dist.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest --run"
   },
   "dependencies": {
+    "@ai-markdown/core": "workspace:*",
     "@ai-markdown/engine": "workspace:*",
     "@types/hast": "^3.0.5",
-    "@types/mdast": "^4.0.4",
-    "unist-util-visit": "^5.1.0"
+    "unist-util-visit": "^5.1.0",
+    "property-information": "^7.1.0"
   },
   "devDependencies": {
+    "vue": "^3.5.0",
+    "@vue/server-renderer": "^3.5.0",
     "@types/node": "^25.9.5"
   },
   "publishConfig": {
@@ -49,10 +55,19 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ai-markdown/ai-markdown.git",
-    "directory": "packages/core"
+    "directory": "packages/vue"
   },
-  "homepage": "https://github.com/ai-markdown/ai-markdown/tree/main/packages/core#readme",
+  "homepage": "https://github.com/ai-markdown/ai-markdown/tree/main/packages/vue#readme",
   "bugs": {
     "url": "https://github.com/ai-markdown/ai-markdown/issues"
+  },
+  "peerDependencies": {
+    "vue": "^3.5.0",
+    "katex": "^0.16 || ^0.17"
+  },
+  "peerDependenciesMeta": {
+    "katex": {
+      "optional": true
+    }
   }
 }

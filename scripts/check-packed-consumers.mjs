@@ -9,7 +9,7 @@ import { join, resolve } from 'node:path';
 // can hide missing dependencies, declaration leaks or broken CSS subpaths.
 const root = resolve(import.meta.dirname, '..');
 const out = mkdtempSync(join(tmpdir(), 'ai-markdown-consumers-'));
-const train = ['engine', 'core', 'react', 'react-mantine'];
+const train = ['engine', 'core', 'react', 'react-mantine', 'vue'];
 const packages = ['remark-mark-highlight', ...train];
 const dependencies = {};
 for (const dir of packages) {
@@ -31,10 +31,15 @@ for (const dir of packages) {
       assert(!version.startsWith('workspace:'), `${dir}: unpublished workspace specifier`);
     }
   }
-  if (dir === 'core' || dir === 'react') assert.equal(packed.dependencies['@ai-markdown/engine'], manifest.version);
-  if (dir === 'react') assert.equal(packed.dependencies['@ai-markdown/core'], manifest.version);
+  if (dir === 'core' || dir === 'react' || dir === 'vue')
+    assert.equal(packed.dependencies['@ai-markdown/engine'], manifest.version);
+  if (dir === 'react' || dir === 'vue') assert.equal(packed.dependencies['@ai-markdown/core'], manifest.version);
 }
 Object.assign(dependencies, {
+  vue: JSON.parse(readFileSync(join(root, 'packages/vue/node_modules/vue/package.json'), 'utf8')).version,
+  '@vue/server-renderer': JSON.parse(
+    readFileSync(join(root, 'packages/vue/node_modules/@vue/server-renderer/package.json'), 'utf8')
+  ).version,
   react: '19.2.7',
   'react-dom': '19.2.7',
   '@types/react': '^19.2.18',
@@ -69,6 +74,12 @@ const require = createRequire(import.meta.url);
 const react = await import('@ai-markdown/react');
 const core = await import('@ai-markdown/core');
 const engine = await import('@ai-markdown/engine');
+const Vue = await import('vue');
+const adapter = await import('@ai-markdown/vue');
+const vueServer = await import('@vue/server-renderer');
+assert((await vueServer.renderToString(Vue.createSSRApp({ render: () => Vue.h(adapter.AIMarkdown, { content: '**Vue packed**' }) }))).includes('<strong>Vue packed</strong>'));
+const cjsVue = require('@ai-markdown/vue');
+assert((await require('@vue/server-renderer').renderToString(require('vue').createSSRApp({ render: () => require('vue').h(cjsVue.AIMarkdown, { content: '**Vue CJS**' }) }))).includes('<strong>Vue CJS</strong>'));
 const React = await import('react');
 const { renderToString } = await import('react-dom/server');
 const html = renderToString(React.createElement(react.default, { content: '**Packed** [safe](https://example.com)' }));
@@ -77,11 +88,11 @@ assert(html.includes('https://example.com'));
 assert.equal(typeof core.createPipelineSession, 'function');
 assert.equal(typeof engine.createRegistry, 'function');
 assert(!('DEFAULT_PAYLOAD' in engine));
-for (const name of ['@ai-markdown/core', '@ai-markdown/engine', '@ai-markdown/react', '@ai-markdown/react/plugins', '@ai-markdown/react-mantine']) {
+for (const name of ['@ai-markdown/core', '@ai-markdown/engine', '@ai-markdown/react', '@ai-markdown/react/plugins', '@ai-markdown/react-mantine', '@ai-markdown/vue']) {
   assert(require(name));
   assert(await import(name));
 }
-for (const name of ['@ai-markdown/react/typography/default.css', '@ai-markdown/react/typography/all.css', '@ai-markdown/react-mantine/styles.css']) assert(require.resolve(name).endsWith('.css'));
+for (const name of ['@ai-markdown/react/typography/default.css', '@ai-markdown/react/typography/all.css', '@ai-markdown/react-mantine/styles.css', '@ai-markdown/vue/styles.css']) assert(require.resolve(name).endsWith('.css'));
 assert.equal(typeof require('@ai-markdown/core').createPipelineSession, 'function');
 `;
 writeFileSync(join(out, 'probe.mjs'), probe);
@@ -89,6 +100,10 @@ for (const conditions of [[], ['--conditions=development']])
   execFileSync(process.execPath, [...conditions, 'probe.mjs'], { cwd: out, stdio: 'pipe', encoding: 'utf8' });
 const types = `
 import { createElement } from 'react';
+import { h } from 'vue';
+import VueMarkdown, { useSmoothStream as useVueSmooth, type AIMarkdownProps as VueProps } from '@ai-markdown/vue';
+const vueProps: VueProps = { content: 'Vue consumer' };
+h(VueMarkdown, vueProps); void useVueSmooth;
 import AIMarkdown, { AIMarkdownDocuments, createRemendPreprocessor, type AIMarkdownProps } from '@ai-markdown/react';
 import MantineAIMarkdown from '@ai-markdown/react-mantine';
 import { createPipelineSession, createSmoothCoordinator, createContributionSession } from '@ai-markdown/core';
@@ -126,6 +141,33 @@ for (const ext of ['mts', 'cts']) {
     { cwd: out, stdio: 'pipe', encoding: 'utf8' }
   );
 }
+// Exercise the documented lower bound with the actual packed adapter too.
+execFileSync(
+  'npm',
+  ['install', '--ignore-scripts', '--no-audit', '--no-fund', 'vue@3.5.0', '@vue/server-renderer@3.5.0'],
+  { cwd: out, stdio: 'pipe', encoding: 'utf8' }
+);
+for (const conditions of [[], ['--conditions=development']])
+  execFileSync(process.execPath, [...conditions, 'probe.mjs'], { cwd: out, stdio: 'pipe', encoding: 'utf8' });
+for (const ext of ['mts', 'cts'])
+  execFileSync(
+    process.execPath,
+    [
+      join(out, 'node_modules/typescript/bin/tsc'),
+      '--noEmit',
+      '--strict',
+      '--skipLibCheck',
+      'false',
+      '--module',
+      'NodeNext',
+      '--moduleResolution',
+      'NodeNext',
+      '--target',
+      'ES2022',
+      `consumer.${ext}`,
+    ],
+    { cwd: out, stdio: 'pipe', encoding: 'utf8' }
+  );
 for (const dir of ['engine', 'core']) {
   const dist = join(out, 'node_modules/@ai-markdown', dir, 'dist');
   for (const file of readdirSync(dist).filter((name) => /\.d\.(ts|cts)$/.test(name))) {
@@ -135,4 +177,4 @@ for (const dir of ['engine', 'core']) {
     );
   }
 }
-console.log(`Packed ESM/CJS, development, SSR, CSS, plugin and TypeScript consumers passed: ${out}`);
+console.log(`Packed ESM/CJS, development, SSR, CSS, plugin, TypeScript and Vue 3.5.0 consumers passed: ${out}`);

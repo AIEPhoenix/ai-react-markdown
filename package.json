@@ -1,6 +1,6 @@
 {
   "name": "ai-markdown",
-  "version": "3.0.0-beta.1",
+  "version": "3.0.0-beta.2",
   "private": true,
   "type": "module",
   "description": "Framework-independent Markdown engine and shared core with React rendering and Mantine integration.",
@@ -21,12 +21,15 @@
     "bench:web:scale": "node benchmarks/runner/scale.mjs --prefix scale-",
     "bench:web:scale:cold": "node benchmarks/runner/scale.mjs --prefix cold-",
     "bench:web:scale:steps": "node benchmarks/runner/scale.mjs --prefix steps-",
-    "preflight": "pnpm check:overrides && pnpm check:soak-coverage && pnpm lint && pnpm format:check && pnpm build && pnpm test:soak-control && pnpm packcheck && pnpm -r typecheck && pnpm typecheck && pnpm vitest run && pnpm test:document-lifetime && pnpm test:packed-consumers",
+    "preflight": "pnpm check:overrides && pnpm check:soak-coverage && pnpm lint && pnpm format:check && pnpm build && pnpm check:public-api && pnpm test:soak-control && pnpm test:release-control && pnpm packcheck && pnpm -r typecheck && pnpm typecheck && pnpm vitest run && pnpm test:document-lifetime && pnpm test:vue-browser && pnpm test:packed-consumers",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "test:soak-control": "node --test scripts/soak/soak-control.test.mjs",
     "test:document-lifetime": "node scripts/test-document-scope-lifetime.mjs",
-    "test:packed-consumers": "node scripts/check-packed-consumers.mjs"
+    "test:packed-consumers": "node scripts/check-packed-consumers.mjs",
+    "check:public-api": "node scripts/check-public-api.mjs",
+    "test:vue-browser": "node scripts/test-vue-browser.mjs",
+    "test:release-control": "node --test scripts/publish-packages.test.mjs"
   },
   "keywords": [
     "react",

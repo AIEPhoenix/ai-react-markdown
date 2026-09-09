@@ -1,4 +1,5 @@
-import { createRegistry } from '../../../packages/engine/src/components/documentRegistry';
+import { sanitizeSchema } from '@ai-markdown/engine';
+import { createRegistry } from '../../engine/src/components/documentRegistry';
 import { createRenderer, createSSRApp, defineComponent, h, nextTick, shallowRef } from 'vue';
 import { renderToString } from '@vue/server-renderer';
 import { expect, test } from 'vitest';
@@ -53,6 +54,9 @@ test('Vue post-commit publication coordinates two chunks, updates definitions an
       registry: first,
       preserveOrphanReferences: false,
       incrementalParse: true,
+      clobberPrefix: 'doc-',
+      enginePlugins: [],
+      sanitizeSchema,
     },
     {
       content: '[^n]: Shared **body**\n\n[u]: https://example.com',
@@ -60,6 +64,9 @@ test('Vue post-commit publication coordinates two chunks, updates definitions an
       registry: first,
       preserveOrphanReferences: false,
       incrementalParse: true,
+      clobberPrefix: 'doc-',
+      enginePlugins: [],
+      sanitizeSchema,
     },
   ]);
   const chunks: ReturnType<typeof useMarkdownChunk>[] = [];
@@ -116,6 +123,9 @@ test('Vue SSR prepares local footnotes without publishing or allocating a chunk'
         registry,
         preserveOrphanReferences: true,
         incrementalParse: false,
+        clobberPrefix: 'ssr-',
+        enginePlugins: [],
+        sanitizeSchema,
       }));
       return () => h('pre', JSON.stringify(chunk.prepared.value.trees.hast));
     },

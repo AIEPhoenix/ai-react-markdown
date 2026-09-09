@@ -226,3 +226,11 @@ The workflow also creates the GitHub release, with notes taken from the version'
 - Ideas / proposals → [Discussions / Ideas](https://github.com/ai-markdown/ai-markdown/discussions/categories/ideas)
 - Bugs → [Issues](https://github.com/ai-markdown/ai-markdown/issues/new/choose)
 - Security → [Private advisory](https://github.com/ai-markdown/ai-markdown/security/advisories/new)
+
+### Vue adapter and public API review
+
+Vue requires 3.5+ within the Vue 3 major line. Its production implementation and lifecycle tests live in `packages/vue`; the earlier prototype directory is an archive pointer. Run `pnpm test:vue-browser` after building to verify hydration, references, customization, smooth turn-taking and cursor layout. CI and release workflows include this gate.
+
+The engine/core/Vue public declarations are checked with `pnpm check:public-api`. Review contract changes against `docs/api/core-engine-contracts.md`, then intentionally regenerate snapshots with `node scripts/check-public-api.mjs --update`. Updating the snapshot alone does not establish behavioral compatibility.
+
+The next workspace candidate is 3.0.0-beta.2 and includes Vue. Do not publish it under the existing beta.1 tag. For Vue first publication, dispatch the matching release tag with `bootstrap_vue=true`; only the Vue npm subprocess receives FIRST_PUBLISH_NPM_TOKEN. Existing packages use their configured trusted publishers. Once Vue trusted publishing is configured, revoke the temporary token. This option does not bypass source/tag equivalence or release verification.

@@ -1,6 +1,6 @@
 # ai-markdown 包名、依赖与发布方案（已确认）
 
-状态：方案已于 2026-09-09 确认并完成包名、目录、分层和公共入口实施。旧库 v2.14.1 已发布并核验，GitHub 仓库已迁移到 `ai-markdown/ai-markdown`。主列车 `3.0.0-beta.1` 与独立插件 `1.0.1` 已上传 npm 并通过实际产物验证；beta 标签清理及 GitHub 预发布仍在收尾。下文保留已确认的决策及迁移步骤，涉及旧目录的描述属于实施前背景。Vue 保持私有，文档站另行建设。
+状态：方案已于 2026-09-09 确认并完成包名、目录、分层和公共入口实施。旧库 v2.14.1 已发布并核验，GitHub 仓库已迁移到 `ai-markdown/ai-markdown`。主列车 `3.0.0-beta.1` 与独立插件 `1.0.1` 已上传 npm 并通过实际产物验证；beta 标签清理及 GitHub 预发布仍在收尾。下文保留已确认的决策及迁移步骤，涉及旧目录的描述属于实施前背景。当前后续工作已进入 core/engine API 审查与 Vue 完整适配：Vue 源码迁入 packages/vue，工作区准备未发布的 3.0.0-beta.2 候选。文档站另行建设。
 
 建议采用 **engine → 共享 core → 框架适配器 → 框架 UI 集成** 的职责分层。依赖图允许适配器直接依赖 engine：现有 React 和 Vue 原型确实使用它的插件组装、registry、扫描器等能力。共享 core 负责复用决策，不必转发整个 engine 来制造一条形式上单一的依赖链。
 
@@ -199,7 +199,7 @@ engine 也需要同样检查：其入口目前导出 scenarios fixture 和一些
 - `gh` 已核实组织 `ai-markdown` 存在，AIEPhoenix 为组织管理员，新仓库具备管理员权限。仓库转移已在 2.14.1 完整发布核验之后完成，标签和 Release 保留，本地 origin 已更新。
 - npm scope 注册来自你的确认。2026-09-08 对 engine/core/react/react-mantine/vue/remark-mark-highlight 六个目标包的公开元数据请求均返回 HTTP 404。404 不是对命名权或首发权限的保证，发布前需再次检查。
 - 三个既有 fork 的公开 manifest 已核对；其 alias 链见上文。主项目原来已经使用它们，不要在全局替换时把它们当成新迁移目标。
-- 现有完整 preflight：152 个测试文件、1,982 个测试，另有真实 Chromium GC 回归。Vue 当前只有内存宿主及 SSR 准备验证，没有 DOM/hydration 成熟度承诺。
+- 迁移前基线为 152 个测试文件、1,982 个测试。当前 API/Vue 候选已通过 154 个测试文件、1,990 个测试、React Chromium GC 回归和 Vue 浏览器验收；Vue 3.5.0 的实际打包 SSR/类型消费也已验证。当前候选尚未执行新的 release soak 或发布。
 - 本方案已进入实施；包名、目录、依赖、导出和 workflow 的实际变更以迁移提交为准。
 
 后续文件与文档站页面归属草案见 [实施和文档站准备矩阵](./ai-markdown-migration-worklist.md)。当前实现的边界说明见 [框架迁移指南](../framework-transition.md) 与 [core README](../../packages/core/README.md)。

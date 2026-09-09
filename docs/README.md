@@ -1,5 +1,7 @@
 # ai-markdown — Extending & Customization Guide
 
+Current development: [core/engine API review](./api/core-engine-contracts.md) and [Vue adapter](../packages/vue/README.md). The workspace prepares an unreleased 3.0.0-beta.2 candidate; Vue was not included in the published beta.1 packages.
+
 For the final legacy release and the subsequent multi-framework package migration, read [From ai-react-markdown to ai-markdown](./framework-transition.md). The [shared core README](../packages/core/README.md) documents the extracted shared layer.
 
 These guides explain how to integrate, customize, and maintain ai-markdown against the code in this repository. Start with the [project README](../README.md) for package selection and installation, or a package's README for its full public API. This directory goes deeper into rendering contracts, lifecycle behavior, implementation boundaries, and verification.
@@ -85,7 +87,7 @@ The library follows semver:
 | Internal byte-for-byte HTML output                                                                                   | Not stable — prefer semantic assertions for application tests; use semantic queries |
 | Everything exported by `@ai-markdown/engine`                                                                         | **Not stable before 3.0.0** — see below                                             |
 
-**On the shared packages.** `@ai-markdown/core` owns framework-independent sessions, planning, contributions and smooth coordination; `@ai-markdown/engine` owns parsing, tree algorithms and registry primitives. Both are public beta packages with explicit exports. Installing `@ai-markdown/react@beta` resolves both as exact-version dependencies. Adapter authors can use them directly, keeping the four release-train packages aligned at `3.0.0-beta.1`. Their advanced contracts may evolve before stable 3.0.0; the React package supplies the component and hook API used in the application guides.
+**On the shared packages.** `@ai-markdown/core` owns framework-independent sessions, planning, contributions and smooth coordination; `@ai-markdown/engine` owns parsing, tree algorithms and registry primitives. Both are public beta packages with explicit exports. Installing `@ai-markdown/react@beta` resolves both as exact-version dependencies. Adapter authors can use them directly, keeping the four release-train packages aligned at the same exact train version. Their advanced contracts may evolve before stable 3.0.0; the React package supplies the component and hook API used in the application guides.
 
 When in doubt, pin your overrides explicitly rather than relying on defaults.
 

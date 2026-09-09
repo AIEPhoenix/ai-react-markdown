@@ -1,0 +1,60 @@
+// Generated from the built public declaration. Review changes before updating.
+import * as vue from 'vue';
+import { Component, VNodeChild, DefineComponent } from 'vue';
+import { Element } from 'hast';
+import { AIMarkdownEnginePlugin, AIMDContentPreprocessor, SanitizeSchema, UrlTransform, SmoothStreamPacing } from '@ai-markdown/engine';
+export { AIMDContentPreprocessor, AIMarkdownEnginePlugin, SanitizeSchema, SmoothStreamPacing, UrlTransform, createRemendPreprocessor, defaultEnginePlugins, defaultUrlTransform, definitionList, extendSanitizeSchema, highlight, pangu, preprocessLaTeX, removeComments, smartypants } from '@ai-markdown/engine';
+interface MarkdownElementContext {
+    node: Element;
+    properties: Record<string, unknown>;
+    children: VNodeChild[];
+    streaming: boolean;
+    metadata: unknown;
+}
+type MarkdownComponents = Readonly<Record<string, Component>>;
+type MarkdownElementSlot = (context: MarkdownElementContext) => VNodeChild;
+interface AIMarkdownProps {
+    content: string;
+    documentId?: string;
+    documentIndex?: number;
+    streaming?: boolean;
+    incrementalParse?: boolean;
+    preserveOrphanReferences?: boolean;
+    enginePlugins?: readonly AIMarkdownEnginePlugin[];
+    contentPreprocessors?: readonly AIMDContentPreprocessor[];
+    sanitizeSchema?: SanitizeSchema;
+    urlTransform?: UrlTransform;
+    components?: MarkdownComponents;
+    metadata?: unknown;
+    streamingCursor?: boolean;
+}
+declare const AIMarkdown: DefineComponent<AIMarkdownProps>;
+declare const AIMarkdownStreamingCursor: DefineComponent;
+declare const AIMarkdownDocuments: DefineComponent;
+interface SmoothStreamInput {
+    content: string;
+    streaming?: boolean;
+    pacing?: SmoothStreamPacing;
+}
+declare function useSmoothStream(input: () => SmoothStreamInput): {
+    content: vue.ComputedRef<string>;
+    streaming: vue.ComputedRef<boolean>;
+    flush: () => void | undefined;
+};
+interface DocumentSmoothStreamInput extends SmoothStreamInput {
+    documentId?: string;
+    coordinate?: boolean;
+}
+declare function useDocumentSmoothStream(input: () => DocumentSmoothStreamInput): {
+    pending: vue.ComputedRef<boolean>;
+    content: vue.ComputedRef<string>;
+    streaming: vue.ComputedRef<boolean>;
+    flush: () => void | undefined;
+};
+declare const AIMarkdownSmoothStream: DefineComponent<AIMarkdownProps & {
+    pacing?: SmoothStreamPacing;
+    coordinate?: boolean;
+}, {
+    flush: () => void;
+}>;
+export { AIMarkdown, AIMarkdownDocuments, type AIMarkdownProps, AIMarkdownSmoothStream, AIMarkdownStreamingCursor, type DocumentSmoothStreamInput, type MarkdownComponents, type MarkdownElementContext, type MarkdownElementSlot, type SmoothStreamInput, AIMarkdown as default, useDocumentSmoothStream, useSmoothStream };
