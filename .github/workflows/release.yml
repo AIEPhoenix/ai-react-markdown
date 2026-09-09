@@ -19,8 +19,9 @@ name: Release
 # release notes.
 #
 # Auth is npm "trusted publishing" (OIDC): register this repo+workflow
-# as a trusted publisher for each package on npmjs.com; no token secret
-# exists at all — npm mints a short-lived credential from the id-token
+# as a trusted publisher for each package on npmjs.com. The first new-scope
+# beta can bootstrap with FIRST_PUBLISH_NPM_TOKEN; later tags use only OIDC.
+# npm mints a short-lived credential from the id-token
 # permission below, and provenance is attached automatically. pnpm's own
 # native OIDC support landed in 11.1.3, below the version pinned here, so the
 # workflow-wide pnpm publishes directly — no npx side-channel.
@@ -127,8 +128,17 @@ jobs:
       # npm gives every publish `latest` unless told otherwise (2026-08-19
       # review r2 P2-16). The dist-tag is the pre-release identifier's first
       # word (`beta.1` → `beta`, `rc.2` → `rc`), `next` when it has none.
-      - name: Publish to npm (OIDC trusted publishing + provenance)
+      - name: Publish to npm (provenance; first beta token or OIDC)
+        env:
+          FIRST_PUBLISH_NPM_TOKEN: ${{ github.ref_name == 'v3.0.0-beta.1' && secrets.FIRST_PUBLISH_NPM_TOKEN || '' }}
         run: |
+          if [ -n "$FIRST_PUBLISH_NPM_TOKEN" ]; then
+            umask 077
+            export NPM_CONFIG_USERCONFIG="$RUNNER_TEMP/first-publish.npmrc"
+            # Store only an environment placeholder, never the credential itself.
+            printf '%s\n' '//registry.npmjs.org/:_authToken=${FIRST_PUBLISH_NPM_TOKEN}' > "$NPM_CONFIG_USERCONFIG"
+            trap 'rm -f "$NPM_CONFIG_USERCONFIG"' EXIT
+          fi
           VERSION="${GITHUB_REF_NAME##*v}"
           DIST_TAG_ARGS=()
           case "$VERSION" in
@@ -148,7 +158,18 @@ jobs:
               echo "Already published: ${name}@${version}"
               return
             fi
-            pnpm --filter "./packages/${dir}" publish --access public --no-git-checks "${@:2}"
+            if [ -n "$FIRST_PUBLISH_NPM_TOKEN" ]; then
+              # pnpm expands workspace ranges while packing; npm publishes that
+              # exact artifact with explicit provenance during first creation.
+              mkdir -p "$RUNNER_TEMP/first-publish-packs"
+              pnpm --filter "./packages/${dir}" pack --pack-destination "$RUNNER_TEMP/first-publish-packs"
+              local archive
+              archive="${name#@}"
+              archive="${archive//\//-}-${version}.tgz"
+              npm publish "$RUNNER_TEMP/first-publish-packs/$archive" --access public --provenance "${@:2}"
+            else
+              pnpm --filter "./packages/${dir}" publish --access public --no-git-checks "${@:2}"
+            fi
             for attempt in $(seq 1 20); do
               if npm view "${name}@${version}" version >/dev/null 2>&1; then return; fi
               sleep 3

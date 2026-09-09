@@ -31,7 +31,9 @@ Public core exports are explicitly listed. Registry registration/publication is 
 
 Vue remains a private lifecycle/SSR preparation prototype. A complete Vue renderer and the dedicated documentation site are subsequent milestones. See [the migration guide](./framework-transition.md) for old/new package paths and [the approved plan](./plans/ai-markdown-packages-and-release.md) for ownership and release policy.
 
-Publication requires the full preflight, packed consumer checks and a fresh six-leg release soak on the final candidate. GitHub marks this release as a prerelease; npm uses `beta` for the four train packages.
+The full preflight passed **152 test files / 1,982 tests**, plus the Chromium concurrent-document lifetime regression and external packed-consumer checks (ESM/CJS, development conditions, SSR, CSS/plugin paths and TypeScript declarations). All six GitHub CI jobs passed for the candidate “feat: migrate to ai-markdown packages and public shared core beta”. Its fresh six-leg release soak passed **84/84 shards**, using seed base `202659090`, with `repositoryChanged: false` and a clean candidate. Run ID: `new-scope-3.0.0-beta.1-20260908T223231Z-9dae734-1278142`.
+
+Final release preparation adds only this verification record and first-publication authentication in the workflow. The first beta can use `FIRST_PUBLISH_NPM_TOKEN` to create the five new npm packages from CI with explicit provenance; subsequent tags use the configured trusted publishers. GitHub marks this release as a prerelease; npm uses `beta` for the four train packages.
 
 ### 2.14.1 — Release abandoned document scopes and share preparation decisions
 
