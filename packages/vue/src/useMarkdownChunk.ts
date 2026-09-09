@@ -57,7 +57,9 @@ export function useMarkdownChunk(input: () => ChunkInput) {
   const stablePlugins = computed(() => ({
     remarkPlugins: buildCoreRemarkPlugins(selectedPlugins.value),
     rehypePlugins: buildCoreRehypePlugins(selectedSchema.value ?? sanitizeSchema, prefix.value, { provenance }),
-    remarkRehypeOptions: buildCoreRemarkRehypeOptions(false),
+    remarkRehypeOptions: buildCoreRemarkRehypeOptions(
+      selectedPlugins.value.some((plugin) => plugin.name === 'definitionList')
+    ),
   }));
   const prepared = computed(() => {
     void version.value;

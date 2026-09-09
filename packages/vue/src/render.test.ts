@@ -8,6 +8,16 @@ import { AIMarkdown, AIMarkdownDocuments, AIMarkdownSmoothStream, extendSanitize
 const render = (content: string, extra = {}) =>
   renderToString(createSSRApp({ render: () => h(AIMarkdown, { content, documentId: 'test', ...extra }) }));
 describe('Vue SSR contracts', () => {
+  it('renders semantic definition lists only while their plugin is enabled', async () => {
+    const source = 'Term\n: Definition';
+    const enabled = await render(source);
+    expect(enabled).toContain('<dl>');
+    expect(enabled).toContain('<dt>Term</dt>');
+    expect(enabled).toContain('<dd>');
+    const disabled = await render(source, { enginePlugins: [] });
+    expect(disabled).not.toContain('<dl>');
+    expect(disabled).toContain(': Definition');
+  });
   it('renders actual HTML, math, GFM and defaults without browser globals', async () => {
     const html = await render('# Hello\n\n**bold** ==marked== $x^2$\n\n| a | b |\n| - | - |\n| c | d |');
     expect(html).toContain('<h1');
