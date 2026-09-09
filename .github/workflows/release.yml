@@ -131,6 +131,9 @@ jobs:
       - name: Release authentication boundary
         run: pnpm test:release-control
 
+      - name: Core independent contracts and state sequences
+        run: pnpm test:core-contracts
+
       - name: Test
         run: pnpm -r test
 

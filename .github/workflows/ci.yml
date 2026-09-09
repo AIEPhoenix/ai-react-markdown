@@ -46,6 +46,7 @@ jobs:
           - test
           - build
           - browser-smoke
+          - core-contracts
 
     steps:
       - name: Checkout
@@ -116,6 +117,10 @@ jobs:
       - name: Release authentication boundary
         if: matrix.task == 'test'
         run: pnpm test:release-control
+
+      - name: Core independent contracts and state sequences
+        if: matrix.task == 'core-contracts'
+        run: pnpm test:core-contracts
 
       - name: Test (all packages)
         if: matrix.task == 'test'

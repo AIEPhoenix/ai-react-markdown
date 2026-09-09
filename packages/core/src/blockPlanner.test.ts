@@ -1,7 +1,56 @@
 import { expect, test } from 'vitest';
 import { advanceIncrementalParse, type IncrementalParseState } from '@ai-markdown/engine';
-import { buildAdvanceOptions, CATALOG } from '../../../engine/src/components/incrementalParse/testPluginCatalog';
-import { buildBlocks } from './blockMemo';
+import {
+  buildCoreRemarkPlugins,
+  buildCoreRehypePlugins,
+  buildCoreRemarkRehypeOptions,
+  buildCrossChunkHandlers,
+  sanitizeSchema,
+  defaultEnginePlugins,
+  definitionList,
+  removeComments,
+  smartypants,
+  pangu,
+  type AIMarkdownEnginePlugin,
+  type AdvanceOptions,
+} from '@ai-markdown/engine';
+// Keep the six migrated configuration cells, assembled only through public
+// engine contracts. Core tests must not pull engine implementation fixtures.
+const CATALOG = [
+  { label: 'baseline', plugins: [], orphan: true },
+  { label: 'defaults-all-on', plugins: defaultEnginePlugins, orphan: true },
+  { label: 'def-list-only', plugins: [definitionList], orphan: true },
+  { label: 'display-only', plugins: [removeComments, smartypants, pangu], orphan: true },
+  { label: 'no-orphan', plugins: [], orphan: false },
+  { label: 'defaults-no-orphan', plugins: defaultEnginePlugins, orphan: false },
+];
+function buildAdvanceOptions(config: {
+  label: string;
+  plugins: readonly AIMarkdownEnginePlugin[];
+  orphan: boolean;
+}): AdvanceOptions {
+  const defListEnabled = config.plugins.includes(definitionList);
+  const base = buildCoreRemarkRehypeOptions(defListEnabled);
+  return {
+    remarkPlugins: buildCoreRemarkPlugins(config.plugins),
+    rehypePlugins: buildCoreRehypePlugins(sanitizeSchema, 'ip-user-content-', { provenance: 'test-provenance' }),
+    remarkRehypeOptions: {
+      ...base,
+      handlers: {
+        ...base.handlers,
+        ...(config.orphan ? { footnoteDefinition: buildCrossChunkHandlers().footnoteDefinition } : {}),
+      },
+      phantomFootnoteLabels: new Set(),
+      phantomLinkLabels: new Set(),
+      preserveOrphan: config.orphan,
+      documentId: 'ip',
+      provenance: 'test-provenance',
+    } as AdvanceOptions['remarkRehypeOptions'],
+    depsKey: [config.label],
+    defListEnabled,
+  };
+}
+import { buildBlocks } from './blockPlan';
 import { createBlockPlanner } from './blockPlanner';
 
 const docs = [

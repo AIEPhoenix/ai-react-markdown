@@ -63,6 +63,7 @@ If none of these matches, the full topic index below covers every surface.
 | ★   | [Benchmark](./benchmark.md)                                  | Measured numbers for block-memo × incremental parse, methodology, and how to reproduce them                  |
 
 | ★ | [Soak coverage](./soak-coverage.md) | Map stateful optimizations to oracles, tests, release legs, and engagement checks |
+| ★ | [Core contracts and state sequences](./core-testing.md) | Independent core gate, module ownership, fixed-seed sequences and failure replay |
 
 The documents can be read independently; code recipes that build on earlier definitions say so. Cross-references are inlined where helpful.
 

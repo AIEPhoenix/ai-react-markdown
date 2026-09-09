@@ -271,9 +271,39 @@ importers:
         specifier: ^5.1.0
         version: 5.1.0
     devDependencies:
+      '@ai-markdown/rehype-raw':
+        specifier: 7.0.3
+        version: 7.0.3
       '@types/node':
         specifier: ^25.9.5
         version: 25.9.5
+      fast-check:
+        specifier: ^4.9.0
+        version: 4.9.0
+      rehype-sanitize:
+        specifier: ^6.0.0
+        version: 6.0.0
+      remark-gfm:
+        specifier: ^4.0.1
+        version: 4.0.1(supports-color@8.1.1)
+      remark-parse:
+        specifier: ^11.0.0
+        version: 11.0.0(supports-color@8.1.1)
+      remark-rehype:
+        specifier: ^11.1.2
+        version: 11.1.2
+      remark-remove-comments:
+        specifier: ^1.1.1
+        version: 1.1.1
+      remark-squeeze-paragraphs:
+        specifier: ^6.0.0
+        version: 6.0.0
+      unified:
+        specifier: ^11.0.5
+        version: 11.0.5
+      vfile:
+        specifier: ^6.0.3
+        version: 6.0.3
 
   packages/engine:
     dependencies:

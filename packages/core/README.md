@@ -110,15 +110,18 @@ The retained-prefix planner reuses only identity-proven eligible nodes. It retai
 pnpm install --frozen-lockfile
 pnpm build
 pnpm --filter @ai-markdown/core typecheck
-pnpm exec vitest run --project unit packages/core/src/runtime.test.ts
+pnpm --filter @ai-markdown/core test
+pnpm test:core-contracts
 pnpm preflight
 ```
 
 Build before running distribution tests: they load the actual ESM/CJS production and development files in separate Node processes, reject UI framework resolution transitively and parse without browser globals. Other tests compare session output with an independent full engine pipeline, exercise resets/fallback, prove explicit contribution timing and check aggregate body immutability. Existing React tests still exercise the adapter's delegation, memoization, byte equivalence, coordination and browser behavior.
 
+The dedicated `test:core-contracts` gate builds core and its workspace dependencies, typechecks it, and runs all core tests independently of React/Vue. It runs in preflight, a dedicated CI task and the release workflow. Pure planner, coordinator, tail-signal and block-plan tests live with core; React retains renderer/cache integration tests. Fixed-seed sequences compare retained pipeline/planning and contribution state against full reconstruction, and coordinator lifecycles against a separate model. See [core testing](../../docs/core-testing.md) for the module map, fixed budgets, replay commands and limitations.
+
 `assert-boundary.mjs` checks public-package identity, allowed production dependencies, source import direction and folded environment gates. The React distribution guard requires external core and engine imports. Core's declarations must not expose `RegistryInternal`, `SmoothCoordinatorInternal` or private refcount/subscriber containers.
 
-The release train is engine/core/react/react-mantine at the same version. Vue now consumes the same shared contracts; see the [API review](../../docs/api/core-engine-contracts.md) for the current unreleased signature changes. Core depends on engine through `workspace:*`, which becomes the exact train version in the published manifest. Both ESM and CJS have production and development entries; every build folds environment gates separately. Core has no `use client` directive and does not inline a second engine implementation.
+The release train is engine/core/react/react-mantine/vue at the same version. Vue now consumes the same shared contracts; see the [API review](../../docs/api/core-engine-contracts.md) for the current unreleased signature changes. Core depends on engine through `workspace:*`, which becomes the exact train version in the published manifest. Both ESM and CJS have production and development entries; every build folds environment gates separately. Core has no `use client` directive and does not inline a second engine implementation.
 
 ## Public API and write capabilities
 
