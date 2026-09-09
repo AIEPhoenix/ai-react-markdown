@@ -27,17 +27,27 @@ name: Release
 # workflow-wide pnpm publishes directly — no npx side-channel.
 
 on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag to finish without republishing existing versions
+        required: true
+        default: v3.0.0-beta.1
+        type: string
   push:
     tags:
       - 'v*'
       - '*-v*'
+
+env:
+  RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
 
 permissions:
   contents: write # create the GitHub release
   id-token: write # OIDC token for npm trusted publishing + provenance
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.release_tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -48,6 +58,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       # pnpm/setup (not pnpm/action-setup, which stops at pnpm 10) installs
       # pnpm and Node in one step, taking the pnpm version from
@@ -66,7 +78,13 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Verify tag matches package version
-        run: node scripts/check-release.mjs "$GITHUB_REF_NAME"
+        run: node scripts/check-release.mjs "$RELEASE_TAG"
+
+      - name: Verify recovery uses the tagged package sources
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git rev-parse --verify "refs/tags/$RELEASE_TAG"
+          git diff --exit-code "$RELEASE_TAG" -- packages pnpm-lock.yaml pnpm-workspace.yaml package.json
 
       # Full quality gate — mirrors CI so a tag can't ship anything main
       # wouldn't accept. Build runs first: mantine's typecheck/tests resolve
@@ -130,7 +148,7 @@ jobs:
       # word (`beta.1` → `beta`, `rc.2` → `rc`), `next` when it has none.
       - name: Publish to npm (provenance; first beta token or OIDC)
         env:
-          FIRST_PUBLISH_NPM_TOKEN: ${{ github.ref_name == 'v3.0.0-beta.1' && secrets.FIRST_PUBLISH_NPM_TOKEN || '' }}
+          FIRST_PUBLISH_NPM_TOKEN: ${{ (inputs.release_tag || github.ref_name) == 'v3.0.0-beta.1' && secrets.FIRST_PUBLISH_NPM_TOKEN || '' }}
         run: |
           if [ -n "$FIRST_PUBLISH_NPM_TOKEN" ]; then
             umask 077
@@ -139,56 +157,7 @@ jobs:
             printf '%s\n' '//registry.npmjs.org/:_authToken=${FIRST_PUBLISH_NPM_TOKEN}' > "$NPM_CONFIG_USERCONFIG"
             trap 'rm -f "$NPM_CONFIG_USERCONFIG"' EXIT
           fi
-          VERSION="${GITHUB_REF_NAME##*v}"
-          DIST_TAG_ARGS=()
-          case "$VERSION" in
-            *-*)
-              PRE="${VERSION#*-}"
-              PRE_ID="${PRE%%[.0-9]*}"
-              DIST_TAG_ARGS=(--tag "${PRE_ID:-next}")
-              echo "Pre-release ${VERSION}: publishing under dist-tag '${DIST_TAG_ARGS[1]}'"
-              ;;
-          esac
-          publish_one() {
-            local dir="$1"
-            local name version
-            name="$(node -p "require('./packages/${dir}/package.json').name")"
-            version="$(node -p "require('./packages/${dir}/package.json').version")"
-            if npm view "${name}@${version}" version >/dev/null 2>&1; then
-              echo "Already published: ${name}@${version}"
-              return
-            fi
-            if [ -n "$FIRST_PUBLISH_NPM_TOKEN" ]; then
-              # pnpm expands workspace ranges while packing; npm publishes that
-              # exact artifact with explicit provenance during first creation.
-              mkdir -p "$RUNNER_TEMP/first-publish-packs"
-              pnpm --filter "./packages/${dir}" pack --pack-destination "$RUNNER_TEMP/first-publish-packs"
-              local archive
-              archive="${name#@}"
-              archive="${archive//\//-}-${version}.tgz"
-              npm publish "$RUNNER_TEMP/first-publish-packs/$archive" --access public --provenance "${@:2}"
-            else
-              pnpm --filter "./packages/${dir}" publish --access public --no-git-checks "${@:2}"
-            fi
-            for attempt in $(seq 1 20); do
-              if npm view "${name}@${version}" version >/dev/null 2>&1; then return; fi
-              sleep 3
-            done
-            echo "::error::Published dependency is not resolvable: ${name}@${version}"
-            return 1
-          }
-          case "$GITHUB_REF_NAME" in
-            v*)
-              publish_one remark-mark-highlight --tag latest
-              for dir in engine core react react-mantine; do
-                publish_one "$dir" "${DIST_TAG_ARGS[@]}"
-              done
-              ;;
-            *-v*)
-              PKG_DIR="${GITHUB_REF_NAME%-v*}"
-              publish_one "$PKG_DIR" "${DIST_TAG_ARGS[@]}"
-              ;;
-          esac
+          node scripts/publish-packages.mjs "$RELEASE_TAG"
 
       # Notes come from the version's section in docs/release-highlights.md —
       # the hand-written changelog — falling back to GitHub's auto-generated
@@ -197,15 +166,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [ "${GITHUB_REF_NAME#v}" = "$GITHUB_REF_NAME" ]; then
+          if [ "${RELEASE_TAG#v}" = "$RELEASE_TAG" ]; then
             # Package tag — no release-highlights section; auto-generate notes.
-            PACKAGE_VERSION="${GITHUB_REF_NAME##*-v}"
+            PACKAGE_VERSION="${RELEASE_TAG##*-v}"
             PACKAGE_RELEASE_ARGS=()
             case "$PACKAGE_VERSION" in *-*) PACKAGE_RELEASE_ARGS=(--prerelease --latest=false);; esac
-            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes --verify-tag "${PACKAGE_RELEASE_ARGS[@]}"
+            gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --generate-notes --verify-tag "${PACKAGE_RELEASE_ARGS[@]}"
             exit 0
           fi
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${RELEASE_TAG#v}"
           RELEASE_ARGS=()
           case "$VERSION" in *-*) RELEASE_ARGS=(--prerelease --latest=false);; esac
           # A `### <version>` heading followed by a space (title) or by end
@@ -223,8 +192,8 @@ jobs:
             echo "::warning::docs/release-highlights.md has ${SECTIONS} sections for ${VERSION}; only the first is used as release notes"
           fi
           if [ -s /tmp/release-notes.md ]; then
-            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file /tmp/release-notes.md --verify-tag "${RELEASE_ARGS[@]}"
+            gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --notes-file /tmp/release-notes.md --verify-tag "${RELEASE_ARGS[@]}"
           else
             echo "::warning::No '### ${VERSION}' section in docs/release-highlights.md — falling back to auto-generated release notes"
-            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes --verify-tag "${RELEASE_ARGS[@]}"
+            gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --generate-notes --verify-tag "${RELEASE_ARGS[@]}"
           fi
