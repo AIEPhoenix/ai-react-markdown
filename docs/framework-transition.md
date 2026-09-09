@@ -2,7 +2,7 @@
 
 **v2.14.1 is the final planned legacy release; 3.0.0-beta.1 starts the new `@ai-markdown` package train.** The GitHub repository has moved to `ai-markdown/ai-markdown`. Package names, directory ownership and shared-core distribution change together. React components, hooks, configuration names and stylesheet behavior retain their existing shape.
 
-The beta establishes the new package boundaries. It does not claim a complete Vue renderer or freeze the advanced engine/core APIs before stable 3.0.0. Use the explicit `beta` tag when installing the new framework packages. Existing legacy versions and Git tags remain available.
+The first beta established the new package boundaries. The current unreleased beta.2 candidate adds the Vue adapter and reviews the advanced engine/core APIs before stable 3.0.0. Use the explicit `beta` tag when installing the new framework packages. Existing legacy versions and Git tags remain available.
 
 ## Package and import mapping
 
@@ -68,7 +68,7 @@ SSR does not run the registration effects and retains local footnote behavior. T
 
 Engine, core, react and react-mantine use one version train starting at `3.0.0-beta.1`, published under `beta`. The highlight plugin remains on its independent 1.x line; the existing rehype/raw forks retain their own repositories and upstream-related versions. A beta release must not move the npm `latest` tag or become a stable GitHub release.
 
-Advanced engine/core contracts may evolve during beta. Test fixtures and implementation containers are excluded from the public root. Framework apps should avoid importing source paths or undocumented helpers. Stable 3.0.0 requires signature review, supported consumer checks and the complete release gate. See the [architecture guide](./architecture.md) for package ownership.
+Advanced engine/core contracts may evolve during beta. Test fixtures and implementation containers are excluded from the public root. Framework apps should avoid importing source paths or undocumented helpers. Stable 3.0.0 requires signature review, supported consumer checks and the complete release gate. See the [shared API contracts](./api/core-engine-contracts.md) and [architecture guide](./architecture.md).
 
 The repository transfer is complete. Each new npm package still needs its own first-publication credentials and trusted-publisher configuration for organization `ai-markdown`, repository `ai-markdown`, workflow `release.yml`. Organization ownership alone does not create those configurations. Releases retain provenance and use CI as the publication path.
 
@@ -76,9 +76,9 @@ The repository transfer is complete. Each new npm package still needs its own fi
 
 Shared-core tests load production/development ESM and CJS in fresh Node processes, reject framework resolution and execute parsing/planning without browser globals. Session tests compare incremental output with a full engine pipeline and cover reset, fallback and explicit contribution timing. React tests cover node identity, SSR, Strict Mode, coordination and browser interaction. Published artifacts must additionally resolve outside the workspace, including declarations, plugin entries and CSS paths.
 
-The private [Vue prototype](../prototypes/vue/README.md) consumes the same phantom-target, handler/harvest and contribution-chain decisions. Its real Vue lifecycle and memory-renderer tests exercise cross-chunk definitions, updates, document switching and cleanup; SSR tests validate preparation. Vue is only a dependency of that private workspace.
+The [Vue adapter](../packages/vue/README.md) now consumes the same preparation contracts and supplies VNode conversion, scoped references, SSR hydration, component/slot extension and streaming UI. It requires Vue `^3.5.0`; its first npm publication is pending. The former prototype is archived. See the [API contracts](./api/core-engine-contracts.md) for the beta.1-to-candidate advanced API changes.
 
-That experiment has no complete HAST-to-VNode renderer, DOM hydration, slots, styling or cursor support. `@ai-markdown/vue` joins the public train after those paths are implemented and verified. A framework-independent Node consumer demonstrates a valid boundary, not universal framework readiness.
+Vue joins the candidate release train with browser acceptance coverage. First publication, trusted-publisher setup for the new package and stable-version approval remain separate steps. A framework-independent Node consumer alone does not establish browser readiness.
 
 ## Documentation site
 

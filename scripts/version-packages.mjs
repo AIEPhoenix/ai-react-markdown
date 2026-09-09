@@ -35,7 +35,13 @@ const REACT_PKG_NAME = '@ai-markdown/react';
 // INDEPENDENTLY: it is skipped here, published from a train tag only when
 // its own version was bumped (`pnpm publish -r` skips already-published
 // versions), or standalone via a `<pkg>-vX.Y.Z` tag.
-const LOCKSTEP = new Set([REACT_PKG_NAME, '@ai-markdown/core', '@ai-markdown/react-mantine', '@ai-markdown/engine']);
+const LOCKSTEP = new Set([
+  REACT_PKG_NAME,
+  '@ai-markdown/core',
+  '@ai-markdown/react-mantine',
+  '@ai-markdown/engine',
+  '@ai-markdown/vue',
+]);
 
 // Update root package.json
 const rootPkgPath = join(ROOT, 'package.json');

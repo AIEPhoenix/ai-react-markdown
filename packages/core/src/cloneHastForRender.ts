@@ -4,7 +4,7 @@
  * Copies exactly what the render-time mutators touch — every node object,
  * its `children` array (the allow/disallow filters splice it), and its
  * `properties` object (`urlTransform` overwrites `href`/`src`) — while
- * SHARING `position`, `data`, string values, and individual property values
+ * SHARING `position`, arbitrary nested plugin data, string values, and individual property values
  * by reference. This is both cheaper than a JSON round-trip (no string
  * intermediate; `position` objects, typically over half of a serialized
  * hast, are never materialized) and exact for any tree the pipeline
@@ -25,6 +25,13 @@ export function cloneHastForRender<T extends HastNodes>(node: T): T {
   const withProperties = copy as { properties?: Record<string, unknown> };
   if (withProperties.properties) {
     withProperties.properties = { ...withProperties.properties };
+  }
+  // buildTransform records original URL values in data.originalUrls. Both
+  // containers must belong to this render even when plugins supplied data.
+  if (copy.data) {
+    copy.data = { ...copy.data };
+    const data = copy.data as { originalUrls?: Record<string, unknown> };
+    if (data.originalUrls) data.originalUrls = { ...data.originalUrls };
   }
   return copy;
 }

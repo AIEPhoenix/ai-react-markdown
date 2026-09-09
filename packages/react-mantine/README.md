@@ -1,6 +1,6 @@
 # @ai-markdown/react-mantine
 
-> **3.0.0-beta.1:** the new `@ai-markdown` scope separates the shared core from the React adapter. Install framework packages with `@beta`; Vue remains a private prototype. See the [migration guide](../../docs/framework-transition.md).
+> **3.0.0-beta.2 candidate (unreleased):** the new `@ai-markdown` scope separates the shared core from the React adapter. Install framework packages with `@beta`; The Vue adapter is implemented in source; its first npm publication is pending. See the [migration guide](../../docs/framework-transition.md).
 
 [![npm version](https://img.shields.io/npm/v/@ai-markdown/react-mantine?logo=npm&color=cb3837)](https://www.npmjs.com/package/@ai-markdown/react-mantine)
 [![npm downloads](https://img.shields.io/npm/dm/@ai-markdown/react-mantine?color=blue)](https://www.npmjs.com/package/@ai-markdown/react-mantine)
@@ -74,7 +74,7 @@ yarn add @ai-markdown/react-mantine@beta @ai-markdown/react@beta
 {
   "react": "^19.0.0",
   "react-dom": "^19.0.0",
-  "@ai-markdown/react": "3.0.0-beta.1",
+  "@ai-markdown/react": "3.0.0-beta.2",
   "@mantine/core": "^9.0.0",
   "@mantine/code-highlight": "^9.0.0",
   "highlight.js": "^11.11.2"

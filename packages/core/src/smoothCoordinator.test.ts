@@ -5,7 +5,7 @@
  * refcount-deferred reclaim (Strict Mode), and version/fanout coalescing.
  */
 import { describe, expect, test, vi } from 'vitest';
-import { createSmoothCoordinator, evaluateGateWarn } from './coordinator';
+import { createSmoothCoordinator, evaluateGateWarn } from './index';
 
 const microtasks = () => new Promise<void>((r) => queueMicrotask(() => queueMicrotask(r)));
 

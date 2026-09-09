@@ -1,6 +1,6 @@
 # Release Highlights
 
-This document records the user-visible changes, implementation fixes, and verification evidence for each release. Entries are grouped by release line and listed newest first. Use the [Git history](https://github.com/AIEPhoenix/ai-react-markdown/commits/main/) for individual commits and the [releases page](https://github.com/AIEPhoenix/ai-react-markdown/releases) for published release records.
+This document records the user-visible changes, implementation fixes, and verification evidence for each release. Entries are grouped by release line and listed newest first. Use the [Git history](https://github.com/ai-markdown/ai-markdown/commits/main/) for individual commits and the [releases page](https://github.com/ai-markdown/ai-markdown/releases) for published release records.
 
 Read an entry as a statement about that version. Older configuration names, dependency choices, default values, soak sizes, and performance measurements remain here so an upgrade can be understood in context. For the current API, use the package READMEs and the [developer guide index](./README.md); for a 1.x upgrade, start with the [migration mapping](./migrating-to-v2.md).
 
@@ -19,7 +19,21 @@ Verification counts are historical results reported for the corresponding candid
 
 Patch headings identify fixes or maintenance; minor headings introduce features or broader compatible changes. Exact rendered bytes and default visual values are not a blanket semver guarantee.
 
-## 2.14.x — Final ai-react-markdown release line
+## 3.0.0 prereleases — Framework adapters and shared contracts
+
+### 3.0.0-beta.2 — Vue 3.5 adapter and explicit shared APIs
+
+This beta introduces `@ai-markdown/vue` for Vue 3.5 and later within the 3.x major. Install it with `@beta`. Engine, core, React, React Mantine, and Vue now share the `3.0.0-beta.2` train; the independently versioned highlight plugin remains at `1.0.1`. React continues to target 19.x. The explicit `beta` npm tag is verified for each train package. If npm assigns `latest` during Vue's first publication, that initial `latest → 3.0.0-beta.2` mapping is retained by maintainer decision; this exception does not apply to later prereleases or other packages.
+
+The Vue adapter includes Markdown rendering, sanitized cross-chunk references and footnotes, SSR/hydration, custom components and slots, smooth streaming with document turn-taking, and streaming cursors. Coordinated footnote marks honor URL transforms and custom `sup`/anchor rendering. Browser verification covers definition changes, document isolation, source replacement, cancellation, and unmount cleanup. Nuxt, KeepAlive, Suspense, and non-Chromium browser integration remain unverified.
+
+Core sessions and planners now have named public contracts, and engine root exports are explicit. The public `isEnginePlugin` guard replaces reliance on internal plugin-stage metadata. Consumers of beta.1 should review the [API contracts](./api/core-engine-contracts.md) and update imports of helpers removed from the public root. Cloning render-owned URL metadata prevents adapters from mutating parser or registry trees shared with other consumers.
+
+Core has an independent build/typecheck/test gate with 91 tests, including fixed-seed state sequences for pipeline invalidation, contribution reconstruction, aggregation ownership, and coordinator cleanup. The Vue Chromium gate includes 24 document lifecycles and 288 append updates, verifies subscription release, and checks that document registries and coordinators can be collected while their provider stays mounted. A temporary retained-registry fault was detected by this check.
+
+Release soak is now impact-based. PR checks show whether the cumulative candidate needs engine soak; engine-impacting releases require local evidence and a maintainer's `soak-approval` confirmation before npm publication. Core and adapter checks remain independently required. See [soak coverage](./soak-coverage.md) for trigger rules and evidence validation.
+
+Candidate `4841b087c36979277a9b9747687ad94674694891` passed all nine CI checks and a fresh six-leg release-profile soak: **84/84 shards**, seed base `202669090`, clean worktree, and `repositoryChanged: false`. The local release validator accepted the complete evidence against the candidate. The campaign took about 2 hours 52 minutes. Release preparation adds documentation and publication handling; engine-impacting follow-ups invalidate this evidence.
 
 ### 3.0.0-beta.1 — ai-markdown scope and public shared core
 
@@ -34,6 +48,8 @@ Vue remains a private lifecycle/SSR preparation prototype. A complete Vue render
 The full preflight passed **152 test files / 1,982 tests**, plus the Chromium concurrent-document lifetime regression and external packed-consumer checks (ESM/CJS, development conditions, SSR, CSS/plugin paths and TypeScript declarations). All six GitHub CI jobs passed for the candidate “feat: migrate to ai-markdown packages and public shared core beta”. Its fresh six-leg release soak passed **84/84 shards**, using seed base `202659090`, with `repositoryChanged: false` and a clean candidate. Run ID: `new-scope-3.0.0-beta.1-20260908T223231Z-9dae734-1278142`.
 
 Final release preparation adds only this verification record and first-publication authentication in the workflow. The first beta can use `FIRST_PUBLISH_NPM_TOKEN` to create the five new npm packages from CI with explicit provenance; subsequent tags use the configured trusted publishers. GitHub marks this release as a prerelease; npm uses `beta` for the four train packages.
+
+## 2.14.x — Final ai-react-markdown release line
 
 ### 2.14.1 — Release abandoned document scopes and share preparation decisions
 

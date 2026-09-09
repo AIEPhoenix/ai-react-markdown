@@ -106,6 +106,10 @@ importers:
         specifier: ^4.1.11
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@25.9.5)(@vitest/browser-playwright@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.0.1)(vite@8.2.1(@types/node@25.9.5)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.103.1)(yaml@2.9.0))
 
+      yaml:
+        specifier: 2.9.0
+        version: 2.9.0
+
   benchmarks/kit:
     devDependencies:
       typescript:
@@ -271,9 +275,39 @@ importers:
         specifier: ^5.1.0
         version: 5.1.0
     devDependencies:
+      '@ai-markdown/rehype-raw':
+        specifier: 7.0.3
+        version: 7.0.3
       '@types/node':
         specifier: ^25.9.5
         version: 25.9.5
+      fast-check:
+        specifier: ^4.9.0
+        version: 4.9.0
+      rehype-sanitize:
+        specifier: ^6.0.0
+        version: 6.0.0
+      remark-gfm:
+        specifier: ^4.0.1
+        version: 4.0.1(supports-color@8.1.1)
+      remark-parse:
+        specifier: ^11.0.0
+        version: 11.0.0(supports-color@8.1.1)
+      remark-rehype:
+        specifier: ^11.1.2
+        version: 11.1.2
+      remark-remove-comments:
+        specifier: ^1.1.1
+        version: 1.1.1
+      remark-squeeze-paragraphs:
+        specifier: ^6.0.0
+        version: 6.0.0
+      unified:
+        specifier: ^11.0.5
+        version: 11.0.5
+      vfile:
+        specifier: ^6.0.3
+        version: 6.0.3
 
   packages/engine:
     dependencies:
@@ -594,24 +628,36 @@ importers:
         specifier: ^11.0.0
         version: 11.0.0
 
-  prototypes/vue:
+  packages/vue:
     dependencies:
       '@ai-markdown/core':
         specifier: workspace:*
-        version: link:../../packages/core
+        version: link:../core
       '@ai-markdown/engine':
         specifier: workspace:*
-        version: link:../../packages/engine
+        version: link:../engine
+      '@types/hast':
+        specifier: ^3.0.5
+        version: 3.0.5
+      katex:
+        specifier: ^0.16 || ^0.17
+        version: 0.17.0
+      property-information:
+        specifier: ^7.1.0
+        version: 7.1.0
+      unist-util-visit:
+        specifier: ^5.1.0
+        version: 5.1.0
+    devDependencies:
+      '@types/node':
+        specifier: ^25.9.5
+        version: 25.9.5
       '@vue/server-renderer':
         specifier: ^3.5.0
         version: 3.5.42
       vue:
         specifier: ^3.5.0
         version: 3.5.42(typescript@6.0.3)
-    devDependencies:
-      '@types/hast':
-        specifier: ^3.0.5
-        version: 3.0.5
 
 packages:
 

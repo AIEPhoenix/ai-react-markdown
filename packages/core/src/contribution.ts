@@ -19,12 +19,16 @@ export interface ContributionOptions {
   chain: readonly unknown[];
 }
 
+export interface ContributionSession {
+  commit(options: ContributionOptions): void;
+}
+
 /** Create one contribution publisher per mounted chunk.
  * Call commit only in the host's commit/effect phase, after registration.
  * Constructing a session does not register or publish anything. A discarded
  * render must never call commit. The host owns registration and cleanup.
  */
-export function createContributionSession() {
+export function createContributionSession(): ContributionSession {
   let lastContribution: {
     registry: ContributionRegistry;
     symbol: symbol;

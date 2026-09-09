@@ -69,7 +69,7 @@ export default defineConfig(
   },
   {
     // Vue composables follow Vue lifecycle rules, not React hook ordering.
-    files: ['prototypes/vue/**/*.ts'],
+    files: ['prototypes/vue/**/*.ts', 'packages/vue/**/*.ts'],
     rules: Object.fromEntries(Object.keys(reactHooks.configs.recommended.rules).map((rule) => [rule, 'off'])),
   },
   eslintConfigPrettier

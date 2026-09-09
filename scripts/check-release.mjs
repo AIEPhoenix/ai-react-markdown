@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const read = (path) => JSON.parse(readFileSync(path, 'utf8'));
 const tag = process.argv[2];
-const train = ['engine', 'core', 'react', 'react-mantine'];
+const train = ['engine', 'core', 'react', 'react-mantine', 'vue'];
 const match = /^(?:(v)|([a-z-]+)-v)(\d+\.\d+\.\d+(?:-[\w.]+)?)$/.exec(tag ?? '');
 assert(match, `Invalid release tag: ${tag}`);
 const [, isTrain, directory, version] = match;
@@ -21,6 +21,7 @@ if (isTrain) {
   for (const [name, dependencies] of [
     ['core', ['engine']],
     ['react', ['core', 'engine']],
+    ['vue', ['core', 'engine']],
   ]) {
     const pkg = read(`packages/${name}/package.json`);
     for (const dependency of dependencies) assert.equal(pkg.dependencies[`@ai-markdown/${dependency}`], 'workspace:*');

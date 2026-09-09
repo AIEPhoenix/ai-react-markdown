@@ -1,6 +1,6 @@
 # ai-markdown
 
-> **3.0.0-beta.1:** the new `@ai-markdown` scope separates the shared core from the React adapter. Install framework packages with `@beta`; Vue remains a private prototype. See the [migration guide](./docs/framework-transition.md).
+> **3.0.0-beta.2 candidate (unreleased):** the new `@ai-markdown` scope separates the shared core from the React adapter. Install framework packages with `@beta`; The Vue adapter is implemented in source; its first npm publication is pending. See the [migration guide](./docs/framework-transition.md).
 
 > React Markdown rendering for AI responses: GFM, KaTeX math, CJK-aware parsing, incremental streaming, and shared references across logical document sections. Use the React adapter with your own UI, or the Mantine integration for highlighted code, JSON presentation, and Mermaid diagrams.
 
@@ -83,6 +83,10 @@ Choose `@ai-markdown/react` for React rendering with your own presentation. Choo
 | [`@ai-markdown/react-mantine`](./packages/react-mantine)                 | Mantine UI integration. Adds themed typography, code highlighting via `@mantine/code-highlight`, Mermaid diagrams, JSON pretty-print, and automatic color scheme detection.               |
 | [`@ai-markdown/engine`](./packages/engine)                               | Framework-agnostic Markdown engine — incremental parsing, LaTeX preprocessing, the unified plugin pipeline. Consumed by shared core and adapters; applications install the React package. |
 | [`@ai-markdown/remark-mark-highlight`](./packages/remark-mark-highlight) | Standalone remark plugin for `==mark==` highlight syntax. Independently versioned; usable in any unified/remark pipeline outside this repo (the `highlight` engine plugin uses it).       |
+
+## Vue adapter
+
+The Vue 3.5+ adapter is implemented in this checkout and awaits its first npm release. See the [Vue README](./packages/vue/README.md) for components, SSR/hydration, cross-chunk references, slots and smooth streaming. Shared core/engine contracts and beta API changes are documented in the [API contracts](./docs/api/core-engine-contracts.md).
 
 ## Installation
 
@@ -806,7 +810,7 @@ Issues and pull requests are welcome. For non-trivial changes, please open an is
 
 Reporting a bug helps most when it includes:
 
-- The package and version (`@ai-markdown/react@3.0.0-beta.1` …)
+- The package and version (`@ai-markdown/react@3.0.0-beta.2` …)
 - The relevant `<AIMarkdown>` / `<MantineAIMarkdown>` props
 - A minimal markdown sample that reproduces the issue
 - For streaming-related bugs: the chunk sequence (one string per chunk)

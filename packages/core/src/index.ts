@@ -8,9 +8,10 @@ export {
   isFootnoteSection,
 } from './blockPlan';
 export type { BlockInfo, RenderItem, BuildBlocksOptions, BuildBlocksResult } from './blockPlan';
+export type { BlockPlanner } from './blockPlanner';
 export { createBlockPlanner } from './blockPlanner';
 export { createContributionSession } from './contribution';
-export type { ContributionOptions, ContributionRegistry } from './contribution';
+export type { ContributionOptions, ContributionRegistry, ContributionSession } from './contribution';
 export { createSmoothCoordinator } from './coordinator';
 export { evaluateGateWarn } from './smoothCoordinator';
 export type { SmoothCoordinator, GateWarnVerdict } from './smoothCoordinator';
@@ -19,7 +20,7 @@ export type { TailSignal } from './tailSignal';
 export { buildAggregateTree } from './aggregateFootnotes';
 export { cloneHastForRender } from './cloneHastForRender';
 export { createPipelineSession } from './pipelineSession';
-export type { PipelineFrameOptions } from './pipelineSession';
+export type { PipelineFrameOptions, PipelineSession, PipelineTrees } from './pipelineSession';
 export { derivePhantomTargets, deriveCoordinationPolicy, buildContributionChain } from './coordinationPreparation';
 export type {
   DefinitionLabels,

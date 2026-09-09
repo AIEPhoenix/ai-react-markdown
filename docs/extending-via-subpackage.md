@@ -1,5 +1,7 @@
 # Extending via a Sub-package
 
+These examples target the unreleased 3.0.0-beta.2 workspace candidate; use the matching released train when distributing an integration.
+
 Here, the base renderer, its props, providers and hooks belong to `@ai-markdown/react`. The separate `@ai-markdown/core` supplies framework-independent orchestration and has no React context or UI API. UI integrations keep the React adapter as a peer; framework adapters depend on shared core and engine.
 
 Build a React integration by wrapping `@ai-markdown/react` and defining the design-system behavior around it. Mantine is the reference implementation: it supplies typography, code-block presentation, theme defaults, and typed behavior options while the React adapter and its shared dependencies supply parsing, sanitization, references, and streaming.
@@ -415,7 +417,7 @@ Match the shape of `@ai-markdown/react-mantine`'s barrel for consistency. Re-exp
 // packages/your-integration/package.json
 {
   "peerDependencies": {
-    "@ai-markdown/react": "3.0.0-beta.1",
+    "@ai-markdown/react": "3.0.0-beta.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "your-design-system": "^1.0.0",
@@ -505,7 +507,7 @@ Don't fork `MarkdownContent` or the remark/rehype plugin chain. The the React ad
 
 ### Choosing the peer version of `@ai-markdown/react`
 
-For the initial beta, match the verified adapter exactly: `3.0.0-beta.1`, as the Mantine integration does. Beta contracts can change before stable 3.0.0. After a stable release, use a caret range whose minimum includes every API your integration consumes, and validate that supported range in consumer tests. A legacy `^2.13.2` range cannot resolve the new package train.
+For the initial beta, match the verified adapter exactly: `3.0.0-beta.2`, as the Mantine integration does. Beta contracts can change before stable 3.0.0. After a stable release, use a caret range whose minimum includes every API your integration consumes, and validate that supported range in consumer tests. A legacy `^2.13.2` range cannot resolve the new package train.
 
 ### Re-exporting internal React adapter types
 
@@ -540,7 +542,7 @@ Publishing a `@yourorg/ai-markdown-…` package is the natural unit of distribut
 When you publish, consider:
 
 - A README following the structure of `@ai-markdown/react-mantine`.
-- A peer-dep statement that's permissive enough (`^19.0.0` for React and React DOM, and exactly `3.0.0-beta.1` for the current adapter beta).
+- A peer-dep statement that's permissive enough (`^19.0.0` for React and React DOM, and exactly `3.0.0-beta.2` for the current adapter beta).
 - npm keywords: `react`, `markdown`, `ai`, `llm`, `<your-design-system>`, `ai-markdown-integration`.
 - Bundle size disclosure (bundlephobia badges).
 

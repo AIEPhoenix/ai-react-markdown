@@ -14,6 +14,20 @@ import {
   type AdvanceOptions,
 } from '@ai-markdown/engine';
 
+import type { Root as MdastRoot } from 'mdast';
+import type { Root as HastRoot } from 'hast';
+
+export interface PipelineTrees {
+  mdast: MdastRoot;
+  hast: HastRoot;
+}
+export interface PipelineSession {
+  /** Drop retained incremental state. Does not dispose host subscriptions. */
+  reset(): void;
+  /** Read-only borrowed trees: clone before destructive rendering. */
+  parse(options: PipelineFrameOptions): PipelineTrees;
+}
+
 type RemarkRehypeOptions = NonNullable<PipelineOptions['remarkRehypeOptions']>;
 export interface PipelineFrameOptions {
   content: string;
@@ -32,7 +46,7 @@ export interface PipelineFrameOptions {
 }
 const unmeasured: NonNullable<AdvanceOptions['measure']> = (_stage, fn) => fn();
 
-export function createPipelineSession() {
+export function createPipelineSession(): PipelineSession {
   let state: IncrementalParseState | null = null;
   return {
     reset(): void {

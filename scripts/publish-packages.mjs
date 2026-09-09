@@ -1,13 +1,13 @@
 /* global process, console, fetch, setTimeout, AbortSignal */
 import assert from 'node:assert/strict';
-import { readFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, unlinkSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 const releaseTag = process.argv[2];
 execFileSync(process.execPath, ['scripts/check-release.mjs', releaseTag], { stdio: 'inherit' });
 const directories = releaseTag.startsWith('v')
-  ? ['remark-mark-highlight', 'engine', 'core', 'react', 'react-mantine']
+  ? ['remark-mark-highlight', 'engine', 'core', 'react', 'react-mantine', 'vue']
   : [releaseTag.slice(0, releaseTag.lastIndexOf('-v'))];
 const registry = 'https://registry.npmjs.org';
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -35,14 +35,28 @@ for (const directory of directories) {
     assert.equal(published.name, name);
     assert.equal(published.version, version);
     console.log(`Already published: ${name}@${version}`);
-  } else if (process.env.FIRST_PUBLISH_NPM_TOKEN) {
+  } else if (
+    process.env.FIRST_PUBLISH_NPM_TOKEN &&
+    (!process.env.FIRST_PUBLISH_PACKAGE || process.env.FIRST_PUBLISH_PACKAGE === name)
+  ) {
     const destination = join(process.env.RUNNER_TEMP, 'first-publish-packs');
     mkdirSync(destination, { recursive: true });
     execFileSync('pnpm', ['--filter', `./packages/${directory}`, 'pack', '--pack-destination', destination], {
       stdio: 'inherit',
     });
     const archive = join(destination, `${name.slice(1).replace('/', '-')}-${version}.tgz`);
-    execFileSync('npm', ['publish', archive, '--access', 'public', '--provenance', '--tag', tag], { stdio: 'inherit' });
+    const userconfig = join(destination, 'first-publish.npmrc');
+    // Only the selected first-publish subprocess sees this auth config.
+    // Existing packages continue through trusted publishing.
+    writeFileSync(userconfig, '//registry.npmjs.org/:_authToken=${FIRST_PUBLISH_NPM_TOKEN}\n', { mode: 0o600 });
+    try {
+      execFileSync('npm', ['publish', archive, '--access', 'public', '--provenance', '--tag', tag], {
+        stdio: 'inherit',
+        env: { ...process.env, NPM_CONFIG_USERCONFIG: userconfig },
+      });
+    } finally {
+      unlinkSync(userconfig);
+    }
   } else {
     execFileSync(
       'pnpm',
@@ -75,7 +89,13 @@ for (const directory of directories) {
   const { name, version } = JSON.parse(readFileSync(`packages/${directory}/package.json`, 'utf8'));
   if (!version.includes('-')) continue;
   const tags = await metadata(`-/package/${name.replace('/', '%2f')}/dist-tags`);
-  if (tags?.latest === version) unexpectedLatest.push(name);
+  if (tags?.latest === version) {
+    // Maintainer-approved exception for Vue's first publication only.
+    // Later prereleases and every other package retain strict tag checks.
+    if (name === '@ai-markdown/vue' && version === '3.0.0-beta.2') {
+      console.log(`Retaining approved first-publication latest tag: ${name}@${version}`);
+    } else unexpectedLatest.push(name);
+  }
 }
 assert.equal(
   unexpectedLatest.length,

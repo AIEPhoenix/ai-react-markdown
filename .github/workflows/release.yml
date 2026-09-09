@@ -1,6 +1,6 @@
 name: Release
 
-# Publishes the four train packages and independently versioned plugin to npm with provenance attestation when a version
+# Publishes the five train packages and independently versioned plugin to npm with provenance attestation when a version
 # tag is pushed. Flow:
 #
 #   pnpm version-packages X.Y.Z && pnpm install
@@ -29,6 +29,10 @@ name: Release
 on:
   workflow_dispatch:
     inputs:
+      bootstrap_vue:
+        description: Use the temporary token only for the first Vue package publication
+        type: boolean
+        default: false
       release_tag:
         description: Existing release tag to finish without republishing existing versions
         required: true
@@ -51,8 +55,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
-    name: Verify & publish
+  verify:
+    name: Verify release
+    outputs:
+      soak_required: ${{ steps.soak.outputs.required }}
     runs-on: ubuntu-latest
 
     steps:
@@ -76,6 +82,11 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # Full campaigns run locally; required impact gates publication on human review.
+      - name: Assess engine soak requirement
+        id: soak
+        run: pnpm check:soak-impact
 
       - name: Verify tag matches package version
         run: node scripts/check-release.mjs "$RELEASE_TAG"
@@ -106,6 +117,9 @@ jobs:
       - name: Package export checks (attw + publint)
         run: pnpm packcheck
 
+      - name: Public API declarations
+        run: pnpm check:public-api
+
       - name: Packed consumers outside workspace
         run: pnpm test:packed-consumers
 
@@ -121,6 +135,12 @@ jobs:
       - name: Soak control tests
         run: pnpm test:soak-control
 
+      - name: Release authentication boundary
+        run: pnpm test:release-control
+
+      - name: Core independent contracts and state sequences
+        run: pnpm test:core-contracts
+
       - name: Test
         run: pnpm -r test
 
@@ -135,6 +155,45 @@ jobs:
       - name: Concurrent document scope lifetime
         run: pnpm test:document-lifetime
 
+      - name: Vue browser adapter contracts
+        run: pnpm test:vue-browser
+
+  soak-approval:
+    name: Confirm local engine soak passed
+    needs: verify
+    if: needs.verify.outputs.soak_required == 'true'
+    runs-on: ubuntu-latest
+    environment: soak-approval
+    permissions: {}
+    steps:
+      - name: Record confirmation
+        run: echo "Maintainer approved local release-profile soak evidence for this candidate." >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    name: Publish verified release
+    needs: [verify, soak-approval]
+    if: >-
+      always() && !cancelled() && needs.verify.result == 'success' &&
+      ((needs.verify.outputs.soak_required == 'false' && needs.soak-approval.result == 'skipped') ||
+       (needs.verify.outputs.soak_required == 'true' && needs.soak-approval.result == 'success'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout verified workflow commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Setup pnpm + Node
+        uses: pnpm/setup@v2
+        with:
+          runtime: node@22.23.2
+          cache: true
+          install: false
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build verified sources
+        run: pnpm build
+
       # pnpm delegates the actual upload to the npm CLI, and the OIDC token
       # exchange happens there — npm 10.x (bundled with Node 22) predates
       # trusted publishing and dies with ENEEDAUTH.
@@ -146,17 +205,13 @@ jobs:
       # npm gives every publish `latest` unless told otherwise (2026-08-19
       # review r2 P2-16). The dist-tag is the pre-release identifier's first
       # word (`beta.1` → `beta`, `rc.2` → `rc`), `next` when it has none.
+      # The beta.2 tag creates Vue for the first time. Only Vue receives the
+      # temporary token; existing packages retain their OIDC publishers.
       - name: Publish to npm (provenance; first beta token or OIDC)
         env:
-          FIRST_PUBLISH_NPM_TOKEN: ${{ (inputs.release_tag || github.ref_name) == 'v3.0.0-beta.1' && secrets.FIRST_PUBLISH_NPM_TOKEN || '' }}
+          FIRST_PUBLISH_NPM_TOKEN: ${{ (inputs.bootstrap_vue || (inputs.release_tag || github.ref_name) == 'v3.0.0-beta.1' || (inputs.release_tag || github.ref_name) == 'v3.0.0-beta.2') && secrets.FIRST_PUBLISH_NPM_TOKEN || '' }}
+          FIRST_PUBLISH_PACKAGE: ${{ (inputs.bootstrap_vue || (inputs.release_tag || github.ref_name) == 'v3.0.0-beta.2') && '@ai-markdown/vue' || '' }}
         run: |
-          if [ -n "$FIRST_PUBLISH_NPM_TOKEN" ]; then
-            umask 077
-            export NPM_CONFIG_USERCONFIG="$RUNNER_TEMP/first-publish.npmrc"
-            # Store only an environment placeholder, never the credential itself.
-            printf '%s\n' '//registry.npmjs.org/:_authToken=${FIRST_PUBLISH_NPM_TOKEN}' > "$NPM_CONFIG_USERCONFIG"
-            trap 'rm -f "$NPM_CONFIG_USERCONFIG"' EXIT
-          fi
           node scripts/publish-packages.mjs "$RELEASE_TAG"
 
       # Notes come from the version's section in docs/release-highlights.md —

@@ -19,7 +19,7 @@
  */
 
 import { defaultEnginePlugins } from '@ai-markdown/engine';
-import { getEnginePluginInternals, type AIMarkdownEnginePlugin } from '@ai-markdown/engine';
+import { isEnginePlugin, type AIMarkdownEnginePlugin } from '@ai-markdown/engine';
 
 /** Module-scope dev flag — resolved at build time (see `useReferenceFlipWarning`'s docblock). */
 const __DEV__ = process.env.NODE_ENV !== 'production';
@@ -71,7 +71,7 @@ export function sanitizeEnginePlugins(plugins: readonly AIMarkdownEnginePlugin[]
   for (let index = 0; index < plugins.length; index++) {
     const plugin = plugins[index];
     let drop = false;
-    if (getEnginePluginInternals(plugin) === null) {
+    if (!isEnginePlugin(plugin as unknown)) {
       drop = true;
       if (__DEV__) {
         console.warn(

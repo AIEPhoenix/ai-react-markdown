@@ -16,6 +16,50 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  soak-impact:
+    name: Assess engine soak impact
+    outputs:
+      required: ${{ steps.impact.outputs.required }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout candidate and release history
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Setup pnpm + Node
+        uses: pnpm/setup@v2
+        with:
+          runtime: node@22.23.2
+          cache: true
+          install: false
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      # Report the candidate's cumulative impact since the preceding train tag.
+      # This job does not execute soak or approve a release.
+      - name: Report engine soak requirement
+        id: impact
+        run: pnpm check:soak-impact
+
+  soak-status:
+    name: >-
+      ${{ needs.soak-impact.outputs.required == 'true' && '⚠ Engine soak REQUIRED before release' ||
+          needs.soak-impact.outputs.required == 'false' && '✓ Engine soak NOT REQUIRED' ||
+          '⚠ Engine soak assessment UNAVAILABLE' }}
+    needs: soak-impact
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    permissions: {}
+    env:
+      SOAK_REQUIRED: ${{ needs.soak-impact.outputs.required }}
+    steps:
+      - name: Surface decision in the PR check list
+        run: |
+          case "$SOAK_REQUIRED" in
+            true) echo "Engine soak is REQUIRED before release. This successful reporting check is not soak evidence. Complete the local release profile and approve the release gate." >> "$GITHUB_STEP_SUMMARY" ;;
+            false) echo "Engine soak is NOT REQUIRED for the assessed range. Release CI reassesses the final candidate." >> "$GITHUB_STEP_SUMMARY" ;;
+            *) echo "::error::Engine soak assessment is unavailable; do not infer that soak is unnecessary."; exit 1 ;;
+          esac
+
   ci:
     name: ${{ matrix.task }} (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
@@ -46,6 +90,7 @@ jobs:
           - test
           - build
           - browser-smoke
+          - core-contracts
 
     steps:
       - name: Checkout
@@ -113,6 +158,14 @@ jobs:
         if: matrix.task == 'test'
         run: pnpm test:soak-control
 
+      - name: Release authentication boundary
+        if: matrix.task == 'test'
+        run: pnpm test:release-control
+
+      - name: Core independent contracts and state sequences
+        if: matrix.task == 'core-contracts'
+        run: pnpm test:core-contracts
+
       - name: Test (all packages)
         if: matrix.task == 'test'
         run: pnpm -r test
@@ -128,6 +181,10 @@ jobs:
       - name: Package export checks (attw + publint)
         if: matrix.task == 'build'
         run: pnpm packcheck
+
+      - name: Public API declarations
+        if: matrix.task == 'build'
+        run: pnpm check:public-api
 
       - name: Packed consumers outside workspace
         if: matrix.task == 'build'
@@ -148,3 +205,7 @@ jobs:
       - name: Concurrent document scope lifetime
         if: matrix.task == 'browser-smoke'
         run: pnpm test:document-lifetime
+
+      - name: Vue browser adapter contracts
+        if: matrix.task == 'browser-smoke'
+        run: pnpm test:vue-browser

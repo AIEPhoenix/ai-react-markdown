@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { highlight, definitionList, smartypants, pangu, removeComments, defaultEnginePlugins } from './catalog';
-import { getEnginePluginInternals } from './defs';
+import { isEnginePlugin, getEnginePluginInternals } from './defs';
 
 describe('sealed engine plugin catalog', () => {
   test('the five plugins carry their public names', () => {
@@ -38,4 +38,19 @@ describe('sealed engine plugin catalog', () => {
     const forged = { name: 'highlight', '~sealed': 'ai-react-markdown/engine-plugin' };
     expect(getEnginePluginInternals(forged as never)).toBeNull();
   });
+});
+
+test('public plugin guard validates catalog names without exposing stage metadata', () => {
+  for (const plugin of [highlight, definitionList, removeComments, smartypants, pangu])
+    expect(isEnginePlugin(plugin)).toBe(true);
+  for (const invalid of [
+    null,
+    undefined,
+    'highlight',
+    {},
+    { name: 'highlight' },
+    { '~sealed': 'ai-react-markdown/engine-plugin', name: 'unknown', stage: 'extraSyntax' },
+    { '~sealed': 'ai-react-markdown/engine-plugin', name: 'highlight', stage: 'displayOptimize' },
+  ])
+    expect(isEnginePlugin(invalid)).toBe(false);
 });

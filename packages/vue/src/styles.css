@@ -1,0 +1,42 @@
+.aimd-vue {
+  overflow-wrap: anywhere;
+  line-height: 1.65;
+}
+.aimd-vue pre {
+  overflow-x: auto;
+  padding: 1em;
+  background: color-mix(in srgb, currentColor 5%, transparent);
+}
+.aimd-vue img {
+  max-width: 100%;
+}
+.aimd-vue table {
+  border-collapse: collapse;
+}
+.aimd-vue th,
+.aimd-vue td {
+  border: 1px solid currentColor;
+  padding: 0.35em 0.65em;
+}
+.aimd-vue .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.aimd-vue-cursor {
+  display: inline-block;
+  animation: aimd-vue-blink 1s step-end infinite;
+}
+@keyframes aimd-vue-blink {
+  50% {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .aimd-vue-cursor {
+    animation: none;
+  }
+}

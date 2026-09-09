@@ -1,0 +1,135 @@
+import {
+  computed,
+  defineComponent,
+  h,
+  onMounted,
+  shallowRef,
+  useId,
+  watch,
+  type DefineComponent,
+  type PropType,
+} from 'vue';
+import {
+  isEnginePlugin,
+  createIncrementalLatexPreprocessor,
+  preprocessAIMDContent,
+  defaultEnginePlugins,
+  defaultUrlTransform,
+  sanitizeSchema,
+  shortenDocumentId,
+  isFootnoteSection,
+  type RegistryController,
+} from '@ai-markdown/engine';
+import { useDocumentScope } from './documents';
+import { useMarkdownChunk } from './useMarkdownChunk';
+import { deriveTailSignal } from '@ai-markdown/core';
+import { AIMarkdownStreamingCursor } from './cursor';
+import { renderTree } from './render';
+import type { AIMarkdownProps } from './types';
+
+export const markdownProps = {
+  content: { type: String, required: true },
+  documentId: String,
+  documentIndex: Number,
+  streaming: Boolean,
+  incrementalParse: { type: Boolean, default: true },
+  preserveOrphanReferences: Boolean,
+  enginePlugins: { type: Array as PropType<AIMarkdownProps['enginePlugins']>, default: () => defaultEnginePlugins },
+  contentPreprocessors: { type: Array as PropType<AIMarkdownProps['contentPreprocessors']>, default: () => [] },
+  sanitizeSchema: {
+    type: Object as PropType<AIMarkdownProps['sanitizeSchema']>,
+    default: (): NonNullable<AIMarkdownProps['sanitizeSchema']> => sanitizeSchema,
+  },
+  urlTransform: { type: Function as PropType<AIMarkdownProps['urlTransform']>, default: defaultUrlTransform },
+  components: { type: Object as PropType<AIMarkdownProps['components']>, default: () => ({}) },
+  metadata: null,
+  streamingCursor: { type: Boolean, default: true },
+} as const;
+
+export const AIMarkdown = defineComponent({
+  name: 'AIMarkdown',
+  props: markdownProps,
+  setup(props, { slots }) {
+    const scope = useDocumentScope();
+    const id = useId();
+    const documentId = computed(() => props.documentId ?? id);
+    const clobberPrefix = computed(() => `aimd-${encodeURIComponent(shortenDocumentId(documentId.value))}-`);
+    const registry = shallowRef<RegistryController | null>(null);
+    const mounted = shallowRef(false);
+    const plugins = computed(() => (props.enginePlugins ?? defaultEnginePlugins).filter(isEnginePlugin));
+    const latex = createIncrementalLatexPreprocessor();
+    const content = computed(() => preprocessAIMDContent(props.content, props.contentPreprocessors, latex));
+    // Acquire only after mount. Server and hydration's first render have no
+    // registry writes; discarded setup cannot leave an empty document shell.
+    onMounted(() => {
+      mounted.value = true;
+      watch(
+        () => props.documentId,
+        (next) => {
+          registry.value = scope && next !== undefined ? scope.acquire(next) : null;
+        },
+        { immediate: true, flush: 'post' }
+      );
+    });
+    const chunk = useMarkdownChunk(() => ({
+      content: content.value,
+      documentId: documentId.value,
+      documentIndex: props.documentIndex,
+      clobberPrefix: clobberPrefix.value,
+      registry: registry.value,
+      preserveOrphanReferences: props.preserveOrphanReferences ?? false,
+      incrementalParse: mounted.value && (props.incrementalParse ?? true),
+      enginePlugins: plugins.value,
+      sanitizeSchema: props.sanitizeSchema ?? sanitizeSchema,
+    }));
+    return () => {
+      const frame = chunk.prepared.value;
+      const options = {
+        registry: frame.registry,
+        sym: frame.sym,
+        clobberPrefix: frame.clobberPrefix,
+        sanitizeSchema: props.sanitizeSchema ?? sanitizeSchema,
+        urlTransform: props.urlTransform ?? defaultUrlTransform,
+        components: props.components ?? {},
+        slots,
+        streaming: props.streaming ?? false,
+        metadata: props.metadata,
+      };
+      const tree =
+        frame.registry && frame.sym
+          ? {
+              ...frame.trees.hast,
+              children: frame.trees.hast.children.filter(
+                (node) => !(node.type === 'element' && isFootnoteSection(node))
+              ),
+            }
+          : frame.trees.hast;
+      const children = renderTree(tree, options);
+      if (chunk.aggregate.value)
+        children.push(...renderTree({ type: 'root', children: [chunk.aggregate.value] }, options));
+      const tail = deriveTailSignal(frame.trees.mdast, content.value.length);
+      if (tail)
+        children.push(
+          h('span', {
+            'data-aimd-tail-kind': tail.kind,
+            'data-aimd-tail-label': tail.kind === 'footnote-def' ? tail.identifier : undefined,
+            'data-aimd-clobber-prefix': frame.clobberPrefix,
+            style: { display: 'none' },
+          })
+        );
+      if (props.streaming && props.streamingCursor)
+        children.push(
+          h(
+            AIMarkdownStreamingCursor,
+            null,
+            slots.cursor ? { default: () => slots.cursor!({ streaming: true }) } : undefined
+          )
+        );
+      return h(
+        'div',
+        { class: 'aimd-vue', style: { position: 'relative' }, 'aria-busy': props.streaming ? 'true' : undefined },
+        children
+      );
+    };
+  },
+}) as DefineComponent<AIMarkdownProps>;
