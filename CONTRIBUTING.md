@@ -234,3 +234,9 @@ Vue requires 3.5+ within the Vue 3 major line. Its production implementation and
 The engine/core/Vue public declarations are checked with `pnpm check:public-api`. Review contract changes against `docs/api/core-engine-contracts.md`, then intentionally regenerate snapshots with `node scripts/check-public-api.mjs --update`. Updating the snapshot alone does not establish behavioral compatibility.
 
 The next workspace candidate is 3.0.0-beta.2 and includes Vue. Do not publish it under the existing beta.1 tag. For Vue first publication, dispatch the matching release tag with `bootstrap_vue=true`; only the Vue npm subprocess receives FIRST_PUBLISH_NPM_TOKEN. Existing packages use their configured trusted publishers. Once Vue trusted publishing is configured, revoke the temporary token. This option does not bypass source/tag equivalence or release verification.
+
+## Documentation language and scope
+
+Commit reader-facing documentation in English, including READMEs, usage/API references, architecture explanations, and contributor/testing guides. Use English for explanatory code comments and PR descriptions as well. Preserve non-English strings when they are meaningful CJK examples, test fixtures, or source data; explain their behavior in English.
+
+Keep internal planning matrices, agent instructions and scratch notes, execution/status logs, and review-process records local. Do not commit them under `docs/` or elsewhere in the repository. Use the ignored `.local-notes/` directory for local material. Extract durable contracts or contributor instructions into the appropriate public guide without carrying over the internal work log. Test fixtures, API snapshots, and license notices are repository assets with their own purposes, not internal planning documents.

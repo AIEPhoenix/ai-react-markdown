@@ -1,6 +1,6 @@
 # ai-markdown — Extending & Customization Guide
 
-Current development: [core/engine API review](./api/core-engine-contracts.md) and [Vue adapter](../packages/vue/README.md). The workspace prepares an unreleased 3.0.0-beta.2 candidate; Vue was not included in the published beta.1 packages.
+Current development: [core/engine API contracts](./api/core-engine-contracts.md) and [Vue adapter](../packages/vue/README.md). The workspace prepares an unreleased 3.0.0-beta.2 candidate; Vue was not included in the published beta.1 packages.
 
 For the final legacy release and the subsequent multi-framework package migration, read [From ai-react-markdown to ai-markdown](./framework-transition.md). The [shared core README](../packages/core/README.md) documents the extracted shared layer.
 

@@ -68,7 +68,7 @@ SSR does not run the registration effects and retains local footnote behavior. T
 
 Engine, core, react and react-mantine use one version train starting at `3.0.0-beta.1`, published under `beta`. The highlight plugin remains on its independent 1.x line; the existing rehype/raw forks retain their own repositories and upstream-related versions. A beta release must not move the npm `latest` tag or become a stable GitHub release.
 
-Advanced engine/core contracts may evolve during beta. Test fixtures and implementation containers are excluded from the public root. Framework apps should avoid importing source paths or undocumented helpers. Stable 3.0.0 requires signature review, supported consumer checks and the complete release gate. See the [approved package and release plan](./plans/ai-markdown-packages-and-release.md).
+Advanced engine/core contracts may evolve during beta. Test fixtures and implementation containers are excluded from the public root. Framework apps should avoid importing source paths or undocumented helpers. Stable 3.0.0 requires signature review, supported consumer checks and the complete release gate. See the [shared API contracts](./api/core-engine-contracts.md) and [architecture guide](./architecture.md).
 
 The repository transfer is complete. Each new npm package still needs its own first-publication credentials and trusted-publisher configuration for organization `ai-markdown`, repository `ai-markdown`, workflow `release.yml`. Organization ownership alone does not create those configurations. Releases retain provenance and use CI as the publication path.
 
@@ -76,7 +76,7 @@ The repository transfer is complete. Each new npm package still needs its own fi
 
 Shared-core tests load production/development ESM and CJS in fresh Node processes, reject framework resolution and execute parsing/planning without browser globals. Session tests compare incremental output with a full engine pipeline and cover reset, fallback and explicit contribution timing. React tests cover node identity, SSR, Strict Mode, coordination and browser interaction. Published artifacts must additionally resolve outside the workspace, including declarations, plugin entries and CSS paths.
 
-The [Vue adapter](../packages/vue/README.md) now consumes the same preparation contracts and supplies VNode conversion, scoped references, SSR hydration, component/slot extension and streaming UI. It requires Vue `^3.5.0`; its first npm publication is pending. The former prototype is archived. See the [API review](./api/core-engine-contracts.md) for the beta.1-to-candidate advanced API changes.
+The [Vue adapter](../packages/vue/README.md) now consumes the same preparation contracts and supplies VNode conversion, scoped references, SSR hydration, component/slot extension and streaming UI. It requires Vue `^3.5.0`; its first npm publication is pending. The former prototype is archived. See the [API contracts](./api/core-engine-contracts.md) for the beta.1-to-candidate advanced API changes.
 
 Vue joins the candidate release train with browser acceptance coverage. First publication, trusted-publisher setup for the new package and stable-version approval remain separate steps. A framework-independent Node consumer alone does not establish browser readiness.
 

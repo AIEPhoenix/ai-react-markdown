@@ -29,7 +29,7 @@ The old React core becomes `@ai-markdown/react`. The previously private runtime 
 
 Public core exports are explicitly listed. Registry registration/publication is exposed through `RegistryController`; contribution sessions accept a minimal write capability. Smooth coordinators return the documented public interface. Internal registry containers and scenario fixtures are no longer public engine exports. Beta adapter APIs may evolve before stable 3.0.0.
 
-Vue remains a private lifecycle/SSR preparation prototype. A complete Vue renderer and the dedicated documentation site are subsequent milestones. See [the migration guide](./framework-transition.md) for old/new package paths and [the approved plan](./plans/ai-markdown-packages-and-release.md) for ownership and release policy.
+Vue remains a private lifecycle/SSR preparation prototype. A complete Vue renderer and the dedicated documentation site are subsequent milestones. See [the migration guide](./framework-transition.md) for old/new package paths and [the architecture guide](./architecture.md) for package ownership.
 
 The full preflight passed **152 test files / 1,982 tests**, plus the Chromium concurrent-document lifetime regression and external packed-consumer checks (ESM/CJS, development conditions, SSR, CSS/plugin paths and TypeScript declarations). All six GitHub CI jobs passed for the candidate “feat: migrate to ai-markdown packages and public shared core beta”. Its fresh six-leg release soak passed **84/84 shards**, using seed base `202659090`, with `repositoryChanged: false` and a clean candidate. Run ID: `new-scope-3.0.0-beta.1-20260908T223231Z-9dae734-1278142`.
 

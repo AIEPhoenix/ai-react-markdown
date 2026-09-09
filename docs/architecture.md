@@ -12,7 +12,7 @@ Shared core owns computation sessions, not React lifecycle. `MarkdownContent` ke
 
 ## Vue adapter
 
-The unreleased Vue adapter uses the same sessions, planner and contribution preparation as React. It keeps AST and registry identities outside deep reactive proxies, selects stable plugin/schema inputs through computed refs, and publishes only after mount. VNode conversion clones HAST before final URL policy; resolved cross-chunk links/images use the shared resolver. SSR and initial hydration do not allocate registries. Vue 3.5 useId supplies stable automatic IDs, and DOM observers belong to the Vue cursor component. See the [Vue README](../packages/vue/README.md) and [shared API review](./api/core-engine-contracts.md).
+The unreleased Vue adapter uses the same sessions, planner and contribution preparation as React. It keeps AST and registry identities outside deep reactive proxies, selects stable plugin/schema inputs through computed refs, and publishes only after mount. VNode conversion clones HAST before final URL policy; resolved cross-chunk links/images use the shared resolver. SSR and initial hydration do not allocate registries. Vue 3.5 useId supplies stable automatic IDs, and DOM observers belong to the Vue cursor component. See the [Vue README](../packages/vue/README.md) and [shared API contracts](./api/core-engine-contracts.md).
 
 ## The React component tree
 

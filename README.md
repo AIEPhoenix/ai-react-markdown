@@ -86,7 +86,7 @@ Choose `@ai-markdown/react` for React rendering with your own presentation. Choo
 
 ## Vue adapter
 
-The Vue 3.5+ adapter is implemented in this checkout and awaits its first npm release. See the [Vue README](./packages/vue/README.md) for components, SSR/hydration, cross-chunk references, slots and smooth streaming. Shared core/engine contracts and beta API changes are documented in the [API review](./docs/api/core-engine-contracts.md).
+The Vue 3.5+ adapter is implemented in this checkout and awaits its first npm release. See the [Vue README](./packages/vue/README.md) for components, SSR/hydration, cross-chunk references, slots and smooth streaming. Shared core/engine contracts and beta API changes are documented in the [API contracts](./docs/api/core-engine-contracts.md).
 
 ## Installation
 
