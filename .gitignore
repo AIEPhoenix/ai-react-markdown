@@ -29,4 +29,5 @@ benchmarks/results/
 # Internal planning, agent state, and execution records are local only.
 /.local-notes/
 /.orca/
+/docs/plan/
 /docs/plans/

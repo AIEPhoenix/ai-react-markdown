@@ -82,6 +82,6 @@ Vue joins the candidate release train with browser acceptance coverage. First pu
 
 ## Documentation site
 
-The dedicated site follows this package migration. It should provide shared concepts, framework-specific installation and examples, API reference, streaming and customization guides, security policy, architecture/contributor pages and a versioned legacy path. The repository plan records the page mapping; no public site or domain is claimed by this beta.
+The dedicated site follows this package migration. It should provide shared concepts, framework-specific installation and examples, API reference, streaming and customization guides, security policy, architecture/contributor pages and a versioned legacy path. No public site or domain is claimed by this beta.
 
 Package READMEs continue to include complete installation, minimal examples, environment requirements and important limitations. Legacy 1.x-to-2.x guidance remains historical material; new users should start with the current framework README and this migration guide.
