@@ -162,11 +162,18 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   };
   const result = inspect(value('--base'), value('--head'));
   console.log(JSON.stringify(result, null, 2));
+  if (process.env.GITHUB_ACTIONS === 'true') {
+    console.log(
+      result.required
+        ? '::notice title=Engine soak required::Full local release-profile soak and maintainer approval are required before publication. See the job summary for the baseline and reasons.'
+        : '::notice title=Engine soak not required::No engine impact was detected in this candidate range. Normal core and adapter gates still apply; release CI reassesses the final candidate.'
+    );
+  }
   if (process.env.GITHUB_OUTPUT)
     appendFileSync(process.env.GITHUB_OUTPUT, `required=${result.required}\nhead=${result.head}\n`);
   if (process.env.GITHUB_STEP_SUMMARY)
     appendFileSync(
       process.env.GITHUB_STEP_SUMMARY,
-      `## Engine soak impact\n\nRequired: **${result.required}**\n\nBase: \`${result.base}\`\nCandidate: \`${result.head}\`\n\n${result.reasons.map((r) => `- ${r}`).join('\n') || 'No engine behavior, dependency, or verification changes.'}\n`
+      `## Engine soak impact\n\nDecision: **${result.required ? 'REQUIRED before publication' : 'NOT REQUIRED for this range'}**\n\nBase: \`${result.base}\`\nCandidate: \`${result.head}\`\n\n${result.reasons.map((r) => `- ${r}`).join('\n') || 'No engine behavior, dependency, or verification changes.'}\n\nThis report is informational: a successful check means the assessment completed, not that soak passed. The default range is cumulative since the preceding train tag. PR checks assess the checked-out merge candidate; release CI reassesses the final candidate and requests approval when required.\n`
     );
 }
