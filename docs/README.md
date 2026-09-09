@@ -1,6 +1,6 @@
 # ai-markdown — Extending & Customization Guide
 
-For the final legacy release and the subsequent multi-framework package migration, read [From ai-markdown to ai-markdown](./framework-transition.md). The [private runtime README](../packages/core/README.md) documents the extracted shared layer.
+For the final legacy release and the subsequent multi-framework package migration, read [From ai-react-markdown to ai-markdown](./framework-transition.md). The [shared core README](../packages/core/README.md) documents the extracted shared layer.
 
 These guides explain how to integrate, customize, and maintain ai-markdown against the code in this repository. Start with the [project README](../README.md) for package selection and installation, or a package's README for its full public API. This directory goes deeper into rendering contracts, lifecycle behavior, implementation boundaries, and verification.
 
@@ -85,7 +85,7 @@ The library follows semver:
 | Internal byte-for-byte HTML output                                                                                   | Not stable — prefer semantic assertions for application tests; use semantic queries |
 | Everything exported by `@ai-markdown/engine`                                                                         | **Not stable before 3.0.0** — see below                                             |
 
-**On `@ai-markdown/engine`.** Since 2.3.0 the Markdown engine ships as its own package. It is public on npm because `@ai-markdown/react` depends on it, not because it is a product: its export surface tracks whatever core happens to consume and may change in any release, patch bumps included. You get it automatically when you install `core`, pinned to the React adapter's exact version, and nothing in this guide asks you to import from it. Depend on it directly only if you are building a framework adapter of your own — and if you do, pin both packages to the same exact version.
+**On the shared packages.** `@ai-markdown/core` owns framework-independent sessions, planning, contributions and smooth coordination; `@ai-markdown/engine` owns parsing, tree algorithms and registry primitives. Both are public beta packages with explicit exports. Installing `@ai-markdown/react@beta` resolves both as exact-version dependencies. Adapter authors can use them directly, keeping the four release-train packages aligned at `3.0.0-beta.1`. Their advanced contracts may evolve before stable 3.0.0; the React package supplies the component and hook API used in the application guides.
 
 When in doubt, pin your overrides explicitly rather than relying on defaults.
 
@@ -96,7 +96,7 @@ When in doubt, pin your overrides explicitly rather than relying on defaults.
 - **Code blocks** are labeled by purpose. Complete recipes include their required imports; smaller fragments assume the surrounding application values, and wrapper templates use explicitly named placeholder modules. Install the package peers and import required CSS before using them.
 - **Footguns** sections at the end of each document collect anti-patterns and stability traps. Read them once per surface.
 - `// ✅` and `// ⚠️` callouts mark recommended vs anti-pattern code lines.
-- Where a behavior is shared by `@ai-markdown/react` and `@ai-markdown/react-mantine`, the example uses `AIMarkdown` (core); apply identically to `MantineAIMarkdown`.
+- Where a behavior is shared by `@ai-markdown/react` and `@ai-markdown/react-mantine`, the example uses `AIMarkdown` (React adapter); apply identically to `MantineAIMarkdown`.
 
 ---
 
@@ -113,7 +113,7 @@ Issue tracker: <https://github.com/ai-markdown/ai-markdown/issues>
 
 ## Reading the implementation alongside the guides
 
-Follow a value through its owner before changing its documentation. Public props are resolved in core; syntax and incremental algorithms belong to engine; pipeline sessions, plans and contribution orchestration belong to private runtime; React providers, effects, and cached element construction belong to core; Mantine owns its code presentation and group defaults. An export in engine is not automatically a supported core API.
+Follow a value through its owner before changing its documentation. Public props are resolved in the React adapter; syntax and incremental algorithms belong to engine; pipeline sessions, plans and contribution orchestration belong to shared core; React providers, effects, and cached element construction belong to the React adapter; Mantine owns its code presentation and group defaults. An export in engine is not automatically a supported React API.
 
 | Question                                   | Implementation to inspect                               | Guide to keep aligned                      |
 | ------------------------------------------ | ------------------------------------------------------- | ------------------------------------------ |

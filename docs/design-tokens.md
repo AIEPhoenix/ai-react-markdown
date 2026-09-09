@@ -1,12 +1,12 @@
 # Design Tokens (CSS Custom Properties)
 
-The default core typography stylesheet exposes CSS custom properties for spacing, text sizes, heading hierarchy, colors, and math. Override those properties to adapt Markdown to your design system while retaining the built-in element rules. The tokens belong to the React adapter's default stylesheet; Mantine uses its own typography and scoped Mantine variables.
+The default React typography stylesheet exposes CSS custom properties for spacing, text sizes, heading hierarchy, colors, and math. Override those properties to adapt Markdown to your design system while retaining the built-in element rules. The tokens belong to the React adapter's default stylesheet; Mantine uses its own typography and scoped Mantine variables.
 
 Most dimensions derive from the instance's `fontSize`. That makes a compact message and a larger article use the same proportions without maintaining separate stylesheets. It does not mean every CSS length scales: the default radius uses `rem`, and several borders and inline paddings use pixels. This guide lists the actual token defaults, their consumers, and the cascade rules that determine whether an override takes effect.
 
 ## Token anchor: `--aim-font-size-root`
 
-All spacing, font-size, and heading tokens are anchored to `--aim-font-size-root`, which the core renderer injects from the `fontSize` prop. The default variant's tokens are defined as `calc(var(--aim-font-size-root) * k)` — meaning **changing `fontSize` scales the dimensions expressed through the root token**.
+All spacing, font-size, and heading tokens are anchored to `--aim-font-size-root`, which the React renderer injects from the `fontSize` prop. The default variant's tokens are defined as `calc(var(--aim-font-size-root) * k)` — meaning **changing `fontSize` scales the dimensions expressed through the root token**.
 
 ```tsx
 <AIMarkdown content={c} fontSize="0.875rem" /> // 14px-ish — everything scales down

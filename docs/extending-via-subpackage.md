@@ -1,6 +1,8 @@
 # Extending via a Sub-package
 
-Build a React integration by wrapping `@ai-markdown/react` and defining the design-system behavior around it. Mantine is the reference implementation: it supplies typography, code-block presentation, theme defaults, and typed behavior options while core continues to own parsing, sanitization, references, and streaming.
+Here, the base renderer, its props, providers and hooks belong to `@ai-markdown/react`. The separate `@ai-markdown/core` supplies framework-independent orchestration and has no React context or UI API. UI integrations keep the React adapter as a peer; framework adapters depend on shared core and engine.
+
+Build a React integration by wrapping `@ai-markdown/react` and defining the design-system behavior around it. Mantine is the reference implementation: it supplies typography, code-block presentation, theme defaults, and typed behavior options while the React adapter and its shared dependencies supply parsing, sanitization, references, and streaming.
 
 This guide follows that same construction in nine steps, from a behavior-group interface to the package's public barrel and peer dependencies. The `Your…` components and `your-design-system` imports are template names to implement in your package; they are not installed modules. Examples show the contracts you need to preserve, with the source of defaults and the ownership of each prop made explicit.
 
@@ -8,20 +10,20 @@ Use the React adapter's public props, slots, additive providers, stable-value he
 
 ## The extension points, at a glance
 
-| Extension point                                    | What it carries                                                                   | Transport                                                                      |
-| -------------------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Wrapper **behavior groups** (e.g. `codeBlock`)     | Component behavior parameters — runtime-switchable, cost = leaf re-render         | Flat prop on your wrapper → `AIMarkdownBehaviorsProvider` → your narrow hook   |
-| **State groups**                                   | Extension message-lifecycle states (aborted, reasoning, tool-call-in-progress, …) | `AIMarkdownStateProvider` → read via `useAIMarkdownState()`                    |
-| `Typography` / `ExtraStyles` / `customComponents`  | Design-system rendering                                                           | Defaulted via destructuring, forwarded as ordinary props                       |
-| `enginePlugins`                                    | **Curation only** — bundle default sets, filter, facade sugar                     | Forwarded prop; new parse-level capability goes through an upstream PR to core |
-| Engine payloads (`sanitizeSchema`, preprocessors…) | Pipeline inputs your features may depend on                                       | Forwarded prop; declare an injection policy per payload (see Step 6)           |
+| Extension point                                    | What it carries                                                                   | Transport                                                                                                        |
+| -------------------------------------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Wrapper **behavior groups** (e.g. `codeBlock`)     | Component behavior parameters — runtime-switchable, cost = leaf re-render         | Flat prop on your wrapper → `AIMarkdownBehaviorsProvider` → your narrow hook                                     |
+| **State groups**                                   | Extension message-lifecycle states (aborted, reasoning, tool-call-in-progress, …) | `AIMarkdownStateProvider` → read via `useAIMarkdownState()`                                                      |
+| `Typography` / `ExtraStyles` / `customComponents`  | Design-system rendering                                                           | Defaulted via destructuring, forwarded as ordinary props                                                         |
+| `enginePlugins`                                    | **Curation only** — bundle default sets, filter, facade sugar                     | Forwarded prop; new parse-level capability goes through an upstream PR to the engine and its adapter integration |
+| Engine payloads (`sanitizeSchema`, preprocessors…) | Pipeline inputs your features may depend on                                       | Forwarded prop; declare an injection policy per payload (see Step 6)                                             |
 
 Two contracts govern the state-group channel:
 
 - **Frequency contract**: state groups must be message-lifecycle frequency (flips per stream start/end, per abort, per tool call). Frame-rate data (per-token progress etc.) goes through metadata's stable-container pattern instead.
-- **Core-key locks**: outer Providers can never touch core keys (`streaming` for state; `blockMemo` / `incrementalParse` / `preserveOrphanReferences` for behaviors). Three locks enforce this: the Provider `value` type marks core keys `never` (compile error), the React adapter's innermost merge unconditionally overwrites them (spread order), and dev builds warn when an outer value carries one.
+- **Built-in prop locks**: outer Providers can never touch built-in keys (`streaming` for state; `blockMemo` / `incrementalParse` / `preserveOrphanReferences` for behaviors). Three locks enforce this: the Provider `value` type marks built-in keys `never` (compile error), the React adapter's innermost merge unconditionally overwrites them (spread order), and dev builds warn when an outer value carries one.
 
-The sealed `enginePlugins` set is a deliberate boundary: the incremental engine's boundary scanner must know every construct's syntax, so open plugin injection would void its verification record. Wrappers curate; core constructs and certifies. Third-party _content_ extension stays open through `contentPreprocessors` + `customComponents`.
+The sealed `enginePlugins` set is a deliberate boundary: the incremental engine's boundary scanner must know every construct's syntax, so open plugin injection would void its verification record. Wrappers curate; engine defines the verified pipeline and the React adapter exposes its sealed catalog. Third-party _content_ extension stays open through `contentPreprocessors` + `customComponents`.
 
 ---
 
@@ -41,20 +43,20 @@ The sealed `enginePlugins` set is a deliberate boundary: the incremental engine'
 │   └── MantineAIMarkdownMetadata (extends AIMarkdownMetadata)
 │
 ├── define.ts
-│   └── defineMantineBehaviors (widened factory: core behavior fields + codeBlock)
+│   └── defineMantineBehaviors (widened factory: built-in behavior fields + codeBlock)
 │
 └── hooks/
     ├── useMantineCodeBlockOptions   (THE single assertion + defaults site for the group)
     └── useMantineAIMarkdownMetadata
 ```
 
-Every piece composes existing core APIs — there's no special "extension API." Your sub-package can follow the same shape, swapping Mantine for your design system.
+Every piece composes existing React adapter APIs — there's no special "extension API." Your sub-package can follow the same shape, swapping Mantine for your design system.
 
 ---
 
 ## Step 1: Define your behavior group
 
-A group is a plain interface plus frozen defaults. No config-object extension, no core defaults spread in — the group is self-contained:
+A group is a plain interface plus frozen defaults. No config-object extension, no React adapter defaults spread in — the group is self-contained:
 
 ```ts
 // packages/your-integration/src/defs.ts
@@ -76,7 +78,7 @@ export interface YourAIMarkdownMetadata extends AIMarkdownMetadata {
 }
 ```
 
-Before naming group _prop_ fields, check the prop-name registry — the props table in the [core README](../packages/react/README.md#props-api-reference): flat props share one namespace across core and all wrapper layers (see [Footguns](#footguns)).
+Before naming group _prop_ fields, check the prop-name registry — the props table in the [React README](../packages/react/README.md#props-api-reference): flat props share one namespace across the React adapter and all wrapper layers (see [Footguns](#footguns)).
 
 ---
 
@@ -151,7 +153,7 @@ const YourAIMarkdownComponent = <TMetadata extends YourAIMarkdownMetadata = Your
   );
 
   // Your firewall: `codeBlock` is terminated here (it feeds the Provider
-  // below, not the core prop surface).
+  // below, not the React prop surface).
   const stable = useStableRecord({ codeBlock }, STABILITY_TABLE);
 
   // Contribute the group through the additive behaviors Provider — firewall
@@ -185,7 +187,7 @@ export default YourAIMarkdown as typeof YourAIMarkdownComponent;
 
 **Key points**:
 
-- The Provider stacks **outside** `<AIMarkdown>`. Core's innermost provider reads your outer context and provides `{ ...outer, ...coreResolved }` downward — consumers see exactly one behaviors context, and core keys always win.
+- The Provider stacks **outside** `<AIMarkdown>`. The React adapter's innermost provider reads your outer context and provides `{ ...outer, ...coreResolved }` downward — consumers see exactly one behaviors context, and built-in keys always win.
 - Own scalar props default via destructuring parameters, strip via rest destructuring, forward `{...rest}`. The rest object's identity needs no stabilization — JSX spread flattens to individual props and React compares them individually.
 - Firewall rule: your `useStableRecord` table holds **only props you terminate** (mantine today: one row, `codeBlock`). Forwarded props are never touched — each prop is stabilized exactly once, at the layer that consumes it.
 - Wrap with `memo`; merge `customComponents` with caller-wins spread order (`{ ...DEFAULT_COMPONENTS, ...callerComponents }`).
@@ -194,7 +196,7 @@ export default YourAIMarkdown as typeof YourAIMarkdownComponent;
 
 ## Step 3: The narrow hook — the single assertion + defaults site
 
-`useAIMarkdownBehaviors()` is non-generic and returns the core switches plus an opaque extension record. Your narrow hook is where the type assertion happens (exactly once) and where group defaults are applied (exactly once):
+`useAIMarkdownBehaviors()` is non-generic and returns the built-in switches plus an opaque extension record. Your narrow hook is where the type assertion happens (exactly once) and where group defaults are applied (exactly once):
 
 ```ts
 // packages/your-integration/src/hooks/useYourCodeBlockOptions.ts
@@ -235,7 +237,7 @@ export const useYourMetadata = () => useAIMarkdownMetadata<YourAIMarkdownMetadat
 
 ## Step 4: The widened `define*` factory
 
-Core factories accept core fields only — passing `codeBlock` to the React adapter's `defineBehaviors` is a TS error. The widened factory is your one-line obligation (mirrors `packages/react-mantine/src/define.ts`):
+React adapter factories accept built-in fields only — passing `codeBlock` to the React adapter's `defineBehaviors` is a TS error. The widened factory is your one-line obligation (mirrors `packages/react-mantine/src/define.ts`):
 
 ```ts
 // packages/your-integration/src/define.ts
@@ -413,9 +415,9 @@ Match the shape of `@ai-markdown/react-mantine`'s barrel for consistency. Re-exp
 // packages/your-integration/package.json
 {
   "peerDependencies": {
-    "@ai-markdown/react": "^2.13.2",
-    "react": ">=19",
-    "react-dom": ">=19",
+    "@ai-markdown/react": "3.0.0-beta.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "your-design-system": "^1.0.0",
   },
   "dependencies": {
@@ -424,7 +426,7 @@ Match the shape of `@ai-markdown/react-mantine`'s barrel for consistency. Re-exp
 }
 ```
 
-Keep `@ai-markdown/react` as a **peer** dep — never a direct dep. Otherwise consumers can end up with two copies of core in their bundle, and the React context identity check fails (silent breakage: hooks find no provider).
+Keep `@ai-markdown/react` as a **peer** dep — never a direct dep. Otherwise consumers can end up with two copies of the React adapter in their bundle, and the React context identity check fails (silent breakage: hooks find no provider).
 
 ---
 
@@ -443,13 +445,13 @@ function App() {
 }
 ```
 
-Consumers don't need to know about core — they install your package and the Mantine-style "drop in" experience is preserved.
+Consumers do not need to manage shared core or engine — they install your package and the Mantine-style "drop in" experience is preserved.
 
 ---
 
 ## Third-level extension: apps stacking their own Provider
 
-The additive Providers are not wrapper-exclusive. An application built on your wrapper (or on core directly) can stack its own groups outside the component tree it renders:
+The additive Providers are not wrapper-exclusive. An application built on your wrapper (or on the React adapter directly) can stack its own groups outside the component tree it renders:
 
 ```tsx
 import { AIMarkdownBehaviorsProvider, AIMarkdownStateProvider } from '@ai-markdown/react';
@@ -473,7 +475,7 @@ function ChatMessage({ content, aborted, toolCallInProgress }: ChatMessageProps)
 }
 ```
 
-Multi-level stacks merge naturally — for a duplicated group key the inner layer wins. The same rules apply at every level: core keys are locked (three locks, above), state groups obey the message-lifecycle frequency contract, values should be firewall/`useMemo` output so the context value keeps its identity, and the app should read its groups through its own narrow hook. Only behaviors and state are stackable; the theme context is reserved (mechanism exists, enabled on first real demand), document is closed (its payload is derived invariants — a forgeable `clobberPrefix` breaks the anchor system), and metadata doesn't need a Provider (wrappers merge at the prop layer).
+Multi-level stacks merge naturally — for a duplicated group key the inner layer wins. The same rules apply at every level: built-in keys are locked (three locks, above), state groups obey the message-lifecycle frequency contract, values should be firewall/`useMemo` output so the context value keeps its identity, and the app should read its groups through its own narrow hook. Only behaviors and state are stackable; the theme context is reserved (mechanism exists, enabled on first real demand), document is closed (its payload is derived invariants — a forgeable `clobberPrefix` breaks the anchor system), and metadata doesn't need a Provider (wrappers merge at the prop layer).
 
 Known cost: within one context, group invalidation is not isolated — one group change leaf-re-renders all subscribers of that context. Acceptable at current scale; a party needing isolation may run a private context as an escape hatch (both approaches are legal simultaneously).
 
@@ -499,13 +501,13 @@ Don't fork `MarkdownContent` or the remark/rehype plugin chain. The the React ad
 
 ### Trying to inject engine plugins
 
-`enginePlugins` accepts core-exported sealed plugin objects only — the seal is a `unique symbol` brand you cannot construct. This is deliberate: the incremental engine's verification record (fuzz suites, byte equivalence) covers a closed construct set. Your curation rights: bundle default sets, filter (`defaultEnginePlugins.filter(...)`), facade sugar. If your integration needs a new parse-level construct, open an upstream PR to core — that's the priced tradeoff, stated plainly.
+`enginePlugins` accepts React-exported sealed plugin objects only — the seal is a `unique symbol` brand you cannot construct. This is deliberate: the incremental engine's verification record (fuzz suites, byte equivalence) covers a closed construct set. Your curation rights: bundle default sets, filter (`defaultEnginePlugins.filter(...)`), facade sugar. If your integration needs a new parse-level construct, open an upstream PR to the engine and its adapter integration — that's the priced tradeoff, stated plainly.
 
-### Pinning to a patch version of `@ai-markdown/react`
+### Choosing the peer version of `@ai-markdown/react`
 
-Use a caret range whose minimum includes every API you consume (for example, `^2.13.2` for an integration tested against this checkout). Minor and patch versions of core are non-breaking. A strict pin causes resolution headaches for downstream consumers.
+For the initial beta, match the verified adapter exactly: `3.0.0-beta.1`, as the Mantine integration does. Beta contracts can change before stable 3.0.0. After a stable release, use a caret range whose minimum includes every API your integration consumes, and validate that supported range in consumer tests. A legacy `^2.13.2` range cannot resolve the new package train.
 
-### Re-exporting internal core types
+### Re-exporting internal React adapter types
 
 Stick to `AIMarkdownProps`, `AIMarkdownCustomComponents`, `AIMarkdownTypographyComponent`, `AIMarkdownStabilityTable`, etc. — the documented public surface. If your integration needs something internal-looking, that's a signal to either request the export upstream or work around it.
 
@@ -523,7 +525,7 @@ Group defaults live inside your narrow hook, exactly once. A component that read
 
 ### Prop-name collisions
 
-Flat props share one namespace across core and all wrapper layers. Check the prop-name registry — the props table in the [core README](../packages/react/README.md#props-api-reference) — before adding a field to your wrapper props. A collision is a compile error at the `extends` site for TS consumers — but a **silent override** for plain-JS consumers. Same discipline for group keys inside the Provider value: check the [group-key registry](../packages/react/README.md#group-key-registry) and register your wrapper's keys there via PR — group keys share one namespace per context and a duplicated key resolves by inner-wins silently. Application-local groups should use app-scoped names (`chatPanel`, not `panel`).
+Flat props share one namespace across the React adapter and all wrapper layers. Check the prop-name registry — the props table in the [React README](../packages/react/README.md#props-api-reference) — before adding a field to your wrapper props. A collision is a compile error at the `extends` site for TS consumers — but a **silent override** for plain-JS consumers. Same discipline for group keys inside the Provider value: check the [group-key registry](../packages/react/README.md#group-key-registry) and register your wrapper's keys there via PR — group keys share one namespace per context and a duplicated key resolves by inner-wins silently. Application-local groups should use app-scoped names (`chatPanel`, not `panel`).
 
 ### Wholesale-replacing `sanitizeSchema`
 
@@ -538,7 +540,7 @@ Publishing a `@yourorg/ai-markdown-…` package is the natural unit of distribut
 When you publish, consider:
 
 - A README following the structure of `@ai-markdown/react-mantine`.
-- A peer-dep statement that's permissive enough (`>=19` for React, `^2.13.2` for the APIs used here).
+- A peer-dep statement that's permissive enough (`^19.0.0` for React and React DOM, and exactly `3.0.0-beta.1` for the current adapter beta).
 - npm keywords: `react`, `markdown`, `ai`, `llm`, `<your-design-system>`, `ai-markdown-integration`.
 - Bundle size disclosure (bundlephobia badges).
 
@@ -550,4 +552,4 @@ Before publishing, exercise the wrapper through its public entry point. Confirm 
 
 Render both a standalone document and two coordinated chunks, including a reference defined later. Check an ordinary code fence, raw `<pre>` with attributes, an incomplete streaming fence, a final complete block, and a copy action that preserves trailing whitespace. Theme changes and streaming completion should update presentation without requiring a new Markdown string.
 
-Finally inspect packed ESM/CJS entry points, emitted types, stylesheet exports, peer ranges, and `sideEffects` declarations. Your README should name required providers and CSS imports, explain lazy assets, list every public helper, and link to core for inherited props. The package's defaults and copy policy should be testable statements rather than assumptions about how a design-system component happens to work.
+Finally inspect packed ESM/CJS entry points, emitted types, stylesheet exports, peer ranges, and `sideEffects` declarations. Your README should name required providers and CSS imports, explain lazy assets, list every public helper, and link to the React adapter for inherited props. The package's defaults and copy policy should be testable statements rather than assumptions about how a design-system component happens to work.

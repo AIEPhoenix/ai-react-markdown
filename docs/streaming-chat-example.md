@@ -4,7 +4,7 @@ A streaming chat integration needs three contracts: how the server frames a resp
 
 Start with one `<AIMarkdown>` per assistant message. Use separate renderers only for independently parseable logical sections that need their own UI or metadata. An HTTP read boundary is not a Markdown boundary: a read can end inside a UTF-8 character, an SSE event, a code fence, or a formula.
 
-The examples use React 19, browser Fetch/Streams APIs, and a Next.js-compatible route handler. Install core and explicitly install KaTeX when importing its stylesheet:
+The examples use React 19, browser Fetch/Streams APIs, and a Next.js-compatible route handler. Install the React adapter and explicitly install KaTeX when importing its stylesheet:
 
 ```sh
 pnpm add @ai-markdown/react@beta katex

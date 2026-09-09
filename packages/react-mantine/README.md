@@ -32,16 +32,17 @@ Parsing, URL policy, metadata, and cross-chunk references remain engine/React ad
 - **Automatic color scheme** -- detects Mantine's computed color scheme (`useComputedColorScheme`) and forwards it to the core renderer when no explicit `colorScheme` prop is supplied
 - **Mantine-scoped CSS** -- extra-styles wrapper overrides Mantine spacing/font-size custom properties to use relative `em` units, giving consistent scaling at any base font size
 
-All core features (GFM, LaTeX math, CJK support, streaming, metadata context, content preprocessors, custom components, cross-chunk coordination via `<AIMarkdownDocuments>`) are inherited unchanged from `@ai-markdown/react`. See the [core README](https://github.com/ai-markdown/ai-markdown/blob/main/packages/react/README.md) for the base API.
+All core features (GFM, LaTeX math, CJK support, streaming, metadata context, content preprocessors, custom components, cross-chunk coordination via `<AIMarkdownDocuments>`) are inherited unchanged from `@ai-markdown/react`. See the [React README](https://github.com/ai-markdown/ai-markdown/blob/main/packages/react/README.md) for the base API.
 
 ## Package family
 
-| Package                                                                                                  | Role                                                                                                        | Version policy                                                      |
-| -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| [`@ai-markdown/react`](https://www.npmjs.com/package/@ai-markdown/react)                                 | The React renderer — `<AIMarkdown>`, `<AIMarkdownSmoothStream>`, `<AIMarkdownDocuments>`, hooks, providers  | Release train                                                       |
-| [`@ai-markdown/react-mantine`](https://www.npmjs.com/package/@ai-markdown/react-mantine)                 | Mantine UI bindings — themed typography, code-highlight tabs, Mermaid, color-scheme wiring                  | Release train (lockstep with core)                                  |
-| [`@ai-markdown/engine`](https://www.npmjs.com/package/@ai-markdown/engine)                               | Framework-agnostic engine — incremental parsing, LaTeX preprocessing, plugin pipeline, cross-chunk registry | Release train (lockstep, pinned exactly by core; internal supplier) |
-| [`@ai-markdown/remark-mark-highlight`](https://www.npmjs.com/package/@ai-markdown/remark-mark-highlight) | remark plugin for `==mark==` highlight syntax                                                               | Independent semver                                                  |
+| Package                                                                                                  | Role                                                                                                        | Version policy                                            |
+| -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| [`@ai-markdown/core`](https://www.npmjs.com/package/@ai-markdown/core)                                   | Framework-independent sessions, block planning, contributions and smooth coordination                       | Release train; exact engine dependency                    |
+| [`@ai-markdown/react`](https://www.npmjs.com/package/@ai-markdown/react)                                 | The React renderer — `<AIMarkdown>`, `<AIMarkdownSmoothStream>`, `<AIMarkdownDocuments>`, hooks, providers  | Release train                                             |
+| [`@ai-markdown/react-mantine`](https://www.npmjs.com/package/@ai-markdown/react-mantine)                 | Mantine UI bindings — themed typography, code-highlight tabs, Mermaid, color-scheme wiring                  | Release train; exact React peer during beta               |
+| [`@ai-markdown/engine`](https://www.npmjs.com/package/@ai-markdown/engine)                               | Framework-agnostic engine — incremental parsing, LaTeX preprocessing, plugin pipeline, cross-chunk registry | Release train; pinned exactly by shared core and adapters |
+| [`@ai-markdown/remark-mark-highlight`](https://www.npmjs.com/package/@ai-markdown/remark-mark-highlight) | remark plugin for `==mark==` highlight syntax                                                               | Independent semver                                        |
 
 ## Compatibility
 
@@ -71,8 +72,8 @@ yarn add @ai-markdown/react-mantine@beta @ai-markdown/react@beta
 
 ```json
 {
-  "react": ">=19",
-  "react-dom": ">=19",
+  "react": "^19.0.0",
+  "react-dom": "^19.0.0",
   "@ai-markdown/react": "3.0.0-beta.1",
   "@mantine/core": "^9.0.0",
   "@mantine/code-highlight": "^9.0.0",
@@ -387,7 +388,7 @@ import MantineAIMarkdown from '@ai-markdown/react-mantine';
 </AIMarkdownDocuments>;
 ```
 
-See the [core README's cross-chunk section](https://github.com/ai-markdown/ai-markdown/blob/main/packages/react/README.md#cross-chunk-coordination) for the full `<AIMarkdownDocuments>` API and `useDocumentRegistry` hook.
+See the [React README's cross-chunk section](https://github.com/ai-markdown/ai-markdown/blob/main/packages/react/README.md#cross-chunk-coordination) for the full `<AIMarkdownDocuments>` API and `useDocumentRegistry` hook.
 
 ## Smooth Streaming
 
@@ -503,7 +504,7 @@ Check light and dark schemes, a known language, an unannotated block, JSON with 
 
 For custom wrappers, test an outer behavior provider both with an absent `codeBlock` prop and a present partial group. For multiple logical chunks, use the same core `AIMarkdownDocuments` wrapper and explicit document ids; no Mantine-specific registry exists. Smooth presentation composes through the React adapter's hooks, whose returned streaming state includes the reveal drain.
 
-See [`src/MantineAIMarkdown.tsx`](./src/MantineAIMarkdown.tsx) for wrapper precedence and [`src/defs.tsx`](./src/defs.tsx) for the authoritative group defaults. The package's README describes its presentation layer; the [core README](../react/README.md) remains the reference for inherited parsing and coordination behavior.
+See [`src/MantineAIMarkdown.tsx`](./src/MantineAIMarkdown.tsx) for wrapper precedence and [`src/defs.tsx`](./src/defs.tsx) for the authoritative group defaults. The package's README describes its presentation layer; the [React README](../react/README.md) remains the reference for inherited parsing and coordination behavior.
 
 ## License
 

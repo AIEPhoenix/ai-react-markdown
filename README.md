@@ -9,9 +9,9 @@
 [![@ai-markdown/engine npm](https://img.shields.io/npm/v/@ai-markdown/engine?label=%40ai-markdown%2Fengine&logo=npm&color=cb3837)](https://www.npmjs.com/package/@ai-markdown/engine)
 [![@ai-markdown/remark-mark-highlight npm](https://img.shields.io/npm/v/@ai-markdown/remark-mark-highlight?label=%40ai-markdown%2Fremark-mark-highlight&logo=npm&color=cb3837)](https://www.npmjs.com/package/@ai-markdown/remark-mark-highlight)
 
-[![core downloads](https://img.shields.io/npm/dm/@ai-markdown/react?label=%40ai-markdown%2Freact%20downloads&color=blue)](https://www.npmjs.com/package/@ai-markdown/react)
+[![React downloads](https://img.shields.io/npm/dm/@ai-markdown/react?label=%40ai-markdown%2Freact%20downloads&color=blue)](https://www.npmjs.com/package/@ai-markdown/react)
 [![mantine downloads](https://img.shields.io/npm/dm/@ai-markdown/react-mantine?label=%40ai-markdown%2Freact-mantine%20downloads&color=blue)](https://www.npmjs.com/package/@ai-markdown/react-mantine)
-[![core minzip](https://img.shields.io/bundlephobia/minzip/@ai-markdown/react?label=core%20minzip)](https://bundlephobia.com/package/@ai-markdown/react)
+[![React minzip](https://img.shields.io/bundlephobia/minzip/@ai-markdown/react?label=react%20minzip)](https://bundlephobia.com/package/@ai-markdown/react)
 
 [![CI](https://img.shields.io/github/actions/workflow/status/ai-markdown/ai-markdown/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/ai-markdown/ai-markdown/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/actions/workflow/status/ai-markdown/ai-markdown/release.yml?label=release&logo=githubactions&logoColor=white)](https://github.com/ai-markdown/ai-markdown/actions/workflows/release.yml)
@@ -43,12 +43,12 @@ An AI response changes while the user reads it. A fence may be incomplete, a cit
 ai-markdown addresses those concerns at distinct layers:
 
 - **Accumulated streaming input.** Pass the complete current Markdown string to one component. The engine reuses a verified prefix when the input is an append and the grammar permits it; otherwise it uses a full parse.
-- **Reusable rendered blocks.** Core retains React elements for unchanged plans. Custom components can still update through state and context, so streaming status and application callbacks remain live.
+- **Reusable rendered blocks.** The React adapter retains React elements for unchanged plans. Custom components can still update through state and context, so streaming status and application callbacks remain live.
 - **Logical document sections.** When an application deliberately uses multiple renderers for one document, `AIMarkdownDocuments` shares footnote and link/image definitions under an explicit document id. It does not join syntax split across arbitrary network packets.
 - **Math and mixed-language text.** Built-in normalization handles common model-produced math delimiters and currency text. The pipeline includes CJK-aware delimiter parsing and optional pangu spacing; typography and source line breaks remain explicit presentation choices.
 - **Controlled output policy.** The sanitizer filters the tree before URL transformation. Schema extensions, custom components, and application URL schemes are supported through typed inputs whose scope and precedence are documented.
 
-Choose core for React rendering with your own presentation. Choose Mantine when you also want its providers, typography, highlighted code controls, and diagrams. Both expose the same underlying content, metadata, and coordination contracts.
+Choose `@ai-markdown/react` for React rendering with your own presentation. Choose Mantine when you also want its providers, typography, highlighted code controls, and diagrams. Both expose the same underlying content, metadata, and coordination contracts.
 
 ## Features
 
@@ -123,17 +123,17 @@ pnpm add @ai-markdown/react-mantine@beta @ai-markdown/react@beta \
 
 ### React version & framework compatibility
 
-| Question                        | Answer                                                                                                                                                                                                                                                                             |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Does it work with React 18?** | No. The library uses `useId()` and React 19's stricter Strict Mode semantics; the `peerDependencies` are pinned to `^19.0.0`. If you're on React 18, [`react-markdown`](https://github.com/remarkjs/react-markdown) is the safer choice until you upgrade                          |
-| **Next.js (App Router)?**       | Yes. The core package marks `'use client'` at its barrel; the Mantine package's sub-components mark it where needed. In practice, import either component from a file you've marked `'use client'` yourself. CSS imports (KaTeX, typography, Mantine) go in your root `layout.tsx` |
-| **Next.js (Pages Router)?**     | Yes — standard CSR usage. The library is SSR-safe (`useId()` is SSR-stable), so server-rendering a static markdown string also works                                                                                                                                               |
-| **React Native?**               | No. The renderer depends on the DOM (`<div>`, `<span>`, KaTeX CSS). React Native would need a separate renderer                                                                                                                                                                    |
-| **Remix / Vite / CRA?**         | Yes — any React 19 host. The only environment-specific note is the strict-isolation pnpm/yarn-PnP `katex` install (see [Peer Dependencies](#peer-dependencies))                                                                                                                    |
+| Question                        | Answer                                                                                                                                                                                                                                                                              |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Does it work with React 18?** | No. The library uses `useId()` and React 19's stricter Strict Mode semantics; the `peerDependencies` are pinned to `^19.0.0`. If you're on React 18, [`react-markdown`](https://github.com/remarkjs/react-markdown) is the safer choice until you upgrade                           |
+| **Next.js (App Router)?**       | Yes. The React package marks `'use client'` at its barrel; the Mantine package's sub-components mark it where needed. In practice, import either component from a file you've marked `'use client'` yourself. CSS imports (KaTeX, typography, Mantine) go in your root `layout.tsx` |
+| **Next.js (Pages Router)?**     | Yes — standard CSR usage. The library is SSR-safe (`useId()` is SSR-stable), so server-rendering a static markdown string also works                                                                                                                                                |
+| **React Native?**               | No. The renderer depends on the DOM (`<div>`, `<span>`, KaTeX CSS). React Native would need a separate renderer                                                                                                                                                                     |
+| **Remix / Vite / CRA?**         | Yes — any React 19 host. The only environment-specific note is the strict-isolation pnpm/yarn-PnP `katex` install (see [Peer Dependencies](#peer-dependencies))                                                                                                                     |
 
 ### Development vs production builds
 
-The core package ships two builds (react/redux-style) selected by the `development`
+The React package ships two builds (react/redux-style) selected by the `development`
 [exports condition](https://nodejs.org/api/packages.html#community-conditions-definitions):
 the development build has all warnings and dev-time invariant checks enabled; the
 production build has them compiled out. Neither file references `process.env`, so
@@ -606,7 +606,7 @@ Token groups:
 
 > **Stability contract**: token _names_ and _roles_ follow semver. Exact default _values_ may shift under minor bumps as the visual design evolves — override what you need locked.
 
-For a fully custom typography wrapper, replace the `Typography` prop; remember to forward `style` so injected CSS custom properties reach descendants. Full recipe in the [core README](./packages/react/README.md#custom-typography-component).
+For a fully custom typography wrapper, replace the `Typography` prop; remember to forward `style` so injected CSS custom properties reach descendants. Full recipe in the [React README](./packages/react/README.md#custom-typography-component).
 
 ## TypeScript
 
@@ -635,7 +635,7 @@ Two gates run in sequence:
 
 For a scheme to render, **both must permit it**. This is intentional defense-in-depth. Use `defaultUrlTransform` + `extendSanitizeSchema` (see the [recipe above](#allow-a-custom-url-scheme-eg-myapp)) to opt into additional schemes without breaking other invariants (cross-chunk tags, KaTeX classes, `<mark>`).
 
-> Full sanitize-schema reference, footguns, and the asymmetric reference-stability rules for `urlTransform` vs `sanitizeSchema` are documented in the [core README's security section](./packages/react/README.md#custom-url-schemes-and-sanitization).
+> Full sanitize-schema reference, footguns, and the asymmetric reference-stability rules for `urlTransform` vs `sanitizeSchema` are documented in the [React README's security section](./packages/react/README.md#custom-url-schemes-and-sanitization).
 
 ## Cross-Chunk Coordination Reference
 
