@@ -67,7 +67,7 @@ function MermaidContractHarness() {
 }
 
 const meta: Meta<typeof MermaidContractHarness> = {
-  title: 'Mantine/QA/Mermaid Streaming Contract',
+  title: 'Integrations/Mantine/QA/Mermaid Streaming Contract',
   tags: ['qa'],
   component: MermaidContractHarness,
   decorators: [withMantineProvider],

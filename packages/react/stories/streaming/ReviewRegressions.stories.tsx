@@ -5,7 +5,7 @@ import AIMarkdown, { AIMarkdownDocuments, useDocumentSmoothStream } from '../../
 import { sanitizeSchema } from '@ai-markdown/engine';
 
 const meta: Meta = {
-  title: 'Core/QA/Reference and queue regressions',
+  title: 'QA/Reference and queue regressions',
   tags: ['qa'],
   parameters: { a11y: { test: 'off' } },
 };

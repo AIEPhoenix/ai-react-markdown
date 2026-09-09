@@ -22,13 +22,13 @@ export default defineConfig({
           },
         },
       },
-      {
-        extends: true,
+      ...(['react', 'vue'] as const).map((framework) => ({
+        extends: true as const,
         plugins: [
           // The plugin will run tests for the stories defined in your Storybook config
           // See options at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon#storybooktest
           storybookTest({
-            configDir: path.join(dirname, '.storybook'),
+            configDir: path.join(dirname, `apps/storybook-${framework}/.storybook`),
             // The benchmark harnesses stream on mount in dev and in the static
             // build (they are the Performance Lab). Under test nobody watches
             // them, so they render their idle UI instead of burning rAF and
@@ -38,7 +38,9 @@ export default defineConfig({
           }),
         ],
         test: {
-          name: 'storybook',
+          name: `storybook-${framework}`,
+          dir: dirname,
+          root: dirname,
           // Streaming smokes legitimately wait through multi-second windows
           // (e.g. the streaming cursor's 5 s stall threshold plus recovery).
           // The browser-mode default of 15 s would kill those runs with an
@@ -52,7 +54,7 @@ export default defineConfig({
             enabled: true,
             headless: true,
             provider: playwright({}),
-            instances: [{ browser: 'chromium' }],
+            instances: [{ browser: 'chromium' as const }],
           },
           // No `setupFiles`: since Storybook 10.3 `@storybook/addon-vitest`
           // applies the preview and a11y-addon annotations itself, and a
@@ -64,7 +66,7 @@ export default defineConfig({
             include: [],
           },
         },
-      },
+      })),
     ],
   },
 });

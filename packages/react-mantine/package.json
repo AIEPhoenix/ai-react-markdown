@@ -86,6 +86,7 @@
     "esbuild-sass-plugin": "^3.7.0",
     "highlight.js": "^11.11.2",
     "postcss": "^8.5.28",
-    "tsup": "^8.5.1"
+    "tsup": "^8.5.1",
+    "@ai-markdown/storybook-kit": "workspace:*"
   }
 }

@@ -2,16 +2,16 @@ import type { ComponentPropsWithoutRef } from 'react';
 import '../../src/components/typography/variants/all.scss';
 import AIMarkdown, { useAIMarkdownMetadata, type AIMarkdownCustomComponents } from '../../src/index';
 import { ThemedAIMarkdown } from '../_shared/ThemedAIMarkdown';
-import { baseCoreMeta, type CoreMeta, type CoreStory } from '../_shared/meta';
-import { docsLink } from '../_shared/docsLinks';
+import { baseReactMeta, type ReactMeta, type ReactStory } from '../_shared/meta';
+import { docsLink } from '@ai-markdown/storybook-kit/common/docsLinks';
 
 /**
  * Handing application data to a custom component without threading it through
  * the markdown.
  */
-const meta: CoreMeta = {
-  ...baseCoreMeta,
-  title: 'Core/Configuration/Metadata',
+const meta: ReactMeta = {
+  ...baseReactMeta,
+  title: 'Customization/Metadata',
   tags: ['autodocs'],
   component: AIMarkdown,
   parameters: {
@@ -143,7 +143,7 @@ const CITED_DOC: string = [
  * re-renders, and that is exactly what would happen in an app that built the
  * object inline in render.
  */
-export const MetadataDrivenComponents: CoreStory = {
+export const MetadataDrivenComponents: ReactStory = {
   args: { content: CITED_DOC, metadata: CITATION_METADATA },
   render: (args) => (
     <ThemedAIMarkdown content={args.content ?? ''} metadata={args.metadata} customComponents={COMPONENTS} />

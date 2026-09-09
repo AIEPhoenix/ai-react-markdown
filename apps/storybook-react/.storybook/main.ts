@@ -4,14 +4,19 @@ const config: StorybookConfig = {
   // Stories live in each package's `stories/` directory, never beside the
   // sources. Globbing `src/**` as well matched nothing and made every vitest
   // run print two "No story files found" warnings.
-  stories: ['../packages/*/stories/**/*.mdx', '../packages/*/stories/**/*.stories.@(js|jsx|mjs|ts|tsx)'],
+  stories: [
+    '../../../packages/react/stories/**/*.mdx',
+    '../../../packages/react/stories/**/*.stories.@(ts|tsx)',
+    '../../../packages/react-mantine/stories/**/*.mdx',
+    '../../../packages/react-mantine/stories/**/*.stories.@(ts|tsx)',
+  ],
   addons: ['@storybook/addon-vitest', '@storybook/addon-a11y', '@storybook/addon-docs'],
   framework: '@storybook/react-vite',
   // Locally authored placeholders for the story fixtures. Keeping them in-repo
   // is what lets the "zero external requests" rule hold — every image a story
   // renders is served from this directory. The vitest addon reads the same
   // `staticDirs` value, so browser-mode tests serve them too.
-  staticDirs: ['./assets'],
+  staticDirs: ['../../../tooling/storybook-kit/assets'],
   // The `qa` branch is the play-assertion suite: useful while working on the
   // library, noise for someone reading the published documentation. It stays
   // in the sidebar during development and disappears only from the docs

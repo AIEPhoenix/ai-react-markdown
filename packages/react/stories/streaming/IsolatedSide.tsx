@@ -32,7 +32,7 @@ import { MaybeCoordinated } from './MaybeCoordinated';
 import { useRenderProfiler } from './useRenderProfiler';
 import { ProfilerPanel } from './ProfilerPanel';
 import { createSpyComponents } from './spyComponents';
-import { getStreamingTheme, thinScrollbar, type ColorScheme } from './theme';
+import { getStreamingTheme, thinScrollbar, type ColorScheme } from '@ai-markdown/storybook-kit/react/theme';
 import {
   AXIS_HEADINGS,
   AXIS_SIDES,

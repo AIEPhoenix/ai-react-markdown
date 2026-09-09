@@ -127,7 +127,7 @@ jobs:
         run: pnpm -r typecheck
 
       # `pnpm -r` skips the workspace root — the root script is the only
-      # gate covering .storybook and packages/*/stories (same split as CI).
+      # gate covering apps/storybook-* and packages/*/stories (same split as CI).
       - name: Typecheck (storybook + stories)
         run: pnpm typecheck
 
@@ -145,12 +145,17 @@ jobs:
         run: pnpm -r test
 
       # Browser smokes, matching CI's browser-smoke task: the root vitest
-      # config's `storybook` project renders every story in headless Chromium.
+      # config's framework Storybook projects render every story in headless Chromium.
       - name: Install Playwright Chromium
         run: pnpm exec playwright install chromium --with-deps
 
       - name: Browser smokes (storybook stories)
-        run: pnpm vitest run --project=storybook
+        run: pnpm test:storybook
+
+      - name: Build and verify composed Storybook site
+        run: |
+          STORYBOOK_DOCS_EXPORT=1 pnpm build-storybook
+          pnpm test:storybook-site
 
       - name: Concurrent document scope lifetime
         run: pnpm test:document-lifetime

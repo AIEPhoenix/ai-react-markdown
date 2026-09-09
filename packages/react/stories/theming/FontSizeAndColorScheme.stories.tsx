@@ -1,19 +1,19 @@
 import '../../src/components/typography/variants/all.scss';
 import AIMarkdown from '../../src/index';
-import { PAGE_PALETTE } from '../_shared/colorScheme';
+import { PAGE_PALETTE } from '@ai-markdown/storybook-kit/react/colorScheme';
 import { ThemedAIMarkdown } from '../_shared/ThemedAIMarkdown';
-import { Labeled, SideBySide } from '../_shared/layouts';
-import { baseCoreMeta, type CoreMeta, type CoreStory } from '../_shared/meta';
-import { docsLink } from '../_shared/docsLinks';
-import { PROSE_SAMPLE } from '../_shared/fixtures';
+import { Labeled, SideBySide } from '@ai-markdown/storybook-kit/react/layouts';
+import { baseReactMeta, type ReactMeta, type ReactStory } from '../_shared/meta';
+import { docsLink } from '@ai-markdown/storybook-kit/common/docsLinks';
+import { PROSE_SAMPLE } from '@ai-markdown/storybook-kit/common/fixtures';
 
 /**
  * The two props that retheme the component without a stylesheet, and the
  * variant slot beside them.
  */
-const meta: CoreMeta = {
-  ...baseCoreMeta,
-  title: 'Core/Theming/Font Size & Color Scheme',
+const meta: ReactMeta = {
+  ...baseReactMeta,
+  title: 'Customization/Theming/Font Size & Color Scheme',
   tags: ['autodocs'],
   component: AIMarkdown,
   parameters: {
@@ -52,7 +52,7 @@ export default meta;
  * The middle panel passes nothing, so it shows the built-in default of
  * `0.9375rem`.
  */
-export const FontSizes: CoreStory = {
+export const FontSizes: ReactStory = {
   parameters: {
     controls: { include: ['content'] },
   },
@@ -76,7 +76,7 @@ export const FontSizes: CoreStory = {
 
 /**
  * Both schemes at once, each panel painted with the page background its scheme
- * expects. This is the one story in the Core branch that deliberately ignores
+ * expects. This is the one story in the React catalog that deliberately ignores
  * the theme toolbar: the panels pass `colorScheme` as a literal, so switching
  * the toolbar changes the chrome around them and leaves the two renders alone.
  *
@@ -90,7 +90,7 @@ export const FontSizes: CoreStory = {
  * Note also that the scheme controls colours only. The two panels use
  * identical spacing and identical type sizes.
  */
-export const ColorSchemes: CoreStory = {
+export const ColorSchemes: ReactStory = {
   parameters: {
     controls: { include: ['content'] },
   },
@@ -138,7 +138,7 @@ export const ColorSchemes: CoreStory = {
  * Replacing the wrapper element rather than its tokens is a different job —
  * that is the `Typography` prop, covered in the custom typography guide.
  */
-export const Variant: CoreStory = {
+export const Variant: ReactStory = {
   args: {
     content: PROSE_SAMPLE,
     variant: 'default',

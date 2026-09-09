@@ -7,7 +7,7 @@ import { buildScenarios, DEFAULT_PAYLOAD, type ScenarioKey } from './scenarios';
 import { useRenderProfiler } from './useRenderProfiler';
 import { ProfilerPanel } from './ProfilerPanel';
 import { ChunkPanel } from './ChunkPanel';
-import { controlStyles, getStreamingTheme, type ColorScheme } from './theme';
+import { controlStyles, getStreamingTheme, type ColorScheme } from '@ai-markdown/storybook-kit/react/theme';
 
 interface PlaygroundProps {
   colorScheme: ColorScheme;

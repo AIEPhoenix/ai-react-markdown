@@ -19,9 +19,14 @@ import { expect, waitFor } from 'storybook/test';
 import AIMarkdown, { AIMarkdownStreamingCursor, useSmoothStream, type SmoothStreamPacing } from '../../src/index';
 import 'katex/dist/katex.min.css';
 import '../../src/components/typography/variants/all.scss';
-import { WithScheme } from '../_shared/colorScheme';
-import { getStreamingTheme } from './theme';
-import { StreamingReplay, ThemedReplayButton, useStreamedContent, STREAMING_DEMO_CONTENT } from '../_shared/streaming';
+import { WithScheme } from '@ai-markdown/storybook-kit/react/colorScheme';
+import { getStreamingTheme } from '@ai-markdown/storybook-kit/react/theme';
+import {
+  StreamingReplay,
+  ThemedReplayButton,
+  useStreamedContent,
+  STREAMING_DEMO_CONTENT,
+} from '@ai-markdown/storybook-kit/react/streaming';
 
 /**
  * Instruments the hook layer directly (the shell is a thin composition of
@@ -114,7 +119,7 @@ const MultiRoundSmoke = ({ theme }: { theme: 'light' | 'dark' }) => {
 };
 
 const meta: Meta<typeof SmoothStreamSmoke> = {
-  title: 'Core/QA/Smooth Stream',
+  title: 'QA/Smooth Stream',
   tags: ['qa'],
   component: SmoothStreamSmoke,
   parameters: {
@@ -159,7 +164,10 @@ export const Smoke: Story = {
     // Settled means the cursor slot is unmounted again.
     expect(root().querySelector('[data-aimd-streaming-indicator]')).toBeNull();
     // And the full document made it to the DOM through the paced path.
-    expect(root().textContent).toContain('incomplete tokens');
+    expect(root().querySelectorAll('.katex annotation').length).toBeGreaterThan(0);
+    expect(Array.from(root().querySelectorAll('.katex annotation')).at(-1)?.textContent?.trim()).toBe(
+      STREAMING_DEMO_CONTENT.split('$$').at(-2)?.trim()
+    );
   },
 };
 

@@ -11,7 +11,7 @@ interface ImportMetaEnv {
   readonly MODE: string;
   /** Set by vitest. */
   readonly VITEST?: string | boolean;
-  /** Fed from `env` in .storybook/main.ts; '1' for the public export build. */
+  /** Fed from `env` in apps/storybook-react/.storybook/main.ts; '1' for the public export build. */
   readonly STORYBOOK_DOCS_EXPORT?: string;
 }
 

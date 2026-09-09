@@ -14,7 +14,7 @@
 
 import type { ReactNode } from 'react';
 import { SCENARIO_KEYS, type ScenarioConfig, type ScenarioKey } from './scenarios';
-import type { ControlStyles } from './theme';
+import type { ControlStyles } from '@ai-markdown/storybook-kit/react/theme';
 import { PAYLOAD_SCALES, type PayloadScale } from './useComparisonRuns';
 
 /** Scenario selector — one button per scenario, label shown, description as

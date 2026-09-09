@@ -122,29 +122,4 @@ export const StreamingReplay = ({
   );
 };
 
-export const STREAMING_DEMO_CONTENT = `# Streaming Demo
-
-A live render of **streaming markdown**, with the same incomplete-token edge cases an LLM would emit:
-
-- Inline math like $E = mc^2$
-- Block math:
-
-$$
-\\int_0^\\infty e^{-x^2}\\,dx = \\frac{\\sqrt{\\pi}}{2}
-$$
-
-- Fenced code:
-
-\`\`\`ts
-const fib = (n: number): number => (n < 2 ? n : fib(n - 1) + fib(n - 2));
-\`\`\`
-
-- Tables:
-
-| Language | Released |
-| -------- | -------- |
-| JavaScript | 1995 |
-| Rust | 2010 |
-
-> The hard part of streaming markdown is handling **incomplete tokens** — code fences, LaTeX delimiters, and table rows mid-emission. Watch this render hold its shape as bytes arrive.
-`;
+export { SHOWCASE as STREAMING_DEMO_CONTENT } from '../common/corpus';

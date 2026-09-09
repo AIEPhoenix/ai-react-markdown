@@ -2,17 +2,17 @@ import React from 'react';
 import '../../src/components/typography/variants/all.scss';
 import AIMarkdown, { type AIMDContentPreprocessor } from '../../src/index';
 import { ThemedAIMarkdown } from '../_shared/ThemedAIMarkdown';
-import { SideBySide } from '../_shared/layouts';
-import { baseCoreMeta, type CoreMeta, type CoreStory } from '../_shared/meta';
-import { docsLink } from '../_shared/docsLinks';
-import { SECRETS_DOC } from '../_shared/fixtures';
+import { SideBySide } from '@ai-markdown/storybook-kit/react/layouts';
+import { baseReactMeta, type ReactMeta, type ReactStory } from '../_shared/meta';
+import { docsLink } from '@ai-markdown/storybook-kit/common/docsLinks';
+import { SECRETS_DOC } from '@ai-markdown/storybook-kit/common/fixtures';
 
 /**
  * A hook into the markdown source, before anything parses it.
  */
-const meta: CoreMeta = {
-  ...baseCoreMeta,
-  title: 'Core/Configuration/Content Preprocessors',
+const meta: ReactMeta = {
+  ...baseReactMeta,
+  title: 'Customization/Content Preprocessors',
   tags: ['autodocs'],
   component: AIMarkdown,
   parameters: {
@@ -105,7 +105,7 @@ const REDACTION_PREPROCESSORS: AIMDContentPreprocessor[] = [redactSecrets];
  * is acceptable; for anything where a partial match is worse than no match,
  * gate on `streaming` upstream and let the final frame do the work.
  */
-export const RedactionPreprocessor: CoreStory = {
+export const RedactionPreprocessor: ReactStory = {
   args: { content: SECRETS_DOC },
   render: (args) => (
     <SideBySide

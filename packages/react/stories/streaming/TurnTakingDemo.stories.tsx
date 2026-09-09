@@ -2,15 +2,12 @@ import React, { type CSSProperties, useCallback, useEffect, useRef, useState } f
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import AIMarkdown, { AIMarkdownDocuments, AIMarkdownStreamingCursor, useDocumentSmoothStream } from '../../src/index';
 import '../../src/components/typography/variants/all.scss';
-import { useStoryColorScheme, PAGE_PALETTE } from '../_shared/colorScheme';
-import { ThemedReplayButton } from '../_shared/streaming';
-import { docsLink } from '../_shared/docsLinks';
-import { getStreamingTheme } from './theme';
+import { useStoryColorScheme, PAGE_PALETTE } from '@ai-markdown/storybook-kit/react/colorScheme';
+import { ThemedReplayButton } from '@ai-markdown/storybook-kit/react/streaming';
+import { docsLink } from '@ai-markdown/storybook-kit/common/docsLinks';
+import { getStreamingTheme } from '@ai-markdown/storybook-kit/react/theme';
 
-const FIRST =
-  'Let me check the retrieval index before answering. Three sources matched, and the top hit was cached, so this came back quickly.';
-const SECOND =
-  'Based on those sources: throttling is applied per organization rather than per key, so a burst from one worker slows the others down.';
+import { EMPHASIS as FIRST, QUOTES as SECOND } from '@ai-markdown/storybook-kit/common/corpus';
 
 /** The scripted arrival of one answer split into two chat messages. */
 interface Phase {
@@ -125,7 +122,7 @@ const TurnTakingChat = () => {
  * Two chat bubbles, one answer, revealed in order.
  */
 const meta: Meta<typeof TurnTakingChat> = {
-  title: 'Core/Streaming/Turn Taking',
+  title: 'Streaming/Turn Taking',
   tags: ['autodocs'],
   component: TurnTakingChat,
   parameters: {

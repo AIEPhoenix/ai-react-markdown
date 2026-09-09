@@ -2,12 +2,12 @@ import React from 'react';
 import 'katex/dist/katex.min.css';
 import '../src/components/typography/variants/all.scss';
 import AIMarkdown from '../src/index';
-import { WithScheme } from './_shared/colorScheme';
-import { baseCoreMeta, type CoreMeta, type CoreStory } from './_shared/meta';
-import { coreArgTypes } from './_shared/argTypes';
-import { StreamingReplay, ThemedReplayButton } from './_shared/streaming';
-import { GFM_BASICS, KITCHEN_SINK } from './_shared/fixtures';
-import { getStreamingTheme } from './streaming/theme';
+import { WithScheme } from '@ai-markdown/storybook-kit/react/colorScheme';
+import { baseReactMeta, type ReactMeta, type ReactStory } from './_shared/meta';
+import { reactArgTypes } from '@ai-markdown/storybook-kit/react/argTypes';
+import { StreamingReplay, ThemedReplayButton } from '@ai-markdown/storybook-kit/react/streaming';
+import { GFM_BASICS, KITCHEN_SINK } from '@ai-markdown/storybook-kit/common/fixtures';
+import { getStreamingTheme } from '@ai-markdown/storybook-kit/react/theme';
 
 /**
  * The full `<AIMarkdown>` surface with every prop wired to a control. Start
@@ -17,9 +17,9 @@ import { getStreamingTheme } from './streaming/theme';
  * The feature branches below split the same surface into one story per
  * capability, each with its controls narrowed to the props that matter there.
  */
-const meta: CoreMeta = {
-  ...baseCoreMeta,
-  title: 'Core/Playground',
+const meta: ReactMeta = {
+  ...baseReactMeta,
+  title: 'Playground',
   tags: ['autodocs'],
   component: AIMarkdown,
   parameters: {
@@ -32,7 +32,7 @@ const meta: CoreMeta = {
     a11y: { test: 'todo' },
   },
   argTypes: {
-    ...coreArgTypes,
+    ...reactArgTypes,
     variant: { control: 'select', options: ['default'], description: 'Typography variant name.' },
   },
 };
@@ -40,7 +40,7 @@ const meta: CoreMeta = {
 export default meta;
 
 /** Static render of the GFM baseline — edit `content` to render your own. */
-export const Default: CoreStory = {
+export const Default: ReactStory = {
   args: {
     content: GFM_BASICS,
   },
@@ -61,7 +61,7 @@ export const Default: CoreStory = {
  * Hit **Restart** to replay. `content` is a control, so you can stream any
  * markdown you paste in.
  */
-export const Streaming: CoreStory = {
+export const Streaming: ReactStory = {
   args: {
     content: KITCHEN_SINK,
     fontSize: '',

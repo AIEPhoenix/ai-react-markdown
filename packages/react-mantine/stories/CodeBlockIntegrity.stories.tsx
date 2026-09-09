@@ -3,7 +3,11 @@ import { expect, userEvent, within, waitFor } from 'storybook/test';
 import MantineAIMarkdown from '../src/index';
 import { withMantineProvider } from './decorators';
 
-const meta: Meta = { title: 'Mantine/QA/Code content integrity', tags: ['qa'], decorators: [withMantineProvider] };
+const meta: Meta = {
+  title: 'Integrations/Mantine/QA/Code content integrity',
+  tags: ['qa'],
+  decorators: [withMantineProvider],
+};
 export default meta;
 const json = '{"id":9007199254740993,"nested":"{\\"a\\":1}"}\n';
 

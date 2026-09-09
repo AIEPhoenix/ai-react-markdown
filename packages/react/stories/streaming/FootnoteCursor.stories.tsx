@@ -21,8 +21,8 @@ import { expect, waitFor } from 'storybook/test';
 import AIMarkdown, { AIMarkdownStreamingCursor } from '../../src/index';
 import 'katex/dist/katex.min.css';
 import '../../src/components/typography/variants/all.scss';
-import { WithScheme } from '../_shared/colorScheme';
-import { getStreamingTheme } from './theme';
+import { WithScheme } from '@ai-markdown/storybook-kit/react/colorScheme';
+import { getStreamingTheme } from '@ai-markdown/storybook-kit/react/theme';
 
 const BODY = 'Body paragraph with a citation [^1] in it.\n\n';
 const DEF_TAIL = '[^1]: A long citation title that keeps on streaming for a while';
@@ -63,7 +63,7 @@ const FootnoteTailHarness = ({ theme }: { theme: 'light' | 'dark' }) => {
 };
 
 const meta: Meta<typeof FootnoteTailHarness> = {
-  title: 'Core/QA/Footnote Cursor',
+  title: 'QA/Footnote Cursor',
   tags: ['qa'],
   component: FootnoteTailHarness,
   parameters: {

@@ -1,0 +1,24 @@
+{
+  "name": "@ai-markdown/storybook-kit",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    "./common/*": "./common/*.ts",
+    "./react/*": "./react/*.tsx",
+    "./react/theme": "./react/theme.ts",
+    "./react/argTypes": "./react/argTypes.ts",
+    "./vue/*": "./vue/*.ts"
+  },
+  "devDependencies": {
+    "@bench/corpus": "workspace:*",
+    "@storybook/react-vite": "10.5.10",
+    "@storybook/addon-docs": "10.5.10",
+    "storybook": "10.5.10",
+    "react": "^19",
+    "react-dom": "^19",
+    "react-scan": "^0.5.7",
+    "@types/react": "^19.2.18",
+    "vue": "^3.5.0"
+  }
+}

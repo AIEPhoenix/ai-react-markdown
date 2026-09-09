@@ -1,19 +1,19 @@
 import 'katex/dist/katex.min.css';
 import '../../src/components/typography/variants/all.scss';
 import AIMarkdown from '../../src/index';
-import { WithScheme } from '../_shared/colorScheme';
-import { baseCoreMeta, type CoreMeta, type CoreStory } from '../_shared/meta';
-import { docsLink } from '../_shared/docsLinks';
-import { StreamingReplay, ThemedReplayButton } from '../_shared/streaming';
-import { MATH_DOC } from '../_shared/fixtures';
-import { getStreamingTheme } from '../streaming/theme';
+import { WithScheme } from '@ai-markdown/storybook-kit/react/colorScheme';
+import { baseReactMeta, type ReactMeta, type ReactStory } from '../_shared/meta';
+import { docsLink } from '@ai-markdown/storybook-kit/common/docsLinks';
+import { StreamingReplay, ThemedReplayButton } from '@ai-markdown/storybook-kit/react/streaming';
+import { MATH_DOC } from '@ai-markdown/storybook-kit/common/fixtures';
+import { getStreamingTheme } from '@ai-markdown/storybook-kit/react/theme';
 
 /**
  * TeX math, inline and in display blocks, typeset by KaTeX.
  */
-const meta: CoreMeta = {
-  ...baseCoreMeta,
-  title: 'Core/Features/Math',
+const meta: ReactMeta = {
+  ...baseReactMeta,
+  title: 'Basics/Math',
   tags: ['autodocs'],
   component: AIMarkdown,
   parameters: {
@@ -50,7 +50,7 @@ export default meta;
  * display forms are where a missing KaTeX stylesheet shows up first — if the
  * matrix looks like a vertical list of numbers, the CSS never loaded.
  */
-export const InlineAndBlock: CoreStory = {
+export const InlineAndBlock: ReactStory = {
   args: {
     content: MATH_DOC,
   },
@@ -65,7 +65,7 @@ export const InlineAndBlock: CoreStory = {
  *
  * Press **Restart** to replay; the cadence is seeded and repeats exactly.
  */
-export const StreamingMath: CoreStory = {
+export const StreamingMath: ReactStory = {
   args: {
     content: MATH_DOC,
   },

@@ -1,5 +1,5 @@
-import { useStoryColorScheme } from './colorScheme';
-import { controlStyles, getStreamingTheme } from '../streaming/theme';
+import { useStoryColorScheme } from '@ai-markdown/storybook-kit/react/colorScheme';
+import { controlStyles, getStreamingTheme } from '@ai-markdown/storybook-kit/react/theme';
 
 export {
   useStreamedContent,
@@ -7,7 +7,7 @@ export {
   STREAMING_DEMO_CONTENT,
   type StreamedContent,
   type UseStreamedContentOptions,
-} from './streamingHelpers';
+} from '@ai-markdown/storybook-kit/react/streamingHelpers';
 
 /**
  * The restart button for `StreamingReplay`'s `renderButton` slot. Four stories

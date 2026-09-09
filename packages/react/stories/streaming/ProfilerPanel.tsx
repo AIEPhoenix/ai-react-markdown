@@ -3,7 +3,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { PIPELINE_STAGES } from '@ai-markdown/engine';
 import type { RenderProfilerSnapshot } from './useRenderProfiler';
-import { getStreamingTheme, type ColorScheme } from './theme';
+import { getStreamingTheme, type ColorScheme } from '@ai-markdown/storybook-kit/react/theme';
 
 const fmt = (n: number, digits = 2) => (Number.isFinite(n) && !Number.isNaN(n) ? n.toFixed(digits) : '—');
 const fmtPct = (n: number) => (Number.isFinite(n) && !Number.isNaN(n) ? `${(n * 100).toFixed(1)}%` : '—');

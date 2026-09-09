@@ -1,7 +1,7 @@
 import { useEffect, type ReactNode } from 'react';
 import type { Decorator } from '@storybook/react-vite';
 import { useGlobals } from 'storybook/preview-api';
-import { ColorSchemeContext, PAGE_PALETTE, type StoryColorScheme } from './colorScheme';
+import { ColorSchemeContext, PAGE_PALETTE, type StoryColorScheme } from '@ai-markdown/storybook-kit/react/colorScheme';
 
 /**
  * Real React component, so the page-chrome writes land in an effect rather

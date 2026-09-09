@@ -1,6 +1,6 @@
 import { addons } from 'storybook/manager-api';
 import { themes } from 'storybook/theming';
-import { getUserPreferredColorTheme, setUserPreferredColorTheme } from './utils/sb-theme';
+import { getUserPreferredColorTheme, setUserPreferredColorTheme } from '@ai-markdown/storybook-kit/common/sb-theme';
 import { GLOBALS_UPDATED } from 'storybook/internal/core-events';
 
 addons.setConfig({

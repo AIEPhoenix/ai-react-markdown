@@ -2,18 +2,22 @@ import React, { useEffect, useState } from 'react';
 import AIMarkdown, { AIMarkdownStreamingCursor, type AIMarkdownStreamingIndicatorProps } from '../../src/index';
 import 'katex/dist/katex.min.css';
 import '../../src/components/typography/variants/all.scss';
-import { WithScheme } from '../_shared/colorScheme';
-import type { CoreMeta, CoreStory } from '../_shared/meta';
-import { docsLink } from '../_shared/docsLinks';
-import { StreamingReplay, ThemedReplayButton, STREAMING_DEMO_CONTENT } from '../_shared/streaming';
-import { getStreamingTheme } from './theme';
+import { WithScheme } from '@ai-markdown/storybook-kit/react/colorScheme';
+import type { ReactMeta, ReactStory } from '../_shared/meta';
+import { docsLink } from '@ai-markdown/storybook-kit/common/docsLinks';
+import {
+  StreamingReplay,
+  ThemedReplayButton,
+  STREAMING_DEMO_CONTENT,
+} from '@ai-markdown/storybook-kit/react/streaming';
+import { getStreamingTheme } from '@ai-markdown/storybook-kit/react/theme';
 
 /**
  * The blinking cursor that trails a streaming response — and follows it into
  * places a naive "last text node" anchor would miss.
  */
-const meta: CoreMeta = {
-  title: 'Core/Streaming/Streaming Cursor',
+const meta: ReactMeta = {
+  title: 'Streaming/Streaming Cursor',
   tags: ['autodocs'],
   component: AIMarkdown,
   parameters: {
@@ -65,7 +69,7 @@ The consensus recommendation is to hold roughly one burst of content in the buff
  * with the restart button. No assertions — this is the eyeball story; the
  * geometry pins live in the sibling stories.
  */
-export const Demo: CoreStory = {
+export const Demo: ReactStory = {
   render: () => (
     <WithScheme>
       {(colorScheme) => (
@@ -108,7 +112,7 @@ export const Demo: CoreStory = {
  * microtask before paint, so the move lands in the same frame as the text it
  * follows and there is no trailing lag to see.
  */
-export const ProseFollowDemo: CoreStory = {
+export const ProseFollowDemo: ReactStory = {
   render: () => (
     <WithScheme>
       {(colorScheme) => (
@@ -199,7 +203,7 @@ const ElapsedCursor = () => <AIMarkdownStreamingCursor indicator={ElapsedPill} /
  * part of the API — a custom indicator picks its own, as this one does with
  * its two-second fade.
  */
-export const CustomIndicator: CoreStory = {
+export const CustomIndicator: ReactStory = {
   render: () => (
     <WithScheme>
       {(colorScheme) => (

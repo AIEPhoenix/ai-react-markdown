@@ -31,7 +31,8 @@ const mulberry32 = (seed: number) => {
 /** Fixed seed for scenario F. Displayed in the UI so reruns are known-reproducible. */
 export const RANDOM_TOKENS_SEED = 0xa11ce;
 
-import { DEFAULT_PAYLOAD, withDefs } from '../../../engine/src/fixtures/scenarios';
+import { withDefs } from '../../../engine/src/fixtures/scenarios';
+import { STREAMING_SAMPLE as DEFAULT_PAYLOAD } from '@ai-markdown/storybook-kit/common/corpus';
 export { DEFAULT_PAYLOAD, withDefs };
 
 const splitBlocks = (payload: string): string[] => {

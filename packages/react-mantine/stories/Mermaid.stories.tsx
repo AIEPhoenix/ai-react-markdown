@@ -4,14 +4,14 @@ import MantineAIMarkdown from '../src/index';
 import 'katex/dist/katex.min.css';
 import { baseMantineMeta, type MantineMeta, type MantineStory } from './_shared/meta';
 import { MERMAID_STATIC_DOC } from './_shared/fixtures';
-import { StreamingReplay } from '../../react/stories/_shared/streaming';
+import { StreamingReplay } from '@ai-markdown/storybook-kit/react/streaming';
 
 /**
  * Mermaid diagrams, which the Mantine package renders and core does not.
  */
 const meta: MantineMeta = {
   ...baseMantineMeta,
-  title: 'Mantine/Mermaid Diagrams',
+  title: 'Integrations/Mantine/Mermaid Diagrams',
   tags: ['autodocs'],
   component: MantineAIMarkdown,
   parameters: {

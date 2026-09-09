@@ -34,6 +34,8 @@ Most readers come in with a task, not a curriculum. Pick the row that matches wh
 | **Tracking what changed across versions**                                   | [Release highlights](./release-highlights.md)                | —                                                                                                                                                                 |
 | **Evaluating the performance flags before enabling them**                   | [Benchmark](./benchmark.md)                                  | [Streaming & performance](./streaming-and-performance.md)                                                                                                         |
 
+For live React, Vue and Mantine examples, see [Interactive examples](./storybook.md).
+
 If none of these matches, the full topic index below covers every surface.
 
 ---

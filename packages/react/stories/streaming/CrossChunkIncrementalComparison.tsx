@@ -6,7 +6,12 @@ import { AIMarkdownDocuments } from '../../src/components/AIMarkdownDocuments';
 import { DEFAULT_PAYLOAD, type ScenarioKey } from './scenarios';
 import { useRenderProfiler } from './useRenderProfiler';
 import { ProfilerPanel } from './ProfilerPanel';
-import { controlStyles, getStreamingTheme, thinScrollbar, type ColorScheme } from './theme';
+import {
+  controlStyles,
+  getStreamingTheme,
+  thinScrollbar,
+  type ColorScheme,
+} from '@ai-markdown/storybook-kit/react/theme';
 import { useComparisonRuns } from './useComparisonRuns';
 import { normalizeClobberPrefix, useDomEqualityStats } from './useDomEqualityStats';
 import { buildChunkSources, CHUNK_COUNT, sliceChunkContents } from './crossChunkFixtures';

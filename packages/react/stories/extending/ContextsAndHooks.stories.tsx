@@ -7,19 +7,19 @@ import AIMarkdown, {
   type AIMarkdownCustomComponents,
 } from '../../src/index';
 import { ThemedAIMarkdown } from '../_shared/ThemedAIMarkdown';
-import { useStoryColorScheme, PAGE_PALETTE } from '../_shared/colorScheme';
-import { SideBySide } from '../_shared/layouts';
-import { StreamingReplay, ThemedReplayButton } from '../_shared/streaming';
-import { baseCoreMeta, type CoreMeta, type CoreStory } from '../_shared/meta';
-import { docsLink } from '../_shared/docsLinks';
-import { getStreamingTheme } from '../streaming/theme';
+import { useStoryColorScheme, PAGE_PALETTE } from '@ai-markdown/storybook-kit/react/colorScheme';
+import { SideBySide } from '@ai-markdown/storybook-kit/react/layouts';
+import { StreamingReplay, ThemedReplayButton } from '@ai-markdown/storybook-kit/react/streaming';
+import { baseReactMeta, type ReactMeta, type ReactStory } from '../_shared/meta';
+import { docsLink } from '@ai-markdown/storybook-kit/common/docsLinks';
+import { getStreamingTheme } from '@ai-markdown/storybook-kit/react/theme';
 
 /**
  * What a custom component can read about the document it is rendering inside.
  */
-const meta: CoreMeta = {
-  ...baseCoreMeta,
-  title: 'Core/Extending/Contexts & Hooks',
+const meta: ReactMeta = {
+  ...baseReactMeta,
+  title: 'Customization/Extending/Contexts & Hooks',
   tags: ['autodocs'],
   component: AIMarkdown,
   parameters: {
@@ -149,7 +149,7 @@ const HOOKS_DOC = [
  * only cared about `streaming` should call `useAIMarkdownState()` and re-render
  * far less often.
  */
-export const HooksInCustomComponents: CoreStory = {
+export const HooksInCustomComponents: ReactStory = {
   args: { content: HOOKS_DOC },
   parameters: {
     // Streaming stories stay report-only: axe samples the DOM at one
@@ -247,7 +247,7 @@ const PROVIDER_DOC = [
  * type-forbidden in a group value, and core re-applies its resolution last, so
  * an outer layer that tried would lose at runtime as well as at compile time.
  */
-export const AdditiveProviders: CoreStory = {
+export const AdditiveProviders: ReactStory = {
   args: { content: PROVIDER_DOC },
   render: (args) => (
     <SideBySide

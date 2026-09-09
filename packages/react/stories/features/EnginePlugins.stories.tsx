@@ -10,24 +10,24 @@ import {
   type AIMarkdownEnginePlugin,
 } from '../../src/plugins';
 import { ThemedAIMarkdown } from '../_shared/ThemedAIMarkdown';
-import { SideBySide } from '../_shared/layouts';
-import { baseCoreMeta, type CoreMeta, type CoreStory } from '../_shared/meta';
-import { docsLink } from '../_shared/docsLinks';
+import { SideBySide } from '@ai-markdown/storybook-kit/react/layouts';
+import { baseReactMeta, type ReactMeta, type ReactStory } from '../_shared/meta';
+import { docsLink } from '@ai-markdown/storybook-kit/common/docsLinks';
 import {
   CJK_MIXED_DOC,
   COMMENTS_DOC,
   DEFINITION_LIST_DOC,
   MARK_HIGHLIGHT_DOC,
   SMARTYPANTS_DOC,
-} from '../_shared/fixtures';
+} from '@ai-markdown/storybook-kit/common/fixtures';
 
 /**
  * The five selectable parse-chain plugins, each shown against a render with
  * that one plugin removed.
  */
-const meta: CoreMeta = {
-  ...baseCoreMeta,
-  title: 'Core/Features/Engine Plugins',
+const meta: ReactMeta = {
+  ...baseReactMeta,
+  title: 'Basics/Engine Plugins',
   tags: ['autodocs'],
   component: AIMarkdown,
   parameters: {
@@ -64,7 +64,7 @@ const meta: CoreMeta = {
           `and ${docsLink('custom-components', 'custom components')}.`,
           '',
           '**`highlight` is not syntax highlighting.** It adds the `==text==` syntax and',
-          'turns it into a `<mark>` element. The core package colours no code tokens at',
+          'turns it into a `<mark>` element. The React renderer colours no code tokens at',
           'all; it emits `language-*` class names and leaves the rest to you.',
         ].join('\n'),
       },
@@ -96,7 +96,7 @@ const PluginComparison = ({ content, omit, name }: { content: string; omit: AIMa
  * plugin has nothing to do with colouring code — it is the `<mark>` syntax,
  * and nothing else.
  */
-export const Highlight: CoreStory = {
+export const Highlight: ReactStory = {
   args: { content: MARK_HIGHLIGHT_DOC },
   render: (args) => <PluginComparison content={args.content ?? ''} omit={highlight} name="highlight" />,
 };
@@ -111,7 +111,7 @@ export const Highlight: CoreStory = {
  * missing the moment you pass an `enginePlugins` array that forgot to include
  * it.
  */
-export const DefinitionList: CoreStory = {
+export const DefinitionList: ReactStory = {
   args: { content: DEFINITION_LIST_DOC },
   render: (args) => <PluginComparison content={args.content ?? ''} omit={definitionList} name="definitionList" />,
 };
@@ -125,7 +125,7 @@ export const DefinitionList: CoreStory = {
  * Worth switching off if your content is technical enough that a rewritten
  * apostrophe would be wrong.
  */
-export const Smartypants: CoreStory = {
+export const Smartypants: ReactStory = {
   args: { content: SMARTYPANTS_DOC },
   render: (args) => <PluginComparison content={args.content ?? ''} omit={smartypants} name="smartypants" />,
 };
@@ -139,7 +139,7 @@ export const Smartypants: CoreStory = {
  * specified rather than failing: the spacing convention is defined for Han
  * characters and kana, and Hangul is left as written.
  */
-export const Pangu: CoreStory = {
+export const Pangu: ReactStory = {
   args: { content: CJK_MIXED_DOC },
   render: (args) => <PluginComparison content={args.content ?? ''} omit={pangu} name="pangu" />,
 };
@@ -160,7 +160,7 @@ export const Pangu: CoreStory = {
  * Both panels also agree on the last block: `<!-- … -->` inside a fenced code
  * block is source code, not a comment, and stays visible either way.
  */
-export const RemoveComments: CoreStory = {
+export const RemoveComments: ReactStory = {
   args: { content: COMMENTS_DOC },
   render: (args) => <PluginComparison content={args.content ?? ''} omit={removeComments} name="removeComments" />,
 };

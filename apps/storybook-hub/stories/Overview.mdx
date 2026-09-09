@@ -1,0 +1,22 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+import { DOCS_LINKS, REPO_URL } from '@ai-markdown/storybook-kit/common/docsLinks';
+
+<Meta title="AI Markdown/Overview" />
+
+# AI Markdown
+
+Interactive examples for streaming Markdown across frameworks. Choose **React** or **Vue** in the sidebar to open the corresponding catalog. Both use the same engine and shared core; each catalog runs its own renderer and browser tests.
+
+## Choose a framework
+
+- **React 19+**: `@ai-markdown/react`, including typography, component overrides and streaming hooks.
+- **Vue 3.5+**: `@ai-markdown/vue`, including Vue components, scoped slots and streaming composables.
+- **Mantine**: `@ai-markdown/react-mantine`, under React → Integrations → Mantine. It adds code-block controls, highlighting and diagrams.
+
+General sample Markdown comes from the repository's `corpus/documents`. Focused syntax and regression cases retain purpose-built inputs, including CJK, footnotes, unsafe URLs and cancellation sequences. Performance Lab measurements describe their own framework and environment; they are not cross-framework rankings.
+
+## Documentation
+
+Read the [repository README]({REPO_URL}), [architecture]({DOCS_LINKS.architecture}) and the framework package READMEs for installation and API contracts. This catalog demonstrates live behavior; the guides remain the source for integration instructions.
+
+QA stories remain available during development. Public exports hide their navigation entries but still retain their indexed stories and browser assertions. The composition entry does not replace the separate React and Vue test suites.

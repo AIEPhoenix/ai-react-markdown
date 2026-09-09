@@ -112,7 +112,7 @@ function RemendSmoke() {
 }
 
 const meta: Meta<typeof RemendSmoke> = {
-  title: 'Core/QA/Remend',
+  title: 'QA/Remend',
   tags: ['qa'],
   component: RemendSmoke,
   parameters: {

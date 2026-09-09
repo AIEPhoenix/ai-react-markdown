@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import MantineAIMarkdown from '../../src/index';
 import { withMantineProvider } from '../decorators';
-import { coreArgTypes } from '../../../react/stories/_shared/argTypes';
+import { reactArgTypes } from '@ai-markdown/storybook-kit/react/argTypes';
 
 export type MantineMeta = Meta<typeof MantineAIMarkdown>;
 export type MantineStory = StoryObj<typeof MantineAIMarkdown>;
@@ -12,7 +12,7 @@ export type MantineStory = StoryObj<typeof MantineAIMarkdown>;
  * typography-variant control would be inert here.
  */
 export const mantineArgTypes: NonNullable<MantineMeta['argTypes']> = {
-  ...coreArgTypes,
+  ...reactArgTypes,
   codeBlock: {
     control: 'object',
     description:
@@ -22,7 +22,7 @@ export const mantineArgTypes: NonNullable<MantineMeta['argTypes']> = {
 };
 
 /**
- * Everything a Mantine meta shares. Same rule as `baseCoreMeta`: spread it,
+ * Everything a Mantine meta shares. Same rule as `baseReactMeta`: spread it,
  * then write `title` and `tags` as literal properties.
  *
  * No themed render wrapper here — `<MantineAIMarkdown>` reads Mantine's own

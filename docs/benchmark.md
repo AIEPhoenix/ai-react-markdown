@@ -11,7 +11,7 @@ There are three measurement tools with different scopes: Storybook comparison st
 ## Methodology
 
 - **Harness**: the Storybook A/B stories under
-  `Core/Performance Lab/Streaming Comparisons` —
+  `React → Performance Lab → Streaming Comparisons` —
   `BlockMemoCompare`, `IncrementalParseCompare`, `BoostCompare` (plus
   `*Isolated` process-isolated variants, not used for this run — same-page
   is the fairest JS-layer A/B since both sides share one main thread and
@@ -158,7 +158,7 @@ Manual (the comparison stories drive the real renderer in a browser):
 pnpm storybook   # → http://localhost:6006
 ```
 
-Open `Core/Performance Lab/Streaming Comparisons` → `BlockMemoCompare` / `IncrementalParseCompare` /
+Open `React → Performance Lab → Streaming Comparisons` → `BlockMemoCompare` / `IncrementalParseCompare` /
 `BoostCompare` / `CrossChunkIncrementalCompare`; set payload scale, turn
 spies off, hit **Run ×3**; read the verdict banner (block-memo axis) or the
 summary strip (incremental/boost/cross-chunk axes). For per-side
