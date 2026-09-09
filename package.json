@@ -24,13 +24,15 @@
     "preflight": "pnpm check:overrides && pnpm check:soak-coverage && pnpm lint && pnpm format:check && pnpm build && pnpm check:public-api && pnpm test:core-contracts && pnpm test:soak-control && pnpm test:release-control && pnpm packcheck && pnpm -r typecheck && pnpm typecheck && pnpm vitest run && pnpm test:document-lifetime && pnpm test:vue-browser && pnpm test:packed-consumers",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
-    "test:soak-control": "node --test scripts/soak/soak-control.test.mjs",
+    "test:soak-control": "node --test scripts/soak/soak-control.test.mjs scripts/soak/impact.test.mjs",
     "test:document-lifetime": "node scripts/test-document-scope-lifetime.mjs",
     "test:packed-consumers": "node scripts/check-packed-consumers.mjs",
     "check:public-api": "node scripts/check-public-api.mjs",
     "test:vue-browser": "node scripts/test-vue-browser.mjs",
     "test:release-control": "node --test scripts/publish-packages.test.mjs",
-    "test:core-contracts": "node scripts/check-core-contracts.mjs"
+    "test:core-contracts": "node scripts/check-core-contracts.mjs",
+    "check:soak-impact": "node scripts/soak/impact.mjs",
+    "check:release-soak": "node scripts/soak/check-release.mjs"
   },
   "keywords": [
     "react",
@@ -82,6 +84,7 @@
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.58.2",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.11",
+    "yaml": "2.9.0"
   }
 }

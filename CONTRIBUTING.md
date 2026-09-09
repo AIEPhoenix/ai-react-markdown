@@ -107,7 +107,7 @@ ledger entries without shard counts conservatively reserve 100 seeds per leg.
 A reservation lock left by an abruptly killed metadata process fails closed;
 confirm that no metadata writer is active before removing that stale lock.
 
-A green soak is a **release** gate, not a per-PR one; CI does not run it. If your PR changes engine behavior, say in the description whether you ran it and what the result was.
+A green soak is an **engine-impacting release** gate, not a per-PR one; CI does not execute the full campaign. `pnpm check:soak-impact` determines whether the committed candidate needs it. Validate local evidence with `pnpm check:release-soak --evidence <run-dir>...`; release CI waits for `soak-approval` when required. See [soak coverage](./docs/soak-coverage.md) for trigger rules, evidence reuse, and reviewer responsibilities. If your PR changes engine behavior, say in the description whether you ran it and what the result was.
 
 #### Where a number goes
 

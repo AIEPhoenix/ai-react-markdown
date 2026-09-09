@@ -1,7 +1,9 @@
+import { startVueStress } from './stress.fixture';
 import { createApp, createSSRApp, defineComponent, h, nextTick, reactive } from 'vue';
 import type { MarkdownElementContext } from '../types';
 import { AIMarkdown, AIMarkdownDocuments, AIMarkdownSmoothStream } from '../index';
 
+startVueStress();
 const initial = '# Hydration\n\n**bold** $x^2$\n\nlocal[^x]\n\n[^x]: body';
 const hydration = createSSRApp({ render: () => h(AIMarkdown, { content: initial }) });
 hydration.mount('#hydration');

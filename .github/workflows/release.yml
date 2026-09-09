@@ -55,8 +55,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
-    name: Verify & publish
+  verify:
+    name: Verify release
+    outputs:
+      soak_required: ${{ steps.soak.outputs.required }}
     runs-on: ubuntu-latest
 
     steps:
@@ -80,6 +82,11 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # Full campaigns run locally; required impact gates publication on human review.
+      - name: Assess engine soak requirement
+        id: soak
+        run: pnpm check:soak-impact
 
       - name: Verify tag matches package version
         run: node scripts/check-release.mjs "$RELEASE_TAG"
@@ -150,6 +157,42 @@ jobs:
 
       - name: Vue browser adapter contracts
         run: pnpm test:vue-browser
+
+  soak-approval:
+    name: Confirm local engine soak passed
+    needs: verify
+    if: needs.verify.outputs.soak_required == 'true'
+    runs-on: ubuntu-latest
+    environment: soak-approval
+    permissions: {}
+    steps:
+      - name: Record confirmation
+        run: echo "Maintainer approved local release-profile soak evidence for this candidate." >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    name: Publish verified release
+    needs: [verify, soak-approval]
+    if: >-
+      always() && !cancelled() && needs.verify.result == 'success' &&
+      ((needs.verify.outputs.soak_required == 'false' && needs.soak-approval.result == 'skipped') ||
+       (needs.verify.outputs.soak_required == 'true' && needs.soak-approval.result == 'success'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout verified workflow commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Setup pnpm + Node
+        uses: pnpm/setup@v2
+        with:
+          runtime: node@22.23.2
+          cache: true
+          install: false
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build verified sources
+        run: pnpm build
 
       # pnpm delegates the actual upload to the npm CLI, and the OIDC token
       # exchange happens there — npm 10.x (bundled with Node 22) predates

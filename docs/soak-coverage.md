@@ -38,3 +38,25 @@ Replace the placeholder directories with the actual run directories. Do not infe
 ## Related records
 
 The [prefix-freeze experiment](../packages/engine/src/experiments/prefixFreeze/README.md) explains the boundary study and the evolution of the verification stack. The [architecture guide](./architecture.md) identifies the production pipeline. Historical soak sizes in release notes describe those releases; the current coverage map and runner define the present release contract.
+
+## When a release needs engine soak
+
+The six legs execute engine tests. They do not directly validate core state management or framework adapters. Changes confined to core, React, Vue, Mantine, documentation, or package version metadata use their corresponding CI gates and do not by themselves require another engine campaign.
+
+Run `pnpm check:soak-impact` to compare the committed candidate with its nearest preceding train tag. Use `--base <commit-or-tag> --head <commit>` to inspect an explicit ancestor range. Engine and highlight runtime changes, runtime exports, engine tests and build configuration, relevant transitive lockfile dependencies, shared toolchain changes, and changes to the soak mechanism require verification. Comments and erased TypeScript types are ignored. Unresolvable dependency impact or a missing prior train tag requires soak; an invalid Git range fails the check.
+
+Full campaigns run on developer equipment. After committing a clean candidate, run `SOAK_PROFILE=release scripts/soak/soak.sh <fresh-seed-base> <label>` with a fresh seed. The default six legs and 14 logical shards define 84 tasks; `WORKERS` changes concurrency without reducing the logical budget. Validate the resulting evidence against the release candidate with:
+
+```sh
+pnpm check:release-soak --evidence .soak-logs/<run-id>
+```
+
+Multiple directories may follow `--evidence` for split campaigns. The command checks the release profile and requires each tested commit to be an ancestor of the candidate with no intervening engine-impacting changes. Documentation or adapter follow-ups can reuse valid evidence; new engine-impacting changes require a new campaign. Keep the manifests and reports available to the release reviewer. They are generated evidence, not source documents to commit.
+
+## Manual release approval
+
+The release workflow first completes its automated quality checks and reports the comparison baseline, candidate SHA, and soak trigger reasons in the workflow summary. If soak is required, a separate job waits for approval of the `soak-approval` GitHub environment. Publication depends on successful verification and, when required, successful approval. Rejected, cancelled, or missing approval cannot publish. Releases without engine impact skip this approval job.
+
+Before approving, the reviewer must confirm that `pnpm check:release-soak` passed for the candidate and that the complete fresh campaign passed all required legs. Include the tested SHA, run identifiers, and a report location or result summary in the approval comment. Approval attests that the evidence was reviewed; CI does not independently inspect files kept only on the developer's machine. If evidence fails, reject the job and fix the candidate before starting another release run.
+
+Repository administrators must configure **Settings → Environments → soak-approval → Required reviewers**. Merely referencing an environment in YAML does not enable required review. The current maintenance model permits the release initiator to approve their own run; administrator bypass is disabled. The approval job is separate from the npm publishing job, so it does not add an environment requirement to existing npm trusted publisher configurations. Manual release recovery follows the same gate.

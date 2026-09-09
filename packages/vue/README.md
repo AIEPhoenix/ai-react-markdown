@@ -162,3 +162,11 @@ pnpm test:packed-consumers
 Unit tests exercise SSR, sanitization, custom rendering and lifecycle publication/release. Browser tests cover the three planned acceptance paths: standalone hydration; cross-chunk references and document switching; customization, smooth waiting/drain and cursor layout. Packed consumers load ESM/CJS in both export conditions, compile installed declarations and resolve CSS outside the workspace.
 
 This implementation does not claim React/Mantine UI parity: Mantine remains React-only, and Vue has no built-in Mermaid/code-toolbar integration. Nuxt-specific packaging, KeepAlive/Suspense combinations and additional browser engines require their own integration coverage before being advertised. Parsing correctness continues to use the repository's shared oracle and release soak gates.
+
+## Browser stress verification
+
+After building the workspace, run `pnpm test:vue-browser` from the repository root. This command is included in CI, release verification, and local preflight. It checks hydration, cross-chunk references, custom rendering, smooth-stream turn-taking, and cursor placement in Chromium.
+
+The same command keeps a document provider mounted through 24 document lifecycles and 288 append updates. It checks that queued chunks wait for their predecessor, completion drains correctly, cancelling a producing predecessor releases its successor, replacement and document switches update the rendered result, and unmount releases every instrumented document subscription. Weak references to actual registries and smooth coordinators must clear after forced garbage collection while the provider remains mounted. This catches retained document state without relying on a noisy absolute heap-size threshold.
+
+These are bounded browser regressions, not an engine equivalence soak or a proof of unlimited-session memory stability. They do not establish behavior in other browsers, Nuxt, KeepAlive, or Suspense. The engine's separate six-leg campaign does not substitute for these Vue lifecycle checks.
