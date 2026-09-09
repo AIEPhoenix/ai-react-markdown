@@ -226,3 +226,9 @@ The workflow also creates the GitHub release, with notes taken from the version'
 - Ideas / proposals → [Discussions / Ideas](https://github.com/ai-markdown/ai-markdown/discussions/categories/ideas)
 - Bugs → [Issues](https://github.com/ai-markdown/ai-markdown/issues/new/choose)
 - Security → [Private advisory](https://github.com/ai-markdown/ai-markdown/security/advisories/new)
+
+## Documentation language and scope
+
+Commit reader-facing documentation in English, including READMEs, usage/API references, architecture explanations, and contributor/testing guides. Use English for explanatory code comments and PR descriptions as well. Preserve non-English strings when they are meaningful CJK examples, test fixtures, or source data; explain their behavior in English.
+
+Keep internal planning matrices, agent instructions and scratch notes, execution/status logs, and review-process records local. Do not commit them under `docs/` or elsewhere in the repository. Use the ignored `.local-notes/` directory for local material. Extract durable contracts or contributor instructions into the appropriate public guide without carrying over the internal work log. Test fixtures, API snapshots, and license notices are repository assets with their own purposes, not internal planning documents.

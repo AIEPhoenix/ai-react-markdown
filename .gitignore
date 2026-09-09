@@ -25,3 +25,9 @@ benchmarks/results/
 # Local review notes must stay out of the repository.
 /docs/review/
 /docs/reviews/
+
+# Internal planning, agent state, and execution records are local only.
+/.local-notes/
+/.orca/
+/docs/plan/
+/docs/plans/

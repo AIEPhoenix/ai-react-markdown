@@ -68,7 +68,7 @@ SSR does not run the registration effects and retains local footnote behavior. T
 
 Engine, core, react and react-mantine use one version train starting at `3.0.0-beta.1`, published under `beta`. The highlight plugin remains on its independent 1.x line; the existing rehype/raw forks retain their own repositories and upstream-related versions. A beta release must not move the npm `latest` tag or become a stable GitHub release.
 
-Advanced engine/core contracts may evolve during beta. Test fixtures and implementation containers are excluded from the public root. Framework apps should avoid importing source paths or undocumented helpers. Stable 3.0.0 requires signature review, supported consumer checks and the complete release gate. See the [approved package and release plan](./plans/ai-markdown-packages-and-release.md).
+Advanced engine/core contracts may evolve during beta. Test fixtures and implementation containers are excluded from the public root. Framework apps should avoid importing source paths or undocumented helpers. Stable 3.0.0 requires signature review, supported consumer checks and the complete release gate. See the [architecture guide](./architecture.md) for package ownership.
 
 The repository transfer is complete. Each new npm package still needs its own first-publication credentials and trusted-publisher configuration for organization `ai-markdown`, repository `ai-markdown`, workflow `release.yml`. Organization ownership alone does not create those configurations. Releases retain provenance and use CI as the publication path.
 
@@ -82,6 +82,6 @@ That experiment has no complete HAST-to-VNode renderer, DOM hydration, slots, st
 
 ## Documentation site
 
-The dedicated site follows this package migration. It should provide shared concepts, framework-specific installation and examples, API reference, streaming and customization guides, security policy, architecture/contributor pages and a versioned legacy path. The repository plan records the page mapping; no public site or domain is claimed by this beta.
+The dedicated site follows this package migration. It should provide shared concepts, framework-specific installation and examples, API reference, streaming and customization guides, security policy, architecture/contributor pages and a versioned legacy path. No public site or domain is claimed by this beta.
 
 Package READMEs continue to include complete installation, minimal examples, environment requirements and important limitations. Legacy 1.x-to-2.x guidance remains historical material; new users should start with the current framework README and this migration guide.
