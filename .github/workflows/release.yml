@@ -205,10 +205,12 @@ jobs:
       # npm gives every publish `latest` unless told otherwise (2026-08-19
       # review r2 P2-16). The dist-tag is the pre-release identifier's first
       # word (`beta.1` → `beta`, `rc.2` → `rc`), `next` when it has none.
+      # The beta.2 tag creates Vue for the first time. Only Vue receives the
+      # temporary token; existing packages retain their OIDC publishers.
       - name: Publish to npm (provenance; first beta token or OIDC)
         env:
-          FIRST_PUBLISH_NPM_TOKEN: ${{ (inputs.bootstrap_vue || (inputs.release_tag || github.ref_name) == 'v3.0.0-beta.1') && secrets.FIRST_PUBLISH_NPM_TOKEN || '' }}
-          FIRST_PUBLISH_PACKAGE: ${{ inputs.bootstrap_vue && '@ai-markdown/vue' || '' }}
+          FIRST_PUBLISH_NPM_TOKEN: ${{ (inputs.bootstrap_vue || (inputs.release_tag || github.ref_name) == 'v3.0.0-beta.1' || (inputs.release_tag || github.ref_name) == 'v3.0.0-beta.2') && secrets.FIRST_PUBLISH_NPM_TOKEN || '' }}
+          FIRST_PUBLISH_PACKAGE: ${{ (inputs.bootstrap_vue || (inputs.release_tag || github.ref_name) == 'v3.0.0-beta.2') && '@ai-markdown/vue' || '' }}
         run: |
           node scripts/publish-packages.mjs "$RELEASE_TAG"
 

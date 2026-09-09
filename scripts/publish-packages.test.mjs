@@ -57,6 +57,7 @@ globalThis.fetch = async (url) => {
  const pkg = JSON.parse(fs.readFileSync('packages/' + name + '/package.json'));
  const published = fs.existsSync('state/' + name);
  const tags = { [pkg.version.includes('-') ? 'beta' : 'latest']: pkg.version };
+ if (process.env.SIMULATE_LATEST === name) tags.latest = pkg.version;
  if (decoded.startsWith('-/package/')) return Response.json(tags);
  if (!published) return new Response('', { status: 404 });
  const manifest = { name: pkg.name, version: pkg.version, dist: { tarball: 'https://example.invalid/packed.tgz' } };
@@ -81,6 +82,15 @@ globalThis.fetch = async (url) => {
     for (const name of packages.filter((name) => name !== 'vue'))
       assert.equal(readFileSync(join(root, 'state', name), 'utf8'), 'pnpm');
     assert(!readdirSync(join(root, 'runner/first-publish-packs')).includes('first-publish.npmrc'));
+    const run = (name) =>
+      execFileSync(
+        process.execPath,
+        ['--import', join(root, 'mock.mjs'), 'scripts/publish-packages.mjs', 'v' + version],
+        { cwd: root, env: { ...env, SIMULATE_LATEST: name }, stdio: 'pipe', timeout: 15000 }
+      );
+    if (version === '3.0.0-beta.2')
+      assert.match(run('vue').toString(), /Retaining approved first-publication latest tag/);
+    assert.throws(() => run('react'), /remove the unintended latest dist-tag/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -89,7 +89,13 @@ for (const directory of directories) {
   const { name, version } = JSON.parse(readFileSync(`packages/${directory}/package.json`, 'utf8'));
   if (!version.includes('-')) continue;
   const tags = await metadata(`-/package/${name.replace('/', '%2f')}/dist-tags`);
-  if (tags?.latest === version) unexpectedLatest.push(name);
+  if (tags?.latest === version) {
+    // Maintainer-approved exception for Vue's first publication only.
+    // Later prereleases and every other package retain strict tag checks.
+    if (name === '@ai-markdown/vue' && version === '3.0.0-beta.2') {
+      console.log(`Retaining approved first-publication latest tag: ${name}@${version}`);
+    } else unexpectedLatest.push(name);
+  }
 }
 assert.equal(
   unexpectedLatest.length,
