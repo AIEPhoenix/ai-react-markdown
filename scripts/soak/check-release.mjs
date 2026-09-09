@@ -6,14 +6,15 @@ import { URL, fileURLToPath } from 'node:url';
 import { inspect } from './impact.mjs';
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const args = process.argv.slice(2);
-const value = (flag) => {
-  const at = args.indexOf(flag);
-  return at < 0 ? undefined : args[at + 1];
-};
+if (args.length && (args[0] !== '--evidence' || args.length < 2 || args.slice(1).some((arg) => arg.startsWith('--')))) {
+  throw new Error(
+    'Usage: check-release-soak [--evidence <run-dir>...]. Release validation always checks HEAD against the preceding train tag; use check:soak-impact for custom audit ranges.'
+  );
+}
 if (execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).trim()) {
   throw new Error('Release soak validation requires a clean worktree. Commit the candidate first.');
 }
-const result = inspect(value('--base'), value('--head') ?? 'HEAD', root);
+const result = inspect(undefined, 'HEAD', root);
 console.log(JSON.stringify(result, null, 2));
 if (!result.required) {
   console.log('Release soak: NOT REQUIRED for this change range. Core and adapter gates still apply.');

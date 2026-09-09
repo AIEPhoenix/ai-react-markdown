@@ -107,11 +107,15 @@ export function classify(paths, before, after) {
       };
       if (inputs(a) !== inputs(b)) reasons.push(`${file}: package manager or soak entry points changed`);
     } else if (/^\.github\/workflows\/(release|ci)\.yml$/.test(file)) {
-      const runtimes = (text) =>
-        [...text.matchAll(/runtime:\s*(\S+)/g)]
-          .map((m) => m[1])
-          .filter((v, i, all) => all.indexOf(v) === i)
+      const runtimes = (text) => {
+        const workflow = parse(text) ?? {};
+        return Object.entries(workflow.jobs ?? {})
+          .flatMap(([id, job]) => [
+            ...(job.steps ?? []).filter((step) => step.with?.runtime).map((step) => `${id}:${step.with.runtime}`),
+            ...(job.strategy?.matrix?.node ?? []).map((node) => `${id}:matrix:${node}`),
+          ])
           .sort();
+      };
       if (canonical(runtimes(a)) !== canonical(runtimes(b))) reasons.push(`${file}: Node runtime changed`);
     } else if (/^packages\/(engine|remark-mark-highlight)\/package.json$/.test(file)) {
       if (!a || !b || manifestInputs(a) !== manifestInputs(b))

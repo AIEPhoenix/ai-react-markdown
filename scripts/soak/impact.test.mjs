@@ -1,3 +1,4 @@
+/* global process */
 import { URL } from 'node:url';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -64,7 +65,14 @@ test('lockfile impact follows engine transitive dependencies, not unrelated impo
 
 test('runtime exports and release Node changes require soak', () => {
   assert.equal(check('packages/engine/src/index.ts', 'export * from "./x";', 'export * from "./y";'), true);
-  assert.equal(check('.github/workflows/release.yml', 'runtime: node@22', 'runtime: node@24'), true);
+  assert.equal(
+    check(
+      '.github/workflows/release.yml',
+      'jobs: {build: {steps: [{with: {runtime: node@22}}]}}',
+      'jobs: {build: {steps: [{with: {runtime: node@24}}]}}'
+    ),
+    true
+  );
 });
 
 test('publication fails closed for failed checks, missing impact, rejected or cancelled approval', async () => {
@@ -136,4 +144,26 @@ test('Git evidence ranges allow adapter follow-ups but invalidate engine changes
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('matrix Node upgrades require new verification', () => {
+  assert.equal(
+    check(
+      '.github/workflows/ci.yml',
+      'jobs: {ci: {strategy: {matrix: {node: [22.23.2]}}}}',
+      'jobs: {ci: {strategy: {matrix: {node: [24.20.0]}}}}'
+    ),
+    true
+  );
+});
+test('release validation rejects custom baselines before evidence inspection', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const { fileURLToPath } = await import('node:url');
+  const result = spawnSync(
+    process.execPath,
+    [fileURLToPath(new URL('./check-release.mjs', import.meta.url)), '--base', 'HEAD'],
+    { encoding: 'utf8' }
+  );
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /always checks HEAD against the preceding train tag/);
 });

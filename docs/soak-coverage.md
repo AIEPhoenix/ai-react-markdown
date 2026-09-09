@@ -53,7 +53,7 @@ Full campaigns run on developer equipment. After committing a clean candidate, r
 pnpm check:release-soak --evidence .soak-logs/<run-id>
 ```
 
-Multiple directories may follow `--evidence` for split campaigns. The command checks the release profile and requires each tested commit to be an ancestor of the candidate with no intervening engine-impacting changes. Documentation or adapter follow-ups can reuse valid evidence; new engine-impacting changes require a new campaign. Keep the manifests and reports available to the release reviewer. They are generated evidence, not source documents to commit.
+Release validation always uses the clean checked-out `HEAD` and its preceding train tag; it does not accept custom baseline or candidate overrides. Use `check:soak-impact` for exploratory range comparisons. Multiple directories may follow `--evidence` for split campaigns. The command checks the release profile and requires each tested commit to be an ancestor of the candidate with no intervening engine-impacting changes. Documentation or adapter follow-ups can reuse valid evidence; new engine-impacting changes require a new campaign. Keep the manifests and reports available to the release reviewer. They are generated evidence, not source documents to commit.
 
 ## Manual release approval
 
