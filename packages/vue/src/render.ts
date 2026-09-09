@@ -95,18 +95,34 @@ export function renderTree(tree: Root, options: RenderOptions): VNodeChild[] {
       const suffix = occurrence !== null && occurrence > 1 ? `-${occurrence}` : '';
       const prefix = options.clobberPrefix;
       const safe = footnoteSafeId(label);
-      return h('sup', [
-        h(
-          'a',
-          {
-            href: `#${prefix}fn-${safe}`,
-            id: occurrence !== null || local === null ? `${prefix}fnref-${safe}${suffix}` : undefined,
-            'data-footnote-ref': '',
-            'aria-describedby': globalNumber === null ? `${prefix}footnote-label` : undefined,
-          },
-          String(number)
-        ),
-      ]);
+      // Materialized placeholders must use the same URL policy and element
+      // overrides as ordinary HAST, including after mounted coordination.
+      return renderTree(
+        {
+          type: 'root',
+          children: [
+            {
+              type: 'element',
+              tagName: 'sup',
+              properties: {},
+              children: [
+                {
+                  type: 'element',
+                  tagName: 'a',
+                  properties: {
+                    href: `#${prefix}fn-${safe}`,
+                    id: occurrence !== null || local === null ? `${prefix}fnref-${safe}${suffix}` : undefined,
+                    dataFootnoteRef: '',
+                    ariaDescribedBy: globalNumber === null ? [`${prefix}footnote-label`] : undefined,
+                  },
+                  children: [{ type: 'text', value: String(number) }],
+                },
+              ],
+            },
+          ],
+        },
+        options
+      );
     }
     if (node.tagName === 'cross-chunk-link' || node.tagName === 'cross-chunk-image') {
       const image = node.tagName === 'cross-chunk-image';

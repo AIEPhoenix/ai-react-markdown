@@ -1,4 +1,5 @@
 import { createApp, createSSRApp, defineComponent, h, nextTick, reactive } from 'vue';
+import type { MarkdownElementContext } from '../types';
 import { AIMarkdown, AIMarkdownDocuments, AIMarkdownSmoothStream } from '../index';
 
 const initial = '# Hydration\n\n**bold** $x^2$\n\nlocal[^x]\n\n[^x]: body';
@@ -31,7 +32,28 @@ const app = createApp({
     h('main', [
       h(AIMarkdownDocuments, null, {
         default: () => [
-          h(AIMarkdown, { content: state.reference, documentId: state.doc, documentIndex: 0, id: 'reference' }),
+          h(
+            AIMarkdown,
+            {
+              content: state.reference,
+              documentId: state.doc,
+              documentIndex: 0,
+              id: 'reference',
+              urlTransform: (url: string) => (url.startsWith('#') ? '/reader' + url : url),
+              components: {
+                sup: defineComponent({
+                  setup:
+                    (_props, { slots }) =>
+                    () =>
+                      h('sup', { 'data-custom': 'yes' }, slots.default?.()),
+                }),
+              },
+            },
+            {
+              a: ({ properties, children }: MarkdownElementContext) =>
+                h('a', { ...properties, 'data-slot': 'yes' }, children),
+            }
+          ),
           state.show
             ? h(AIMarkdown, { content: state.definition, documentId: state.doc, documentIndex: 1, id: 'definition' })
             : null,

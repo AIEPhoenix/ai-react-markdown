@@ -69,6 +69,9 @@ try {
   assert.equal(await page.locator('#reference [data-footnotes]').count(), 0);
   assert.equal(await page.locator('#definition [data-footnotes]').count(), 1);
   assert.equal(await page.locator('#reference [data-footnote-ref]').innerText(), '1');
+  assert((await page.locator('#reference [data-footnote-ref]').getAttribute('href')).startsWith('/reader#'));
+  assert.equal(await page.locator('#reference sup[data-custom="yes"] [data-footnote-ref][data-slot="yes"]').count(), 1);
+
   assert(await page.locator('#hydration .katex').count());
   await page.evaluate(() =>
     window.vueProbe.update({ definition: '[url]: https://example.com/two\n\n[^x]: updated body' })

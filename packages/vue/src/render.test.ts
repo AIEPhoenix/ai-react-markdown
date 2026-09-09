@@ -1,3 +1,5 @@
+import { sanitizeSchema, createRegistry } from '@ai-markdown/engine';
+import { renderTree } from './render';
 import { describe, it, expect } from 'vitest';
 import { createSSRApp, h, defineComponent } from 'vue';
 import { renderToString } from '@vue/server-renderer';
@@ -76,4 +78,55 @@ describe('Vue SSR contracts', () => {
     const other = await render('missing[^x]');
     expect(other).not.toContain('body');
   });
+});
+
+it('applies URL policy and element overrides to coordinated footnote marks', async () => {
+  const registry = createRegistry();
+  const calls: string[] = [];
+  const html = await renderToString(
+    createSSRApp({
+      render: () =>
+        h(
+          'main',
+          renderTree(
+            {
+              type: 'root',
+              children: [
+                {
+                  type: 'element',
+                  tagName: 'footnote-sup',
+                  properties: { label: 'N', localNumber: 1, localOccurrence: 1 },
+                  children: [],
+                },
+              ],
+            },
+            {
+              registry,
+              sym: null,
+              clobberPrefix: 'doc-',
+              sanitizeSchema,
+              urlTransform: (url) => {
+                calls.push(url);
+                return '/reader' + url;
+              },
+              components: {
+                sup: defineComponent({
+                  setup:
+                    (_props, { slots }) =>
+                    () =>
+                      h('sup', { 'data-custom': 'yes' }, slots.default?.()),
+                }),
+              },
+              slots: { a: ({ properties, children }) => [h('a', { ...properties, 'data-slot': 'yes' }, children)] },
+              streaming: false,
+              metadata: undefined,
+            }
+          )
+        ),
+    })
+  );
+  expect(calls).toEqual(['#doc-fn-n']);
+  expect(html).toContain('href="/reader#doc-fn-n"');
+  expect(html).toContain('data-custom="yes"');
+  expect(html).toContain('data-slot="yes"');
 });

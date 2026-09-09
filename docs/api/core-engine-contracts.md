@@ -88,4 +88,14 @@ engine controller 控制单个 source 的可见前缀；core coordinator 决定 
 
 2026-09-09，工作区候选 3.0.0-beta.2：构建、lint/format、发布控制测试、attw/publint、递归与 Storybook 类型检查通过；完整 Vitest 为 154 个文件、1,990 个测试通过。React Chromium 生命周期/GC 与 Vue 三条浏览器验收路径通过。实际 tarball 在外部工作区完成 ESM/CJS、dev/prod、SSR、CSS、TypeScript 消费，并额外在 Vue 3.5.0 与匹配的 server-renderer 上验证 SSR 和类型兼容。常规工作区 Vue 版本为 3.5.42，执行 Node 为 24.20.0。
 
-首轮检查修复了 CSS 检查配置、公开类型推导和测试 fixture 类型问题；最终相关检查均通过。release soak 尚未对本候选重新执行，npm Vue 首发和稳定版发布尚未进行。既有 beta.1 的 latest 标签清理与 GitHub 预发布仍是独立待办。
+首轮检查修复了 CSS 检查配置、公开类型推导和测试 fixture 类型问题；最终相关检查均通过。release soak 尚未对本候选重新执行，npm Vue 首发和稳定版发布尚未进行。既有 beta.1 已完成 GitHub 预发布；维护者已明确接受四个 beta 包暂时保留 latest 标签。
+
+## PR #56 复核（2026-09-09）
+
+复核范围包括显式导出与声明快照、共享树所有权、Vue 注册/订阅/释放及微任务顺序、SSR 初始状态、引用与脚注转换、平滑流式协调、光标观察器，以及 Vue 首发凭据隔离。此次复核确认并修复一项 P2：协调路径的 `footnote-sup` 直接创建 VNode，跳过最终 URL 转换与 `a` / `sup` 自定义组件、slot。结果是同一脚注在普通 HAST 路径与协调路径使用不同的链接或元素配置。
+
+修复先将脚注占位符物化为普通 HAST，再进入统一渲染转换。新增回归先复现 URL 回调未调用，再验证回调只执行一次且组件与 slot 均生效；Chromium 中的真实跨块脚注同时验证重写后的链接与自定义元素。对外声明没有变化。
+
+复核后的全量单元检查通过 110 个文件、1,883 个测试，发布认证隔离测试通过。Vue 构建、类型检查、公共声明快照及 Chromium hydration/跨块引用/文档切换/流式/光标/卸载检查通过。上一节的 1,990 个测试是前一候选包含 Storybook 的完整结果，不能与本次单元测试计数直接比较。
+
+此复核没有宣告稳定版兼容性。发布前仍需对最终候选执行新的 release soak；Vue 首发还应观察 npm 是否自动添加 latest，当前发布脚本会对此报错，beta.1 的人工接受记录不会自动放宽后续版本的检查。Nuxt、KeepAlive、Suspense 与更多浏览器仍属于未验证范围。
