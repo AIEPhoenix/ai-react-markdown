@@ -17,7 +17,9 @@ concurrency:
 
 jobs:
   soak-impact:
-    name: Engine soak requirement
+    name: Assess engine soak impact
+    outputs:
+      required: ${{ steps.impact.outputs.required }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout candidate and release history
@@ -35,7 +37,28 @@ jobs:
       # Report the candidate's cumulative impact since the preceding train tag.
       # This job does not execute soak or approve a release.
       - name: Report engine soak requirement
+        id: impact
         run: pnpm check:soak-impact
+
+  soak-status:
+    name: >-
+      ${{ needs.soak-impact.outputs.required == 'true' && '⚠ Engine soak REQUIRED before release' ||
+          needs.soak-impact.outputs.required == 'false' && '✓ Engine soak NOT REQUIRED' ||
+          '⚠ Engine soak assessment UNAVAILABLE' }}
+    needs: soak-impact
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    permissions: {}
+    env:
+      SOAK_REQUIRED: ${{ needs.soak-impact.outputs.required }}
+    steps:
+      - name: Surface decision in the PR check list
+        run: |
+          case "$SOAK_REQUIRED" in
+            true) echo "Engine soak is REQUIRED before release. This successful reporting check is not soak evidence. Complete the local release profile and approve the release gate." >> "$GITHUB_STEP_SUMMARY" ;;
+            false) echo "Engine soak is NOT REQUIRED for the assessed range. Release CI reassesses the final candidate." >> "$GITHUB_STEP_SUMMARY" ;;
+            *) echo "::error::Engine soak assessment is unavailable; do not infer that soak is unnecessary."; exit 1 ;;
+          esac
 
   ci:
     name: ${{ matrix.task }} (Node ${{ matrix.node }})
