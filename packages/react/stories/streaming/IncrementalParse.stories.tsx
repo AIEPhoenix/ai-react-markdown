@@ -23,7 +23,7 @@ import { buildChunkSources, sliceChunkContents } from './crossChunkFixtures';
 import 'katex/dist/katex.min.css';
 import '../../src/components/typography/variants/all.scss';
 import { DEFAULT_PAYLOAD, withDefs } from './scenarios';
-import { codePointSnapshots } from '@ai-markdown/engine';
+import { codePointSnapshots } from '../../../engine/src/components/incrementalParse/codePointSnapshots';
 import { normalizeClobberPrefix, useDomEqualityStats } from './useDomEqualityStats';
 
 /** Shared documentId so both sides emit identical clobber-prefixed ids. */

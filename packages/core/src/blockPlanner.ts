@@ -3,6 +3,13 @@ import type { Root as HastRoot } from 'hast';
 import { visit } from 'unist-util-visit';
 import { buildBlocks, type BuildBlocksOptions, type BuildBlocksResult, type RenderItem } from './blockPlan';
 
+export type BlockPlanner = (
+  mdast: MdastRoot,
+  hast: HastRoot,
+  source: string,
+  options?: BuildBlocksOptions
+) => BuildBlocksResult;
+
 const UNPAIRED_TYPES = new Set(['html', 'definition', 'footnoteDefinition']);
 
 /** Reuse the engine's retained prefix plans, including reference blocks.
@@ -12,7 +19,7 @@ const UNPAIRED_TYPES = new Set(['html', 'definition', 'footnoteDefinition']);
  * guesses, establish which trees the incremental engine actually retained.
  * Top-level traversal remains O(blocks); reference context still visits the
  * full mdast when needed, while per-block HAST planning is tail-only. */
-export function createBlockPlanner() {
+export function createBlockPlanner(): BlockPlanner {
   let previous:
     | {
         mdast: MdastRoot;

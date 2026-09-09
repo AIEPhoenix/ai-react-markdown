@@ -1,0 +1,160 @@
+// Generated from the built public declaration. Review changes before updating.
+import { Element, RootContent, Root as Root$1, Nodes } from 'hast';
+import { Root } from 'mdast';
+import { Registry, ChunkData, PipelineOptions, AdvanceOptions } from '@ai-markdown/engine';
+export { isFootnoteSection } from '@ai-markdown/engine';
+interface BlockInfo {
+    raw: string;
+    startOffset: number;
+    endOffset: number;
+    startLine: number;
+    startColumn: number;
+    hasReference: boolean;
+    hastDigest?: string;
+    containsFootnoteSection?: boolean;
+    taintLabels?: {
+        footnoteRefLabels: string[];
+        linkRefLabels: string[];
+        imageRefLabels: string[];
+        footnoteDefLabels: string[];
+        footnoteRefLocalCtx?: string;
+        swallowedDefCtx?: string;
+    };
+}
+declare function hasMdastSource(node: Element): boolean;
+declare function computeHtmlBlockDigest(el: Element, source?: string, ownEnd?: number): string;
+declare function computeHtmlBlockDigestWithExtent(el: Element, source?: string, ownEnd?: number): {
+    digest: string;
+    maxEnd: number;
+};
+type RenderItem = {
+    kind: 'block';
+    el: Element;
+    key: string;
+    info: BlockInfo;
+} | {
+    kind: 'inline';
+    el: RootContent;
+    key: string;
+} | {
+    kind: 'synthetic';
+    el: Element;
+    key: string;
+};
+interface BuildBlocksOptions {
+    contextMdast?: Root;
+    phantomFootnoteLabels?: ReadonlySet<string>;
+}
+interface BuildBlocksResult {
+    plan: RenderItem[];
+    globalCtx: string;
+    blocks: BlockInfo[];
+    blockHasts: Element[];
+    synthetic?: Element;
+}
+declare function buildBlocks(mdast: Root, hast: Root$1, source: string, options?: BuildBlocksOptions): BuildBlocksResult;
+declare function computeBlockFingerprint(taintLabels: NonNullable<BlockInfo['taintLabels']>, registry: Registry, thisChunkSym: symbol, clobberPrefix: string): string;
+type BlockPlanner = (mdast: Root, hast: Root$1, source: string, options?: BuildBlocksOptions) => BuildBlocksResult;
+declare function createBlockPlanner(): BlockPlanner;
+interface ContributionRegistry {
+    contributeChunkData(symbol: symbol, data: ChunkData): void;
+}
+interface ContributionOptions {
+    pipeline: {
+        mdast: Root;
+        hast: Root$1;
+    };
+    ownLabels: {
+        footnoteLabels: Set<string>;
+        linkLabels: Set<string>;
+    };
+    registry: ContributionRegistry | null;
+    targetPhantoms: {
+        missingFootnotes: Set<string>;
+        missingLinks: Set<string>;
+    };
+    sym: symbol | null;
+    clobberPrefix: string;
+    chain: readonly unknown[];
+}
+interface ContributionSession {
+    commit(options: ContributionOptions): void;
+}
+declare function createContributionSession(): ContributionSession;
+interface SmoothCoordinator {
+    readonly order: readonly string[];
+    readonly done: ReadonlySet<string>;
+    readonly lastProgressAt: ReadonlyMap<string, number>;
+    readonly version: number;
+    subscribe(cb: () => void): () => void;
+    register(chunkId: string): void;
+    release(chunkId: string): void;
+    markDone(chunkId: string): void;
+    stampProgress(chunkId: string, at: number): void;
+    isReleased(chunkId: string): boolean;
+    earliestBlockerOf(chunkId: string): string | null;
+}
+type GateWarnVerdict = 'warn' | 'rearm' | 'clear';
+declare function evaluateGateWarn(coordinator: SmoothCoordinator, chunkId: string, nowMs: number, thresholdMs: number): GateWarnVerdict;
+declare function createSmoothCoordinator(onEmpty?: () => void): SmoothCoordinator;
+type TailSignal = {
+    kind: 'footnote-def';
+    identifier: string;
+} | {
+    kind: 'invisible-def';
+} | null;
+declare function deriveTailSignal(mdast: Root, contentLength: number): TailSignal;
+declare function buildAggregateTree(registry: Registry, clobberPrefix: string, preserveOrphanReferences?: boolean): Element | null;
+declare function cloneHastForRender<T extends Nodes>(node: T): T;
+interface PipelineTrees {
+    mdast: Root;
+    hast: Root$1;
+}
+interface PipelineSession {
+    reset(): void;
+    parse(options: PipelineFrameOptions): PipelineTrees;
+}
+type RemarkRehypeOptions = NonNullable<PipelineOptions['remarkRehypeOptions']>;
+interface PipelineFrameOptions {
+    content: string;
+    targetPhantoms: {
+        missingFootnotes: Set<string>;
+        missingLinks: Set<string>;
+    };
+    remarkPlugins: PipelineOptions['remarkPlugins'];
+    rehypePlugins: PipelineOptions['rehypePlugins'];
+    remarkRehypeOptions: PipelineOptions['remarkRehypeOptions'];
+    handlers?: RemarkRehypeOptions['handlers'];
+    preserveForBodyHarvest: boolean;
+    documentId: string;
+    provenance: string;
+    incrementalParse: boolean;
+    defListEnabled: boolean;
+    measure?: AdvanceOptions['measure'];
+}
+declare function createPipelineSession(): PipelineSession;
+interface DefinitionLabels {
+    footnoteLabels: ReadonlySet<string>;
+    linkLabels: ReadonlySet<string>;
+}
+type PhantomTargets = PipelineFrameOptions['targetPhantoms'];
+declare function derivePhantomTargets({ content, ownLabels, labels }: {
+    content: string;
+    ownLabels: DefinitionLabels;
+    labels: DefinitionLabels | null;
+}, previous?: PhantomTargets): PhantomTargets;
+interface CoordinationPolicy {
+    mode: 'coordinated' | 'orphan' | 'standalone';
+    handlers: PipelineFrameOptions['handlers'];
+    preserveForBodyHarvest: boolean;
+}
+declare function deriveCoordinationPolicy({ coordinated, registered, preserveOrphanReferences, }: {
+    coordinated: boolean;
+    registered: boolean;
+    preserveOrphanReferences: boolean;
+}, previous?: CoordinationPolicy): CoordinationPolicy;
+type ContributionPolicyInputs = Pick<PipelineFrameOptions, 'remarkPlugins' | 'rehypePlugins' | 'remarkRehypeOptions' | 'handlers' | 'preserveForBodyHarvest' | 'documentId' | 'provenance'> & {
+    clobberPrefix: string;
+};
+declare function buildContributionChain(inputs: ContributionPolicyInputs): readonly unknown[];
+export { type BlockInfo, type BlockPlanner, type BuildBlocksOptions, type BuildBlocksResult, type ContributionOptions, type ContributionPolicyInputs, type ContributionRegistry, type ContributionSession, type CoordinationPolicy, type DefinitionLabels, type GateWarnVerdict, type PhantomTargets, type PipelineFrameOptions, type PipelineSession, type PipelineTrees, type RenderItem, type SmoothCoordinator, type TailSignal, buildAggregateTree, buildBlocks, buildContributionChain, cloneHastForRender, computeBlockFingerprint, computeHtmlBlockDigest, computeHtmlBlockDigestWithExtent, createBlockPlanner, createContributionSession, createPipelineSession, createSmoothCoordinator, deriveCoordinationPolicy, derivePhantomTargets, deriveTailSignal, evaluateGateWarn, hasMdastSource };

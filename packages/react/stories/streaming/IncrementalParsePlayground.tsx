@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import AIMarkdown from '../../src/index';
-import { computeFreezeBoundary, codePointSnapshots, subscribeStageTimings } from '@ai-markdown/engine';
+import { codePointSnapshots } from '../../../engine/src/components/incrementalParse/codePointSnapshots';
+import { computeFreezeBoundary, subscribeStageTimings } from '@ai-markdown/engine';
 import { getStreamingTheme } from './theme';
 import { useDomEqualityStats } from './useDomEqualityStats';
 

@@ -109,3 +109,25 @@ export function getEnginePluginInternals(plugin: AIMarkdownEnginePlugin): Engine
     ? (candidate as EnginePluginInternals)
     : null;
 }
+
+/** Validate the shipped plugin contract without exposing its stage metadata.
+ * This is a configuration guard, not a security credential. Constructing or
+ * serializing plugin objects is unsupported; select the exported catalog.
+ */
+export function isEnginePlugin(value: unknown): value is AIMarkdownEnginePlugin {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<AIMarkdownEnginePlugin & EnginePluginInternals>;
+  const stages: Record<AIMarkdownEnginePluginName, EnginePluginStage> = {
+    highlight: 'extraSyntax',
+    definitionList: 'extraSyntax',
+    removeComments: 'displayOptimize',
+    smartypants: 'displayOptimize',
+    pangu: 'displayOptimize',
+  };
+  return (
+    candidate['~sealed'] === 'ai-react-markdown/engine-plugin' &&
+    typeof candidate.name === 'string' &&
+    Object.hasOwn(stages, candidate.name) &&
+    candidate.stage === stages[candidate.name]
+  );
+}

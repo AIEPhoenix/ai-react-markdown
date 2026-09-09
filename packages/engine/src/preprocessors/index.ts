@@ -33,7 +33,7 @@ const defaultExtraPreprocessors: AIMDContentPreprocessor[] = [];
  */
 export default function preprocessAIMDContent(
   content: string,
-  extraPreprocessors: AIMDContentPreprocessor[] = defaultExtraPreprocessors,
+  extraPreprocessors: readonly AIMDContentPreprocessor[] = defaultExtraPreprocessors,
   latexPreprocessor: AIMDContentPreprocessor = preprocessLaTeX
 ) {
   return applyPreprocessors(content, latexPreprocessor, ...extraPreprocessors);

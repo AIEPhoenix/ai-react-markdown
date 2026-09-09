@@ -17,7 +17,7 @@ import { expect, waitFor } from 'storybook/test';
 import AIMarkdown, { createRemendPreprocessor } from '../../src/index';
 import 'katex/dist/katex.min.css';
 import '../../src/components/typography/variants/all.scss';
-import { codePointSnapshots } from '@ai-markdown/engine';
+import { codePointSnapshots } from '../../../engine/src/components/incrementalParse/codePointSnapshots';
 
 const SMOKE_DOCUMENT_ID = 'remend-smoke';
 const CHUNK_CODE_POINTS = 7;
