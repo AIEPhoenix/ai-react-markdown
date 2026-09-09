@@ -61,15 +61,24 @@ for (const directory of directories) {
     await delay(5000);
   }
   assert(visible, `Published dependency is not visible to installers: ${name}@${version}`);
-  let tags = await metadata(`-/package/${escaped}/dist-tags`);
+  const tags = await metadata(`-/package/${escaped}/dist-tags`);
   assert.equal(tags?.[tag], version, `${name}: expected ${tag}=${version}`);
-  // First creation can synthesize latest even when --tag beta was explicit.
-  // Remove only this prerelease's alias, preserving any existing stable latest.
-  if (tag !== 'latest' && tags.latest === version) {
-    execFileSync('npm', ['dist-tag', 'rm', name, 'latest'], { stdio: 'inherit' });
-    tags = await metadata(`-/package/${escaped}/dist-tags`);
-    assert.notEqual(tags?.latest, version, `${name}: prerelease remains on latest`);
-    assert.equal(tags?.[tag], version);
-  }
   console.log(`Verified installer metadata and ${tag} tag: ${name}@${version}`);
 }
+
+// Complete the authorized uploads before checking release-wide tag state.
+// Some first-publish credentials cannot remove dist-tags. Report the exact
+// packages requiring maintainer cleanup instead of attempting a forbidden write
+// or leaving downstream packages unpublished after an unrelated tag failure.
+const unexpectedLatest = [];
+for (const directory of directories) {
+  const { name, version } = JSON.parse(readFileSync(`packages/${directory}/package.json`, 'utf8'));
+  if (!version.includes('-')) continue;
+  const tags = await metadata(`-/package/${name.replace('/', '%2f')}/dist-tags`);
+  if (tags?.latest === version) unexpectedLatest.push(name);
+}
+assert.equal(
+  unexpectedLatest.length,
+  0,
+  `Uploads complete; remove the unintended latest dist-tag with authorized maintainer credentials, then resume: ${unexpectedLatest.join(', ')}`
+);
