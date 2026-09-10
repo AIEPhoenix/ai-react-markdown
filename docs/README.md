@@ -142,3 +142,8 @@ Follow a value through its owner before changing its documentation. Public props
 | What proves an optimization was exercised? | Coverage map, oracle tests, soak manifests               | Soak coverage, experimental record         |
 
 When contributing documentation, retain useful examples and historical measurements, but identify their version and scope. Verify current API names, defaults, relative links, and commands against this checkout. A successful build establishes that package artifacts compile; it does not by itself validate every prose claim or performance estimate.
+
+## Release maintenance
+
+- [Published-artifact verification](./releasing-3.0.md#repeatable-published-artifact-verification)
+- [Legacy scope retirement proposal](./legacy-scope-plan.md)

@@ -225,6 +225,17 @@ jobs:
         run: |
           node scripts/publish-packages.mjs "$RELEASE_TAG"
 
+      - name: Verify published npm artifacts and consumers
+        run: pnpm test:published-release "$RELEASE_TAG" "$RUNNER_TEMP/published-release"
+
+      - name: Archive published package verification
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: published-release-verification
+          path: ${{ runner.temp }}/published-release
+          if-no-files-found: ignore
+
       # Notes come from the version's section in docs/release-highlights.md —
       # the hand-written changelog — falling back to GitHub's auto-generated
       # notes if no section exists for this version.
@@ -232,6 +243,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          if gh release view "$RELEASE_TAG" --json isDraft --jq 'select(.isDraft == false)' | grep -q .; then
+            echo "GitHub release already exists; published verification completed."
+            exit 0
+          fi
           if [ "${RELEASE_TAG#v}" = "$RELEASE_TAG" ]; then
             # Package tag — no release-highlights section; auto-generate notes.
             PACKAGE_VERSION="${RELEASE_TAG##*-v}"

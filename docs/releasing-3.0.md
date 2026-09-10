@@ -37,3 +37,46 @@ On 2026-09-10 the maintainer explicitly authorized retaining the ancestor campai
 The [RC release workflow](https://github.com/ai-markdown/ai-markdown/actions/runs/34491579512) executes automated verification before human `soak-approval`. Its existence is not proof of publication; confirm its final result and npm artifacts before stable promotion. Stable changes must remain limited to version metadata, stable peer ranges and documentation, or require renewed compatibility and soak assessment.
 
 The RC workflow completed successfully on 2026-09-10 after human review. All five `3.0.0-rc.1` packages and independent plugin `1.0.2` were published through OIDC. Post-publication checks downloaded the actual npm tarballs, matched their hashes and provenance sources, and passed ESM/CJS, React/Mantine/Vue SSR, CSS resolution, TypeScript declarations and Vue 3.5.0 consumption. Stable preparation has no runtime-source changes relative to this RC.
+
+## Repeatable published-artifact verification
+
+After publication, the release workflow runs `pnpm test:published-release "$RELEASE_TAG"`
+before creating the GitHub release. It downloads npm artifacts and installs them outside
+the workspace, reusing the packed-consumer probes for ESM/CJS, development conditions,
+React/Mantine/Vue SSR, CSS, declarations, private API boundaries and Vue 3.5.0.
+Stable train verification additionally installs all packages without version pins and
+checks that npm selects the expected release versions. RC verification uses exact
+artifacts and checks the prerelease channel without changing `latest`.
+
+```bash
+pnpm test:published-release v3.0.0 .local-notes/published-stable
+pnpm test:published-release v3.0.0-rc.1 .local-notes/published-rc
+# An independent package release checks its own metadata/provenance and
+# exercises it alongside the train versions recorded at that tag.
+pnpm test:published-release remark-mark-highlight-v1.0.3 .local-notes/published-plugin
+```
+
+Use an existing tag and a checkout containing its full Git history. No workspace build
+or dependency installation is required for these registry checks. The Node version
+must satisfy the package engine range; `npm`, `pnpm`, `git` and `tar` must be available.
+The independent plugin version comes from the tag's manifest, not a hardcoded version.
+The `Verify published release` GitHub workflow provides the same read-only check for
+an existing tag, without publishing or requiring a soak approval.
+
+Verification checks npm channels, dependency and engine metadata, tarball SHA-512,
+and provenance repository, workflow, source tag, commit and tarball subject. This is
+provenance **content and source consistency** verification, not cryptographic Sigstore
+signature verification. Reused plugin versions and publication retries retain their
+original provenance invocation; the original source must be an ancestor with unchanged
+package sources. Train packages additionally require unchanged package/lockfile inputs.
+Do not require a reused artifact to name the current workflow run.
+
+Registry visibility checks retry for up to 12 attempts, with 5 seconds between attempts
+and a 30-second timeout per request. Persistent mismatches fail verification. The JSON
+report records the target SHA, Node version, source invocations, hashes and results,
+including partial results on failure. CI archives it as `published-release-verification`.
+A retry can verify existing uploads and leave an existing published GitHub release intact.
+When recovering an incomplete upload, run the release workflow from the release tag so
+new provenance records that tag; never move a tag or overwrite an npm version.
+Historical audits require the expected channel to still point at that version; once a
+newer release advances the channel, the older audit intentionally fails its channel check.

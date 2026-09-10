@@ -8,22 +8,53 @@ import { join, resolve } from 'node:path';
 // Install actual tarballs outside the workspace. No source aliases or symlinks
 // can hide missing dependencies, declaration leaks or broken CSS subpaths.
 const root = resolve(import.meta.dirname, '..');
+const releaseIndex = process.argv.indexOf('--release');
+const releaseTag = releaseIndex < 0 ? null : process.argv[releaseIndex + 1];
+assert(
+  releaseIndex < 0 || /^(?:v|remark-mark-highlight-v)\d+\.\d+\.\d+(?:-[\w.]+)?$/.test(releaseTag ?? ''),
+  'Expected --release <tag>'
+);
+const defaultInstall = process.argv.includes('--default-install');
+assert(!defaultInstall || releaseTag, '--default-install requires --release');
+const manifestFor = (dir) =>
+  JSON.parse(
+    releaseTag
+      ? execFileSync('git', ['show', `${releaseTag}:packages/${dir}/package.json`], { cwd: root, encoding: 'utf8' })
+      : readFileSync(join(root, 'packages', dir, 'package.json'), 'utf8')
+  );
 const out = mkdtempSync(join(tmpdir(), 'ai-markdown-consumers-'));
 const train = ['engine', 'core', 'react', 'react-mantine', 'vue'];
 const packages = ['remark-mark-highlight', ...train];
 const dependencies = {};
 for (const dir of packages) {
-  execFileSync('pnpm', ['--filter', `./packages/${dir}`, 'pack', '--pack-destination', out], {
-    cwd: root,
-    stdio: 'pipe',
-    encoding: 'utf8',
-  });
-  const manifest = JSON.parse(readFileSync(join(root, 'packages', dir, 'package.json'), 'utf8'));
+  const manifest = manifestFor(dir);
+  if (releaseTag) {
+    execFileSync(
+      'npm',
+      [
+        'pack',
+        `${manifest.name}@${manifest.version}`,
+        '--registry=https://registry.npmjs.org',
+        '--pack-destination',
+        out,
+        '--ignore-scripts',
+      ],
+      { cwd: out, stdio: 'pipe', encoding: 'utf8' }
+    );
+  } else {
+    execFileSync('pnpm', ['--filter', `./packages/${dir}`, 'pack', '--pack-destination', out], {
+      cwd: root,
+      stdio: 'pipe',
+      encoding: 'utf8',
+    });
+  }
   const file = `${manifest.name.slice(1).replace('/', '-')}-${manifest.version}.tgz`;
-  dependencies[manifest.name] = `file:${join(out, file)}`;
+  dependencies[manifest.name] = defaultInstall ? '*' : `file:${join(out, file)}`;
   const packed = JSON.parse(
     execFileSync('tar', ['-xOf', join(out, file), 'package/package.json'], { encoding: 'utf8' })
   );
+  assert.equal(packed.name, manifest.name);
+  assert.equal(packed.version, manifest.version);
   assert.equal(packed.private, undefined);
   for (const field of ['dependencies', 'peerDependencies']) {
     for (const [name, version] of Object.entries(packed[field] ?? {})) {
@@ -36,37 +67,51 @@ for (const dir of packages) {
   if (dir === 'react' || dir === 'vue') assert.equal(packed.dependencies['@ai-markdown/core'], manifest.version);
 }
 Object.assign(dependencies, {
-  vue: JSON.parse(readFileSync(join(root, 'packages/vue/node_modules/vue/package.json'), 'utf8')).version,
-  '@vue/server-renderer': JSON.parse(
-    readFileSync(join(root, 'packages/vue/node_modules/@vue/server-renderer/package.json'), 'utf8')
-  ).version,
-  react: '19.2.7',
-  'react-dom': '19.2.7',
+  vue: '^3.5.0',
+  '@vue/server-renderer': '^3.5.0',
+  react: '^19.2.7',
+  'react-dom': '^19.2.7',
   '@types/react': '^19.2.18',
   '@types/react-dom': '^19.2.7',
-  '@mantine/core': '9.5.2',
-  '@mantine/hooks': '9.5.2',
-  '@mantine/code-highlight': '9.5.2',
+  ...Object.fromEntries(
+    ['core', 'hooks', 'code-highlight'].map((name) => [
+      `@mantine/${name}`,
+      manifestFor('react-mantine').devDependencies[`@mantine/${name}`],
+    ])
+  ),
   'highlight.js': '^11.11.2',
   katex: '^0.17.0',
   typescript: '^6.0.3',
 });
-// Resolve the host React version from the already verified workspace.
-dependencies.react = JSON.parse(
-  readFileSync(join(root, 'packages/react/node_modules/react/package.json'), 'utf8')
-).version;
-dependencies['react-dom'] = JSON.parse(
-  readFileSync(join(root, 'packages/react/node_modules/react-dom/package.json'), 'utf8')
-).version;
+// Local checks use the exact installed host versions; registry checks need no workspace build.
+if (!releaseTag) {
+  for (const [dir, names] of [
+    ['react', ['react', 'react-dom']],
+    ['vue', ['vue', '@vue/server-renderer']],
+    ['react-mantine', ['@mantine/core', '@mantine/hooks', '@mantine/code-highlight']],
+  ])
+    for (const name of names)
+      dependencies[name] = JSON.parse(
+        readFileSync(join(root, 'packages', dir, 'node_modules', name, 'package.json'), 'utf8')
+      ).version;
+}
 writeFileSync(
   join(out, 'package.json'),
   JSON.stringify({ name: 'packed-consumer', private: true, type: 'module', dependencies }, null, 2)
 );
-execFileSync('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund'], {
-  cwd: out,
-  stdio: 'pipe',
-  encoding: 'utf8',
-});
+execFileSync(
+  'npm',
+  ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--registry=https://registry.npmjs.org'],
+  {
+    cwd: out,
+    stdio: 'pipe',
+    encoding: 'utf8',
+  }
+);
+for (const dir of packages) {
+  const installed = JSON.parse(readFileSync(join(out, 'node_modules/@ai-markdown', dir, 'package.json'), 'utf8'));
+  assert.equal(installed.version, manifestFor(dir).version, `${dir}: installed version differs from release`);
+}
 const probe = `
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
@@ -85,6 +130,9 @@ const { renderToString } = await import('react-dom/server');
 const html = renderToString(React.createElement(react.default, { content: '**Packed** [safe](https://example.com)' }));
 assert(html.includes('<strong>Packed</strong>'));
 assert(html.includes('https://example.com'));
+const { MantineProvider } = await import('@mantine/core');
+const { default: MantineMarkdown } = await import('@ai-markdown/react-mantine');
+assert(renderToString(React.createElement(MantineProvider, {}, React.createElement(MantineMarkdown, { content: '**Mantine packed**' }))).includes('<strong>Mantine packed</strong>'));
 assert.equal(typeof core.createPipelineSession, 'function');
 assert.equal(typeof engine.createRegistry, 'function');
 assert(!('DEFAULT_PAYLOAD' in engine));
