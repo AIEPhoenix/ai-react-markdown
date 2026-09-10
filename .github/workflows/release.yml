@@ -124,25 +124,25 @@ jobs:
         run: pnpm test:packed-consumers
 
       - name: Typecheck
-        run: pnpm -r typecheck
+        run: pnpm typecheck:packages
 
       # `pnpm -r` skips the workspace root — the root script is the only
       # gate covering apps/storybook-* and packages/*/stories (same split as CI).
       - name: Typecheck (storybook + stories)
-        run: pnpm typecheck
+        run: pnpm typecheck:storybook
 
       # Per-package unit suites, matching the CI gate.
+      - name: Development command control
+        run: pnpm test:command-control
+
       - name: Soak control tests
         run: pnpm test:soak-control
 
       - name: Release authentication boundary
         run: pnpm test:release-control
 
-      - name: Core independent contracts and state sequences
-        run: pnpm test:core-contracts
-
       - name: Test
-        run: pnpm -r test
+        run: pnpm test:unit
 
       # Browser smokes, matching CI's browser-smoke task: the root vitest
       # config's framework Storybook projects render every story in headless Chromium.
@@ -154,8 +154,9 @@ jobs:
 
       - name: Build and verify composed Storybook site
         run: |
-          STORYBOOK_DOCS_EXPORT=1 pnpm build-storybook
-          pnpm test:storybook-site
+          STORYBOOK_DOCS_EXPORT=1 pnpm build:storybook --skip-build
+          pnpm test:storybook:site
+          pnpm test:storybook:dev
 
       - name: Concurrent document scope lifetime
         run: pnpm test:document-lifetime

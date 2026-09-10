@@ -50,6 +50,47 @@ try {
   });
   const react = await (await fetch(base + 'react/index.json')).json();
   const vue = await (await fetch(base + 'vue/index.json')).json();
+  // Common capabilities must remain discoverable under identical chapter names.
+  const commonChapters = [
+    'Playground',
+    'Basics/Markdown Basics',
+    'Basics/Math',
+    'Basics/CJK & International Text',
+    'Basics/Footnotes & Definition Lists',
+    'Basics/Engine Plugins',
+    'Customization/Custom Components',
+    'Customization/Metadata',
+    'Customization/URL Sanitization',
+    'Customization/Content Preprocessors',
+    'Customization/Orphan References',
+    'Streaming/Streaming Basics',
+    'Streaming/Incremental Parsing',
+    'Streaming/Smooth Streaming',
+    'Streaming/Streaming Cursor',
+    'Streaming/Turn Taking',
+    'Streaming/Error Recovery',
+    'Documents/Cross-Chunk Coordination',
+    'Documents/Definition Lifecycle',
+  ];
+  const sharedSequence = (index) => [
+    ...new Set(
+      Object.values(index.entries)
+        .filter((entry) => entry.type === 'story' && commonChapters.includes(entry.title))
+        .map((entry) => entry.title)
+    ),
+  ];
+  assert.deepEqual(sharedSequence(vue), sharedSequence(react), 'Shared chapter order must match across renderers');
+  for (const title of commonChapters) {
+    for (const [framework, index] of [
+      ['react', react],
+      ['vue', vue],
+    ]) {
+      assert(
+        Object.values(index.entries).some((entry) => entry.type === 'story' && entry.title === title),
+        `${framework}: shared chapter missing: ${title}`
+      );
+    }
+  }
   for (const [framework, index] of [
     ['react', react],
     ['vue', vue],
@@ -82,6 +123,54 @@ try {
       assert.equal(await preview.locator('#storybook-root h3').first().textContent(), 'block-quotes');
     }
   }
+  // Plugin comparisons must read live Controls, not capture their initial source.
+  const pluginStory = 'basics-engine-plugins--smartypants';
+  await page.goto(`${base}?path=/story/vue_${pluginStory}`);
+  await page.frameLocator('iframe[src*="/vue/iframe.html"]').locator('[data-plugin-panel="enabled"]').waitFor();
+  const pluginFrame = page.frames().find((frame) => frame.url().includes('/vue/iframe.html'));
+  assert(pluginFrame, 'Vue plugin preview frame missing');
+  await pluginFrame.waitForFunction(
+    (id) =>
+      window.__STORYBOOK_PREVIEW__?.storyRenders.some((render) => render.id === id && render.phase === 'finished'),
+    pluginStory
+  );
+  const comparisonSource = (await readFile('corpus/documents/markdown.md', 'utf8'))
+    .split('### block-quotes\n')[1]
+    .split('### block-thematic-breaks\n')[0]
+    .trim();
+  assert(comparisonSource.length > 0);
+  await page.locator('#control-content').fill(comparisonSource);
+  await pluginFrame.waitForFunction(() =>
+    ['enabled', 'disabled'].every(
+      (panel) =>
+        document.querySelector(`[data-plugin-panel="${panel}"] blockquote`) &&
+        document.querySelector(`[data-plugin-panel="${panel}"] pre code`)?.textContent?.includes('const x = 1;')
+    )
+  );
+  // Autoplay must leave the context example connected to the public Controls.
+  const contextStory = 'customization-metadata--reactive-context';
+  await page.goto(`${base}?path=/story/vue_${contextStory}`);
+  const contextPreview = page.frameLocator('iframe[src*="/vue/iframe.html"]');
+  await contextPreview.locator('[data-context-owner="slot"]').first().waitFor();
+  const contextFrame = page.frames().find((frame) => frame.url().includes('/vue/iframe.html'));
+  assert(contextFrame, 'Vue context preview frame missing');
+  await contextFrame.waitForFunction(
+    (id) =>
+      window.__STORYBOOK_PREVIEW__?.storyRenders.some((render) => render.id === id && render.phase === 'finished'),
+    contextStory
+  );
+  await page.locator('#control-metadata').fill('Metadata from Controls');
+  await contextFrame.waitForFunction(
+    () => {
+      const links = document.querySelectorAll('[data-context-owner]');
+      return (
+        ['component', 'slot'].every((owner) => document.querySelector(`[data-context-owner="${owner}"]`)) &&
+        Array.from(links).every((link) => link.getAttribute('title') === 'Metadata from Controls')
+      );
+    },
+    undefined,
+    { timeout: 5000 }
+  );
   // Storybook runs play functions outside Vitest too. The public performance
   // instrument must remain idle until a visitor explicitly starts a measurement.
   await page.goto(`${base}vue/iframe.html?id=performance-lab-dom-update--corpus-commit&viewMode=story`);

@@ -1,24 +1,11 @@
-import { h } from 'vue';
-import { useCorpusReplay } from '@ai-markdown/storybook-kit/vue/replay';
-import type { Meta, StoryObj } from '@storybook/vue3-vite';
-import { expect, userEvent, within, waitFor } from 'storybook/test';
-import AIMarkdown, { AIMarkdownSmoothStream } from '../src';
 import { QUOTES, SHOWCASE } from '@ai-markdown/storybook-kit/common/corpus';
-const meta: Meta = {
-  title: 'Streaming/Replay',
-  tags: ['autodocs'],
-  parameters: {
-    docs: {
-      description: {
-        component:
-          'Replay corpus text as accumulated source. Finish drains smooth reveal; replacement changes the source immediately. Timers are released on unmount. These are interaction checks, not a transport implementation.',
-      },
-    },
-  },
-};
-export default meta;
+import { useCorpusReplay } from '@ai-markdown/storybook-kit/vue/replay';
+import type { StoryObj } from '@storybook/vue3-vite';
+import { expect, userEvent, waitFor, within } from 'storybook/test';
+import { h } from 'vue';
+import AIMarkdown, { AIMarkdownSmoothStream } from '../../src';
 type Story = StoryObj;
-function replay(smooth: boolean) {
+export function replay(smooth: boolean) {
   return {
     setup() {
       const { content, streaming: live, restart: start, finish, cancel: stop, replace } = useCorpusReplay(SHOWCASE);
@@ -54,7 +41,7 @@ function replay(smooth: boolean) {
     },
   };
 }
-const play: NonNullable<Story['play']> = async ({ canvasElement }) => {
+export const play: NonNullable<Story['play']> = async ({ canvasElement }) => {
   const canvas = within(canvasElement);
   await userEvent.click(canvas.getByRole('button', { name: 'Replay corpus' }));
   await waitFor(() => expect(canvasElement.querySelector('strong')).not.toBeNull());
@@ -73,5 +60,3 @@ const play: NonNullable<Story['play']> = async ({ canvasElement }) => {
   await userEvent.click(canvas.getByRole('button', { name: 'Cancel' }));
   expect(canvas.getByRole('status')).toHaveTextContent('Idle');
 };
-export const AccumulatedSource: Story = { render: () => replay(false), play };
-export const SmoothReveal: Story = { render: () => replay(true), play };

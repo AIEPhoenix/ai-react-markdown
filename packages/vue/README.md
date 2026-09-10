@@ -2,7 +2,7 @@
 
 Vue 3 Markdown rendering built on the framework-independent `@ai-markdown/core` and `@ai-markdown/engine`. This package supplies real Vue VNodes, server rendering and hydration, scoped document references, component/slot customization, smooth streaming and a measured streaming cursor. It replaces the earlier private lifecycle prototype.
 
-**Source implementation; first npm publication is pending.** The existing `3.0.0-beta.1` release did not include Vue. The install commands below apply once a Vue beta has been published; while developing this checkout, use the workspace package. Stable 3.0.0 is a separate release decision after the API review and release gates.
+**Available starting with `3.0.0-beta.2`.** The earlier `3.0.0-beta.1` release did not include Vue. Stable 3.0.0 remains a separate release decision after the API review and release gates.
 
 ## Requirements and dependencies
 
@@ -12,7 +12,7 @@ Vue 3 Markdown rendering built on the framework-independent `@ai-markdown/core` 
 - `@ai-markdown/core` and `@ai-markdown/engine` are ordinary dependencies at the exact release-train version. Applications do not need to install them separately. Vue remains a peer and is external to both ESM and CJS output.
 - KaTeX is an optional peer (`^0.16 || ^0.17`). Declare it directly when importing its stylesheet rather than depending on hoisting.
 
-After first publication:
+Install the beta:
 
 ```bash
 pnpm add @ai-markdown/vue@beta vue@^3.5.0 katex
@@ -162,6 +162,16 @@ pnpm test:packed-consumers
 Unit tests exercise SSR, sanitization, custom rendering and lifecycle publication/release. Browser tests cover the three planned acceptance paths: standalone hydration; cross-chunk references and document switching; customization, smooth waiting/drain and cursor layout. Packed consumers load ESM/CJS in both export conditions, compile installed declarations and resolve CSS outside the workspace.
 
 This implementation does not claim React/Mantine UI parity: Mantine remains React-only, and Vue has no built-in Mermaid/code-toolbar integration. Nuxt-specific packaging, KeepAlive/Suspense combinations and additional browser engines require their own integration coverage before being advertised. Parsing correctness continues to use the repository's shared oracle and release soak gates.
+
+## Interactive examples
+
+Run `pnpm storybook:vue` from the repository root. The launcher builds the public package dependencies before opening the catalog on port 6008; `pnpm storybook` also starts React and the combined entry on port 6006.
+
+The chapter names and order follow the React catalog. Start with **Streaming/Streaming Basics**, then **Incremental Parsing**, **Smooth Streaming**, **Streaming Cursor**, **Turn Taking** and **Error Recovery** for the corresponding lifecycle contracts. **Documents/Cross-Chunk Coordination** covers late definitions and repeated footnotes; **Definition Lifecycle** covers updates and isolation. **Basics/Engine Plugins** demonstrates reactive plugin selection. **Customization/Custom Components** and **Metadata** cover mapping, scoped slots and context; **URL Sanitization**, **Content Preprocessors** and **Orphan References** cover output policies. Each chapter includes usage notes and browser assertions; relevant examples expose editable Controls.
+
+React-specific typography tokens, extra-style registries, context factories, Mantine widgets and render profiling remain separate. The Vue Introduction explains those boundaries; the shared catalog guide maps all common chapters and records renamed Vue story URLs.
+
+General examples read corpus excerpts. Cross-chunk and plugin syntax fixtures remain purpose-built to isolate their contracts. See the [catalog guide](../../docs/storybook.md) for comparable React examples and run `pnpm test:storybook:vue` to verify the Vue stories in Chromium.
 
 ## Browser stress verification
 

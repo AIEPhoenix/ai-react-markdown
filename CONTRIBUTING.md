@@ -4,11 +4,12 @@ Thanks for your interest in contributing. This file covers the practical "how" �
 
 ## Quick orientation
 
-This is a **pnpm monorepo** with five public packages:
+This is a **pnpm monorepo** with six public packages:
 
 - [`packages/engine`](./packages/engine) — the Markdown engine: incremental parsing, LaTeX preprocessing, the definition/footnote machinery, and the unified plugin pipeline. No React anywhere in its tree.
 - [`packages/core`](./packages/core) — shared framework-independent sessions, planning and coordination.
 - [`packages/react`](./packages/react) — the React renderer built on the engine (the public entry point most users install).
+- [`packages/vue`](./packages/vue) — the Vue 3.5+ renderer built on the shared core.
 - [`packages/react-mantine`](./packages/react-mantine) — Mantine UI integration (lives on top of the React adapter).
 - [`packages/remark-mark-highlight`](./packages/remark-mark-highlight) — standalone `==highlight==` remark plugin, published on its own semver track.
 
@@ -27,7 +28,7 @@ pnpm build
 
 You'll need:
 
-- Node ≥ 20 (LTS recommended)
+- The Node version pinned in CI (currently 22.23.2) for reproducible validation
 - pnpm 11.x (this repo pins the exact version via the `packageManager` field — Corepack, or pnpm itself, will fetch it)
 
 > pnpm settings live in `pnpm-workspace.yaml`, not in a `pnpm` field in `package.json` — pnpm 11 ignores that field. `pnpm check:overrides` fails the build if one reappears, or if the lockfile no longer matches the declared overrides.
@@ -38,23 +39,24 @@ You'll need:
 # Run Storybook for interactive development
 pnpm storybook
 
-# Run tests once — one package, or `pnpm -r test` for all of them
+# Run all workspace unit tests, or target one package
+pnpm test:unit
 pnpm --filter @ai-markdown/react test
 pnpm --filter @ai-markdown/engine test
 
-# Typecheck
-pnpm -r typecheck
+# Typecheck workspaces and Storybook (requires built packages)
+pnpm typecheck
 
 # Lint / format
 pnpm lint
 pnpm format:check
 pnpm format          # auto-fix
 
-# Everything CI checks, in one command
+# Full local validation, including browser checks (requires Chromium)
 pnpm preflight
 ```
 
-CI runs lint + format:check + typecheck + test + build on every PR.
+CI runs static checks, package and browser tests, build/export validation and soak-impact reporting on every PR. See the [development command reference](./docs/development-commands.md) for prerequisites, focused checks and compatibility aliases. `preflight` does not run a long soak or validate release approval.
 
 ### Changing the shared core
 
