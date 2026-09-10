@@ -30,6 +30,8 @@ const result = c(b(a(latexNormalizedContent)));
 
 The built-in stage recognizes supported math delimiters and currency, protects code regions, normalizes bracket-delimited math, and escapes math pipes so they do not become GFM table separators. Inline `$x$` and `\(x\)` normalize to the inline `$$x$$` representation consumed by the configured `remark-math` instance (`singleDollarTextMath: false`). Display math uses line-oriented delimiters. Do not assume the caller slot receives the original dollar spelling.
 
+Inline math is line-local. A single `$` that is still unpaired when its line ends (`quoted in US$ per unit`) is literal text: it does not open a formula, and pipes on later lines — a table three paragraphs down — are left alone. Only an unpaired `$` on the last line of the input, the streaming tail, has the pipes after it escaped until the line completes.
+
 Unclosed display-math truncation is based on the source grammar, not the `streaming` prop: preprocessing does not receive that flag. It can therefore affect an incomplete static document too. Since the line-start fixes, a doubled dollar in the middle of a prose line is not treated as an opening display block merely because it is unpaired.
 
 Each mounted React renderer owns one append-aware LaTeX preprocessor. It reuses a verified prefix when possible and resets on non-append input; its result must equal the stateless `preprocessLaTeX` result for the same complete input. Your functions still receive the entire normalized string on every content change. The incremental parser cannot remove the cost of those full-string passes.

@@ -41,11 +41,14 @@ describe('createIncrementalLatexPreprocessor — pinned counterexamples', () => 
     replay(['$x$ math\nx\n<span title="a $5\n', 'ok">y $1 tail\n']);
   });
 
-  test('B2: a lone `$` is NOT line-local — pipes escape across lines', () => {
-    // findUnclosedDelimiterStart('both') toggles across newlines: the lone
-    // `$` in the prefix makes the NEXT line's pipe part of the unclosed
-    // tail (`\vert{}`). A raw per-line analysis would have cut after line 1.
+  test('B2: a lone `$` on a finished line is settled — the next line freezes past it', () => {
+    // The scan used to toggle across newlines, so the lone `$` made the NEXT
+    // line's pipe part of an unclosed tail (`\vert{}`) and the counterexample
+    // was that a raw per-line cut disagreed. A single `$` is line-local now
+    // (findUnclosedDelimiter), so both sides leave the pipe alone; the
+    // replay still owes byte-equality, and the pipe must really survive.
     replay(['price $ one\n', 'a | b\n']);
+    expect(preprocessLaTeX('price $ one\na | b\n')).toBe('price $ one\na | b\n');
   });
 
   test('B5: currency escaping rewrites the `$` token stream', () => {
@@ -157,17 +160,35 @@ describe('createIncrementalLatexPreprocessor — failed-freeze backoff and blank
   }
   const PARA = 'plain prose keeps flowing here with $x^2$ and \\(y\\) inline.\n\n';
 
-  test('a stray `$` early in the document: byte-equal, and attempts stay logarithmic', () => {
-    // `US$` (no digits) is not currency-escaped and keeps parity odd for
-    // every later slice, so the last-cut candidate is never quiescent.
-    // Before: every frame re-scanned the whole active region and re-ran the
-    // candidate for nothing. Now failed attempts back off (active must
-    // double), so their count is O(log n) — not O(frames).
-    const doc = 'intro line one.\n\nprice in US$ today\n\n' + PARA.repeat(120);
+  test('a permanent hazard early in the document: byte-equal, and attempts stay logarithmic', () => {
+    // An unclosed `\[` stays convertible for as long as the stream runs (its
+    // `\]` may arrive on any later line), so the last-cut candidate is never
+    // quiescent. Before: every frame re-scanned the whole active region and
+    // re-ran the candidate for nothing. Now failed attempts back off (active
+    // must double), so their count is O(log n) — not O(frames).
+    //
+    // This fixture used to be a stray `US$`; that is no longer a hazard (a
+    // single `$` is line-local — see the next test), which is why the
+    // permanently-open shape had to be swapped for a real one.
+    const doc = 'intro line one.\n\nan open \\[ bracket today\n\n' + PARA.repeat(120);
     const frames = Math.ceil(doc.length / 16);
     const { attempts } = replayCounting(doc, 16);
     expect(attempts).toBeLessThan(Math.log2(doc.length) + 12);
     expect(attempts).toBeLessThan(frames / 8);
+  });
+
+  test('a stray `$` on a finished line is not a hazard: the stream keeps freezing past it', () => {
+    // Inline `$…$` never spans a line ending, so `US$` on a finished line
+    // can never be paired by a later append. It used to keep the delimiter
+    // parity odd for every later slice, so nothing after it ever froze —
+    // and every `|` after it was rewritten to `\vert{}`.
+    const doc = 'intro line one.\n\nprice in US$ today\n\n' + PARA.repeat(120);
+    const { frozen } = replayCounting(doc, 16);
+    expect(frozen).toBeGreaterThan(doc.length - 2 * PARA.length);
+    // A table after the stray `$` survives, frame by frame.
+    replayFreezing(['Prices are quoted in US$ per unit.\n\n', '| a | b |\n|---|---|\n', '| 1 | 2 |\n']);
+    // …while a `$` on the LAST line is still open until its line ends.
+    replay(['US$ first\n\n$a | b', ' | c$\n']);
   });
 
   test('a lone backtick: the hazard latch releases at the next blank line and the stream keeps freezing', () => {

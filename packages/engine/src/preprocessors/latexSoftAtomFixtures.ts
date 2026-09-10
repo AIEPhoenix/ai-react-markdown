@@ -57,8 +57,13 @@ export const SOFT_ATOM_SHAPES: readonly string[] = [
   '$$ a <span{eol} title="x">b',
   // atoms inside a truncated tail
   '$${eol}a <br> b <i>c</i>',
-  // an unclosed delimiter before a tag now governs the text after it
+  // an unclosed delimiter before a tag now governs the text after it — on
+  // its own line (a single `$` is line-local, so the first shape no longer
+  // reaches past the line ending and is expected NOT to change) or, for an
+  // inline `$$`, until its paragraph ends
   'price $ one <br>{eol}a | b',
+  'price $ one <br> a | b',
+  'a $$ open <span>{eol}b | c',
   '$${eol}open <span>{eol}$x$ and $y$',
   // private-use input
   'prose \uE000 and $x <br> y$',

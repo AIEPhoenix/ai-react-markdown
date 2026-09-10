@@ -337,7 +337,7 @@ const DELIMITERS_REGEX = /(?<!!)\\\[([\S\s]*?[^\\])\\](?!\()|\\\((.*?)\\\)/g;
 const ARRAY_COL_SPEC_OR_PIPE_REGEX = /(\\begin\{(?:array|tabular[x*]?)\}\{[^}]*\})|(?<!\\)\|/g;
 // Display $$ allows multiline; inline $ forbids newlines (consistent with SINGLE_DOLLAR_REGEX).
 // Both display delimiters use EXACTLY the delimiter lexicon of
-// findUnclosedDelimiterStart / isEscapedByBackslashRun: a `$$` preceded by
+// findUnclosedDelimiter / isEscapedByBackslashRun: a `$$` preceded by
 // an EVEN run of backslashes (zero included) is a delimiter, an odd run
 // escapes it — nothing else matters, in particular not a preceding `$`
 // (`$$$$` is an empty display, `\$$$x$$` opens at the second `$`). The
@@ -537,47 +537,129 @@ function isEscapedByBackslashRun(text: string, pos: number): boolean {
   return count % 2 === 1;
 }
 
+/** The kind of an unclosed delimiter, as {@link findUnclosedDelimiter}
+ *  reports it: a `$$` that opens a math FLOW (the block the truncation
+ *  exists for), a `$$` that is inline math TEXT, or a single `$`. */
+type UnclosedKind = 'flow' | 'inline' | 'single';
+
+interface UnclosedDelimiter {
+  /** Index of the opener's first `$`. */
+  start: number;
+  kind: UnclosedKind;
+}
+
+/** Index of the next unescaped `$$` token on the SAME line at or after
+ *  `from`, or -1 when the line ends first. */
+function nextDoubleDollarOnLine(text: string, from: number): number {
+  for (let j = from; j + 1 < text.length; j++) {
+    const c = text[j];
+    if (c === '\n' || c === '\r') return -1;
+    if (c === '$' && text[j + 1] === '$' && !isEscapedByBackslashRun(text, j)) return j;
+  }
+  return -1;
+}
+
 /**
- * Find the start index of the trailing unclosed `$$` or `$` delimiter.
+ * Find the trailing unclosed delimiter — the last opener that was never
+ * closed — or `null` when every delimiter is paired.
  *
- * Scans through all dollar-sign tokens tracking open/close state.
- * Returns the index of the last *opening* delimiter that was never closed,
- * or `-1` if every delimiter is paired.
+ * The scan is KIND-AWARE, because the delimiters do not all pair the same
+ * way and a plain open/close toggle over the whole `$` stream — which is
+ * what this scan used to be — could not hold the rules below at once:
+ *
+ * - A `$$` opener is a FLOW opener (`opensMathFlow`: it starts its line, at
+ *   most three columns in) or INLINE math text. A single `$` opener is
+ *   inline too, and opens only in `'both'` mode. remark-math also refuses a
+ *   flow fence whose info string holds a `$`; that refinement is NOT
+ *   modelled, on purpose: a streaming `$$x^2$` (half its closer arrived)
+ *   would read as inline for one frame and surface as literal text instead
+ *   of staying truncated until the closer lands.
+ * - A single `$` is LINE-LOCAL: inline math never spans a line ending
+ *   anywhere in this file (both closed-pair regexes forbid `\n`, the
+ *   currency parity is per line), so a `$` still open when its line ends is
+ *   a stray character, not an opener, and the scan forgets it. It used to
+ *   stay open: one `US$` in a sentence made every `|` of a table three
+ *   paragraphs later a `\vert{}`. Only a `$` on the LAST line (no line
+ *   ending after it — the streaming tail) is reported unclosed.
+ * - Inside an open `$$` a single `$` is content — the closed-pair regexes
+ *   agree: a display pair is `$$…$$` whatever `$` it holds, and an inline
+ *   `$…$` cannot hold a bare `$`. Conversely a `$$` arriving while a single
+ *   `$` is open means the single was a stray; the `$$` opens.
+ * - Inside an open FLOW block, `$$` tokens on the lines AFTER the opener's
+ *   pair up per line and only a token with no partner on its line closes
+ *   the block. This is what keeps the truncation scan right after
+ *   `convertSingleToDoubleDollar`, which turns every `$x$` in the block
+ *   into a `$$x$$` pair: the toggle used to "close" the block on the first
+ *   of those and re-open a mid-line opener on the second, so an unclosed
+ *   streaming block holding one `$x$` was never truncated. On the opener's
+ *   OWN line the next `$$` closes, whatever follows it: `$$|a|$$ then …` is
+ *   inline math that happens to start a line, and remark-math agrees (a
+ *   fence's info string cannot hold a `$`). A closer is still any unpaired
+ *   `$$`, not only a closing fence line — `E = mc^2 $$` closes, as it
+ *   always did.
  *
  * @param text  Input string to scan.
  * @param mode  `'both'` tracks `$$` and `$`; `'double-only'` tracks only `$$`.
+ * @param runStartsAtLineStart  Virtual predecessor for `opensMathFlow` when
+ *   an opener sits at offset 0 (see `transformRun`).
  */
-function findUnclosedDelimiterStart(text: string, mode: 'both' | 'double-only'): number {
-  let unclosedStart = -1;
+function findUnclosedDelimiter(
+  text: string,
+  mode: 'both' | 'double-only',
+  runStartsAtLineStart: boolean
+): UnclosedDelimiter | null {
+  let open: UnclosedDelimiter | null = null;
+  // Whether the scan has left the open FLOW opener's own line.
+  let pastOpenerLine = false;
   let i = 0;
   while (i < text.length) {
-    if (text[i] === '$' && i + 1 < text.length && text[i + 1] === '$' && !isEscapedByBackslashRun(text, i)) {
-      unclosedStart = unclosedStart === -1 ? i : -1;
-      i += 2;
+    const c = text[i];
+    if (c === '$' && i + 1 < text.length && text[i + 1] === '$' && !isEscapedByBackslashRun(text, i)) {
+      if (open === null || open.kind === 'single') {
+        open = { start: i, kind: opensMathFlow(text, i, runStartsAtLineStart) ? 'flow' : 'inline' };
+        pastOpenerLine = false;
+        i += 2;
+      } else if (open.kind === 'flow' && pastOpenerLine) {
+        const partner = nextDoubleDollarOnLine(text, i + 2);
+        if (partner === -1) {
+          open = null;
+          i += 2;
+        } else {
+          i = partner + 2;
+        }
+      } else {
+        open = null;
+        i += 2;
+      }
     } else if (
       mode === 'both' &&
-      text[i] === '$' &&
+      c === '$' &&
       !isEscapedByBackslashRun(text, i) &&
       (i + 1 >= text.length || text[i + 1] !== '$')
     ) {
-      unclosedStart = unclosedStart === -1 ? i : -1;
+      if (open === null) open = { start: i, kind: 'single' };
+      else if (open.kind === 'single') open = null;
       i += 1;
     } else {
+      if ((c === '\n' || c === '\r') && open !== null) {
+        if (open.kind === 'single') open = null;
+        else pastOpenerLine = true;
+      }
       i += 1;
     }
   }
-  return unclosedStart;
+  return open;
 }
 
-function escapeLatexPipesInUnclosed(text: string): string {
-  const unclosedStart = findUnclosedDelimiterStart(text, 'both');
-  if (unclosedStart === -1) return text;
+function escapeLatexPipesInUnclosed(text: string, runStartsAtLineStart: boolean): string {
+  const unclosed = findUnclosedDelimiter(text, 'both', runStartsAtLineStart);
+  if (unclosed === null) return text;
 
   // Escape pipes only in the unclosed tail
-  const before = text.substring(0, unclosedStart);
-  const delimLen = text[unclosedStart + 1] === '$' ? 2 : 1;
-  const delim = text.substring(unclosedStart, unclosedStart + delimLen);
-  const tail = text.substring(unclosedStart + delimLen);
+  const before = text.substring(0, unclosed.start);
+  const delimLen = unclosed.kind === 'single' ? 1 : 2;
+  const delim = text.substring(unclosed.start, unclosed.start + delimLen);
+  const tail = text.substring(unclosed.start + delimLen);
   return before + delim + replaceUnescapedPipes(tail);
 }
 
@@ -653,13 +735,14 @@ function opensMathFlow(text: string, pos: number, runStartsAtLineStart: boolean)
 function truncateUnclosedLatexBlock(
   text: string,
   runStartsAtLineStart: boolean,
-  unclosedStart = findUnclosedDelimiterStart(text, 'double-only')
+  unclosed = findUnclosedDelimiter(text, 'double-only', runStartsAtLineStart)
 ): string {
-  if (unclosedStart === -1) return text;
-  if (!opensMathFlow(text, unclosedStart, runStartsAtLineStart)) return text;
+  // Only a FLOW opener swallows anything (the scan classified it with
+  // `opensMathFlow`); an inline `$$` still open at the end is literal text.
+  if (unclosed === null || unclosed.kind !== 'flow') return text;
 
   // Strip the unclosed $$ block and any trailing whitespace before it.
-  return text.substring(0, unclosedStart).trimEnd();
+  return text.substring(0, unclosed.start).trimEnd();
 }
 
 /**
@@ -949,8 +1032,8 @@ function transformRun(
   text = convertLatexDelimiters(text);
   if (probe && RESIDUAL_OPEN_BRACKET_RE.test(text)) tailSensitive = true;
   text = escapeLatexPipes(text);
-  if (probe && findUnclosedDelimiterStart(text, 'both') !== -1) tailSensitive = true;
-  text = escapeLatexPipesInUnclosed(text);
+  if (probe && findUnclosedDelimiter(text, 'both', runStartsAtLineStart) !== null) tailSensitive = true;
+  text = escapeLatexPipesInUnclosed(text, runStartsAtLineStart);
   if (probe && hasUnclosedTextCommand(text)) tailSensitive = true;
   text = escapeTextUnderscores(text);
   text = convertSingleToDoubleDollar(text);
@@ -959,21 +1042,17 @@ function transformRun(
   // to rule out before the O(run) unclosed scan (plain prose is one run;
   // this scan was the last ~20% over stateless). The scan result feeds
   // truncateUnclosedLatexBlock too — one O(run) pass, not two (r2 P2-2).
-  let unclosedDouble: number | undefined;
+  let unclosedDouble: UnclosedDelimiter | null | undefined;
   if (probe || (seamEligible && LEADING_DOUBLE_DOLLAR_RE.test(text))) {
-    unclosedDouble = findUnclosedDelimiterStart(text, 'double-only');
-    if (unclosedDouble !== -1) {
+    unclosedDouble = findUnclosedDelimiter(text, 'double-only', runStartsAtLineStart);
+    if (unclosedDouble !== null) {
       tailSensitive = true;
       // The flag must track what truncation ACTUALLY does, not what an
       // unclosed `$$` used to imply: `truncateUnclosedLatexBlock` declines
       // on a delimiter that cannot open a math flow (indented four spaces,
       // after a tab, or mid-line), and a flag raised anyway made the
       // wrapper trim a newline the stateless path keeps (2026-09-02).
-      if (
-        seamEligible &&
-        opensMathFlow(text, unclosedDouble, runStartsAtLineStart) &&
-        text.slice(0, unclosedDouble).trim() === ''
-      ) {
+      if (seamEligible && unclosedDouble.kind === 'flow' && text.slice(0, unclosedDouble.start).trim() === '') {
         truncatedAtSeamStart = true;
       }
     }

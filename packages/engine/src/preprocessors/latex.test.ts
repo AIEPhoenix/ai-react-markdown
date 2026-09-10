@@ -632,6 +632,60 @@ y$ which spans lines`;
     expect(preprocessLaTeX(content)).toBe(expected);
   });
 
+  // --- A stray single `$` is line-local ---
+  //
+  // Inline `$…$` never spans a line ending anywhere in this file (the
+  // closed-pair regexes forbid `\n`, the currency parity is per line), so an
+  // unpaired single `$` on a finished line cannot open anything below it. It
+  // used to: `findUnclosedDelimiterStart('both')` toggled on every `$` in the
+  // whole run, and one `US$` in a sentence turned every `|` of a table three
+  // paragraphs later into `\vert{}`.
+
+  test('a stray single $ on an earlier line leaves a later table intact', () => {
+    const content = 'Prices are quoted in US$ per unit.\n\n| a | b |\n|---|---|\n| 1 | 2 |';
+    expect(preprocessLaTeX(content)).toBe(content);
+  });
+
+  test('a stray single $ mid-line leaves pipes on the following line alone', () => {
+    const content = 'US$ today\nx | y';
+    expect(preprocessLaTeX(content)).toBe(content);
+  });
+
+  test('a genuine inline $a | b$ on one line still escapes its pipe', () => {
+    expect(preprocessLaTeX('$a | b$')).toBe('$$a \\vert{} b$$');
+    expect(preprocessLaTeX('US$ first\n$a | b$ later')).toBe('US$ first\n$$a \\vert{} b$$ later');
+  });
+
+  test('an unclosed inline $ on the LAST line still escapes the pipes after it (streaming)', () => {
+    expect(preprocessLaTeX('US$ first\n\n$a | b')).toBe('US$ first\n\n$a \\vert{} b');
+  });
+
+  test('a closed $$…$$ spanning lines still escapes the pipes inside it', () => {
+    const content = 'US$ first\n\n$$\n| a | b |\n$$\n\n| c | d |';
+    const expected = 'US$ first\n\n$$\n\\vert{} a \\vert{} b \\vert{}\n$$\n\n| c | d |';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('an unclosed line-start $$ spanning lines still escapes and truncates', () => {
+    expect(preprocessLaTeX('US$ first\n\n$$\n| a | b |\n| c |')).toBe('US$ first');
+  });
+
+  test('a single $ inside an open $$ block is content, not a closer', () => {
+    // A closed block holding an inline `$x$`: the table below it survives.
+    const closed = '$$\n a $x$ b\n$$\n\n| t | t |';
+    expect(preprocessLaTeX(closed)).toBe('$$\n a $$x$$ b\n$$\n\n| t | t |');
+    // The same block still streaming: it is unclosed, so it is truncated —
+    // the old toggle read the converted `$$x$$` as closer + mid-line opener
+    // and left the half block for remark-math to swallow the page with.
+    expect(preprocessLaTeX('before\n\n$$\n a $x$ b\n')).toBe('before');
+    // On the opener's own line the next `$$` closes, whatever follows.
+    expect(preprocessLaTeX('$$|a|$$ then $$|b\\rangle')).toBe('$$\\vert{}a\\vert{}$$ then $$\\vert{}b\\rangle');
+  });
+
+  test('a stray single $ followed by $$ on the same line: the $$ opens', () => {
+    expect(preprocessLaTeX('$a $$b | c$$ d | e')).toBe('$a $$b \\vert{} c$$ d | e');
+  });
+
   // --- Unclosed LaTeX blocks (streaming) ---
 
   test('truncates unclosed $$ with pipes (streaming)', () => {
