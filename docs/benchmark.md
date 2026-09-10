@@ -6,7 +6,7 @@ The tables are a **2026-07-15 snapshot on 1.x development builds**. At that time
 
 Current releases have changed preprocessing, boundary detection, planning, registry subscriptions, and code presentation. The old measurements remain evidence for the tested implementations, not current latency promises. Read [streaming and performance](./streaming-and-performance.md) for the implementation now in the repository.
 
-There are three measurement tools with different scopes: Storybook comparison stories generated the manual tables here; `pnpm bench` runs the Vitest LaTeX microbenchmark; and [`benchmarks/`](../benchmarks/README.md) contains the production browser harness invoked by `pnpm bench:web`. None automatically regenerates another tool's historical tables.
+There are three measurement tools with different scopes: Storybook comparison stories generated the manual tables here; `pnpm bench:unit` runs the Vitest LaTeX microbenchmark; and [`benchmarks/`](../benchmarks/README.md) contains the production browser harness invoked by `pnpm bench:web`. None automatically regenerates another tool's historical tables.
 
 ## Methodology
 

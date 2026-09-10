@@ -82,13 +82,13 @@ The general excerpts avoid the remote-image and malformed-input sections of the 
 ## Browser verification
 
 ```bash
-pnpm typecheck
+pnpm typecheck:storybook
 pnpm test:storybook:react
 pnpm test:storybook:vue
 # Both renderer suites, sequentially:
 pnpm test:storybook
 # Development composition, source updates and shutdown (ports 6006–6008 must be free):
-pnpm test:storybook-dev
+pnpm test:storybook:dev
 ```
 
 The development check temporarily edits and restores renderer, core, engine and Vue stylesheet sources to verify browser updates without restarting the servers. Run it in an idle checkout; do not edit those files or run other browser suites concurrently. It also checks that Ctrl+C releases all three listening ports, while process-supervisor fixtures cover resistant descendants and startup failures.
@@ -102,8 +102,8 @@ The accessibility addon currently reports findings in `todo` mode. A successful 
 ## Build a portable static site
 
 ```bash
-STORYBOOK_DOCS_EXPORT=1 pnpm build-storybook
-pnpm test:storybook-site
+STORYBOOK_DOCS_EXPORT=1 pnpm build:storybook
+pnpm test:storybook:site
 ```
 
 The result is one directory that must be deployed together:

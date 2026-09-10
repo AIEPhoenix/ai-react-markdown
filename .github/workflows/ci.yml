@@ -145,14 +145,18 @@ jobs:
 
       - name: Typecheck (all packages)
         if: matrix.task == 'typecheck'
-        run: pnpm -r typecheck
+        run: pnpm typecheck:packages
 
       # `pnpm -r` skips the workspace root, so the root script — the only
       # gate covering apps/storybook-* and packages/*/stories — must run
       # explicitly. It also resolves core through dist, built above.
       - name: Typecheck (storybook + stories)
         if: matrix.task == 'typecheck'
-        run: pnpm typecheck
+        run: pnpm typecheck:storybook
+
+      - name: Development command control
+        if: matrix.task == 'test'
+        run: pnpm test:command-control
 
       - name: Soak control tests
         if: matrix.task == 'test'
@@ -168,7 +172,7 @@ jobs:
 
       - name: Test (all packages)
         if: matrix.task == 'test'
-        run: pnpm -r test
+        run: pnpm test:unit
 
       - name: Build (all packages)
         if: matrix.task == 'build'
@@ -205,9 +209,9 @@ jobs:
       - name: Build and verify composed Storybook site
         if: matrix.task == 'browser-smoke'
         run: |
-          STORYBOOK_DOCS_EXPORT=1 pnpm build-storybook
-          pnpm test:storybook-site
-          pnpm test:storybook-dev
+          STORYBOOK_DOCS_EXPORT=1 pnpm build:storybook --skip-build
+          pnpm test:storybook:site
+          pnpm test:storybook:dev
 
       - name: Concurrent document scope lifetime
         if: matrix.task == 'browser-smoke'

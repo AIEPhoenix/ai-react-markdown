@@ -13,7 +13,7 @@ pnpm test:core-contracts
 
 The command builds core and its workspace dependencies, checks core's types, and runs every core test. It does not require prebuilt React/Vue packages or load the root Storybook project. Tests also exercise the actual ESM/CJS development/production entries without UI frameworks or browser globals.
 
-The gate runs in root `preflight`, the dedicated `core-contracts` CI task, and the Release workflow. Any nonzero exit fails the gate. Repository-wide tests remain in CI to catch adapter integration regressions after tests move between packages.
+The standalone gate runs in the dedicated `core-contracts` CI task. Root `preflight` and the Release workflow cover the same checks through the shared package build, workspace typecheck and `test:unit` steps, without repeating core builds or tests. The aggregate unit command also protects the sequence settings. Any nonzero exit fails validation. See [development commands](./development-commands.md) for the complete command map.
 
 ## Coverage ownership
 

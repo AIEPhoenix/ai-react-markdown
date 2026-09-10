@@ -4,13 +4,18 @@ import { dirname, resolve } from 'node:path';
 import { createProcessSupervisor } from './storybook-processes.mjs';
 import { readFileSync, rmSync } from 'node:fs';
 
-const [mode, target = 'all'] = process.argv.slice(2);
+const argv = process.argv.slice(2);
+const skipBuild = argv.includes('--skip-build');
+const positional = argv.filter((arg) => arg !== '--skip-build');
+const [mode, target = 'all'] = positional;
 if (
+  positional.length > 2 ||
+  (skipBuild && mode !== 'build') ||
   !['dev', 'build'].includes(mode) ||
   !['all', 'react', 'vue'].includes(target) ||
   (mode === 'build' && target !== 'all')
 ) {
-  throw new Error('Usage: node scripts/storybook.mjs dev [all|react|vue] | build');
+  throw new Error('Usage: node scripts/storybook.mjs dev [all|react|vue] | build [--skip-build]');
 }
 const supervisor = createProcessSupervisor();
 const require = createRequire(import.meta.url);
@@ -65,8 +70,10 @@ async function waitForCatalog(port) {
 }
 try {
   if (mode === 'build') {
-    console.log('Building Storybook package dependencies...');
-    await command('Package build', ['run', 'build']);
+    if (!skipBuild) {
+      console.log('Building Storybook package dependencies...');
+      await command('Package build', ['run', 'build']);
+    }
     if (supervisor.stopping) throw new Error('Storybook command interrupted');
     rmSync('storybook-static', { recursive: true, force: true });
     // The hub clears its output directory. Build children afterwards.
