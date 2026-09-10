@@ -84,6 +84,24 @@ test('accepts complete structured evidence', (t) => {
   fixture(dir);
   assert.equal(aggregate(dir).status, 0);
 });
+for (const failedHeading of [null, 'Tests', 'Test Files']) {
+  test(`colored verdicts ${failedHeading ? `reject failed ${failedHeading}` : 'accept passed tests'}`, (t) => {
+    const dir = temp(t);
+    fixture(dir);
+    const passed = '\u001b[2m Tests \u001b[22m \u001b[1m\u001b[32m1 passed\u001b[39m\u001b[22m (1)\n';
+    const failed = failedHeading
+      ? `\u001b[2m ${failedHeading} \u001b[22m \u001b[31m1 failed\u001b[39m | 1 passed\n`
+      : '';
+    writeFileSync(`${dir}/fuzz-0.log`, failed + passed);
+    const result = aggregate(dir);
+    if (failedHeading) {
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /missing clean Vitest verdict/);
+    } else assert.equal(result.status, 0, result.stderr);
+    assert.equal(readFileSync(`${dir}/fuzz-0.log`, 'utf8'), failed + passed);
+  });
+}
+
 for (const fault of [
   'zero',
   'missing',

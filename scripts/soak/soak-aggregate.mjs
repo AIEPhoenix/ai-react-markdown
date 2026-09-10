@@ -2,6 +2,7 @@
 /* global Buffer, console, process, URL */
 import { closeSync, existsSync, fstatSync, openSync, readFileSync, readSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { stripVTControlCharacters } from 'node:util';
 
 import { integer, validateTask, validateManifest } from './soak-contract.mjs';
 
@@ -95,7 +96,9 @@ for (const run of runs) {
     for (const log of logs) {
       if (!existsSync(log)) errors.push(`${dir}: missing ${log.split('/').pop()}`);
       else {
-        const tail = readTail(log);
+        // Terminal launches can preserve ANSI styling inside Vitest summaries.
+        // Normalize only the in-memory text; keep original evidence untouched.
+        const tail = stripVTControlCharacters(readTail(log));
         if (!/Tests\s+\d+ passed/.test(tail) || /(?:Tests|Test Files)[^\n]*\d+ failed/.test(tail))
           errors.push(`${log}: missing clean Vitest verdict`);
       }
