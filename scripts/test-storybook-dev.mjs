@@ -1,6 +1,8 @@
 /* eslint-disable no-undef */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { createServer } from 'node:net';
+import { readFile, writeFile } from 'node:fs/promises';
 import { chromium } from 'playwright';
 
 const ports = [6006, 6007, 6008];
@@ -63,14 +65,58 @@ try {
       assert.equal(await page.getByText('Error: Loading of ref failed', { exact: false }).count(), 0);
     }
   }
+  // Probe served modules, not merely Vite's watcher notification. Always restore source files.
+  for (const [port, renderer] of [
+    [6007, 'react'],
+    [6008, 'vue'],
+  ]) {
+    const index = await (await fetch(`http://localhost:${port}/index.json`)).json();
+    const entry = Object.values(index.entries).find((item) => item.title === 'Playground' && item.type === 'story');
+    await page.goto(`http://localhost:${port}/iframe.html?id=${entry.id}&globals=autoStart:off`);
+    await page.locator('#storybook-root table').waitFor({ timeout: 60000 });
+    for (const path of [
+      `packages/${renderer}/src/index.${renderer === 'react' ? 'tsx' : 'ts'}`,
+      'packages/core/src/index.ts',
+      'packages/engine/src/index.ts',
+    ]) {
+      const original = await readFile(path, 'utf8');
+      const marker = `storybook-source-probe-${port}-${Date.now()}`;
+      try {
+        const updated = page.waitForEvent('console', { predicate: (event) => event.text() === marker, timeout: 60000 });
+        await writeFile(path, `${original}\nconsole.info(${JSON.stringify(marker)});\n`);
+        await updated;
+        await page.locator('#storybook-root table').waitFor({ timeout: 60000 });
+      } finally {
+        await writeFile(path, original);
+      }
+    }
+  }
+  const stylesheet = 'packages/vue/src/styles.css';
+  const originalStyle = await readFile(stylesheet, 'utf8');
+  try {
+    await writeFile(stylesheet, `${originalStyle}\n:root { --storybook-source-probe: ready; }\n`);
+    await page.waitForFunction(
+      () => getComputedStyle(document.documentElement).getPropertyValue('--storybook-source-probe').trim() === 'ready'
+    );
+  } finally {
+    await writeFile(stylesheet, originalStyle);
+  }
   assert.deepEqual(failures, [], 'Both development refs must load without browser errors');
   await browser.close();
   browser = undefined;
-  child.kill('SIGTERM');
-  assert.equal(await exited, 143);
+  child.kill('SIGINT');
+  assert.equal(await exited, 130);
+  for (const port of ports) {
+    const probe = createServer();
+    await new Promise((resolve, reject) => {
+      probe.once('error', reject);
+      probe.listen(port, resolve);
+    });
+    await new Promise((resolve) => probe.close(resolve));
+  }
   assert(!(await Promise.all(ports.map(isReady))).some(Boolean), 'No development servers may remain');
   console.log(
-    'Storybook development acceptance passed: both cross-port refs, composed rendering, reload and shutdown.'
+    'Storybook development acceptance passed: both cross-port refs, composed rendering, source updates, CSS updates, reload and shutdown.'
   );
 } catch (error) {
   console.error(output);

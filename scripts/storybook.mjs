@@ -1,6 +1,8 @@
 /* eslint-disable no-undef */
-import { spawn } from 'node:child_process';
-import { rmSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname, resolve } from 'node:path';
+import { createProcessSupervisor } from './storybook-processes.mjs';
+import { readFileSync, rmSync } from 'node:fs';
 
 const [mode, target = 'all'] = process.argv.slice(2);
 if (
@@ -10,57 +12,36 @@ if (
 ) {
   throw new Error('Usage: node scripts/storybook.mjs dev [all|react|vue] | build');
 }
-const children = new Set();
-let stopping = false;
-const stop = () => {
-  stopping = true;
-  for (const child of children) {
-    try {
-      if (process.platform === 'win32') child.kill('SIGTERM');
-      else process.kill(-child.pid, 'SIGTERM');
-    } catch (error) {
-      if (error.code !== 'ESRCH') throw error;
-    }
-  }
-};
-process.on('SIGINT', () => {
-  process.exitCode = 130;
-  stop();
-});
-process.on('SIGTERM', () => {
-  process.exitCode = 143;
-  stop();
-});
-function command(label, args) {
-  if (stopping) throw new Error('Storybook command interrupted');
-  const child = spawn('pnpm', args, {
-    stdio: 'inherit',
-    detached: process.platform !== 'win32',
-    env: { ...process.env, ...(mode === 'build' ? { STORYBOOK_BUILD: '1' } : {}) },
-  });
-  children.add(child);
-  return new Promise((resolve, reject) => {
-    child.on('error', (error) => {
-      children.delete(child);
-      reject(error);
-    });
-    child.on('exit', (code, signal) => {
-      children.delete(child);
-      if (code === 0 || (signal && stopping)) resolve();
-      else reject(new Error(`${label} exited ${code}`));
-    });
+const supervisor = createProcessSupervisor();
+const require = createRequire(import.meta.url);
+const packagePath = require.resolve('storybook/package.json');
+const storybookBin = resolve(dirname(packagePath), JSON.parse(readFileSync(packagePath, 'utf8')).bin);
+for (const [signal, code] of [
+  ['SIGINT', 130],
+  ['SIGTERM', 143],
+]) {
+  process.on(signal, () => {
+    process.exitCode = code;
+    void supervisor.stop();
   });
 }
-function run(framework, port) {
-  const args = ['exec', 'storybook', mode === 'dev' ? 'dev' : 'build', '-c', `apps/storybook-${framework}/.storybook`];
-  if (mode === 'dev') args.push('-p', String(port), '--no-open', '--ci');
+function command(label, args, executable = 'pnpm') {
+  return supervisor.run(label, executable, args, {
+    stdio: 'inherit',
+    env: { ...process.env, ...(mode === 'build' ? { STORYBOOK_BUILD: '1' } : {}) },
+  });
+}
+async function run(framework, port) {
+  const args = [storybookBin, mode === 'dev' ? 'dev' : 'build', '-c', `apps/storybook-${framework}/.storybook`];
+  if (mode === 'dev') args.push('-p', String(port), '--no-open', '--ci', '--exact-port');
   else args.push('-o', framework === 'hub' ? 'storybook-static' : `storybook-static/${framework}`);
   if (mode === 'dev') console.log(`[storybook] Starting ${framework} on port ${port}`);
-  return command(framework, args);
+  await command(framework, args, process.execPath);
+  if (mode === 'dev' && !supervisor.stopping) throw new Error(`${framework} stopped unexpectedly`);
 }
 async function waitForCatalog(port) {
   const deadline = Date.now() + 120_000;
-  while (!stopping && Date.now() < deadline) {
+  while (!supervisor.stopping && Date.now() < deadline) {
     try {
       const base = `http://localhost:${port}`;
       const index = await fetch(`${base}/index.json`, { signal: AbortSignal.timeout(1000) });
@@ -78,17 +59,15 @@ async function waitForCatalog(port) {
     }
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
-  throw new Error(stopping ? 'Storybook command interrupted' : `Storybook on port ${port} did not become ready`);
+  throw new Error(
+    supervisor.stopping ? 'Storybook command interrupted' : `Storybook on port ${port} did not become ready`
+  );
 }
 try {
-  console.log('Building Storybook package dependencies...');
-  const buildArgs =
-    target === 'all'
-      ? ['run', 'build']
-      : ['--filter', target === 'vue' ? '@ai-markdown/vue...' : '@ai-markdown/react-mantine...', 'run', 'build'];
-  await command('Package build', buildArgs);
-  if (stopping) process.exit(process.exitCode);
   if (mode === 'build') {
+    console.log('Building Storybook package dependencies...');
+    await command('Package build', ['run', 'build']);
+    if (supervisor.stopping) throw new Error('Storybook command interrupted');
     rmSync('storybook-static', { recursive: true, force: true });
     // The hub clears its output directory. Build children afterwards.
     await run('hub');
@@ -101,12 +80,12 @@ try {
       run('vue', 6008),
       (async () => {
         await Promise.all([waitForCatalog(6007), waitForCatalog(6008)]);
-        if (!stopping) await run('hub', 6006);
+        if (!supervisor.stopping) await run('hub', 6006);
       })(),
     ]);
   }
 } catch (error) {
-  console.error(error);
-  stop();
+  if (!supervisor.stopping) console.error(error);
+  await supervisor.stop();
   process.exitCode ||= 1;
 }

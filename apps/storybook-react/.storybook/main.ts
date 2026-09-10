@@ -1,3 +1,4 @@
+import { withWorkspaceSources } from '@ai-markdown/storybook-kit/common/workspaceSources';
 import type { StorybookConfig } from '@storybook/react-vite';
 
 const config: StorybookConfig = {
@@ -35,22 +36,26 @@ const config: StorybookConfig = {
     // Performance Lab numbers they measure for themselves.
     STORYBOOK_DOCS_EXPORT: process.env.STORYBOOK_DOCS_EXPORT ?? '',
   }),
-  viteFinal: (viteConfig) => ({
-    ...viteConfig,
-    css: {
-      ...viteConfig.css,
-      preprocessorOptions: {
-        ...viteConfig.css?.preprocessorOptions,
-        scss: {
-          ...viteConfig.css?.preprocessorOptions?.scss,
-          // packages/react-mantine/stories/globals.scss needs `@import` to scope the
-          // highlight.js themes per color scheme — `@use` cannot nest inside a
-          // selector. Sass 1.80+ warns on every `@import`; the file documents
-          // the migration plan for when Sass 3.0 removes it.
-          silenceDeprecations: ['import'],
+  viteFinal: (viteConfig, { configType }) =>
+    withWorkspaceSources(
+      {
+        ...viteConfig,
+        css: {
+          ...viteConfig.css,
+          preprocessorOptions: {
+            ...viteConfig.css?.preprocessorOptions,
+            scss: {
+              ...viteConfig.css?.preprocessorOptions?.scss,
+              // packages/react-mantine/stories/globals.scss needs `@import` to scope the
+              // highlight.js themes per color scheme — `@use` cannot nest inside a
+              // selector. Sass 1.80+ warns on every `@import`; the file documents
+              // the migration plan for when Sass 3.0 removes it.
+              silenceDeprecations: ['import'],
+            },
+          },
         },
       },
-    },
-  }),
+      configType
+    ),
 };
 export default config;

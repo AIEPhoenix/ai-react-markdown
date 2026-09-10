@@ -11,9 +11,9 @@ pnpm install
 pnpm storybook
 ```
 
-The composition entry opens at `http://localhost:6006`, React at `http://localhost:6007`, and Vue at `http://localhost:6008`. The combined command waits for the React and Vue indexes and preview endpoints before starting the composition entry. This lets Storybook recognize the local catalogs as public references and fetch their indexes without credentials across ports. The `[storybook]` launch and HTTP-readiness messages show this sequence explicitly; concurrent Storybook banners and later compilation messages are not an ordering contract. The command starts all three servers; stop it with Ctrl+C. To work on one renderer, use `pnpm storybook:react` or `pnpm storybook:vue`.
+The composition entry opens at `http://localhost:6006`, React at `http://localhost:6007`, and Vue at `http://localhost:6008`. The combined command waits for the React and Vue indexes and preview endpoints before starting the composition entry. This lets Storybook recognize the local catalogs as public references and fetch their indexes without credentials across ports. The `[storybook]` launch and HTTP-readiness messages show this sequence explicitly; concurrent Storybook banners and later compilation messages are not an ordering contract. The command starts all three servers; stop it with Ctrl+C. Shutdown waits for the owned process groups, then force-stops any remaining descendants after a three-second grace period. Ports are fixed: an occupied requested port causes startup to fail rather than silently selecting 6009 or another port. Stop the owning session before retrying; the launcher never kills an unrelated process just because it owns a port. To work on one renderer, use `pnpm storybook:react` or `pnpm storybook:vue`.
 
-Each startup command first builds its public package dependencies, including the Vue stylesheet exported from `dist/styles.css`. The combined command builds all public packages; individual renderer commands build their dependency closure. A failed package build prevents the servers from starting. Stories use renderer source files for hot updates, while imported engine/core packages use their built output; restart the command after changing those packages to refresh that output.
+Development commands resolve the engine, core, highlight, React, Mantine and Vue entry points used by the catalogs directly to workspace source, including the imported renderer styles. No initial package build or separate build watcher is required. Saving those sources triggers Vite updates or a preview reload; a reload can reset the current example state. Static builds retain public package export resolution and build the packages first, so published entry points and generated styles are still exercised.
 
 The React catalog contains Playground, Basics, Customization, Streaming, Documents, Integrations/Mantine, Performance Lab and QA. Vue uses the same capability categories where supported. Vue does not provide Mantine widgets or React render-count instrumentation. Composition groups are navigation boundaries: controls, theme state and replay clocks are not synchronized across frameworks.
 
@@ -87,9 +87,11 @@ pnpm test:storybook:react
 pnpm test:storybook:vue
 # Both renderer suites, sequentially:
 pnpm test:storybook
-# Development composition, cross-port references and shutdown (ports 6006–6008 must be free):
+# Development composition, source updates and shutdown (ports 6006–6008 must be free):
 pnpm test:storybook-dev
 ```
+
+The development check temporarily edits and restores renderer, core, engine and Vue stylesheet sources to verify browser updates without restarting the servers. Run it in an idle checkout; do not edit those files or run other browser suites concurrently. It also checks that Ctrl+C releases all three listening ports, while process-supervisor fixtures cover resistant descendants and startup failures.
 
 Vue explicitly uses `vue-component-meta` for build-time component documentation instead of the deprecated `vue-docgen-api` default. Server-side experimental docgen is not enabled.
 
