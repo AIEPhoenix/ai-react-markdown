@@ -77,6 +77,11 @@ globalThis.fetch = async (url) => {
         RUNNER_TEMP: join(root, 'runner'),
         FIRST_PUBLISH_NPM_TOKEN: 'test-placeholder-only',
         FIRST_PUBLISH_PACKAGE: '@ai-markdown/vue',
+        // Simulate the release workflow running from the pushed tag, which is
+        // the ref provenance must record. Set explicitly: a CI runner's own
+        // GITHUB_REF (a pull request or branch ref) would otherwise leak in.
+        GITHUB_ACTIONS: 'true',
+        GITHUB_REF: 'refs/tags/v' + version,
       };
       delete env.NPM_CONFIG_USERCONFIG;
       execFileSync(
@@ -111,6 +116,43 @@ globalThis.fetch = async (url) => {
         { cwd: root, env: oidcEnv, stdio: 'pipe', timeout: 15000 }
       );
       for (const name of packages) assert.equal(readFileSync(join(root, 'state', name), 'utf8'), 'pnpm');
+      // A workflow_dispatch run started from a branch would attach provenance
+      // naming refs/heads/<branch>, which scripts/check-published-release.mjs
+      // rejects. The upload must fail before the first publish subprocess.
+      for (const name of packages) rmSync(join(root, 'state', name));
+      const branchEnv = { ...oidcEnv, GITHUB_REF: 'refs/heads/main' };
+      assert.throws(
+        () =>
+          execFileSync(
+            process.execPath,
+            ['--import', join(root, 'mock.mjs'), 'scripts/publish-packages.mjs', 'v' + version],
+            { cwd: root, env: branchEnv, stdio: 'pipe', timeout: 15000 }
+          ),
+        (error) => {
+          assert.match(error.stderr.toString(), /provenance must reference the release tag \(refs\/tags\/v/);
+          assert.match(error.stderr.toString(), /Refusing to upload from refs\/heads\/main/);
+          return true;
+        }
+      );
+      assert.deepEqual(readdirSync(join(root, 'state')), [], 'no package may be uploaded from a branch ref');
+      // Outside GitHub Actions there is no workflow ref to record; the check
+      // stays out of the way of the mocked local runs above.
+      const localEnv = { ...branchEnv };
+      delete localEnv.GITHUB_ACTIONS;
+      execFileSync(
+        process.execPath,
+        ['--import', join(root, 'mock.mjs'), 'scripts/publish-packages.mjs', 'v' + version],
+        { cwd: root, env: localEnv, stdio: 'pipe', timeout: 15000 }
+      );
+      for (const name of packages) assert.equal(readFileSync(join(root, 'state', name), 'utf8'), 'pnpm');
+      // Everything is now published, so a branch-ref recovery run has nothing
+      // to upload and finishes on the skip path without touching the check.
+      const recovery = execFileSync(
+        process.execPath,
+        ['--import', join(root, 'mock.mjs'), 'scripts/publish-packages.mjs', 'v' + version],
+        { cwd: root, env: branchEnv, stdio: 'pipe', timeout: 15000 }
+      ).toString();
+      for (const name of packages) assert.match(recovery, new RegExp(`Already published: @ai-markdown/${name}@`));
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

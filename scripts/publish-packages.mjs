@@ -10,6 +10,24 @@ const directories = releaseTag.startsWith('v')
   ? ['remark-mark-highlight', 'engine', 'core', 'react', 'react-mantine', 'vue']
   : [releaseTag.slice(0, releaseTag.lastIndexOf('-v'))];
 const registry = 'https://registry.npmjs.org';
+
+// Provenance records the workflow ref that ran the upload, and
+// scripts/check-published-release.mjs accepts only refs/tags/<release tag>.
+// A workflow_dispatch run started from a branch would publish a tarball whose
+// attestation names refs/heads/<branch>, which that check rejects only after
+// the upload is already irreversible. Fail here, before the first upload.
+// Runs that only skip already-published versions never reach this check, so
+// a recovery run that has nothing left to upload still completes.
+function assertProvenanceRef() {
+  if (!process.env.GITHUB_ACTIONS) return;
+  const expected = `refs/tags/${releaseTag}`;
+  assert.equal(
+    process.env.GITHUB_REF,
+    expected,
+    `Refusing to upload from ${process.env.GITHUB_REF}: provenance must reference the release tag (${expected}). ` +
+      'Run the release workflow from the tag ref; refs/heads/* is rejected by scripts/check-published-release.mjs.'
+  );
+}
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function metadata(path, install = false) {
   const response = await fetch(`${registry}/${path}`, {
@@ -35,34 +53,37 @@ for (const directory of directories) {
     assert.equal(published.name, name);
     assert.equal(published.version, version);
     console.log(`Already published: ${name}@${version}`);
-  } else if (
-    process.env.FIRST_PUBLISH_NPM_TOKEN &&
-    (!process.env.FIRST_PUBLISH_PACKAGE || process.env.FIRST_PUBLISH_PACKAGE === name)
-  ) {
-    const destination = join(process.env.RUNNER_TEMP, 'first-publish-packs');
-    mkdirSync(destination, { recursive: true });
-    execFileSync('pnpm', ['--filter', `./packages/${directory}`, 'pack', '--pack-destination', destination], {
-      stdio: 'inherit',
-    });
-    const archive = join(destination, `${name.slice(1).replace('/', '-')}-${version}.tgz`);
-    const userconfig = join(destination, 'first-publish.npmrc');
-    // Only the selected first-publish subprocess sees this auth config.
-    // Existing packages continue through trusted publishing.
-    writeFileSync(userconfig, '//registry.npmjs.org/:_authToken=${FIRST_PUBLISH_NPM_TOKEN}\n', { mode: 0o600 });
-    try {
-      execFileSync('npm', ['publish', archive, '--access', 'public', '--provenance', '--tag', tag], {
-        stdio: 'inherit',
-        env: { ...process.env, NPM_CONFIG_USERCONFIG: userconfig },
-      });
-    } finally {
-      unlinkSync(userconfig);
-    }
   } else {
-    execFileSync(
-      'pnpm',
-      ['--filter', `./packages/${directory}`, 'publish', '--access', 'public', '--no-git-checks', '--tag', tag],
-      { stdio: 'inherit' }
-    );
+    assertProvenanceRef();
+    if (
+      process.env.FIRST_PUBLISH_NPM_TOKEN &&
+      (!process.env.FIRST_PUBLISH_PACKAGE || process.env.FIRST_PUBLISH_PACKAGE === name)
+    ) {
+      const destination = join(process.env.RUNNER_TEMP, 'first-publish-packs');
+      mkdirSync(destination, { recursive: true });
+      execFileSync('pnpm', ['--filter', `./packages/${directory}`, 'pack', '--pack-destination', destination], {
+        stdio: 'inherit',
+      });
+      const archive = join(destination, `${name.slice(1).replace('/', '-')}-${version}.tgz`);
+      const userconfig = join(destination, 'first-publish.npmrc');
+      // Only the selected first-publish subprocess sees this auth config.
+      // Existing packages continue through trusted publishing.
+      writeFileSync(userconfig, '//registry.npmjs.org/:_authToken=${FIRST_PUBLISH_NPM_TOKEN}\n', { mode: 0o600 });
+      try {
+        execFileSync('npm', ['publish', archive, '--access', 'public', '--provenance', '--tag', tag], {
+          stdio: 'inherit',
+          env: { ...process.env, NPM_CONFIG_USERCONFIG: userconfig },
+        });
+      } finally {
+        unlinkSync(userconfig);
+      }
+    } else {
+      execFileSync(
+        'pnpm',
+        ['--filter', `./packages/${directory}`, 'publish', '--access', 'public', '--no-git-checks', '--tag', tag],
+        { stdio: 'inherit' }
+      );
+    }
   }
   let visible = false;
   for (let attempt = 0; attempt < 60; attempt++) {
