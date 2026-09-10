@@ -1,3 +1,5 @@
+import { SMARTYPANTS_DOC, CJK_MIXED_DOC, COMMENTS_DOC } from '@ai-markdown/storybook-kit/common/fixtures';
+import { smartypants, pangu, removeComments, type AIMarkdownEnginePlugin } from '../../src';
 import type { AIMarkdownProps } from '../../src';
 import { DEFINITION_LIST_DOC, MARK_HIGHLIGHT_DOC } from '@ai-markdown/storybook-kit/common/fixtures';
 import type { Meta, StoryObj } from '@storybook/vue3-vite';
@@ -94,5 +96,84 @@ export const ReactiveSelection: Story = {
     await userEvent.click(canvas.getByRole('button', { name: 'Reset to Controls' }));
     await waitFor(() => expect(canvasElement.querySelector('dl')).not.toBeNull());
     expect(canvasElement.querySelector('mark')).not.toBeNull();
+  },
+};
+
+function comparePlugin(content: () => string, omitted: AIMarkdownEnginePlugin) {
+  return {
+    setup: () => () =>
+      h('section', [
+        h('h3', 'Default plugins'),
+        h(AIMarkdown, { content: content(), 'data-plugin-panel': 'enabled' }),
+        h('h3', 'Without this plugin'),
+        h(AIMarkdown, {
+          content: content(),
+          enginePlugins: defaultEnginePlugins.filter((plugin) => plugin !== omitted),
+          'data-plugin-panel': 'disabled',
+        }),
+      ]),
+  };
+}
+export const Smartypants: Story = {
+  args: { content: SMARTYPANTS_DOC },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          'Compare typographic punctuation with straight source punctuation using the same fixture as React. Quotes and ellipses change in prose; inline and fenced code preserve their literal characters. The disabled panel retains the other default plugins.',
+      },
+    },
+  },
+  render: (args) => comparePlugin(() => args.content ?? SMARTYPANTS_DOC, smartypants),
+  play: async ({ canvasElement }) => {
+    const enabled = () => canvasElement.querySelector('[data-plugin-panel="enabled"]')!;
+    const disabled = () => canvasElement.querySelector('[data-plugin-panel="disabled"]')!;
+    await waitFor(() => expect(enabled()).toHaveTextContent('“the renderer handles this”'));
+    expect(disabled()).toHaveTextContent('"the renderer handles this"');
+    expect(enabled().querySelector('code')).toHaveTextContent('"quoted" -- and...');
+    expect(enabled().querySelector('pre code')?.textContent).toBe(disabled().querySelector('pre code')?.textContent);
+  },
+};
+export const Pangu: Story = {
+  args: { content: CJK_MIXED_DOC },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          'Pangu inserts spacing at supported CJK/Latin boundaries. The shared fixture intentionally includes Han, kana and Hangul. The Korean paragraph remains unchanged; leaving Hangul untouched is the specified behavior, not a failure. Fixture mentions of React are literal typography test data.',
+      },
+    },
+  },
+  render: (args) => comparePlugin(() => args.content ?? CJK_MIXED_DOC, pangu),
+  play: async ({ canvasElement }) => {
+    const enabled = () => canvasElement.querySelector('[data-plugin-panel="enabled"]')!;
+    const disabled = () => canvasElement.querySelector('[data-plugin-panel="disabled"]')!;
+    await waitFor(() => expect(enabled()).toHaveTextContent('用 React18 写'));
+    expect(disabled()).toHaveTextContent('用React18写');
+    const korean = (root: Element) =>
+      Array.from(root.querySelectorAll('p')).find((node) => node.textContent?.startsWith('이 라이브러리는'))
+        ?.textContent;
+    expect(korean(enabled())).toBeTruthy();
+    expect(korean(enabled())).toBe(korean(disabled()));
+  },
+};
+export const RemoveComments: Story = {
+  args: { content: COMMENTS_DOC },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          'Both panels hide prose HTML comments: this plugin removes them early, while the default sanitization pipeline also prevents them from reaching the page. Comments inside code fences remain code. This comparison does not present the plugin as the only security boundary.',
+      },
+    },
+  },
+  render: (args) => comparePlugin(() => args.content ?? COMMENTS_DOC, removeComments),
+  play: async ({ canvasElement }) => {
+    await waitFor(() => expect(canvasElement.querySelectorAll('[data-plugin-panel] pre code')).toHaveLength(2));
+    for (const panel of canvasElement.querySelectorAll('[data-plugin-panel]')) {
+      expect(panel.textContent).not.toContain('Reviewer:');
+      expect(panel.textContent).not.toContain('A multi-line comment.');
+      expect(panel.querySelector('pre code')).toHaveTextContent('<!-- this one is source code, so it renders -->');
+    }
   },
 };

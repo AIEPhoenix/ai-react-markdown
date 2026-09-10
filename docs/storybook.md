@@ -59,6 +59,14 @@ The remaining React chapters have explicit framework or verification responsibil
 
 Each Vue usage chapter has a Docs description. Controls edit useful props; buttons exercise mounted lifecycle transitions. The static acceptance check requires all 19 shared chapter titles in both indexes, so accidental catalog drift fails verification.
 
+### Compare individual examples
+
+Within the shared chapters, Vue now includes the same focused scenarios as React for table alignment and task-list state; CJK punctuation and RTL direction; streaming math and footnotes; Smartypants, Pangu and comment-removal comparisons; and custom URL schemes. These supplement the overview examples rather than adding new top-level groups.
+
+Plugin comparisons retain the other defaults while omitting one plugin. Their content Controls update both panels. Syntax and typography fixtures intentionally contain precise punctuation, CJK/RTL text and literal code; references to React inside those fixtures are test data, not Vue installation guidance. Streaming feature examples replay a fixed sample with explicit replay/complete/cancel buttons and do not expose an ineffective content Control.
+
+The custom-scheme comparison illustrates both sanitizer and URL-transform gates: allowing `app:` in a transform alone does not restore a URL the sanitizer already removed. The example extends only the selected scheme, keeps unrelated schemes blocked, and never launches a custom application.
+
 ### Updated Vue links
 
 The former combined Vue pages have been split. Bookmarks using `basics-markdown`, `customization-components-and-slots`, `customization-element-context`, `streaming-replay`, `streaming-controls-and-cursor`, `documents-coordination`, `documents-cross-chunk-references` or `basics-plugin-configuration` story IDs must be updated to the chapter containing that example. For example, `customization-element-context--reactive-context` is now `customization-metadata--reactive-context`. No automatic redirect is provided. Repository acceptance links use the new IDs.

@@ -3,7 +3,7 @@ import { URL_SCHEMES_DOC } from '@ai-markdown/storybook-kit/common/fixtures';
 import type { Meta, StoryObj } from '@storybook/vue3-vite';
 import { expect, waitFor } from 'storybook/test';
 import { h } from 'vue';
-import AIMarkdown from '../../src';
+import AIMarkdown, { defaultUrlTransform, extendSanitizeSchema, type UrlTransform } from '../../src';
 const meta: Meta = {
   title: 'Customization/URL Sanitization',
   tags: ['autodocs'],
@@ -34,5 +34,42 @@ export const UnsafeURLs: Story = {
     await waitFor(() => expect(canvasElement.querySelector('p')).not.toBeNull());
     for (const a of canvasElement.querySelectorAll('[href], [src]'))
       expect(a.getAttribute('href') ?? a.getAttribute('src')).not.toMatch(/^(javascript|vbscript):/i);
+  },
+};
+
+const allowAppUrl: UrlTransform = (url, key, node) => (/^app:/i.test(url) ? url : defaultUrlTransform(url, key, node));
+const appSchema = extendSanitizeSchema((schema) => {
+  schema.protocols!.href!.push('app');
+  schema.protocols!.src!.push('app');
+});
+export const AllowCustomScheme: Story = {
+  parameters: {
+    docs: {
+      description: {
+        story:
+          'The same two-gate example as React. urlTransform alone cannot restore a URL removed by the sanitizer. The second panel also extends protocols.href/src with app; myapp and dangerous schemes remain blocked. The schema and transform are stable module-level values. Links are inspected without opening a custom application.',
+      },
+    },
+  },
+  render: () => ({
+    setup: () => () =>
+      h('section', [
+        h('h3', 'URL transform only'),
+        h(AIMarkdown, { content: URL_SCHEMES_DOC, urlTransform: allowAppUrl, 'data-url-policy': 'transform' }),
+        h('h3', 'URL transform and schema'),
+        h(AIMarkdown, {
+          content: URL_SCHEMES_DOC,
+          urlTransform: allowAppUrl,
+          sanitizeSchema: appSchema,
+          'data-url-policy': 'both',
+        }),
+      ]),
+  }),
+  play: async ({ canvasElement }) => {
+    await waitFor(() => expect(canvasElement.querySelector('[data-url-policy="both"] a[href^="app:"]')).not.toBeNull());
+    expect(canvasElement.querySelector('[data-url-policy="transform"] a[href^="app:"]')).toBeNull();
+    expect(canvasElement.querySelector('a[href^="myapp:"]')).toBeNull();
+    for (const node of canvasElement.querySelectorAll('[href], [src]'))
+      expect(node.getAttribute('href') ?? node.getAttribute('src')).not.toMatch(/^(javascript|vbscript):/i);
   },
 };

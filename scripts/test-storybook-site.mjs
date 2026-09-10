@@ -123,6 +123,30 @@ try {
       assert.equal(await preview.locator('#storybook-root h3').first().textContent(), 'block-quotes');
     }
   }
+  // Plugin comparisons must read live Controls, not capture their initial source.
+  const pluginStory = 'basics-engine-plugins--smartypants';
+  await page.goto(`${base}?path=/story/vue_${pluginStory}`);
+  await page.frameLocator('iframe[src*="/vue/iframe.html"]').locator('[data-plugin-panel="enabled"]').waitFor();
+  const pluginFrame = page.frames().find((frame) => frame.url().includes('/vue/iframe.html'));
+  assert(pluginFrame, 'Vue plugin preview frame missing');
+  await pluginFrame.waitForFunction(
+    (id) =>
+      window.__STORYBOOK_PREVIEW__?.storyRenders.some((render) => render.id === id && render.phase === 'finished'),
+    pluginStory
+  );
+  const comparisonSource = (await readFile('corpus/documents/markdown.md', 'utf8'))
+    .split('### block-quotes\n')[1]
+    .split('### block-thematic-breaks\n')[0]
+    .trim();
+  assert(comparisonSource.length > 0);
+  await page.locator('#control-content').fill(comparisonSource);
+  await pluginFrame.waitForFunction(() =>
+    ['enabled', 'disabled'].every(
+      (panel) =>
+        document.querySelector(`[data-plugin-panel="${panel}"] blockquote`) &&
+        document.querySelector(`[data-plugin-panel="${panel}"] pre code`)?.textContent?.includes('const x = 1;')
+    )
+  );
   // Autoplay must leave the context example connected to the public Controls.
   const contextStory = 'customization-metadata--reactive-context';
   await page.goto(`${base}?path=/story/vue_${contextStory}`);
