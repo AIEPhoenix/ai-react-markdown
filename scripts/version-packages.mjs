@@ -9,7 +9,8 @@
 //   release train); independently versioned packages (remark-mark-highlight)
 //   are reported and skipped
 // - For integration lockstep packages, updates peerDependencies["@ai-markdown/react"] to ^<new-version>
-// - Rewrites React version references in README files (install snippets, examples)
+// - Rewrites React version references in README files and apps/docs/content/guides/*.md
+//   (install snippets, examples)
 
 import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -82,13 +83,28 @@ for (const dir of packageDirs) {
   console.log(`${pkg.name}: ${oldVersion} → ${newVersion}`);
 }
 
-// Sync React version references in READMEs (peer-dep install snippets like
-// `"@ai-markdown/react": "^1.4.5"` and inline examples like
-// `@ai-markdown/react@1.4.5`) so docs don't drift behind releases.
-const readmePaths = [join(ROOT, 'README.md'), ...packageDirs.map((dir) => join(PACKAGES_DIR, dir, 'README.md'))];
+// Sync React version references in READMEs and the public guides (peer-dep
+// install snippets like `"@ai-markdown/react": "^1.4.5"` and inline examples
+// like `@ai-markdown/react@1.4.5`) so docs don't drift behind releases.
+// The peer snippet is rewritten to the same range package.json receives
+// (exact for a pre-release, caret otherwise), whether or not the current
+// text carries a caret: a pre-release snippet has none, and leaving it
+// caret-less on the following stable bump is how the docs drifted before.
+const GUIDES_DIR = join(ROOT, 'apps', 'docs', 'content', 'guides');
+const guidePaths = existsSync(GUIDES_DIR)
+  ? readdirSync(GUIDES_DIR)
+      .filter((name) => name.endsWith('.md'))
+      .map((name) => join(GUIDES_DIR, name))
+  : [];
+const readmePaths = [
+  join(ROOT, 'README.md'),
+  ...packageDirs.map((dir) => join(PACKAGES_DIR, dir, 'README.md')),
+  ...guidePaths,
+];
 const VERSION = String.raw`\d+\.\d+\.\d+(?:-[\w.]+)?`;
+const peerRange = newVersion.includes('-') ? newVersion : `^${newVersion}`;
 const README_PATTERNS = [
-  [new RegExp(`("${REACT_PKG_NAME}":\\s*"\\^)${VERSION}(")`, 'g'), `$1${newVersion}$2`],
+  [new RegExp(`("${REACT_PKG_NAME}":\\s*")\\^?${VERSION}(")`, 'g'), `$1${peerRange}$2`],
   [new RegExp(`(${REACT_PKG_NAME}@)${VERSION}`, 'g'), `$1${newVersion}`],
 ];
 for (const readmePath of readmePaths) {
