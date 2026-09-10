@@ -42,6 +42,12 @@ export const PROVENANCE_FALLBACK_MESSAGE =
 
 let fallbackCounter = 0;
 
+/** Stable empty label result for standalone chunks (no registry). */
+const EMPTY_DEF_LABELS: ReturnType<ReturnType<typeof createDefLabelScanner>['scan']> = Object.freeze({
+  footnoteLabels: new Set<string>(),
+  linkLabels: new Set<string>(),
+});
+
 function hex(bytes: Uint8Array): string {
   let out = '';
   for (let i = 0; i < bytes.length; i++) out += bytes[i].toString(16).padStart(2, '0');
@@ -91,7 +97,13 @@ export function useMarkdownChunk(input: () => ChunkInput) {
   const version = shallowRef(0);
   let targets: PhantomTargets | undefined;
   let policy: CoordinationPolicy | undefined;
-  const ownLabels = computed(() => scanner.scan(input().content));
+  // Coordinated mode only. The label scan is a second parse of the content,
+  // and every reader of its result (registration, phantom targets, the
+  // contribution commit) does nothing without a registry. Standalone chunks
+  // get one shared empty result so nothing downstream churns on it. The
+  // scanner stays convergent on non-append input, so a chunk that acquires a
+  // registry later starts from a full scan of the content it has then.
+  const ownLabels = computed(() => (input().registry ? scanner.scan(input().content) : EMPTY_DEF_LABELS));
   const selectedPlugins = computed(() => input().enginePlugins);
   const selectedSchema = computed(() => input().sanitizeSchema);
   const prefix = computed(() => input().clobberPrefix);

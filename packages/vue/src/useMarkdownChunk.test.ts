@@ -138,6 +138,57 @@ test('Vue SSR prepares local footnotes without publishing or allocating a chunk'
   expect(registry._subscribers.size).toBe(0);
 });
 
+test('standalone chunks skip the definition-label scan until a registry is supplied', async () => {
+  const registry = createRegistry();
+  const input = shallowRef<ChunkInput>({
+    content: 'Claim[^n] and [site][u].\n\n[^n]: body\n\n[u]: https://example.com',
+    documentId: 'doc',
+    registry: null,
+    preserveOrphanReferences: false,
+    incrementalParse: true,
+    clobberPrefix: 'doc-',
+    enginePlugins: [],
+    sanitizeSchema,
+  });
+  let chunk!: ReturnType<typeof useMarkdownChunk>;
+  const Probe = defineComponent({
+    setup() {
+      chunk = useMarkdownChunk(() => input.value);
+      return () => h('pre', JSON.stringify(chunk.prepared.value.trees.hast));
+    },
+  });
+  const app = host.createApp({ render: () => h(Probe) });
+  try {
+    app.mount(node());
+    await settle();
+    // Nobody reads the labels without a registry, so the second parse that
+    // produces them is skipped and the frame carries stable empty sets.
+    expect(chunk.prepared.value.ownLabels.footnoteLabels.size).toBe(0);
+    expect(chunk.prepared.value.ownLabels.linkLabels.size).toBe(0);
+    expect(JSON.stringify(chunk.prepared.value.trees.hast)).toContain('body');
+    const standaloneLabels = chunk.prepared.value.ownLabels;
+    input.value = { ...input.value, content: input.value.content + '\n\nMore prose.' };
+    await settle();
+    expect(chunk.prepared.value.ownLabels).toBe(standaloneLabels);
+    // Coordinating later scans the full current content and registers it.
+    input.value = { ...input.value, registry };
+    await settle();
+    expect(chunk.prepared.value.ownLabels.footnoteLabels.has('N')).toBe(true);
+    expect(chunk.prepared.value.ownLabels.linkLabels.has('U')).toBe(true);
+    expect(registry.chunkOrder).toHaveLength(1);
+    expect(registry.globalNumber('N')).toBe(1);
+    expect(registry.resolveLinkDef('U')?.url).toBe('https://example.com');
+    input.value = { ...input.value, registry: null };
+    await settle();
+    expect(registry.chunkData.size).toBe(0);
+    expect(chunk.prepared.value.ownLabels.footnoteLabels.size).toBe(0);
+  } finally {
+    app.unmount();
+  }
+  await settle();
+  expect(registry._subscribers.size).toBe(0);
+});
+
 describe('chunk identity without crypto.randomUUID', () => {
   const realCrypto = globalThis.crypto;
   const setCrypto = (value: unknown) =>
