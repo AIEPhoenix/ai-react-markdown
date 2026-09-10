@@ -44,7 +44,7 @@ export const ReactiveContext: Story = {
     docs: {
       description: {
         story:
-          'The two renderers share the same corpus source and metadata. The first uses a mapped component with inheritAttrs disabled and explicit attribute forwarding. The second forwards slot properties and children. Change metadata or streaming in Controls to inspect both contexts without reparsing new text. Update context exercises the same reactive change with a button.',
+          'The two renderers share the same corpus source and metadata. The first uses a mapped component with inheritAttrs disabled and explicit attribute forwarding. The second forwards slot properties and children. Change metadata or streaming in Controls to inspect both contexts without reparsing new text. Update context temporarily overrides both values; Reset context resumes the current Controls values. The automatic interaction check restores this Controls-driven state before finishing.',
       },
     },
   },
@@ -102,9 +102,21 @@ export const ReactiveContext: Story = {
     }
     await userEvent.click(within(canvasElement).getByRole('button', { name: 'Update context' }));
     await waitFor(() => {
-      for (const link of canvasElement.querySelectorAll('[data-context-owner]')) {
-        expect(link).toHaveAttribute('title', 'Updated context');
-        expect(link).toHaveAttribute('data-streaming', 'false');
+      for (const owner of ['component', 'slot']) {
+        const links = canvasElement.querySelectorAll(`[data-context-owner="${owner}"]`);
+        expect(links.length).toBeGreaterThan(0);
+        for (const link of links) {
+          expect(link).toHaveAttribute('title', 'Updated context');
+          expect(link).toHaveAttribute('data-streaming', 'false');
+        }
+      }
+    });
+    await userEvent.click(within(canvasElement).getByRole('button', { name: 'Reset context' }));
+    await waitFor(() => {
+      for (const owner of ['component', 'slot']) {
+        const link = canvasElement.querySelector(`[data-context-owner="${owner}"]`);
+        expect(link).toHaveAttribute('title', 'Corpus links');
+        expect(link).toHaveAttribute('data-streaming', 'true');
       }
     });
   },

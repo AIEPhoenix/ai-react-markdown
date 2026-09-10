@@ -37,7 +37,7 @@ export const ComposableFlush: Story = {
       const smooth = useSmoothStream(() => ({
         content: source.value,
         streaming: producing.value,
-        pacing: args.pacing as SmoothStreamPacing,
+        pacing: args.pacing,
       }));
       return () =>
         h('section', [
@@ -180,9 +180,16 @@ export const CursorTailKinds: Story = {
     const cursor = () => canvasElement.querySelector('.aimd-vue-cursor') as HTMLElement;
     await waitFor(() => expect(cursor()).toBeVisible());
     expect(canvasElement.querySelector('[data-custom-cursor]')).not.toBeNull();
-    for (const name of ['Code tail', 'Math tail']) {
+    for (const [name, selector] of [
+      ['Code tail', 'pre code'],
+      ['Math tail', '.katex'],
+    ] as const) {
       await userEvent.click(canvas.getByRole('button', { name }));
-      await waitFor(() => expect(cursor()).not.toBeVisible());
+      await waitFor(() => {
+        expect(canvasElement.querySelector(selector)).not.toBeNull();
+        expect(cursor()).not.toBeNull();
+        expect(cursor()).not.toBeVisible();
+      });
     }
     await userEvent.click(canvas.getByRole('button', { name: 'Text tail' }));
     await waitFor(() => expect(cursor()).toBeVisible());

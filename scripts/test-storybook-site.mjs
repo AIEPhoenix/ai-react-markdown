@@ -82,6 +82,30 @@ try {
       assert.equal(await preview.locator('#storybook-root h3').first().textContent(), 'block-quotes');
     }
   }
+  // Autoplay must leave the context example connected to the public Controls.
+  const contextStory = 'customization-element-context--reactive-context';
+  await page.goto(`${base}?path=/story/vue_${contextStory}`);
+  const contextPreview = page.frameLocator('iframe[src*="/vue/iframe.html"]');
+  await contextPreview.locator('[data-context-owner="slot"]').first().waitFor();
+  const contextFrame = page.frames().find((frame) => frame.url().includes('/vue/iframe.html'));
+  assert(contextFrame, 'Vue context preview frame missing');
+  await contextFrame.waitForFunction(
+    (id) =>
+      window.__STORYBOOK_PREVIEW__?.storyRenders.some((render) => render.id === id && render.phase === 'finished'),
+    contextStory
+  );
+  await page.locator('#control-metadata').fill('Metadata from Controls');
+  await contextFrame.waitForFunction(
+    () => {
+      const links = document.querySelectorAll('[data-context-owner]');
+      return (
+        ['component', 'slot'].every((owner) => document.querySelector(`[data-context-owner="${owner}"]`)) &&
+        Array.from(links).every((link) => link.getAttribute('title') === 'Metadata from Controls')
+      );
+    },
+    undefined,
+    { timeout: 5000 }
+  );
   // Storybook runs play functions outside Vitest too. The public performance
   // instrument must remain idle until a visitor explicitly starts a measurement.
   await page.goto(`${base}vue/iframe.html?id=performance-lab-dom-update--corpus-commit&viewMode=story`);
