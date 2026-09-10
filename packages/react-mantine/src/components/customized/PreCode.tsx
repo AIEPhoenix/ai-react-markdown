@@ -1,13 +1,7 @@
 'use client';
 
 import { createContext, HTMLAttributes, memo, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  CodeHighlight,
-  CodeHighlightTabs,
-  CodeHighlightControl,
-  CodeHighlightAdapterProvider,
-  useHighlight,
-} from '@mantine/code-highlight';
+import { CodeHighlight, CodeHighlightTabs, CodeHighlightControl } from '@mantine/code-highlight';
 import { useAIMarkdownState, useAIMarkdownTheme } from '@ai-markdown/react';
 import { useMantineCodeBlockOptions } from '../../hooks/useMantineCodeBlockOptions';
 import MantineAIMMermaidCode from './MermaidCode';
@@ -188,28 +182,23 @@ function RawCodeCopy() {
   );
 }
 
-/** Single-entry adapter cache. Lives outside render; each request is keyed
- * by every input consumed by the highlighter, and a new function gets a new cache. */
-function createCachedHighlightAdapter(highlight: ReturnType<typeof useHighlight>) {
-  let previous: Parameters<typeof highlight>[0] | undefined;
-  let result: ReturnType<typeof highlight>;
-  return {
-    getHighlighter: () => (input: Parameters<typeof highlight>[0]) => {
-      if (
-        !previous ||
-        input.code !== previous.code ||
-        input.language !== previous.language ||
-        input.colorScheme !== previous.colorScheme
-      ) {
-        result = highlight(input);
-        previous = input;
-      }
-      return result;
-    },
-  };
-}
-
-/** Stable props keep Mantine's synchronous adapter out of intermediate renders. */
+/**
+ * Stable props keep intermediate streaming renders away from Mantine's
+ * highlighter: the parent coalesces appended code through `useCodeFrame`,
+ * and this memo boundary means an unchanged frame is not re-rendered at
+ * all. Beyond that, no local caching: Mantine's `CodeHighlight` already
+ * memoizes `highlight()` on code, language, color scheme and the
+ * language-loaded flag, so an extra single-entry cache bought nothing.
+ *
+ * It also must NOT sit under its own `CodeHighlightAdapterProvider`. An
+ * earlier version wrapped these components in a nested provider whose
+ * adapter exposed only `getHighlighter`. `CodeHighlight` reads
+ * `useLoadLanguage()` / `useIsLanguageLoaded()` from the NEAREST provider,
+ * so the consumer's adapter was never asked to load a grammar and adapters
+ * that load languages on demand (Mantine's `createShikiAdapter`) rendered
+ * every block as plain text. The components now read the consumer's
+ * provider directly.
+ */
 const OrdinaryCodeHighlight = memo(function OrdinaryCodeHighlight({
   code,
   language,
@@ -223,44 +212,38 @@ const OrdinaryCodeHighlight = memo(function OrdinaryCodeHighlight({
   fontSize: number | string;
   defaultExpanded: boolean;
 }) {
-  const highlight = useHighlight();
-  const adapter = useMemo(() => createCachedHighlightAdapter(highlight), [highlight]);
-  return (
-    <CodeHighlightAdapterProvider adapter={adapter}>
-      {fileName === 'unknown' ? (
-        <CodeHighlight
-          mb={15}
-          fz={fontSize}
-          w="100%"
-          code={code}
-          withBorder
-          withExpandButton
-          defaultExpanded={defaultExpanded}
-          maxCollapsedHeight="320px"
-          withCopyButton={false}
-          controls={[<RawCodeCopy key="copy" />]}
-        />
-      ) : (
-        <CodeHighlightTabs
-          mb={15}
-          fz={fontSize}
-          w="100%"
-          code={[
-            {
-              fileName: fileName,
-              code: code,
-              language: language,
-            },
-          ]}
-          withBorder
-          withExpandButton
-          defaultExpanded={defaultExpanded}
-          maxCollapsedHeight="320px"
-          withCopyButton={false}
-          controls={[<RawCodeCopy key="copy" />]}
-        />
-      )}
-    </CodeHighlightAdapterProvider>
+  return fileName === 'unknown' ? (
+    <CodeHighlight
+      mb={15}
+      fz={fontSize}
+      w="100%"
+      code={code}
+      withBorder
+      withExpandButton
+      defaultExpanded={defaultExpanded}
+      maxCollapsedHeight="320px"
+      withCopyButton={false}
+      controls={[<RawCodeCopy key="copy" />]}
+    />
+  ) : (
+    <CodeHighlightTabs
+      mb={15}
+      fz={fontSize}
+      w="100%"
+      code={[
+        {
+          fileName: fileName,
+          code: code,
+          language: language,
+        },
+      ]}
+      withBorder
+      withExpandButton
+      defaultExpanded={defaultExpanded}
+      maxCollapsedHeight="320px"
+      withCopyButton={false}
+      controls={[<RawCodeCopy key="copy" />]}
+    />
   );
 });
 
