@@ -1,24 +1,24 @@
-import { h, ref } from 'vue';
+import { EMPHASIS, QUOTES, STREAMING_SAMPLE } from '@ai-markdown/storybook-kit/common/corpus';
 import type { Meta, StoryObj } from '@storybook/vue3-vite';
-import { expect, userEvent, within, waitFor } from 'storybook/test';
-import AIMarkdown, { AIMarkdownSmoothStream, useSmoothStream, type SmoothStreamPacing } from '../src';
-import { CODE, EMPHASIS, MATH, QUOTES, STREAMING_SAMPLE } from '@ai-markdown/storybook-kit/common/corpus';
-
+import { expect, userEvent, waitFor, within } from 'storybook/test';
+import { h, ref } from 'vue';
+import AIMarkdown, { AIMarkdownSmoothStream, useSmoothStream, type SmoothStreamPacing } from '../../src';
+import { play, replay } from '../_shared/replayStories';
 const meta: Meta = {
-  title: 'Streaming/Controls and Cursor',
+  title: 'Streaming/Smooth Streaming',
   tags: ['autodocs'],
   parameters: {
     docs: {
       description: {
         component:
-          'Pass the complete accumulated Markdown string, not the newest transport delta. The producer streaming flag and smooth reveal completion are separate: finishing the producer drains buffered text; flush reveals the confirmed buffered prefix immediately. These examples use corpus excerpts and require no network transport. Compare React Streaming examples for the same source and lifecycle rules.',
+          'Smooth reveal uses the same engine pacing contract as React. Producer completion drains the reveal; flush releases confirmed buffered text while preserving a tentative final grapheme. Vue exposes the controller through composables and component refs.',
       },
     },
   },
 };
 export default meta;
-type Story = StoryObj<{ pacing?: SmoothStreamPacing; content?: string; streaming?: boolean }>;
-
+type Story = StoryObj<{ content?: string; streaming?: boolean; pacing?: SmoothStreamPacing }>;
+export const SmoothReveal: Story = { render: () => replay(true), play };
 export const ComposableFlush: Story = {
   args: { pacing: 'balanced' },
   argTypes: { pacing: { control: 'select', options: ['balanced', 'responsive', 'smooth'] } },
@@ -99,7 +99,6 @@ export const ComposableFlush: Story = {
     expect(canvasElement.querySelector('table')).toBeNull();
   },
 };
-
 export const InitialSnapshot: Story = {
   args: { content: EMPHASIS, streaming: false, pacing: 'balanced' },
   argTypes: {
@@ -122,78 +121,5 @@ export const InitialSnapshot: Story = {
   play: async ({ canvasElement }) => {
     await waitFor(() => expect(canvasElement.querySelector('strong')).not.toBeNull());
     expect(canvasElement.querySelector('[aria-busy="true"]')).toBeNull();
-  },
-};
-
-export const CursorTailKinds: Story = {
-  parameters: {
-    docs: {
-      description: {
-        story:
-          'The cursor slot customizes the marker, while streamingCursor enables its placement. Text tails show a marker; code and math tails hide it rather than pointing at an earlier paragraph. Finishing removes the cursor. The buttons switch between unmodified corpus excerpts.',
-      },
-    },
-  },
-  render: () => ({
-    setup() {
-      const source = ref(EMPHASIS);
-      const streaming = ref(true);
-      return () =>
-        h('section', [
-          ...(
-            [
-              ['Text tail', EMPHASIS],
-              ['Code tail', CODE],
-              ['Math tail', MATH],
-            ] as const
-          ).map(([label, content]) =>
-            h(
-              'button',
-              {
-                onClick: () => {
-                  source.value = content;
-                  streaming.value = true;
-                },
-              },
-              label
-            )
-          ),
-          h(
-            'button',
-            {
-              onClick: () => {
-                streaming.value = false;
-              },
-            },
-            'Finish'
-          ),
-          h(
-            AIMarkdown,
-            { content: source.value, streaming: streaming.value, streamingCursor: true },
-            { cursor: () => h('span', { 'data-custom-cursor': '' }, '▌') }
-          ),
-        ]);
-    },
-  }),
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    const cursor = () => canvasElement.querySelector('.aimd-vue-cursor') as HTMLElement;
-    await waitFor(() => expect(cursor()).toBeVisible());
-    expect(canvasElement.querySelector('[data-custom-cursor]')).not.toBeNull();
-    for (const [name, selector] of [
-      ['Code tail', 'pre code'],
-      ['Math tail', '.katex'],
-    ] as const) {
-      await userEvent.click(canvas.getByRole('button', { name }));
-      await waitFor(() => {
-        expect(canvasElement.querySelector(selector)).not.toBeNull();
-        expect(cursor()).not.toBeNull();
-        expect(cursor()).not.toBeVisible();
-      });
-    }
-    await userEvent.click(canvas.getByRole('button', { name: 'Text tail' }));
-    await waitFor(() => expect(cursor()).toBeVisible());
-    await userEvent.click(canvas.getByRole('button', { name: 'Finish' }));
-    await waitFor(() => expect(cursor()).toBeNull());
   },
 };

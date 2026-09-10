@@ -17,22 +17,51 @@ Each startup command first builds its public package dependencies, including the
 
 The React catalog contains Playground, Basics, Customization, Streaming, Documents, Integrations/Mantine, Performance Lab and QA. Vue uses the same capability categories where supported. Vue does not provide Mantine widgets or React render-count instrumentation. Composition groups are navigation boundaries: controls, theme state and replay clocks are not synchronized across frameworks.
 
-## Explore Vue capabilities
+## Chapter structure and renderer comparison
 
-Vue examples cover the shared rendering contracts through Vue props, scoped slots and composables. Use the following paths in the Vue catalog; the React catalog supplies comparable behavior through its own adapter APIs.
+React is the reference for the information architecture. Its catalog separates usage chapters (Basics, Customization, Streaming and Documents), optional integrations, performance instruments and QA regressions. A QA test count is not a measure of how much public usage documentation exists. Both renderers use the same chapter order and provide an Introduction and Playground. Storybook requires inline sort configuration, so each preview declares that order; static acceptance compares the resulting shared chapter sequence to prevent drift.
 
-| Vue catalog path                 | What to try                                                                                                          | Related React examples                      |
-| -------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| Streaming/Replay                 | Replay accumulated corpus text, finish, cancel and replace an answer                                                 | Streaming and Playground                    |
-| Streaming/Controls and Cursor    | Flush the confirmed prefix, finish the producer, edit pacing, inspect initial snapshots and switch cursor tail kinds | Smooth stream and streaming cursor examples |
-| Documents/Cross-Chunk References | Deliver definitions after the reader mounts; remove and restore repeated footnote occurrences                        | Documents/Cross-Chunk Coordination          |
-| Documents/Coordination           | Update/remove definitions, switch document IDs, finish or unmount a predecessor                                      | Document lifecycle and turn-taking examples |
-| Basics/Plugin Configuration      | Select defaults, highlight-only or no engine plugins without remounting                                              | Basics/Engine Plugins                       |
-| Customization/Element Context    | Change metadata/streaming, compare attribute forwarding, remove a slot to reveal a component mapping                 | Customization/Extending/Contexts & Hooks    |
+The following 19 usage chapters, including Playground, exist under identical titles in both catalogs. Their example counts can differ, but a visitor can switch frameworks without relearning where a capability lives.
 
-Each example has a Docs description explaining its inputs and observable behavior. Controls are provided where changing a prop is useful; buttons exercise lifecycle transitions on an already mounted component. Browser assertions check the rendered result, including footnote targets/backlinks, cursor visibility, plugin removal and context updates. Flushing a live smooth stream intentionally retains its final tentative grapheme; completing the producer confirms and drains it.
+| Shared chapter                      | Behavior to explore in Vue                                                   |
+| ----------------------------------- | ---------------------------------------------------------------------------- |
+| Playground                          | Edit the accumulated source and rendering flags                              |
+| Basics/Markdown Basics              | Corpus headings, emphasis, tables, tasks and quotes                          |
+| Basics/Math                         | Inline/display KaTeX output and its stylesheet requirement                   |
+| Basics/CJK & International Text     | International punctuation and emphasis fixtures                              |
+| Basics/Footnotes & Definition Lists | Standalone footnotes, backlinks and semantic definition lists                |
+| Basics/Engine Plugins               | Defaults, highlight-only and empty plugin selections; reactive switching     |
+| Customization/Custom Components     | Mapped components, scoped slots, attribute forwarding and slot precedence    |
+| Customization/Metadata              | Reactive metadata/streaming context in component props and slot arguments    |
+| Customization/URL Sanitization      | Default unsafe-scheme blocking and a stricter custom URL policy              |
+| Customization/Content Preprocessors | Source transformation before parsing                                         |
+| Customization/Orphan References     | Preserve or hide an uncited definition, then add/remove its reader           |
+| Streaming/Streaming Basics          | Accumulated corpus replay, producer completion, cancellation and replacement |
+| Streaming/Incremental Parsing       | Compare incremental/full parsing across snapshots and replacement            |
+| Streaming/Smooth Streaming          | Composable flush, pacing, producer completion and initial snapshots          |
+| Streaming/Streaming Cursor          | Custom marker and prose/code/math tail transitions                           |
+| Streaming/Turn Taking               | Finish or unmount a predecessor to admit a queued successor                  |
+| Streaming/Error Recovery            | Compare opt-in remend repair with unmodified incomplete Markdown             |
+| Documents/Cross-Chunk Coordination  | Late definitions, repeated footnote occurrences and valid backlinks          |
+| Documents/Definition Lifecycle      | Definition updates, removal, restoration and document isolation              |
 
-The catalogs are organized by capability rather than equal story counts. Mantine widgets and React-specific profiling remain in React. The Vue catalog does not imply an installed Vue UI library or a built-in Mermaid/code-toolbar integration.
+Shared chapter names do not imply identical adapter APIs. Vue receives element context through props/scoped slots. Its `preserveOrphanReferences` defaults to `false` and is configured per renderer; the React provider-level override is not a Vue prop. Smooth turn order is registration order, while `documentIndex` orders references. Flushing an unfinished smooth stream retains its final tentative grapheme until another append or producer completion confirms it.
+
+The remaining React chapters have explicit framework or verification responsibilities:
+
+| React chapters                                                                                 | Vue boundary                                                                                                                                                                                                       |
+| ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Customization/Theming/Font Size & Color Scheme; Design Tokens; Custom Typography & ExtraStyles | Vue has a base stylesheet and ordinary class/style customization, but does not export React typography variants, design tokens or the extra-style registry. The Vue preview theme controls its surrounding canvas. |
+| Customization/Extending/Contexts & Hooks; Define Factories                                     | Vue context is documented under Custom Components and Metadata; smooth composables are under Smooth Streaming. React provider hooks and definition factories are not Vue exports.                                  |
+| Integrations/Mantine (including its QA chapters)                                               | React-only integration. No Vue UI-library package is implied.                                                                                                                                                      |
+| Performance Lab/Streaming Comparisons; Cross-Chunk Stress                                      | React profiling instruments remain in React. Vue retains Performance Lab/DOM Update for explicit DOM commit measurement.                                                                                           |
+| QA (incremental parsing, cursor, turn-taking, state isolation and other regressions)           | Vue keeps its own relevant regressions and browser lifecycle suite. Shared engine correctness stays in engine tests; copying React-only instrumentation would not add equivalent Vue coverage.                     |
+
+Each Vue usage chapter has a Docs description. Controls edit useful props; buttons exercise mounted lifecycle transitions. The static acceptance check requires all 19 shared chapter titles in both indexes, so accidental catalog drift fails verification.
+
+### Updated Vue links
+
+The former combined Vue pages have been split. Bookmarks using `basics-markdown`, `customization-components-and-slots`, `customization-element-context`, `streaming-replay`, `streaming-controls-and-cursor`, `documents-coordination`, `documents-cross-chunk-references` or `basics-plugin-configuration` story IDs must be updated to the chapter containing that example. For example, `customization-element-context--reactive-context` is now `customization-metadata--reactive-context`. No automatic redirect is provided. Repository acceptance links use the new IDs.
 
 ## Choose a sample
 

@@ -50,6 +50,47 @@ try {
   });
   const react = await (await fetch(base + 'react/index.json')).json();
   const vue = await (await fetch(base + 'vue/index.json')).json();
+  // Common capabilities must remain discoverable under identical chapter names.
+  const commonChapters = [
+    'Playground',
+    'Basics/Markdown Basics',
+    'Basics/Math',
+    'Basics/CJK & International Text',
+    'Basics/Footnotes & Definition Lists',
+    'Basics/Engine Plugins',
+    'Customization/Custom Components',
+    'Customization/Metadata',
+    'Customization/URL Sanitization',
+    'Customization/Content Preprocessors',
+    'Customization/Orphan References',
+    'Streaming/Streaming Basics',
+    'Streaming/Incremental Parsing',
+    'Streaming/Smooth Streaming',
+    'Streaming/Streaming Cursor',
+    'Streaming/Turn Taking',
+    'Streaming/Error Recovery',
+    'Documents/Cross-Chunk Coordination',
+    'Documents/Definition Lifecycle',
+  ];
+  const sharedSequence = (index) => [
+    ...new Set(
+      Object.values(index.entries)
+        .filter((entry) => entry.type === 'story' && commonChapters.includes(entry.title))
+        .map((entry) => entry.title)
+    ),
+  ];
+  assert.deepEqual(sharedSequence(vue), sharedSequence(react), 'Shared chapter order must match across renderers');
+  for (const title of commonChapters) {
+    for (const [framework, index] of [
+      ['react', react],
+      ['vue', vue],
+    ]) {
+      assert(
+        Object.values(index.entries).some((entry) => entry.type === 'story' && entry.title === title),
+        `${framework}: shared chapter missing: ${title}`
+      );
+    }
+  }
   for (const [framework, index] of [
     ['react', react],
     ['vue', vue],
@@ -83,7 +124,7 @@ try {
     }
   }
   // Autoplay must leave the context example connected to the public Controls.
-  const contextStory = 'customization-element-context--reactive-context';
+  const contextStory = 'customization-metadata--reactive-context';
   await page.goto(`${base}?path=/story/vue_${contextStory}`);
   const contextPreview = page.frameLocator('iframe[src*="/vue/iframe.html"]');
   await contextPreview.locator('[data-context-owner="slot"]').first().waitFor();

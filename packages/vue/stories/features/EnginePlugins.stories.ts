@@ -1,22 +1,39 @@
-import { h, ref } from 'vue';
-import type { Meta, StoryObj } from '@storybook/vue3-vite';
-import { expect, userEvent, within, waitFor } from 'storybook/test';
-import AIMarkdown, { defaultEnginePlugins, highlight } from '../src';
+import type { AIMarkdownProps } from '../../src';
 import { DEFINITION_LIST_DOC, MARK_HIGHLIGHT_DOC } from '@ai-markdown/storybook-kit/common/fixtures';
+import type { Meta, StoryObj } from '@storybook/vue3-vite';
+import { expect, userEvent, waitFor, within } from 'storybook/test';
+import { h, ref } from 'vue';
+import AIMarkdown, { defaultEnginePlugins, highlight } from '../../src';
 const meta: Meta = {
-  title: 'Basics/Plugin Configuration',
+  title: 'Basics/Engine Plugins',
   tags: ['autodocs'],
+  component: AIMarkdown,
+  render: (args) => ({ setup: () => () => h(AIMarkdown, { ...args, content: args.content ?? '' }) }),
+  argTypes: { content: { control: 'text' } },
   parameters: {
     docs: {
       description: {
         component:
-          'enginePlugins replaces the default selection; it does not append to it. Use defaultEnginePlugins when retaining the built-in selection, or pass explicit plugins for a smaller set. Selection is reactive and does not require remounting AIMarkdown. These syntax fixtures isolate definition-list and highlight behavior. Compare React Basics/Engine Plugins.',
+          'enginePlugins replaces the default list rather than extending it. Compare defaults, highlight-only and an empty selection on the same mounted renderer. The syntax fixtures match React Basics/Engine Plugins.',
       },
     },
   },
 };
 export default meta;
-type Story = StoryObj<{ selection: 'defaults' | 'highlight only' | 'none' }>;
+type Story = StoryObj<Partial<AIMarkdownProps> & { selection?: 'defaults' | 'highlight only' | 'none' }>;
+export const Highlight: Story = {
+  args: { content: MARK_HIGHLIGHT_DOC },
+  play: async ({ canvasElement }) => {
+    await waitFor(() => expect(canvasElement.querySelector('mark')).not.toBeNull());
+  },
+};
+export const PluginsDisabled: Story = {
+  args: { content: MARK_HIGHLIGHT_DOC, enginePlugins: [] },
+  play: async ({ canvasElement }) => {
+    await waitFor(() => expect(canvasElement.textContent).toContain('=='));
+    expect(canvasElement.querySelector('mark')).toBeNull();
+  },
+};
 export const ReactiveSelection: Story = {
   args: { selection: 'defaults' },
   argTypes: { selection: { control: 'select', options: ['defaults', 'highlight only', 'none'] } },

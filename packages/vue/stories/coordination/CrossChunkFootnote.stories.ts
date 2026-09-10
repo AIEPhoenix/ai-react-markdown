@@ -1,24 +1,22 @@
-import { h, ref } from 'vue';
-import type { Meta, StoryObj } from '@storybook/vue3-vite';
-import { expect, userEvent, within, waitFor } from 'storybook/test';
-import AIMarkdown, { AIMarkdownDocuments } from '../src';
 import { REFERENCE_SCENARIO as scenario } from '@ai-markdown/storybook-kit/common/scenarios';
-
+import type { Meta, StoryObj } from '@storybook/vue3-vite';
+import { expect, userEvent, waitFor, within } from 'storybook/test';
+import { h, ref } from 'vue';
+import AIMarkdown, { AIMarkdownDocuments } from '../../src';
 const meta: Meta = {
-  title: 'Documents/Cross-Chunk References',
+  title: 'Documents/Cross-Chunk Coordination',
   tags: ['autodocs'],
   parameters: {
     docs: {
       description: {
         component:
-          'AIMarkdownDocuments owns a document scope. Chunks sharing documentId resolve definitions together; documentIndex establishes their order. Different document IDs remain isolated. These purpose-built fixtures model late and repeated references that a complete corpus document cannot demonstrate. Compare React Documents/Cross-Chunk Coordination.',
+          'Late definitions and repeated footnotes across ordered chunks. References, shared footers and backlinks must remain consistent when a reader unmounts. Purpose-built fixtures model arrival order that a complete corpus document cannot show.',
       },
     },
   },
 };
 export default meta;
 type Story = StoryObj;
-
 export const LateDefinitions: Story = {
   parameters: {
     docs: {
@@ -73,7 +71,6 @@ export const LateDefinitions: Story = {
     expect(canvasElement.querySelector('[data-footnotes]')).toBeNull();
   },
 };
-
 export const RepeatedFootnotes: Story = {
   parameters: {
     docs: {

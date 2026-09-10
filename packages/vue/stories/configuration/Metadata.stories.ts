@@ -1,17 +1,16 @@
-import { defineComponent, h, ref } from 'vue';
-import type { Meta, StoryObj } from '@storybook/vue3-vite';
-import { expect, userEvent, within, waitFor } from 'storybook/test';
-import AIMarkdown, { type MarkdownElementContext } from '../src';
 import { LINKS } from '@ai-markdown/storybook-kit/common/corpus';
-
+import type { Meta, StoryObj } from '@storybook/vue3-vite';
+import { expect, userEvent, waitFor, within } from 'storybook/test';
+import { defineComponent, h, ref } from 'vue';
+import AIMarkdown, { type MarkdownElementContext } from '../../src';
 const meta: Meta = {
-  title: 'Customization/Element Context',
+  title: 'Customization/Metadata',
   tags: ['autodocs'],
   parameters: {
     docs: {
       description: {
         component:
-          'Element slots receive node, properties, children, streaming and metadata. Mapped Vue components receive normalized element attributes plus node, streaming and metadata as props, and rendered children through the default slot. An element slot takes precedence over a component mapping for the same tag. Compare React Customization/Extending/Contexts & Hooks; Vue uses props and scoped slots rather than React context hooks.',
+          'Compare metadata and streaming state in a mapped component and scoped slot. Both are reactive. Unlike React context hooks, Vue delivers these values directly through component props and scoped-slot arguments.',
       },
     },
   },
@@ -36,7 +35,6 @@ const ContextLink = defineComponent({
         slots.default?.()
       ),
 });
-
 export const ReactiveContext: Story = {
   args: { metadata: 'Corpus links', streaming: true },
   argTypes: { metadata: { control: 'text' }, streaming: { control: 'boolean' } },
@@ -119,59 +117,5 @@ export const ReactiveContext: Story = {
         expect(link).toHaveAttribute('data-streaming', 'true');
       }
     });
-  },
-};
-
-export const SlotPrecedence: Story = {
-  parameters: {
-    docs: {
-      description: {
-        story:
-          'With both components.a and an a slot present, the slot renders the link. Remove the slot to fall back to the mapped component, then restore it. Keep forwarding properties and children so hrefs and link labels survive either route.',
-      },
-    },
-  },
-  render: () => ({
-    setup() {
-      const slotEnabled = ref(true);
-      return () =>
-        h('section', [
-          h(
-            'button',
-            {
-              onClick: () => {
-                slotEnabled.value = !slotEnabled.value;
-              },
-            },
-            slotEnabled.value ? 'Remove link slot' : 'Restore link slot'
-          ),
-          h(
-            AIMarkdown,
-            { content: LINKS, components: { a: ContextLink } },
-            slotEnabled.value
-              ? {
-                  a: ({ properties, children }: MarkdownElementContext) =>
-                    h('a', { ...properties, 'data-context-owner': 'slot' }, children),
-                }
-              : {}
-          ),
-        ]);
-    },
-  }),
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await waitFor(() => expect(canvasElement.querySelector('[data-context-owner="slot"]')).not.toBeNull());
-    expect(canvasElement.querySelector('[data-context-owner="component"]')).toBeNull();
-    const href = canvasElement.querySelector('[data-context-owner="slot"]')!.getAttribute('href');
-    await userEvent.click(canvas.getByRole('button', { name: 'Remove link slot' }));
-    await waitFor(() =>
-      expect(canvasElement.querySelector('[data-context-owner="component"]')).toHaveAttribute('href', href)
-    );
-    expect(canvasElement.querySelector('[data-context-owner="slot"]')).toBeNull();
-    await userEvent.click(canvas.getByRole('button', { name: 'Restore link slot' }));
-    await waitFor(() =>
-      expect(canvasElement.querySelector('[data-context-owner="slot"]')).toHaveAttribute('href', href)
-    );
-    expect(canvasElement.querySelector('[data-context-owner="component"]')).toBeNull();
   },
 };

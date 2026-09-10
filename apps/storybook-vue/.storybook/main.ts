@@ -10,7 +10,7 @@ const config: StorybookConfig = {
       __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: false,
     },
   }),
-  stories: ['../../../packages/vue/stories/**/*.stories.ts'],
+  stories: ['../../../packages/vue/stories/**/*.mdx', '../../../packages/vue/stories/**/*.stories.ts'],
   addons: ['@storybook/addon-vitest', '@storybook/addon-a11y', '@storybook/addon-docs'],
   staticDirs: ['../../../tooling/storybook-kit/assets'],
   tags: { qa: { excludeFromSidebar: Boolean(process.env.STORYBOOK_DOCS_EXPORT) } },

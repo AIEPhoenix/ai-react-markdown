@@ -32,13 +32,33 @@ const preview: Preview = {
     // Anything not named here sorts after the named entries, alphabetically.
     options: {
       storySort: {
+        // Storybook statically parses this array. Keep both renderer orders aligned.
         order: [
           'Introduction',
           'Playground',
           'Basics',
+          ['Markdown Basics', 'Math', 'CJK & International Text', 'Footnotes & Definition Lists', 'Engine Plugins'],
           'Customization',
+          [
+            'Custom Components',
+            'Metadata',
+            'URL Sanitization',
+            'Content Preprocessors',
+            'Orphan References',
+            'Theming',
+            'Extending',
+          ],
           'Streaming',
+          [
+            'Streaming Basics',
+            'Incremental Parsing',
+            'Smooth Streaming',
+            'Streaming Cursor',
+            'Turn Taking',
+            'Error Recovery',
+          ],
           'Documents',
+          ['Cross-Chunk Coordination', 'Definition Lifecycle'],
           'Integrations',
           ['Mantine'],
           'Performance Lab',

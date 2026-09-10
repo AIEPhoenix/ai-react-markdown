@@ -167,7 +167,9 @@ This implementation does not claim React/Mantine UI parity: Mantine remains Reac
 
 Run `pnpm storybook:vue` from the repository root. The launcher builds the public package dependencies before opening the catalog on port 6008; `pnpm storybook` also starts React and the combined entry on port 6006.
 
-Start with **Streaming/Controls and Cursor** for `useSmoothStream`, flush semantics, initial snapshots and cursor customization. **Documents/Cross-Chunk References** demonstrates late definitions, repeated footnotes, stable anchor targets and cleanup. **Basics/Plugin Configuration** shows reactive plugin replacement. **Customization/Element Context** compares component props with scoped-slot context and demonstrates slot precedence. Each group includes usage notes and browser assertions; the relevant stories expose editable Controls.
+The chapter names and order follow the React catalog. Start with **Streaming/Streaming Basics**, then **Incremental Parsing**, **Smooth Streaming**, **Streaming Cursor**, **Turn Taking** and **Error Recovery** for the corresponding lifecycle contracts. **Documents/Cross-Chunk Coordination** covers late definitions and repeated footnotes; **Definition Lifecycle** covers updates and isolation. **Basics/Engine Plugins** demonstrates reactive plugin selection. **Customization/Custom Components** and **Metadata** cover mapping, scoped slots and context; **URL Sanitization**, **Content Preprocessors** and **Orphan References** cover output policies. Each chapter includes usage notes and browser assertions; relevant examples expose editable Controls.
+
+React-specific typography tokens, extra-style registries, context factories, Mantine widgets and render profiling remain separate. The Vue Introduction explains those boundaries; the shared catalog guide maps all common chapters and records renamed Vue story URLs.
 
 General examples read corpus excerpts. Cross-chunk and plugin syntax fixtures remain purpose-built to isolate their contracts. See the [catalog guide](../../docs/storybook.md) for comparable React examples and run `pnpm test:storybook:vue` to verify the Vue stories in Chromium.
 

@@ -1,0 +1,55 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Introduction" />
+
+# AI Markdown for Vue
+
+This catalog follows the same capability chapters and order as React. Start with
+Playground to edit Markdown, then use the chapters below to understand individual
+contracts. General examples read the same corpus documents across renderers.
+
+| Chapter         | Learn and try                                                                                      |
+| --------------- | -------------------------------------------------------------------------------------------------- |
+| Basics          | Markdown, math, international text, footnotes, definition lists and engine plugins                 |
+| Customization   | Components, scoped slots, metadata, URL policy, preprocessors and orphan references                |
+| Streaming       | Accumulated source, incremental parsing, smooth reveal, cursor placement, turn-taking and recovery |
+| Documents       | Cross-chunk references and definition ownership across updates, removal and document switches      |
+| Performance Lab | Vue DOM update measurement, started explicitly by the visitor                                      |
+| QA              | Focused browser regressions; not a second set of usage tutorials                                   |
+
+## Vue integration
+
+Vue 3.5+ renders real VNodes. Pass the complete accumulated Markdown string to
+`AIMarkdown`; the application owns fetching, transport decoding and cancellation.
+Use `AIMarkdownDocuments` to coordinate related chunks. Use `AIMarkdownSmoothStream`
+or `useSmoothStream` for paced reveal.
+
+```vue
+<script setup lang="ts">
+import AIMarkdown from '@ai-markdown/vue';
+import '@ai-markdown/vue/styles.css';
+import 'katex/dist/katex.min.css';
+defineProps<{ content: string; streaming: boolean }>();
+</script>
+
+<template>
+  <AIMarkdown :content="content" :streaming="streaming" />
+</template>
+```
+
+## Shared chapters, framework-specific APIs
+
+The same chapter name describes the same task, not identical prop names. Vue
+passes element context through component props and scoped slots; React also has
+context hooks and definition factories. Vue configures orphan preservation per
+renderer and defaults to hiding unreferenced definitions.
+
+React's typography presets, built-in design tokens, extra-style registry,
+provider/factory helpers, Mantine widgets and React render profiling do not have
+matching Vue APIs. Vue can use ordinary CSS and custom components; the catalog
+does not advertise those React exports as Vue features. There is no Vue UI-library
+integration package in this catalog yet.
+
+Read the [Vue package guide](https://github.com/ai-markdown/ai-markdown/tree/main/packages/vue)
+for API details and the [catalog guide](https://github.com/ai-markdown/ai-markdown/blob/main/docs/storybook.md)
+for the chapter comparison and framework-specific boundaries.

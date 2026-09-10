@@ -1,9 +1,20 @@
-import { h, ref } from 'vue';
-import type { Meta, StoryObj } from '@storybook/vue3-vite';
-import { expect, waitFor, within, userEvent } from 'storybook/test';
-import AIMarkdown, { defaultEnginePlugins } from '../src';
 import { DEFINITION_LIST_DOC } from '@ai-markdown/storybook-kit/common/fixtures';
-const meta: Meta = { title: 'QA/Plugin Selection', tags: ['qa'] };
+import type { Meta, StoryObj } from '@storybook/vue3-vite';
+import { expect, userEvent, waitFor, within } from 'storybook/test';
+import { h, ref } from 'vue';
+import AIMarkdown, { defaultEnginePlugins } from '../../src';
+const meta: Meta = {
+  title: 'QA/Plugin Swap Refresh',
+  tags: ['qa'],
+  parameters: {
+    docs: {
+      description: {
+        component:
+          'Browser regression for toggling definition-list parsing on an already mounted Vue renderer. Public plugin selection examples live in Basics/Engine Plugins.',
+      },
+    },
+  },
+};
 export default meta;
 type Story = StoryObj;
 export const DefinitionPluginSwitch: Story = {
