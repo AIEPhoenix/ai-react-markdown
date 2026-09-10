@@ -55,6 +55,7 @@ function run(framework, port) {
   const args = ['exec', 'storybook', mode === 'dev' ? 'dev' : 'build', '-c', `apps/storybook-${framework}/.storybook`];
   if (mode === 'dev') args.push('-p', String(port), '--no-open', '--ci');
   else args.push('-o', framework === 'hub' ? 'storybook-static' : `storybook-static/${framework}`);
+  if (mode === 'dev') console.log(`[storybook] Starting ${framework} on port ${port}`);
   return command(framework, args);
 }
 async function waitForCatalog(port) {
@@ -67,7 +68,10 @@ async function waitForCatalog(port) {
         // Storybook probes iframe.html when classifying public composition refs.
         const preview = await fetch(`${base}/iframe.html`, { signal: AbortSignal.timeout(1000) });
         await preview.arrayBuffer();
-        if (preview.ok) return;
+        if (preview.ok) {
+          console.log(`[storybook] Catalog HTTP endpoints ready on port ${port}`);
+          return;
+        }
       }
     } catch {
       // A listening server can still be preparing its index and preview.

@@ -31,6 +31,13 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
   assert(await isReady(6006), 'Composition server must start');
+  const hubStart = output.indexOf('[storybook] Starting hub on port 6006');
+  assert(hubStart >= 0, 'Composition launch marker must be logged');
+  for (const port of [6007, 6008]) {
+    const ready = output.indexOf(`[storybook] Catalog HTTP endpoints ready on port ${port}`);
+    assert(ready >= 0 && ready < hubStart, `Catalog ${port} must be ready before the hub is launched`);
+  }
+  assert(!output.includes('`vue-docgen-api` is deprecated'), 'Vue must use the supported docgen engine');
   browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
   const failures = [];

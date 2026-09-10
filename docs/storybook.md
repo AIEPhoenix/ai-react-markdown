@@ -11,7 +11,7 @@ pnpm install
 pnpm storybook
 ```
 
-The composition entry opens at `http://localhost:6006`, React at `http://localhost:6007`, and Vue at `http://localhost:6008`. The combined command waits for the React and Vue indexes and preview endpoints before starting the composition entry. This lets Storybook recognize the local catalogs as public references and fetch their indexes without credentials across ports. The command starts all three servers; stop it with Ctrl+C. To work on one renderer, use `pnpm storybook:react` or `pnpm storybook:vue`.
+The composition entry opens at `http://localhost:6006`, React at `http://localhost:6007`, and Vue at `http://localhost:6008`. The combined command waits for the React and Vue indexes and preview endpoints before starting the composition entry. This lets Storybook recognize the local catalogs as public references and fetch their indexes without credentials across ports. The `[storybook]` launch and HTTP-readiness messages show this sequence explicitly; concurrent Storybook banners and later compilation messages are not an ordering contract. The command starts all three servers; stop it with Ctrl+C. To work on one renderer, use `pnpm storybook:react` or `pnpm storybook:vue`.
 
 Each startup command first builds its public package dependencies, including the Vue stylesheet exported from `dist/styles.css`. The combined command builds all public packages; individual renderer commands build their dependency closure. A failed package build prevents the servers from starting. Stories use renderer source files for hot updates, while imported engine/core packages use their built output; restart the command after changing those packages to refresh that output.
 
@@ -90,6 +90,8 @@ pnpm test:storybook
 # Development composition, cross-port references and shutdown (ports 6006–6008 must be free):
 pnpm test:storybook-dev
 ```
+
+Vue explicitly uses `vue-component-meta` for build-time component documentation instead of the deprecated `vue-docgen-api` default. Server-side experimental docgen is not enabled.
 
 React's suite includes Mantine. Each project loads its own Storybook configuration and runs its own `play` assertions in Chromium. The composition entry does not execute referenced suites. QA navigation remains visible locally; setting `STORYBOOK_DOCS_EXPORT=1` hides QA in public navigation while preserving its indexed stories and assertions. Deliberate `!test` exclusions for isolated profiling instruments remain exclusions.
 
