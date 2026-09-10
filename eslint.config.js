@@ -23,6 +23,9 @@ export default defineConfig(
       // see packages/engine/stryker.conf.json).
       '**/.stryker-tmp/**',
       '**/reports/mutation/**',
+      // Composed GitHub Pages site written by scripts/assemble-pages.mjs
+      // (already listed in .prettierignore). Bundled output, not source.
+      '_site/**',
     ],
   },
   {
