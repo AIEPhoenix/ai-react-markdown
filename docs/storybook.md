@@ -17,6 +17,23 @@ Each startup command first builds its public package dependencies, including the
 
 The React catalog contains Playground, Basics, Customization, Streaming, Documents, Integrations/Mantine, Performance Lab and QA. Vue uses the same capability categories where supported. Vue does not provide Mantine widgets or React render-count instrumentation. Composition groups are navigation boundaries: controls, theme state and replay clocks are not synchronized across frameworks.
 
+## Explore Vue capabilities
+
+Vue examples cover the shared rendering contracts through Vue props, scoped slots and composables. Use the following paths in the Vue catalog; the React catalog supplies comparable behavior through its own adapter APIs.
+
+| Vue catalog path                 | What to try                                                                                                          | Related React examples                      |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| Streaming/Replay                 | Replay accumulated corpus text, finish, cancel and replace an answer                                                 | Streaming and Playground                    |
+| Streaming/Controls and Cursor    | Flush the confirmed prefix, finish the producer, edit pacing, inspect initial snapshots and switch cursor tail kinds | Smooth stream and streaming cursor examples |
+| Documents/Cross-Chunk References | Deliver definitions after the reader mounts; remove and restore repeated footnote occurrences                        | Documents/Cross-Chunk Coordination          |
+| Documents/Coordination           | Update/remove definitions, switch document IDs, finish or unmount a predecessor                                      | Document lifecycle and turn-taking examples |
+| Basics/Plugin Configuration      | Select defaults, highlight-only or no engine plugins without remounting                                              | Basics/Engine Plugins                       |
+| Customization/Element Context    | Change metadata/streaming, compare attribute forwarding, remove a slot to reveal a component mapping                 | Customization/Extending/Contexts & Hooks    |
+
+Each example has a Docs description explaining its inputs and observable behavior. Controls are provided where changing a prop is useful; buttons exercise lifecycle transitions on an already mounted component. Browser assertions check the rendered result, including footnote targets/backlinks, cursor visibility, plugin removal and context updates. Flushing a live smooth stream intentionally retains its final tentative grapheme; completing the producer confirms and drains it.
+
+The catalogs are organized by capability rather than equal story counts. Mantine widgets and React-specific profiling remain in React. The Vue catalog does not imply an installed Vue UI library or a built-in Mermaid/code-toolbar integration.
+
 ## Choose a sample
 
 General-purpose examples use complete excerpts from `corpus/documents/markdown.md`, `code.md`, `math.md` and `mermaid.md`. The private Storybook kit selects sections by explicit headings and fails if those boundaries disappear. It does not maintain another handwritten copy of the same Markdown. Shared excerpts keep React, Vue and Mantine demonstrations comparable without requiring identical generated IDs or DOM wrappers.
