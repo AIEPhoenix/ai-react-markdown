@@ -24,7 +24,7 @@ The five-package train moves to a release candidate with the same runtime APIs a
 
 Release gates now include React, React plugins and Mantine declaration snapshots, packed consumers at both declared Node lower bounds and Node 24, and the Vue functional browser suite in Firefox and WebKit alongside Chromium. The generated core contribution/aggregate correctness test receives a 30-second timeout to tolerate CI startup overhead while preserving its full workload.
 
-These are candidate changes, not a publication or final acceptance record. Follow the [3.0 release checklist](./releasing-3.0.md) for the fresh soak, CI, trusted publication and downstream validation still required before stable promotion.
+The [RC release workflow](https://github.com/ai-markdown/ai-markdown/actions/runs/34491579512) passed automated verification and human soak review, then published all six package versions through OIDC. Registry checks confirmed the expected dist-tags, tarball hashes and provenance source. Fresh npm downloads passed ESM/CJS, React/Mantine/Vue SSR, CSS, declarations and the Vue 3.5.0 consumer checks. See the [3.0 release checklist](./releasing-3.0.md) for the recorded soak exception and stable promotion gates.
 
 ## Find the release line relevant to your upgrade
 
