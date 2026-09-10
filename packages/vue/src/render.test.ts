@@ -88,6 +88,16 @@ describe('Vue SSR contracts', () => {
     const other = await render('missing[^x]');
     expect(other).not.toContain('body');
   });
+  it('emits the cursor tail marker only while streaming with the cursor enabled', async () => {
+    const source = 'See [site][u].\n\n[u]: https://example.com';
+    expect(await render(source)).not.toContain('data-aimd-tail-kind');
+    expect(await render(source, { streaming: true, streamingCursor: false })).not.toContain('data-aimd-tail-kind');
+    const streaming = await render(source, { streaming: true });
+    expect(streaming).toContain('data-aimd-tail-kind="invisible-def"');
+    const footnote = await render('Claim[^n].\n\n[^n]: body', { streaming: true });
+    expect(footnote).toContain('data-aimd-tail-kind="footnote-def"');
+    expect(footnote).toContain('data-aimd-tail-label="n"');
+  });
 });
 
 it('applies URL policy and element overrides to coordinated footnote marks', async () => {
