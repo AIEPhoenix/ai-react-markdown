@@ -146,4 +146,3 @@ When contributing documentation, retain useful examples and historical measureme
 ## Release maintenance
 
 - [Published-artifact verification](./releasing-3.0.md#repeatable-published-artifact-verification)
-- [Legacy scope retirement proposal](./legacy-scope-plan.md)
