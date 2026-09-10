@@ -46,9 +46,12 @@ on:
 env:
   RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
 
+# Default for every job is read-only. The `release` job alone raises this to
+# `contents: write` (GitHub release) and `id-token: write` (OIDC for npm
+# trusted publishing + provenance); `verify` and the called consumer-compat
+# workflow only check out and build.
 permissions:
-  contents: write # create the GitHub release
-  id-token: write # OIDC token for npm trusted publishing + provenance
+  contents: read
 
 concurrency:
   group: release-${{ inputs.release_tag || github.ref_name }}
@@ -188,6 +191,9 @@ jobs:
       ((needs.verify.outputs.soak_required == 'false' && needs.soak-approval.result == 'skipped') ||
        (needs.verify.outputs.soak_required == 'true' && needs.soak-approval.result == 'success'))
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the GitHub release
+      id-token: write # OIDC token for npm trusted publishing + provenance
     steps:
       - name: Checkout verified workflow commit
         uses: actions/checkout@v7
