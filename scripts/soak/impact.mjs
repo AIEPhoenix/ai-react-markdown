@@ -18,6 +18,7 @@ const manifestInputs = (text) => {
     Object.fromEntries(
       [
         'dependencies',
+        'devDependencies',
         'optionalDependencies',
         'peerDependencies',
         'peerDependenciesMeta',
@@ -80,6 +81,37 @@ export function dependencyGraph(lockText) {
   }
   return canonical(result);
 }
+/** Workspace globs affect soak only when they stop including one of its local
+ * inputs. All other install/resolution options remain significant. Resolve the
+ * local dependency closure from each historical lockfile, never from node_modules.
+ * Corpus documents are read directly by engine verification outside that graph. */
+export function workspaceInputs(text, lockText) {
+  const config = parse(text);
+  if (!config || typeof config !== 'object' || Array.isArray(config)) throw new Error('Invalid workspace config');
+  const { packages = ['**'], ...options } = config;
+  if (!Array.isArray(packages) || !packages.every((pattern) => typeof pattern === 'string' && pattern.length > 0))
+    throw new Error('Invalid workspace patterns');
+  const graph = JSON.parse(dependencyGraph(lockText));
+  const inputs = [
+    ...new Set([
+      'packages/engine',
+      'packages/remark-mark-highlight',
+      'corpus',
+      ...Object.keys(graph)
+        .filter((key) => key.startsWith('workspace:'))
+        .map((key) => key.slice('workspace:'.length)),
+    ]),
+  ].sort();
+  const positive = packages.filter((pattern) => !pattern.startsWith('!'));
+  const negative = packages.filter((pattern) => pattern.startsWith('!')).map((pattern) => pattern.slice(1));
+  const included = inputs.map((directory) => [
+    directory,
+    positive.some((pattern) => path.posix.matchesGlob(directory, pattern)) &&
+      !negative.some((pattern) => path.posix.matchesGlob(directory, pattern)),
+  ]);
+  if (included.some(([, present]) => !present)) throw new Error('Engine verification workspace is excluded');
+  return canonical({ options, included });
+}
 export function classify(paths, before, after) {
   const reasons = [];
   for (const file of paths) {
@@ -92,6 +124,13 @@ export function classify(paths, before, after) {
           reasons.push(`${file}: engine/test/build dependency graph changed`);
       } catch {
         reasons.push(`${file}: dependency impact could not be resolved`);
+      }
+    } else if (file === 'pnpm-workspace.yaml') {
+      try {
+        if (workspaceInputs(a, before('pnpm-lock.yaml')) !== workspaceInputs(b, after('pnpm-lock.yaml')))
+          reasons.push(`${file}: engine workspace membership or installation settings changed`);
+      } catch {
+        reasons.push(`${file}: engine workspace impact could not be resolved`);
       }
     } else if (file === 'package.json') {
       const inputs = (text) => {
@@ -124,12 +163,15 @@ export function classify(paths, before, after) {
       if (/\.(md|txt)$|\/LICENSE$/.test(file)) continue;
       if (/\.[cm]?[jt]sx?$/.test(file) && a && b && executable(a) === executable(b)) continue;
       reasons.push(`${file}: engine/plugin implementation or verification changed`);
-    } else if (
-      /^scripts\/soak\/|^vitest.config.ts$|^pnpm-workspace\.yaml$|^tsconfig\.base\.json$|^patches\//.test(file)
-    ) {
+    } else if (/^corpus\/documents\//.test(file)) {
+      reasons.push(`${file}: engine differential verification input changed`);
+    } else if (/^scripts\/soak\/|^tsconfig\.base\.json$|^patches\//.test(file)) {
       if (!file.endsWith('.md')) reasons.push(`${file}: shared toolchain or soak mechanism changed`);
     }
   }
+  // Root vitest.config.ts hosts unit/Storybook projects for normal CI. The
+  // six soak legs start in packages/engine and load its own vitest.config.ts,
+  // already covered by the engine path rule. Do not couple evidence to UI setup.
   return { required: reasons.length > 0, reasons };
 }
 export function inspect(base, head = 'HEAD', cwd = process.cwd()) {
