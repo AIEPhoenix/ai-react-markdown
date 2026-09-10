@@ -47,6 +47,10 @@ PR and main-branch CI include an **Assess engine soak impact** check and a depen
 
 Run `pnpm check:soak-impact` to compare the committed candidate with its nearest preceding train tag. Use `--base <commit-or-tag> --head <commit>` to inspect an explicit ancestor range. Engine and highlight runtime changes, runtime exports, engine tests and build configuration, relevant transitive lockfile dependencies, shared toolchain changes, and changes to the soak mechanism require verification. Comments and erased TypeScript types are ignored. Unresolvable dependency impact or a missing prior train tag requires soak; an invalid Git range fails the check.
 
+The six soak legs start Vitest in `packages/engine` and use that package's configuration. Root `vitest.config.ts` changes belong to the normal unit/Storybook gates and do not invalidate engine soak evidence. Changes to `packages/engine/vitest.config.ts`, engine build settings, or the actual soak runner still do.
+
+Workspace declarations are compared by effective inclusion of engine verification workspaces, using the historical lockfile's local dependency closure. Adding private app or tooling globs is harmless when those inputs stay included and installation settings are unchanged. Excluding engine inputs, changing overrides or install options, or failing to resolve the configuration requires soak. `corpus/documents` files are executable inputs read by engine differential verification, so changing them is not treated as a documentation-only edit. Changes to the impact classifier and evidence gate themselves remain mechanism changes; a fix to the classifier is not exempt from its own rule.
+
 Full campaigns run on developer equipment. After committing a clean candidate, run `SOAK_PROFILE=release scripts/soak/soak.sh <fresh-seed-base> <label>` with a fresh seed. The default six legs and 14 logical shards define 84 tasks; `WORKERS` changes concurrency without reducing the logical budget. Validate the resulting evidence against the release candidate with:
 
 ```sh

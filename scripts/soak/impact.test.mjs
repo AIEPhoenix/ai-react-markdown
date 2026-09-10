@@ -131,12 +131,22 @@ test('Git evidence ranges allow adapter follow-ups but invalidate engine changes
     git('init');
     mkdirSync(join(dir, 'packages/engine/src'), { recursive: true });
     writeFileSync(join(dir, 'packages/engine/src/x.ts'), 'export const x = 1;');
+    writeFileSync(join(dir, 'pnpm-workspace.yaml'), workspace());
+    writeFileSync(join(dir, 'pnpm-lock.yaml'), lock());
     const tested = commit();
     assert.equal(inspect(undefined, tested, dir).required, true);
     git('tag', 'v1.0.0');
     writeFileSync(join(dir, 'README.md'), 'Reader documentation');
     const docs = commit();
     assert.equal(inspect(undefined, docs, dir).required, false);
+    writeFileSync(
+      join(dir, 'pnpm-workspace.yaml'),
+      workspace(['packages/*', 'corpus', 'apps/storybook-*', 'tooling/storybook-kit'])
+    );
+    writeFileSync(join(dir, 'vitest.config.ts'), 'export default { browserCatalogs: ["react", "vue"] };');
+    const catalogs = commit();
+    assert.equal(inspect(tested, catalogs, dir).required, false);
+    assert.equal(inspect(undefined, catalogs, dir).required, false);
     writeFileSync(join(dir, 'packages/engine/src/x.ts'), 'export const x = 2;');
     const changed = commit();
     assert.equal(inspect(tested, changed, dir).required, true);
@@ -166,4 +176,86 @@ test('release validation rejects custom baselines before evidence inspection', a
   );
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /always checks HEAD against the preceding train tag/);
+});
+
+const workspace = (packages = ['packages/*', 'corpus'], options = {}) => JSON.stringify({ packages, ...options });
+const workspaceCheck = (a, b, lockfile = lock()) =>
+  classify(
+    ['pnpm-workspace.yaml'],
+    (file) => (file === 'pnpm-lock.yaml' ? lockfile : a),
+    (file) => (file === 'pnpm-lock.yaml' ? lockfile : b)
+  );
+
+test('private app/tooling workspace additions and equivalent globs do not invalidate engine evidence', () => {
+  const base = workspace();
+  assert.equal(
+    workspaceCheck(base, workspace(['packages/*', 'corpus', 'apps/storybook-*', 'tooling/storybook-kit'])).required,
+    false
+  );
+  assert.equal(
+    workspaceCheck(base, workspace(['corpus', 'packages/{engine,remark-mark-highlight}', 'packages/vue'])).required,
+    false
+  );
+  assert.equal(workspaceCheck(base, workspace(['packages/*', 'corpus', '!apps/**'])).required, false);
+  assert.equal(workspaceCheck(base, base + '\n# Reader comment\n').required, false);
+});
+
+test('workspace exclusions, missing dependency context and install policy changes remain fail closed', () => {
+  const base = workspace();
+  for (const packages of [
+    [],
+    ['packages/*'],
+    ['corpus', 'packages/vue'],
+    ['packages/*', 'corpus', '!packages/engine'],
+    ['packages/*', 'corpus', '!packages/remark-mark-highlight'],
+  ])
+    assert.equal(workspaceCheck(base, workspace(packages)).required, true, JSON.stringify(packages));
+  for (const options of [
+    { overrides: { x: '2' } },
+    { allowBuilds: { esbuild: true } },
+    { nodeLinker: 'hoisted' },
+    { catalog: { x: '2' } },
+  ])
+    assert.equal(workspaceCheck(base, workspace(undefined, options)).required, true);
+  for (const invalid of ['', 'null', 'packages: [', 'packages: invalid', 'packages: [1]'])
+    assert.equal(workspaceCheck(base, invalid).required, true);
+  assert.equal(workspaceCheck(base, workspace(['packages/*', 'corpus', 'apps/*']), '{}').required, true);
+});
+
+test('workspace membership follows linked engine verification dependencies', () => {
+  const data = JSON.parse(lock());
+  data.importers['packages/engine'].devDependencies = { generator: { version: 'link:../../tooling/generator' } };
+  data.importers['tooling/generator'] = {};
+  const lockfile = JSON.stringify(data);
+  const base = workspace(['packages/*', 'corpus', 'tooling/*']);
+  assert.equal(
+    workspaceCheck(base, workspace(['packages/*', 'corpus', 'tooling/*', 'apps/*']), lockfile).required,
+    false
+  );
+  assert.equal(workspaceCheck(base, workspace(), lockfile).required, true);
+});
+
+test('root browser configuration is separate from actual engine verification inputs', () => {
+  assert.equal(check('vitest.config.ts', 'React catalog', 'React and Vue catalogs'), false);
+  assert.equal(check('apps/storybook-vue/.storybook/main.ts', 'a', 'b'), false);
+  assert.equal(check('tooling/storybook-kit/common/corpus.ts', 'a', 'b'), false);
+  for (const file of [
+    'packages/engine/vitest.config.ts',
+    'packages/engine/vitest.evidence.config.ts',
+    'tsconfig.base.json',
+    'scripts/soak/soak-runner.mjs',
+    'scripts/soak/impact.mjs',
+    'corpus/documents/math.md',
+    'corpus/documents/new-case.md',
+  ])
+    assert.equal(check(file, 'const a=1;', 'const a=2;'), true, file);
+  assert.equal(check('corpus/documents/math.md', 'input', ''), true);
+  assert.equal(
+    check(
+      'packages/engine/package.json',
+      '{"devDependencies":{"fast-check":"1"}}',
+      '{"devDependencies":{"fast-check":"2"}}'
+    ),
+    true
+  );
 });
