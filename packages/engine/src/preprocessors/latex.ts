@@ -31,7 +31,8 @@
  *   the other LITERAL_CONTENT_TAGS regions): hard boundaries. Treating code
  *   as a maskable atom was measured wrong twice; it stays a boundary.
  * - `multilineTag`: a whitelisted tag whose own bytes span a line ending
- *   (HTML_TAG_REGEX admits newlines inside attributes). A hard boundary,
+ *   (HTML_TAG_REGEX admits line endings between attributes and inside
+ *   quoted values, though never a blank line). A hard boundary,
  *   because replacing it by one mask would delete line endings from the
  *   analysed text and break every per-line rule in `processSlice`.
  * - `tag`: a single-line whitelisted tag — a SOFT atom: masked, not a
@@ -67,13 +68,64 @@ function getRepeatedMarkerLength(content: string, start: number, marker: FenceMa
   return end - start;
 }
 
+const HTML_TAG_NAMES =
+  'span|div|p|br|hr|img|a|em|strong|b|i|u|s|sub|sup|code|pre|table|tr|td|th|thead|tbody|tfoot|ul|ol|li|dl|dt|dd|h[1-6]|blockquote|details|summary|figure|figcaption|section|article|aside|nav|header|footer|main|mark|del|ins|small|abbr|cite|dfn|kbd|samp|var|ruby|rt|rp|bdo|wbr|input|button|select|textarea|label|fieldset|legend|output|iframe|video|audio|source|canvas|svg|math|time';
+
+/**
+ * One CommonMark attribute (spec 6.6, "open tag"): whitespace, a name, and
+ * optionally `=` with an unquoted, single-quoted or double-quoted value.
+ * Whitespace and quoted values may hold line endings — an inline tag can
+ * span lines of its paragraph — but never a blank line; that bound is not
+ * expressible here and is checked on the match (`crossesBlankLine`).
+ *
+ * Quoted values exclude `>` on purpose, though CommonMark admits one. No
+ * part of a match may then hold a `>`, so a tag always ends at the FIRST
+ * `>` after its `<` — which is what lets the incremental wrapper's cut rule
+ * treat a `>` as settling a latent `<` for good (`findRawSafeCut`). Admitting
+ * `>` in quotes broke that: `<span title="multi\n<b>$$x</b>\nline $5">` froze
+ * its first lines as text and then re-read them as one tag once the closing
+ * quote arrived. The old `[^>]*` form never admitted one either.
+ */
+const HTML_ATTRIBUTE =
+  String.raw`\s+[A-Za-z_:][A-Za-z0-9_.:-]*(?:\s*=\s*(?:[^\s"'=<>` + '`' + String.raw`]+|'[^'>]*'|"[^">]*"))?`;
+
 /**
  * Sticky regex for matching known HTML tags at a specific position.
  * The `y` (sticky) flag anchors the match at `lastIndex`, avoiding the need
  * to create a substring for each `<` character encountered during scanning.
+ *
+ * The attributes must parse as attributes. The old form, `(?:\s[^>]*)?`,
+ * took ANYTHING up to the next `>`: `a<b we have $x^2$ and c>d` was one tag
+ * and its formula was never converted, and a document holding many `<b`
+ * with no `>` re-scanned to its end for each one (2000/4000/8000 lines of
+ * `a <b x $1`: 31/114/405 ms — quadratic). A `$1` is not an attribute, so
+ * the match now fails on the spot. Closing tags are matched by the same
+ * form, as before (CommonMark allows only whitespace in them; being more
+ * permissive there costs nothing).
  */
-const HTML_TAG_REGEX =
-  /<\/?(span|div|p|br|hr|img|a|em|strong|b|i|u|s|sub|sup|code|pre|table|tr|td|th|thead|tbody|tfoot|ul|ol|li|dl|dt|dd|h[1-6]|blockquote|details|summary|figure|figcaption|section|article|aside|nav|header|footer|main|mark|del|ins|small|abbr|cite|dfn|kbd|samp|var|ruby|rt|rp|bdo|wbr|input|button|select|textarea|label|fieldset|legend|output|iframe|video|audio|source|canvas|svg|math|time)(?:\s[^>]*)?\/?>/iy;
+const HTML_TAG_REGEX = new RegExp(String.raw`<\/?(${HTML_TAG_NAMES})(?:${HTML_ATTRIBUTE})*\s*\/?>`, 'iy');
+
+/** Does `text[from, to)` contain a blank line — a line ending, optional
+ *  spaces/tabs, and another line ending? A tag cannot cross one: the
+ *  paragraph it would be inline HTML of ends there. Same rule as
+ *  `isBlankLineAt`, whose end-of-input caveat does not arise here (the
+ *  range ends at the tag's `>`). */
+function crossesBlankLine(text: string, from: number, to: number): boolean {
+  let i = from;
+  while (i < to) {
+    const c = text[i];
+    if (c !== '\n' && c !== '\r') {
+      i += 1;
+      continue;
+    }
+    let j = i + 1;
+    if (c === '\r' && text[j] === '\n') j += 1;
+    while (j < to && (text[j] === ' ' || text[j] === '\t')) j += 1;
+    if (j < to && (text[j] === '\n' || text[j] === '\r')) return true;
+    i = j;
+  }
+  return false;
+}
 
 /**
  * Tags whose inner text must be treated as literal (never processed as LaTeX).
@@ -270,7 +322,7 @@ export function splitByProtectedRegions(content: string): Segment[] {
       // Use sticky regex to match at position i without creating a substring.
       HTML_TAG_REGEX.lastIndex = i;
       const tagMatch = HTML_TAG_REGEX.exec(content);
-      if (tagMatch) {
+      if (tagMatch && !crossesBlankLine(content, i, i + tagMatch[0].length)) {
         let endIndex = i + tagMatch[0].length;
         // For literal-content tags (code/pre/math/...), protect the paired
         // <tag>...</tag> region so inner `$` never enters LaTeX processing.
@@ -931,9 +983,9 @@ export function preprocessLaTeX(str: string): string {
 //   past — but a code span cannot cross a blank line, so a blank settles
 //   every run before it),
 // - with no LATENT html tag before it — a viable `<`+letter start whose `>`
-//   has not arrived: HTML_TAG_REGEX admits newlines in attributes, so the
-//   match window spans lines and only a `>` anywhere after the `<` settles
-//   it permanently (B1 counterexample),
+//   has not arrived: HTML_TAG_REGEX admits line endings in attributes, so
+//   the match window spans lines and only a `>` after the `<` settles it
+//   (B1 counterexample) — or a blank line, which no tag can cross,
 // - and, decided on the TRANSFORMED slice (raw-text checks are unsound both
 //   ways because currency escaping rewrites the `$` token stream — B5):
 //   quiescence — no tail-sensitive transform engaged at slice end.
@@ -1406,8 +1458,8 @@ function isBlankRawLine(text: string, from: number, to: number): boolean {
 
 /**
  * Last raw-safe cut in `active`, or -1. Raw conditions only (line start
- * inside a text segment, no dangling backtick run before the last blank
- * line, no latent `<`); the transformed-output quiescence check happens on
+ * inside a text segment, no dangling backtick run and no latent `<` since
+ * the last blank line); the transformed-output quiescence check happens on
  * the candidate slice afterwards.
  */
 function findRawSafeCut(active: string): number {
@@ -1449,7 +1501,13 @@ function findRawSafeCut(active: string): number {
       // its last `\n` is the START of a line that continues in the next
       // segment (property-suite counterexample: an empty remainder released
       // the latch and a cut landed past a still-unpaired backtick).
-      if (atLineStart && nl !== -1 && isBlankRawLine(text, lineStart, lineEnd)) backtickHazard = false;
+      // The same blank line settles a latent `<`: a tag cannot cross it
+      // (`crossesBlankLine` rejects the match), so no `>` arriving later
+      // can complete one that opened before it.
+      if (atLineStart && nl !== -1 && isBlankRawLine(text, lineStart, lineEnd)) {
+        backtickHazard = false;
+        latentLt = false;
+      }
       for (let i = lineStart; i < lineEnd; i++) {
         const ch = text[i];
         if (ch === '`') backtickHazard = true;

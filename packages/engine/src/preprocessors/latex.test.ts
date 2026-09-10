@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'vitest';
 import { preprocessLaTeX, splitByProtectedRegions } from './latex';
 
+const hasLineEnding = (text: string): boolean => text.includes('\n') || text.includes('\r');
+
 describe('preprocessLaTeX', () => {
   test('returns the same string if no LaTeX patterns are found', () => {
     const content = 'This is a test string without LaTeX or dollar signs';
@@ -535,6 +537,73 @@ y$ which spans lines`;
     const content = 'See <Section A> for $x^2$ details';
     const expected = 'See <Section A> for $$x^2$$ details';
     expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  // --- A tag match is bounded: attribute grammar, and never a blank line ---
+  //
+  // `<` + a known tag name used to match `(?:\s[^>]*)?` — anything up to the
+  // NEXT `>`, paragraphs away if need be. `a<b` in prose therefore opened a
+  // "tag" that swallowed every `$…$` up to a later `>`, and a document with
+  // many `<b` and no `>` re-scanned to the end for each one (quadratic). An
+  // open tag's attributes now have to look like CommonMark attributes (a
+  // name, optionally `=` and an unquoted or quoted value), and the whole
+  // match must sit inside one paragraph: a tag never crosses a blank line.
+
+  test('a<b prose is not a tag: the math after it converts and the later > is text', () => {
+    expect(preprocessLaTeX('When a<b we have $x^2$ and c>d')).toBe('When a<b we have $$x^2$$ and c>d');
+    expect(splitByProtectedRegions('When a<b we have $x^2$ and c>d')).toEqual([
+      { kind: 'text', text: 'When a<b we have $x^2$ and c>d' },
+    ]);
+  });
+
+  test('a tag never crosses a blank line, in whitespace or inside a quoted value', () => {
+    expect(preprocessLaTeX('a <b\n\nwe have $x^2$ and c>d')).toBe('a <b\n\nwe have $$x^2$$ and c>d');
+    expect(preprocessLaTeX('<span title="a\n\n$x$">')).toBe('<span title="a\n\n$$x$$">');
+    expect(preprocessLaTeX('<div class="x"\n\n>$y$')).toBe('<div class="x"\n\n>$$y$$');
+    // CRLF and lone-CR blank lines count too.
+    expect(preprocessLaTeX('<span title="a\r\n\r\n$x$">')).toBe('<span title="a\r\n\r\n$$x$$">');
+    expect(preprocessLaTeX('<span title="a\r\r$x$">')).toBe('<span title="a\r\r$$x$$">');
+  });
+
+  test('a legitimate multi-line tag is still protected', () => {
+    expect(preprocessLaTeX('<div\n  class="x" title="$5">$y$')).toBe('<div\n  class="x" title="$5">$$y$$');
+    expect(splitByProtectedRegions('<div\n  class="x" title="$5">$y$')).toEqual([
+      { kind: 'multilineTag', text: '<div\n  class="x" title="$5">' },
+      { kind: 'text', text: '$y$' },
+    ]);
+    // A quoted value may hold a plain line ending, `|`, `<` and `$` — but
+    // not `>`: a tag ends at the first `>` after its `<`, which is what the
+    // incremental cut rule relies on (see HTML_ATTRIBUTE).
+    expect(splitByProtectedRegions('<span title="a\nb<c|$1">$x$')).toEqual([
+      { kind: 'multilineTag', text: '<span title="a\nb<c|$1">' },
+      { kind: 'text', text: '$x$' },
+    ]);
+    expect(splitByProtectedRegions('<span title="a>b">$x$')).toEqual([{ kind: 'text', text: '<span title="a>b">$x$' }]);
+    // Unquoted values, valueless attributes, self-closing forms.
+    for (const tag of ['<a href=x>', '<input disabled>', '<br/>', '<br />', '<img src="a" alt=b />', '<b\n>']) {
+      expect(splitByProtectedRegions(`${tag}$x$`), tag).toEqual([
+        { kind: hasLineEnding(tag) ? 'multilineTag' : 'tag', text: tag },
+        { kind: 'text', text: '$x$' },
+      ]);
+    }
+  });
+
+  test('tag scanning is linear in the number of unclosed < (was quadratic)', () => {
+    // 2000/4000/8000 lines of `a <b x $1` took 31/114/405 ms before: every
+    // `<b` scanned to the end of the document for a `>` that never came.
+    // A `$1` cannot be an attribute, so each match now fails on the spot.
+    const time = (lines: number): number => {
+      const doc = Array.from({ length: lines }, () => 'a <b x $1').join('\n');
+      const t = performance.now();
+      preprocessLaTeX(doc);
+      return performance.now() - t;
+    };
+    time(2000);
+    const t2 = time(2000);
+    const t8 = time(8000);
+    // Quadratic is 16x; linear is 4x. The floor absorbs timer noise on a
+    // fast run where t2 is a couple of milliseconds.
+    expect(t8, `2000 lines: ${t2.toFixed(1)} ms, 8000 lines: ${t8.toFixed(1)} ms`).toBeLessThan(Math.max(60, 8 * t2));
   });
 
   // --- Paired literal-content HTML containers (issue: $ inside <code> etc.) ---

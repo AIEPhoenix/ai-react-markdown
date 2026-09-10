@@ -191,6 +191,19 @@ describe('createIncrementalLatexPreprocessor — failed-freeze backoff and blank
     replay(['US$ first\n\n$a | b', ' | c$\n']);
   });
 
+  test('a latent `<b` in prose settles at the next blank line: the stream keeps freezing past it', () => {
+    // `a<b` opens a viable tag start whose `>` never comes. A tag cannot
+    // cross a blank line, so the paragraph end settles it; before, only a
+    // `>` somewhere later did, and nothing after the `<` ever froze.
+    const doc = 'intro line one.\n\nwhen a<b we have $x^2$ and more\n\n' + PARA.repeat(120);
+    const { frozen } = replayCounting(doc, 16);
+    expect(frozen).toBeGreaterThan(doc.length - 2 * PARA.length);
+    replayFreezing(['when a<b we have $x^2$ and\n\n', 'c>d is not a closer $y$\n\n', 'tail $z$\n']);
+    // …while a real multi-line tag still waits for its `>` (B1).
+    replay(['<span title="multi\n', 'line $5">\n', 'after $x$\n']);
+    replay(['<span title="multi\n<b>$$x</b>\n', 'line $5">\n\n']);
+  });
+
   test('a mid-line `$$` settles at its paragraph end: the display block after it streams and freezes', () => {
     // Byte-equal at every frame, and the finished document keeps its block
     // and the text after it (the price used to pair with the block's
