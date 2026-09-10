@@ -124,9 +124,13 @@ export const AIMarkdownSmoothStream = defineComponent({
   setup(props, { slots, expose }) {
     const smooth = useDocumentSmoothStream(() => props);
     expose({ flush: smooth.flush });
-    return () =>
-      smooth.pending.value
-        ? h('div', { class: 'aimd-vue-waiting', 'aria-busy': 'true' }, slots.waiting?.())
-        : h(AIMarkdown, { ...props, content: smooth.content.value, streaming: smooth.streaming.value }, slots);
+    return () => {
+      if (smooth.pending.value) return h('div', { class: 'aimd-vue-waiting', 'aria-busy': 'true' }, slots.waiting?.());
+      // `coordinate` and `pacing` are this component's own props. AIMarkdown
+      // does not declare them, so spreading them through would land on its
+      // root element as attributes.
+      const { coordinate: _coordinate, pacing: _pacing, ...forwarded } = props;
+      return h(AIMarkdown, { ...forwarded, content: smooth.content.value, streaming: smooth.streaming.value }, slots);
+    };
   },
 }) as DefineComponent<AIMarkdownProps & { pacing?: SmoothStreamPacing; coordinate?: boolean }, { flush: () => void }>;

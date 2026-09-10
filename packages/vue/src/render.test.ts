@@ -88,6 +88,23 @@ describe('Vue SSR contracts', () => {
     const other = await render('missing[^x]');
     expect(other).not.toContain('body');
   });
+  it('keeps smooth-stream control props off the rendered root element', async () => {
+    const html = await renderToString(
+      createSSRApp({
+        render: () =>
+          h(AIMarkdownSmoothStream, {
+            content: 'text',
+            documentId: 'smooth',
+            coordinate: false,
+            pacing: 'responsive',
+            class: 'host',
+          }),
+      })
+    );
+    expect(html).toContain('class="aimd-vue host"');
+    expect(html).not.toMatch(/\bcoordinate=/);
+    expect(html).not.toMatch(/\bpacing=/);
+  });
   it('emits the cursor tail marker only while streaming with the cursor enabled', async () => {
     const source = 'See [site][u].\n\n[u]: https://example.com';
     expect(await render(source)).not.toContain('data-aimd-tail-kind');
