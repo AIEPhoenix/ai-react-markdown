@@ -441,26 +441,39 @@ function escapeCurrencyDollarSigns(text: string): string {
   let lastIndex = 0;
   const currencyMatches = Array.from(text.matchAll(CURRENCY_REGEX));
 
-  // Track the processed content of the current line incrementally, together
-  // with its bare-`$` COUNT: the parity check below used to re-scan the whole
-  // processed line on every match, O(line²) for a line with many currency
-  // hits (12 KB table row: 59 ms per frame; 8 KB: 243 ms — 2026-08-19
-  // review r2 P2-1). Appending a piece adds its own count plus a seam
-  // correction (the previous last `$` loses its "not followed by `$`" when
-  // the piece starts with `$`).
-  let currentLineProcessed = '';
+  // Track the processed content of the current line incrementally, as its
+  // bare-`$` COUNT plus its last two characters: the parity check below used
+  // to re-scan the whole processed line on every match, O(line²) for a line
+  // with many currency hits (12 KB table row: 59 ms per frame; 8 KB: 243 ms
+  // — 2026-08-19 review r2 P2-1). Appending a piece adds its own count plus
+  // a seam correction (the previous last `$` loses its "not followed by `$`"
+  // when the piece starts with `$`).
+  //
+  // The line's text itself is NOT kept. It was, as `currentLineProcessed +=
+  // piece`, and only ever read for its last two characters — but reading
+  // one character of a string V8 has just concatenated flattens the rope,
+  // O(line) per match, so a 240 KB line holding 32k `$` spent 2.5 of its
+  // 3.0 s here. The two characters are all the seam corrections need; `''`
+  // stands for "no such character", as before.
+  let lineLast = '';
+  let lineBeforeLast = '';
   let currentLineDollars = 0;
   const appendToLine = (piece: string): void => {
     if (piece.length === 0) return;
-    const prevLast = currentLineProcessed.length > 0 ? currentLineProcessed[currentLineProcessed.length - 1] : '';
-    const prevBeforeLast = currentLineProcessed.length > 1 ? currentLineProcessed[currentLineProcessed.length - 2] : '';
-    const prevLastCounted = prevLast === '$' && prevBeforeLast !== '\\' && prevBeforeLast !== '$';
+    const prevLastCounted = lineLast === '$' && lineBeforeLast !== '\\' && lineBeforeLast !== '$';
     if (prevLastCounted && piece[0] === '$') currentLineDollars -= 1;
-    currentLineDollars += countBareDollars(piece, 0, piece.length, prevLast, '');
-    currentLineProcessed += piece;
+    currentLineDollars += countBareDollars(piece, 0, piece.length, lineLast, '');
+    if (piece.length >= 2) {
+      lineBeforeLast = piece[piece.length - 2];
+      lineLast = piece[piece.length - 1];
+    } else {
+      lineBeforeLast = lineLast;
+      lineLast = piece;
+    }
   };
   const resetLine = (rest: string): void => {
-    currentLineProcessed = '';
+    lineLast = '';
+    lineBeforeLast = '';
     currentLineDollars = 0;
     appendToLine(rest);
   };
@@ -470,7 +483,7 @@ function escapeCurrencyDollarSigns(text: string): string {
     const segment = text.substring(lastIndex, match.index);
     parts.push(segment);
 
-    // Update currentLineProcessed: keep only content after the last newline.
+    // Update the line state: keep only content after the last newline.
     const newlineIdx = Math.max(segment.lastIndexOf('\n'), segment.lastIndexOf('\r'));
     if (newlineIdx !== -1) {
       resetLine(segment.substring(newlineIdx + 1));
@@ -499,27 +512,25 @@ function escapeCurrencyDollarSigns(text: string): string {
     }
     const restDollars = countBareDollars(firstLineBeforeNextMatch, 0, firstLineBeforeNextMatch.length, '', '');
     if (restDollars % 2 !== 0) {
-      // Parity of `currentLineProcessed + firstLineBeforeNextMatch` (the
-      // current `$` itself excluded), summed from the two counts with the
-      // seam corrected both ways.
-      const L = currentLineProcessed;
-      const lLast = L.length > 0 ? L[L.length - 1] : '';
-      const lBeforeLast = L.length > 1 ? L[L.length - 2] : '';
-      const lLastCounted = lLast === '$' && lBeforeLast !== '\\' && lBeforeLast !== '$';
+      // Parity of `processed line + firstLineBeforeNextMatch` (the current
+      // `$` itself excluded), summed from the two counts with the seam
+      // corrected both ways.
+      const lLastCounted = lineLast === '$' && lineBeforeLast !== '\\' && lineBeforeLast !== '$';
       const f0 = firstLineBeforeNextMatch[0];
       let whole = currentLineDollars + restDollars;
-      // L's last `$` is now followed by F's first char.
+      // The line's last `$` is now followed by F's first char.
       if (lLastCounted && f0 === '$') whole -= 1;
-      // F's first `$` was counted with an empty predecessor; L supplies one.
-      if (f0 === '$' && (lLast === '\\' || lLast === '$') && firstLineBeforeNextMatch[1] !== '$') whole -= 1;
+      // F's first `$` was counted with an empty predecessor; the line
+      // supplies one.
+      if (f0 === '$' && (lineLast === '\\' || lineLast === '$') && firstLineBeforeNextMatch[1] !== '$') whole -= 1;
       if (whole % 2 !== 0) needEscape = false;
     }
 
     const replacement = needEscape ? '\\$' : '$';
     parts.push(replacement);
-    // Append to currentLineProcessed so subsequent parity checks on the same
-    // line see the correct count of unescaped `$` (e.g. a left-as-`$` opener
-    // that the next match's check must count).
+    // Append to the line state so subsequent parity checks on the same line
+    // see the correct count of unescaped `$` (e.g. a left-as-`$` opener that
+    // the next match's check must count).
     appendToLine(replacement);
     lastIndex = match.index + 1;
   }

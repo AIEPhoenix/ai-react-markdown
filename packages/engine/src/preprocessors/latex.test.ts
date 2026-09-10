@@ -502,6 +502,29 @@ y$ which spans lines`;
     expect(preprocessLaTeX(content)).toBe(expected);
   });
 
+  test('currency escaping on one very long line is linear in its dollar count (was quadratic)', () => {
+    // A 240 KB line holding 32k `$` (`'cost $5 and $6 '.repeat(16000)`)
+    // took 3.0 s, 2.5 s of it in appendToLine: `currentLineProcessed +=
+    // piece` followed by indexing the last character flattened V8's rope
+    // on every match. The string was only ever read for its last two
+    // characters, which are tracked on their own now.
+    const time = (repeats: number): number => {
+      const doc = 'cost $5 and $6 '.repeat(repeats);
+      const t = performance.now();
+      preprocessLaTeX(doc);
+      return performance.now() - t;
+    };
+    time(4000);
+    const t4 = time(4000);
+    const t16 = time(16000);
+    // Quadratic is 16x; linear is 4x. The floor absorbs timer noise.
+    expect(t16, `4000 repeats: ${t4.toFixed(1)} ms, 16000 repeats: ${t16.toFixed(1)} ms`).toBeLessThan(
+      Math.max(150, 8 * t4)
+    );
+    // And the bytes are what they always were.
+    expect(preprocessLaTeX('cost $5 and $6 '.repeat(3))).toBe('cost \\$5 and \\$6 '.repeat(3));
+  });
+
   // --- HTML tag protection ---
 
   test('does not treat $ inside <span> as LaTeX delimiter', () => {
