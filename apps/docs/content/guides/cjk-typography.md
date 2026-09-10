@@ -173,7 +173,7 @@ function Article({ content }: { content: string }) {
 }
 ```
 
-That's the whole setup. The parser extensions, `remark-breaks`, pangu spacing, and SmartyPants remain active. Font loading and the page's `lang` attribute are application responsibilities.
+That's the whole setup. The parser extensions, `remark-breaks`, pangu spacing, and SmartyPants remain active. Pangu runs before SmartyPants, so a quoted word in CJK prose (`中文"引号"中文`) gets an opening and a closing quote rather than two closers. Font loading and the page's `lang` attribute are application responsibilities.
 
 ---
 

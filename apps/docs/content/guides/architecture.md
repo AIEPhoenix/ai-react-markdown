@@ -99,7 +99,7 @@ Caller preprocessors receive the normalized complete string and run in order. Th
 
 ### Stage B: Parse and transform
 
-`buildCoreRemarkPlugins` defines the canonical order: GFM and math; selected highlight and definition-list syntax; breaks, emoji, paragraph squeezing and the two CJK parsing extensions; then selected comment removal, SmartyPants and pangu transforms. The caller's `enginePlugins` array chooses membership, not ordering.
+`buildCoreRemarkPlugins` defines the canonical order: GFM and math; selected highlight and definition-list syntax; breaks, emoji, paragraph squeezing and the two CJK parsing extensions; then selected comment removal, pangu and SmartyPants transforms (pangu first, so SmartyPants sees the CJK/Latin spacing when it decides which way a quote faces). The caller's `enginePlugins` array chooses membership, not ordering.
 
 `remark-rehype` converts Markdown nodes to HTML nodes. Custom handlers preserve orphan footnote bodies when requested and emit coordinated reference placeholders when a registry is present. Phantom definitions allow the Markdown parser to recognize references whose definitions are currently supplied by another chunk. They are auxiliary parser input, not caller-authored content.
 

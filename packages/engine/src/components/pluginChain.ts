@@ -59,10 +59,16 @@ const EXTRA_SYNTAX_CHAIN: ReadonlyArray<readonly [AIMarkdownEnginePluginName, Re
   ['highlight', remarkMarkHighlight as RemarkPlugins[number]],
   ['definitionList', remarkDefinitionList as RemarkPlugins[number]],
 ];
+// pangu BEFORE SmartyPants: SmartyPants decides whether a straight quote
+// opens or closes by the character before it, and in `中文"引号"中文` there
+// is no space before either quote, so it made both of them closers; pangu
+// then padded the boundaries around the curly quotes (`中文” 引号” 中文`).
+// With the CJK/Latin spacing in place first, SmartyPants reads the quotes
+// as it would in Latin prose. Latin-only text is order-independent.
 const DISPLAY_OPTIMIZE_CHAIN: ReadonlyArray<readonly [AIMarkdownEnginePluginName, RemarkPlugins[number]]> = [
   ['removeComments', remarkStripComments as RemarkPlugins[number]],
-  ['smartypants', remarkSmartypants as RemarkPlugins[number]],
   ['pangu', remarkPangu as RemarkPlugins[number]],
+  ['smartypants', remarkSmartypants as RemarkPlugins[number]],
 ];
 
 /** The always-on remark chain with plugin-gated extras spliced at their
