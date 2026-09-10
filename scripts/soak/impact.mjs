@@ -146,14 +146,19 @@ export function classify(paths, before, after) {
       };
       if (inputs(a) !== inputs(b)) reasons.push(`${file}: package manager or soak entry points changed`);
     } else if (/^\.github\/workflows\/(release|ci)\.yml$/.test(file)) {
+      // Compare the set of Node versions the workflow runs on, not which job
+      // runs them: adding or renaming a job that keeps the existing pin does
+      // not change the runtime the engine is verified under.
       const runtimes = (text) => {
         const workflow = parse(text) ?? {};
-        return Object.entries(workflow.jobs ?? {})
-          .flatMap(([id, job]) => [
-            ...(job.steps ?? []).filter((step) => step.with?.runtime).map((step) => `${id}:${step.with.runtime}`),
-            ...(job.strategy?.matrix?.node ?? []).map((node) => `${id}:matrix:${node}`),
-          ])
-          .sort();
+        return [
+          ...new Set(
+            Object.values(workflow.jobs ?? {}).flatMap((job) => [
+              ...(job.steps ?? []).filter((step) => step.with?.runtime).map((step) => String(step.with.runtime)),
+              ...(job.strategy?.matrix?.node ?? []).map((node) => `node@${node}`),
+            ])
+          ),
+        ].sort();
       };
       if (canonical(runtimes(a)) !== canonical(runtimes(b))) reasons.push(`${file}: Node runtime changed`);
     } else if (/^packages\/(engine|remark-mark-highlight)\/package.json$/.test(file)) {
@@ -166,7 +171,9 @@ export function classify(paths, before, after) {
     } else if (/^corpus\/documents\//.test(file)) {
       reasons.push(`${file}: engine differential verification input changed`);
     } else if (/^scripts\/soak\/|^tsconfig\.base\.json$|^patches\//.test(file)) {
-      if (!file.endsWith('.md')) reasons.push(`${file}: shared toolchain or soak mechanism changed`);
+      // The node:test suites under scripts/soak/ check the control scripts;
+      // they are not part of the soak mechanism the evidence was produced by.
+      if (!/\.md$|\.test\.mjs$/.test(file)) reasons.push(`${file}: shared toolchain or soak mechanism changed`);
     }
   }
   // Root vitest.config.ts hosts unit/Storybook projects for normal CI. The
