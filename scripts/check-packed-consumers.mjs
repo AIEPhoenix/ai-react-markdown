@@ -88,7 +88,7 @@ assert(html.includes('https://example.com'));
 assert.equal(typeof core.createPipelineSession, 'function');
 assert.equal(typeof engine.createRegistry, 'function');
 assert(!('DEFAULT_PAYLOAD' in engine));
-for (const name of ['@ai-markdown/core', '@ai-markdown/engine', '@ai-markdown/react', '@ai-markdown/react/plugins', '@ai-markdown/react-mantine', '@ai-markdown/vue']) {
+for (const name of ['@ai-markdown/remark-mark-highlight', '@ai-markdown/core', '@ai-markdown/engine', '@ai-markdown/react', '@ai-markdown/react/plugins', '@ai-markdown/react-mantine', '@ai-markdown/vue']) {
   assert(require(name));
   assert(await import(name));
 }

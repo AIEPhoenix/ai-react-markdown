@@ -106,108 +106,116 @@ for (const seed of seeds) {
     );
   });
 
-  test(`contribution/aggregate state sequences equal clean document reconstruction (seed ${seed})`, async () => {
-    await fc.assert(
-      fc.asyncProperty(sequences, async (ops) => {
-        const registries = [createRegistry(), createRegistry()];
-        const chunks = Array.from({ length: 3 }, (_, index) => ({
-          index,
-          doc: 0,
-          active: true,
-          source: `note[^n]\n\n[^n]: body ${index}\n\n[u]: /${index}`,
-          session: createPipelineSession(),
-          publisher: createContributionSession(),
-          config: options('doc-0', 0),
-          sym: null as symbol | null,
-        }));
-        const snapshot = (registry: RegistryController, prefix: string) => ({
-          labels: {
-            footnotes: [...registry.labelSet.footnoteLabels].sort(),
-            links: [...registry.labelSet.linkLabels].sort(),
-          },
-          number: registry.globalNumber('N'),
-          link: registry.resolveLinkDef('U'),
-          aggregate: buildAggregateTree(registry, prefix, true),
-        });
-        try {
-          for (const op of [
-            ...Array.from({ length: 6 }, (_, kind) => ({ kind, chunk: 0, value: 0 })),
-            { kind: 4, chunk: 0, value: 0 },
-            { kind: 5, chunk: 0, value: 1 },
-            ...ops,
-          ]) {
-            const chunk = chunks[op.chunk];
-            if (op.kind === 0) chunk.source += '\n\nappend[^n]';
-            if (op.kind === 1) chunk.source = `note[^n]\n\n[^n]: changed ${op.value}\n\n[u]: /${op.value}`;
-            if (op.kind === 2) chunk.source = 'definitions removed';
-            if (op.kind === 3 || op.kind === 4) {
-              if (chunk.sym) registries[chunk.doc].releaseSymbol(String(chunk.index));
-              chunk.sym = null;
-              await settle();
-              if (op.kind === 3) chunk.doc = 1 - chunk.doc;
-              else chunk.active = !chunk.active;
-              chunk.config = options(`doc-${chunk.doc}`, 0);
-            }
-            if (op.kind === 5) chunk.config = options(`doc-${chunk.doc}`, op.value);
-            const fresh = [createRegistry(), createRegistry()];
-            try {
-              for (const current of chunks.filter((item) => item.active)) {
-                const ownLabels = collectDefLabels(current.source);
-                const registry = registries[current.doc];
-                if (!current.sym)
-                  current.sym = registry.registerChunk(
+  // Each seed rebuilds two registries after every operation in 24 sequences.
+  // The first cold run exceeded Vitest's 5s default on CI (5.145s); this is
+  // a correctness oracle, not a latency benchmark. Keep every case and allow
+  // bounded time for the full workload and failure shrinking on shared hosts.
+  test(
+    `contribution/aggregate state sequences equal clean document reconstruction (seed ${seed})`,
+    { timeout: 30_000 },
+    async () => {
+      await fc.assert(
+        fc.asyncProperty(sequences, async (ops) => {
+          const registries = [createRegistry(), createRegistry()];
+          const chunks = Array.from({ length: 3 }, (_, index) => ({
+            index,
+            doc: 0,
+            active: true,
+            source: `note[^n]\n\n[^n]: body ${index}\n\n[u]: /${index}`,
+            session: createPipelineSession(),
+            publisher: createContributionSession(),
+            config: options('doc-0', 0),
+            sym: null as symbol | null,
+          }));
+          const snapshot = (registry: RegistryController, prefix: string) => ({
+            labels: {
+              footnotes: [...registry.labelSet.footnoteLabels].sort(),
+              links: [...registry.labelSet.linkLabels].sort(),
+            },
+            number: registry.globalNumber('N'),
+            link: registry.resolveLinkDef('U'),
+            aggregate: buildAggregateTree(registry, prefix, true),
+          });
+          try {
+            for (const op of [
+              ...Array.from({ length: 6 }, (_, kind) => ({ kind, chunk: 0, value: 0 })),
+              { kind: 4, chunk: 0, value: 0 },
+              { kind: 5, chunk: 0, value: 1 },
+              ...ops,
+            ]) {
+              const chunk = chunks[op.chunk];
+              if (op.kind === 0) chunk.source += '\n\nappend[^n]';
+              if (op.kind === 1) chunk.source = `note[^n]\n\n[^n]: changed ${op.value}\n\n[u]: /${op.value}`;
+              if (op.kind === 2) chunk.source = 'definitions removed';
+              if (op.kind === 3 || op.kind === 4) {
+                if (chunk.sym) registries[chunk.doc].releaseSymbol(String(chunk.index));
+                chunk.sym = null;
+                await settle();
+                if (op.kind === 3) chunk.doc = 1 - chunk.doc;
+                else chunk.active = !chunk.active;
+                chunk.config = options(`doc-${chunk.doc}`, 0);
+              }
+              if (op.kind === 5) chunk.config = options(`doc-${chunk.doc}`, op.value);
+              const fresh = [createRegistry(), createRegistry()];
+              try {
+                for (const current of chunks.filter((item) => item.active)) {
+                  const ownLabels = collectDefLabels(current.source);
+                  const registry = registries[current.doc];
+                  if (!current.sym)
+                    current.sym = registry.registerChunk(
+                      String(current.index),
+                      ownLabels.footnoteLabels,
+                      ownLabels.linkLabels,
+                      current.index
+                    );
+                  const frame = { ...current.config, content: current.source };
+                  const commit = {
+                    ownLabels,
+                    targetPhantoms: frame.targetPhantoms,
+                    clobberPrefix: frame.clobberPrefix,
+                    chain: buildContributionChain(frame),
+                  };
+                  // The exact prefix must match the active pipeline even after a
+                  // policy replacement; full reconstruction uses the same policy.
+                  const pipeline = current.session.parse(frame);
+                  const other = fresh[current.doc];
+                  const otherSym = other.registerChunk(
                     String(current.index),
                     ownLabels.footnoteLabels,
                     ownLabels.linkLabels,
                     current.index
                   );
-                const frame = { ...current.config, content: current.source };
-                const commit = {
-                  ownLabels,
-                  targetPhantoms: frame.targetPhantoms,
-                  clobberPrefix: frame.clobberPrefix,
-                  chain: buildContributionChain(frame),
-                };
-                // The exact prefix must match the active pipeline even after a
-                // policy replacement; full reconstruction uses the same policy.
-                const pipeline = current.session.parse(frame);
-                const other = fresh[current.doc];
-                const otherSym = other.registerChunk(
-                  String(current.index),
-                  ownLabels.footnoteLabels,
-                  ownLabels.linkLabels,
-                  current.index
-                );
-                const full = createPipelineSession().parse({ ...frame, incrementalParse: false });
-                current.publisher.commit({ ...commit, pipeline, registry, sym: current.sym });
-                const version = registry.version;
-                current.publisher.commit({ ...commit, pipeline, registry, sym: current.sym });
-                expect(registry.version).toBe(version);
-                createContributionSession().commit({ ...commit, pipeline: full, registry: other, sym: otherSym });
+                  const full = createPipelineSession().parse({ ...frame, incrementalParse: false });
+                  current.publisher.commit({ ...commit, pipeline, registry, sym: current.sym });
+                  const version = registry.version;
+                  current.publisher.commit({ ...commit, pipeline, registry, sym: current.sym });
+                  expect(registry.version).toBe(version);
+                  createContributionSession().commit({ ...commit, pipeline: full, registry: other, sym: otherSym });
+                }
+                for (let doc = 0; doc < 2; doc++)
+                  expect(snapshot(registries[doc], 'view-')).toEqual(snapshot(fresh[doc], 'view-'));
+              } finally {
+                for (const current of chunks.filter((item) => item.active))
+                  fresh[current.doc].releaseSymbol(String(current.index));
+                await settle();
+                for (const registry of fresh) expect(registry.chunkData.size).toBe(0);
               }
-              for (let doc = 0; doc < 2; doc++)
-                expect(snapshot(registries[doc], 'view-')).toEqual(snapshot(fresh[doc], 'view-'));
-            } finally {
-              for (const current of chunks.filter((item) => item.active))
-                fresh[current.doc].releaseSymbol(String(current.index));
-              await settle();
-              for (const registry of fresh) expect(registry.chunkData.size).toBe(0);
+            }
+          } finally {
+            for (const chunk of chunks) if (chunk.sym) registries[chunk.doc].releaseSymbol(String(chunk.index));
+            await settle();
+            for (const registry of registries) {
+              expect(registry.chunkOrder).toHaveLength(0);
+              expect(registry.chunkData.size).toBe(0);
+              expect(registry.labelSet.footnoteLabels.size).toBe(0);
+              expect(registry.labelSet.linkLabels.size).toBe(0);
             }
           }
-        } finally {
-          for (const chunk of chunks) if (chunk.sym) registries[chunk.doc].releaseSymbol(String(chunk.index));
-          await settle();
-          for (const registry of registries) {
-            expect(registry.chunkOrder).toHaveLength(0);
-            expect(registry.chunkData.size).toBe(0);
-            expect(registry.labelSet.footnoteLabels.size).toBe(0);
-            expect(registry.labelSet.linkLabels.size).toBe(0);
-          }
-        }
-      }),
-      parameters
-    );
-  });
+        }),
+        parameters
+      );
+    }
+  );
 
   test(`smooth coordinator matches an independent lifecycle model (seed ${seed})`, async () => {
     await fc.assert(

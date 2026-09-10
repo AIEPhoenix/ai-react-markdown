@@ -1,0 +1,158 @@
+// Generated from the built public declaration. Review changes before updating.
+import * as react from 'react';
+import { JSX, ComponentType, PropsWithChildren, CSSProperties, FC } from 'react';
+import { SmoothStreamPacing, SmoothStreamOptions, Registry, AIMDContentPreprocessor, UrlTransform, SanitizeSchema, AIMarkdownEnginePlugin } from '@ai-markdown/engine';
+export { AIMDContentPreprocessor, AIMarkdownEnginePlugin, AIMarkdownEnginePluginName, ChunkData, FootnoteDef, LinkDef, RefKind, RefRecord, Registry, RemendPreprocessorOptions, SMOOTH_STREAM_PACING_PRESETS, SanitizeSchema, SmoothStreamController, SmoothStreamOptions, SmoothStreamPacing, SmoothStreamPacingParams, UrlTransform, createRemendPreprocessor, createSmoothStreamController, defaultUrlTransform, extendSanitizeSchema } from '@ai-markdown/engine';
+import { Element } from 'hast';
+declare function useStableValue<T>(value: T): T;
+interface ExtraProps {
+    node?: Element | undefined;
+}
+type Components = {
+    [Key in keyof JSX.IntrinsicElements]?: ComponentType<JSX.IntrinsicElements[Key] & ExtraProps> | keyof JSX.IntrinsicElements;
+};
+type AIMarkdownCustomComponents = Components;
+interface AIMarkdownMetadata extends Record<string, any> {
+}
+type AIMarkdownVariant = 'default' | (string & {});
+type AIMarkdownColorScheme = 'light' | 'dark' | (string & {});
+interface AIMarkdownTypographyProps extends PropsWithChildren {
+    fontSize: string;
+    variant?: AIMarkdownVariant;
+    colorScheme?: AIMarkdownColorScheme;
+    style?: CSSProperties;
+}
+type AIMarkdownTypographyComponent = ComponentType<AIMarkdownTypographyProps>;
+interface AIMarkdownExtraStylesProps extends PropsWithChildren {
+}
+type AIMarkdownExtraStylesComponent = ComponentType<AIMarkdownExtraStylesProps>;
+interface AIMarkdownDocumentInfo {
+    documentId: string;
+    documentIdExplicit: boolean;
+    clobberPrefix: string;
+}
+interface AIMarkdownThemeInfo {
+    fontSize: string;
+    variant: AIMarkdownVariant;
+    colorScheme: AIMarkdownColorScheme;
+}
+interface AIMarkdownStateCore {
+    streaming: boolean;
+}
+interface AIMarkdownBehaviorsCore {
+    blockMemo: boolean;
+    incrementalParse: boolean;
+    preserveOrphanReferences: boolean;
+}
+type AIMarkdownStateGroups = {
+    [group: string]: object;
+} & {
+    streaming?: never;
+};
+type AIMarkdownBehaviorGroups = {
+    [group: string]: object;
+} & {
+    blockMemo?: never;
+    incrementalParse?: never;
+    preserveOrphanReferences?: never;
+};
+type AIMarkdownExtensionGroups = Record<string, object | undefined>;
+declare const AIMarkdownStateProvider: FC<PropsWithChildren<{
+    value: AIMarkdownStateGroups;
+}>>;
+declare const AIMarkdownBehaviorsProvider: FC<PropsWithChildren<{
+    value: AIMarkdownBehaviorGroups;
+}>>;
+declare function useAIMarkdownDocument(): AIMarkdownDocumentInfo;
+declare function useAIMarkdownTheme(): AIMarkdownThemeInfo;
+declare function useAIMarkdownState(): AIMarkdownStateCore & AIMarkdownExtensionGroups;
+declare function useAIMarkdownBehaviors(): AIMarkdownBehaviorsCore & AIMarkdownExtensionGroups;
+interface AIMarkdownAggregate<TMetadata extends AIMarkdownMetadata = AIMarkdownMetadata> {
+    document: AIMarkdownDocumentInfo;
+    metadata: TMetadata | undefined;
+    state: AIMarkdownStateCore & AIMarkdownExtensionGroups;
+    theme: AIMarkdownThemeInfo;
+    behaviors: AIMarkdownBehaviorsCore & AIMarkdownExtensionGroups;
+}
+declare function useAIMarkdown<TMetadata extends AIMarkdownMetadata = AIMarkdownMetadata>(): AIMarkdownAggregate<TMetadata>;
+declare function useAIMarkdownMetadata<TMetadata extends AIMarkdownMetadata = AIMarkdownMetadata>(): TMetadata | undefined;
+type AIMarkdownThemeProps = Pick<AIMarkdownProps, 'fontSize' | 'variant' | 'colorScheme' | 'Typography' | 'ExtraStyles'>;
+type AIMarkdownBehaviorProps = Pick<AIMarkdownProps, 'blockMemo' | 'incrementalParse' | 'preserveOrphanReferences'>;
+type AIMarkdownPipelineProps = Pick<AIMarkdownProps, 'contentPreprocessors' | 'urlTransform' | 'sanitizeSchema' | 'customComponents' | 'enginePlugins'>;
+declare function defineTheme(values: AIMarkdownThemeProps): Readonly<AIMarkdownThemeProps>;
+declare function defineBehaviors(values: AIMarkdownBehaviorProps): Readonly<AIMarkdownBehaviorProps>;
+declare function definePipeline(values: AIMarkdownPipelineProps): Readonly<AIMarkdownPipelineProps>;
+declare enum AIMarkdownStabilityPolicy {
+    DEEP_EQUAL = "DEEP_EQUAL",
+    WARN_ONLY = "WARN_ONLY",
+    PASS_THROUGH = "PASS_THROUGH"
+}
+type AIMarkdownStabilityTable<T extends object> = Required<Record<keyof T, AIMarkdownStabilityPolicy>>;
+declare function useStableRecord<T extends object>(record: T, table: AIMarkdownStabilityTable<T>): T;
+interface AIMarkdownStreamingIndicatorProps {
+    height: number;
+    width: number;
+    lastMutationAt: number;
+}
+type AIMarkdownStreamingIndicatorComponent = ComponentType<AIMarkdownStreamingIndicatorProps>;
+interface AIMarkdownStreamingCursorProps {
+    indicator?: AIMarkdownStreamingIndicatorComponent;
+}
+declare const AIMarkdownStreamingCursor: ({ indicator: Indicator, }: AIMarkdownStreamingCursorProps) => react.JSX.Element;
+interface UseSmoothStreamOptions {
+    content: string;
+    streaming?: boolean;
+    pacing?: SmoothStreamPacing;
+    onDrained?: () => void;
+    now?: SmoothStreamOptions['now'];
+    schedule?: SmoothStreamOptions['schedule'];
+}
+interface UseSmoothStreamResult {
+    content: string;
+    streaming: boolean;
+    flush: () => void;
+}
+declare const useSmoothStream: ({ content, streaming, pacing, onDrained, now, schedule, }: UseSmoothStreamOptions) => UseSmoothStreamResult;
+interface UseDocumentSmoothStreamOptions extends UseSmoothStreamOptions {
+    documentId?: string;
+    waiting?: boolean;
+}
+declare const useDocumentSmoothStream: ({ documentId, content, streaming, waiting, pacing, onDrained, now, schedule, }: UseDocumentSmoothStreamOptions) => UseSmoothStreamResult;
+interface AIMarkdownDocumentsProps extends PropsWithChildren {
+    preserveOrphanReferences?: boolean;
+    smoothTurnTaking?: boolean;
+}
+declare const AIMarkdownDocuments: FC<AIMarkdownDocumentsProps>;
+declare function useDocumentRegistry(documentId: string | undefined, documentIdExplicit?: boolean): Registry | null;
+interface AIMarkdownProps<TMetadata extends AIMarkdownMetadata = AIMarkdownMetadata> {
+    metadata?: TMetadata;
+    streaming?: boolean;
+    fontSize?: number | string;
+    content: string;
+    contentPreprocessors?: AIMDContentPreprocessor[];
+    customComponents?: AIMarkdownCustomComponents;
+    Typography?: AIMarkdownTypographyComponent;
+    ExtraStyles?: AIMarkdownExtraStylesComponent;
+    variant?: AIMarkdownVariant;
+    colorScheme?: AIMarkdownColorScheme;
+    documentId?: string;
+    documentIndex?: number;
+    urlTransform?: UrlTransform | null;
+    sanitizeSchema?: SanitizeSchema;
+    streamingCursor?: ComponentType;
+    enginePlugins?: readonly AIMarkdownEnginePlugin[];
+    blockMemo?: boolean;
+    incrementalParse?: boolean;
+    preserveOrphanReferences?: boolean;
+}
+declare const AIMarkdownComponent: <TMetadata extends AIMarkdownMetadata = AIMarkdownMetadata>({ streaming, content, fontSize, contentPreprocessors, customComponents, metadata, Typography, ExtraStyles, variant, colorScheme, documentId, documentIndex, urlTransform, sanitizeSchema, streamingCursor, enginePlugins, blockMemo, incrementalParse, preserveOrphanReferences, }: AIMarkdownProps<TMetadata>) => react.JSX.Element;
+declare const _default: typeof AIMarkdownComponent;
+interface AIMarkdownSmoothStreamProps<TMetadata extends AIMarkdownMetadata = AIMarkdownMetadata> extends AIMarkdownProps<TMetadata> {
+    smoothPacing?: SmoothStreamPacing;
+    onSmoothDrained?: () => void;
+    smoothCoordination?: boolean;
+    smoothWaiting?: boolean;
+}
+declare const AIMarkdownSmoothStreamComponent: <TMetadata extends AIMarkdownMetadata = AIMarkdownMetadata>({ smoothPacing, onSmoothDrained, smoothCoordination, smoothWaiting, content, streaming, ...rest }: AIMarkdownSmoothStreamProps<TMetadata>) => react.JSX.Element;
+declare const AIMarkdownSmoothStream: typeof AIMarkdownSmoothStreamComponent;
+export { type AIMarkdownAggregate, type AIMarkdownBehaviorGroups, type AIMarkdownBehaviorProps, type AIMarkdownBehaviorsCore, AIMarkdownBehaviorsProvider, type AIMarkdownColorScheme, type AIMarkdownCustomComponents, type AIMarkdownDocumentInfo, AIMarkdownDocuments, type AIMarkdownDocumentsProps, type AIMarkdownExtensionGroups, type AIMarkdownExtraStylesComponent, type AIMarkdownExtraStylesProps, type AIMarkdownMetadata, type AIMarkdownPipelineProps, type AIMarkdownProps, AIMarkdownSmoothStream, type AIMarkdownSmoothStreamProps, AIMarkdownStabilityPolicy, type AIMarkdownStabilityTable, type AIMarkdownStateCore, type AIMarkdownStateGroups, AIMarkdownStateProvider, AIMarkdownStreamingCursor, type AIMarkdownStreamingCursorProps, type AIMarkdownStreamingIndicatorComponent, type AIMarkdownStreamingIndicatorProps, type AIMarkdownThemeInfo, type AIMarkdownThemeProps, type AIMarkdownTypographyComponent, type AIMarkdownTypographyProps, type AIMarkdownVariant, type UseDocumentSmoothStreamOptions, type UseSmoothStreamOptions, type UseSmoothStreamResult, _default as default, defineBehaviors, definePipeline, defineTheme, useAIMarkdown, useAIMarkdownBehaviors, useAIMarkdownDocument, useAIMarkdownMetadata, useAIMarkdownState, useAIMarkdownTheme, useDocumentRegistry, useDocumentSmoothStream, useSmoothStream, useStableRecord, useStableValue };

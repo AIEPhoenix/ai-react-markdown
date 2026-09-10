@@ -24,6 +24,7 @@ const steps = [
   ['test:storybook:dev'],
   ['test:document-lifetime'],
   ['test:vue-browser'],
+  ['test:vue-browser:compat'],
 ];
 for (const args of steps) {
   console.log(`\n[preflight] ${args.join(' ')}`);

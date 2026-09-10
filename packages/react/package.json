@@ -1,6 +1,6 @@
 {
   "name": "@ai-markdown/react",
-  "version": "3.0.0-beta.2",
+  "version": "3.0.0-rc.1",
   "description": "React rendering, streaming components and hooks for ai-markdown.",
   "publishConfig": {
     "access": "public"
@@ -8,7 +8,7 @@
   "type": "module",
   "license": "MIT",
   "engines": {
-    "node": ">=20"
+    "node": "^20.19.0 || >=22.12.0"
   },
   "author": "Brian Lee <aiephoenixbl@gmail.com> (https://github.com/AIEPhoenix)",
   "homepage": "https://github.com/ai-markdown/ai-markdown/tree/main/packages/react#readme",

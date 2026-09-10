@@ -1,6 +1,6 @@
 # @ai-markdown/vue
 
-[![@ai-markdown/vue beta](https://img.shields.io/npm/v/@ai-markdown/vue/beta?label=npm%20beta&color=orange)](https://www.npmjs.com/package/@ai-markdown/vue?activeTab=versions)
+[![@ai-markdown/vue rc](https://img.shields.io/npm/v/@ai-markdown/vue/rc?label=npm%20rc&color=orange)](https://www.npmjs.com/package/@ai-markdown/vue?activeTab=versions)
 [![@ai-markdown/vue monthly downloads](https://img.shields.io/npm/dm/@ai-markdown/vue?label=downloads%2Fmonth&color=blue)](https://www.npmjs.com/package/@ai-markdown/vue)
 [![TypeScript declarations included](https://img.shields.io/badge/TypeScript-included-3178c6?logo=typescript&logoColor=white)](https://github.com/ai-markdown/ai-markdown/tree/main/packages/vue)
 [![MIT license](https://img.shields.io/badge/license-MIT-blue)](https://github.com/ai-markdown/ai-markdown/blob/main/LICENSE)
@@ -14,15 +14,15 @@ Vue 3 Markdown rendering built on the framework-independent `@ai-markdown/core` 
 ## Requirements and dependencies
 
 - Vue **3.5 or later within Vue 3** (`^3.5.0`). The adapter uses `useId()` for application-local IDs that match between server rendering and hydration. Earlier Vue 3 minors do not provide this API.
-- Node `>=20` for server/build consumers; verification records identify the actual tested Node version.
-- Modern browsers with `ResizeObserver`, `MutationObserver`, `requestAnimationFrame` and Web Crypto. The browser acceptance suite currently runs Chromium; this is not a claim that every browser/version has been exercised.
+- Node `^20.19.0 || >=22.12.0` for server/build consumers; verification records identify the actual tested Node version.
+- Modern browsers with `ResizeObserver`, `MutationObserver`, `requestAnimationFrame` and Web Crypto. The browser acceptance suite runs Chromium, Firefox and WebKit; this is not a claim that every browser/version has been exercised.
 - `@ai-markdown/core` and `@ai-markdown/engine` are ordinary dependencies at the exact release-train version. Applications do not need to install them separately. Vue remains a peer and is external to both ESM and CJS output.
 - KaTeX is an optional peer (`^0.16 || ^0.17`). Declare it directly when importing its stylesheet rather than depending on hoisting.
 
-Install the beta:
+Install the release candidate:
 
 ```bash
-pnpm add @ai-markdown/vue@beta vue@^3.5.0 katex
+pnpm add @ai-markdown/vue@rc vue@^3.5.0 katex
 ```
 
 See [Getting started](../../docs/getting-started.md) for the package map and React/Vue API differences. The Vue package exposes its helpers from the root; it has no `/plugins` entry or React typography variants.
@@ -177,13 +177,14 @@ pnpm build
 pnpm --filter @ai-markdown/vue typecheck
 pnpm --filter @ai-markdown/vue test
 pnpm test:vue-browser
+pnpm test:vue-browser:compat
 pnpm check:public-api
 pnpm test:packed-consumers
 ```
 
 Unit tests exercise SSR, sanitization, custom rendering and lifecycle publication/release. Browser tests cover the three planned acceptance paths: standalone hydration; cross-chunk references and document switching; customization, smooth waiting/drain and cursor layout. Packed consumers load ESM/CJS in both export conditions, compile installed declarations and resolve CSS outside the workspace.
 
-This implementation does not claim React/Mantine UI parity: Mantine remains React-only, and Vue has no built-in Mermaid/code-toolbar integration. Nuxt-specific packaging, KeepAlive/Suspense combinations and additional browser engines require their own integration coverage before being advertised. Parsing correctness continues to use the repository's shared oracle and release soak gates.
+This implementation does not claim React/Mantine UI parity: Mantine remains React-only, and Vue has no built-in Mermaid/code-toolbar integration. Nuxt-specific packaging and KeepAlive/Suspense combinations require their own integration coverage before being advertised. Parsing correctness continues to use the repository's shared oracle and release soak gates.
 
 ## Interactive examples
 
@@ -201,4 +202,4 @@ After building the workspace, run `pnpm test:vue-browser` from the repository ro
 
 The same command keeps a document provider mounted through 24 document lifecycles and 288 append updates. It checks that queued chunks wait for their predecessor, completion drains correctly, cancelling a producing predecessor releases its successor, replacement and document switches update the rendered result, and unmount releases every instrumented document subscription. Weak references to actual registries and smooth coordinators must clear after forced garbage collection while the provider remains mounted. This catches retained document state without relying on a noisy absolute heap-size threshold.
 
-These are bounded browser regressions, not an engine equivalence soak or a proof of unlimited-session memory stability. They do not establish behavior in other browsers, Nuxt, KeepAlive, or Suspense. The engine's separate six-leg campaign does not substitute for these Vue lifecycle checks.
+These are bounded browser regressions, not an engine equivalence soak or a proof of unlimited-session memory stability. Forced-GC ownership checks remain Chromium-specific; Firefox/WebKit run the functional hydration, reference, customization, smooth-stream and cursor paths through `pnpm test:vue-browser:compat`. These checks do not establish Nuxt, KeepAlive or Suspense integration. The engine's separate six-leg campaign does not substitute for these Vue lifecycle checks.

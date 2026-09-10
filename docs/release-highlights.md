@@ -6,6 +6,14 @@ Read an entry as a statement about that version. Older configuration names, depe
 
 Verification counts are historical results reported for the corresponding candidate. They are not newly executed checks for this documentation revision. Likewise, a clean fuzz or soak campaign establishes the result for its input families and configuration; later entries explain where expanding those families exposed additional defects.
 
+## 3.0.0-rc.1 (in preparation)
+
+The five-package train moves to a release candidate with the same runtime APIs as beta.2. Node support is corrected to `^20.19.0 || >=22.12.0`: earlier Node 20 versions cannot load the ESM dependencies from the CJS entry. The independent highlight plugin receives the same metadata correction in `1.0.2`.
+
+Release gates now include React, React plugins and Mantine declaration snapshots, packed consumers at both declared Node lower bounds and Node 24, and the Vue functional browser suite in Firefox and WebKit alongside Chromium. The generated core contribution/aggregate correctness test receives a 30-second timeout to tolerate CI startup overhead while preserving its full workload.
+
+These are candidate changes, not a publication or final acceptance record. Follow the [3.0 release checklist](./releasing-3.0.md) for the fresh soak, CI, trusted publication and downstream validation still required before stable promotion.
+
 ## Find the release line relevant to your upgrade
 
 | Release line | Main changes                                                                                                | Current guide                                                                                |

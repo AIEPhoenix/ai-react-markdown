@@ -72,7 +72,7 @@ Works with `remark-rehype` out of the box (`data.hName = 'mark'`); no custom han
 |                  |                                                                                                                                         |
 | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | unified / remark | remark 15+ (micromark 4, mdast-util-from-markdown 2, mdast-util-to-markdown 2)                                                          |
-| Node             | ≥ 20                                                                                                                                    |
+| Node             | `^20.19.0 \|\| >=22.12.0`                                                                                                               |
 | Module formats   | ESM and CJS with types for both — the upstream's ESM-only exports map broke bare-Node `require()`, which is one reason this fork exists |
 | Types            | `Mark` is registered in mdast's `PhrasingContentMap` and `RootContentMap`, so `mark` nodes type-check inside paragraphs                 |
 

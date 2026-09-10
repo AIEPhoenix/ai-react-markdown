@@ -1,15 +1,15 @@
 # @ai-markdown/engine
 
-[![@ai-markdown/engine beta](https://img.shields.io/npm/v/@ai-markdown/engine/beta?label=npm%20beta&color=orange)](https://www.npmjs.com/package/@ai-markdown/engine?activeTab=versions)
+[![@ai-markdown/engine rc](https://img.shields.io/npm/v/@ai-markdown/engine/rc?label=npm%20rc&color=orange)](https://www.npmjs.com/package/@ai-markdown/engine?activeTab=versions)
 [![@ai-markdown/engine monthly downloads](https://img.shields.io/npm/dm/@ai-markdown/engine?label=downloads%2Fmonth&color=blue)](https://www.npmjs.com/package/@ai-markdown/engine)
 [![TypeScript declarations included](https://img.shields.io/badge/TypeScript-included-3178c6?logo=typescript&logoColor=white)](https://github.com/ai-markdown/ai-markdown/tree/main/packages/engine)
 [![MIT license](https://img.shields.io/badge/license-MIT-blue)](https://github.com/ai-markdown/ai-markdown/blob/main/LICENSE)
 
-> **3.0.0-beta.2:** React and Vue adapters share the public `@ai-markdown/core` and `@ai-markdown/engine` packages. All five release-train packages are published under `@beta`; stable 3.0.0 is not released. See the [migration guide](../../docs/framework-transition.md).
+> **3.0.0-rc.1:** React and Vue adapters share the public `@ai-markdown/core` and `@ai-markdown/engine` packages. Use `@rc` for this release candidate; stable 3.0.0 is not released. See the [migration guide](../../docs/framework-transition.md).
 
 `@ai-markdown/engine` contains the string and syntax-tree processing used by ai-markdown: LaTeX preprocessing, the unified plugin chain, incremental parsing, and shared reference bookkeeping. It has no React dependency. A framework adapter supplies component lifecycle, DOM rendering, context subscriptions, and any presentation such as syntax highlighting.
 
-**This is the algorithm layer for adapter authors.** Shared core, React and Vue consume it at the exact same train version. The beta root exports parsing, preprocessing, registry and policy contracts; fixtures and private registry containers are excluded. Beta APIs may evolve before stable 3.0.0. Applications should install `@ai-markdown/react@beta` or `@ai-markdown/vue@beta`; see [Getting started](../../docs/getting-started.md).
+**This is the algorithm layer for adapter authors.** Shared core, React and Vue consume it at the exact same train version. The public root exports parsing, preprocessing, registry and policy contracts; fixtures and private registry containers are excluded. The candidate API is frozen for review; required changes must be documented in a new candidate before stable 3.0.0. Applications should install `@ai-markdown/react@rc` or `@ai-markdown/vue@rc`; see [Getting started](../../docs/getting-started.md).
 
 The examples below demonstrate individual entry points. They do not assemble a complete framework adapter: URL transformation, coordinated placeholder rendering, effect timing, and CSS remain the adapter's responsibility.
 
@@ -30,7 +30,7 @@ Everything is exported from the package root (`import { … } from '@ai-markdown
 ## Install
 
 ```bash
-npm install @ai-markdown/engine@beta
+npm install @ai-markdown/engine@rc
 ```
 
 Dual ESM/CJS build with types for both. ESM keeps pipeline dependencies external. The CJS build bundles ESM-only default-export plugins so Node receives callable plugins and does not try to resolve the import-only `remend` entry through `require`. Bundled third-party licenses ship in `dist/THIRD_PARTY_LICENSES.txt`. No React dependency. The only peer is `katex` (`^0.16 || ^0.17`, **optional** — needed only if you render math). The pipeline also receives KaTeX transitively through `rehype-katex`. If your application imports KaTeX CSS, declare KaTeX directly so the import resolves independently of dependency hoisting. A tree-only consumer does not need to load a browser stylesheet.
@@ -96,7 +96,7 @@ Node, workers, and embedded JS runtimes (e.g. Hermes/JavaScriptCore).
 
 ## Versioning
 
-Lockstep with `@ai-markdown/react`, which pins this package **exactly** — engine and shared core expose explicit adapter contracts that may evolve during the beta before stable 3.0.0 (see the status note above). Release notes: [release highlights](https://github.com/ai-markdown/ai-markdown/blob/main/docs/release-highlights.md).
+Lockstep with `@ai-markdown/react`, which pins this package **exactly** — engine and shared core expose explicit adapter contracts that are frozen for candidate review before stable 3.0.0 (see the status note above). Release notes: [release highlights](https://github.com/ai-markdown/ai-markdown/blob/main/docs/release-highlights.md).
 
 ## Package family
 
@@ -105,7 +105,7 @@ Lockstep with `@ai-markdown/react`, which pins this package **exactly** — engi
 | [`@ai-markdown/core`](https://www.npmjs.com/package/@ai-markdown/core)                                   | Framework-independent sessions, block planning, contributions and smooth coordination                       | Release train; exact engine dependency                    |
 | [`@ai-markdown/react`](https://www.npmjs.com/package/@ai-markdown/react)                                 | The React renderer — `<AIMarkdown>`, `<AIMarkdownSmoothStream>`, `<AIMarkdownDocuments>`, hooks, providers  | Release train                                             |
 | [`@ai-markdown/vue`](https://www.npmjs.com/package/@ai-markdown/vue)                                     | Vue 3.5 renderer — components, scoped slots, SSR/hydration and smooth composables                           | Release train; exact core and engine dependencies         |
-| [`@ai-markdown/react-mantine`](https://www.npmjs.com/package/@ai-markdown/react-mantine)                 | Mantine UI bindings — themed typography, code-highlight tabs, Mermaid, color-scheme wiring                  | Release train; exact React peer during beta               |
+| [`@ai-markdown/react-mantine`](https://www.npmjs.com/package/@ai-markdown/react-mantine)                 | Mantine UI bindings — themed typography, code-highlight tabs, Mermaid, color-scheme wiring                  | Release train; exact React peer during prereleases        |
 | [`@ai-markdown/engine`](https://www.npmjs.com/package/@ai-markdown/engine)                               | Framework-agnostic engine — incremental parsing, LaTeX preprocessing, plugin pipeline, cross-chunk registry | Release train; pinned exactly by shared core and adapters |
 | [`@ai-markdown/remark-mark-highlight`](https://www.npmjs.com/package/@ai-markdown/remark-mark-highlight) | remark plugin for `==mark==` highlight syntax                                                               | Independent semver                                        |
 

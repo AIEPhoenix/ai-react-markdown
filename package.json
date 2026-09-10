@@ -1,6 +1,6 @@
 {
   "name": "ai-markdown",
-  "version": "3.0.0-beta.2",
+  "version": "3.0.0-rc.1",
   "private": true,
   "type": "module",
   "description": "Framework-independent Markdown engine and shared core with React rendering and Mantine integration.",
@@ -47,7 +47,8 @@
     "build-storybook": "pnpm build:storybook",
     "test:storybook-dev": "pnpm test:storybook:dev",
     "test:storybook-site": "pnpm test:storybook:site",
-    "bench": "pnpm bench:unit"
+    "bench": "pnpm bench:unit",
+    "test:vue-browser:compat": "node scripts/test-vue-browser.mjs --browser firefox && node scripts/test-vue-browser.mjs --browser webkit"
   },
   "keywords": [
     "react",

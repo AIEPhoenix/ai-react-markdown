@@ -1,11 +1,19 @@
-/* global console, document, window, requestAnimationFrame */
+/* global process, console, document, window, requestAnimationFrame */
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { createServer } from 'node:http';
-import { chromium } from 'playwright';
+import { chromium, firefox, webkit } from 'playwright';
+const args = process.argv.slice(2);
+assert(
+  args.length === 0 || (args.length === 2 && args[0] === '--browser'),
+  'Usage: test-vue-browser [--browser chromium|firefox|webkit]'
+);
+const browserName = args[1] ?? 'chromium';
+const browserType = { chromium, firefox, webkit }[browserName];
+assert(browserType, `Unsupported browser: ${browserName}`);
 const require = createRequire(import.meta.url);
 const vueRequire = createRequire(resolve('packages/vue/package.json'));
 const { createSSRApp, h } = vueRequire('vue');
@@ -53,8 +61,16 @@ try {
     server.once('error', reject);
     server.listen(0, '127.0.0.1', resolve);
   });
-  browser = await chromium.launch({ headless: true });
+  browser = await browserType.launch({ headless: true });
   const page = await browser.newPage();
+  // Reference fixtures use example.com URLs. Serve deterministic image bytes so
+  // browser resource diagnostics do not depend on the external example server.
+  await page.route('https://example.com/**', (route) =>
+    route.fulfill({
+      contentType: 'image/svg+xml',
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>',
+    })
+  );
   // Vue development builds buffer component events while waiting for devtools.
   // A non-retaining hook keeps that diagnostic buffer out of the lifetime test.
   await page.addInitScript(() => {
@@ -125,74 +141,78 @@ try {
     await page.locator('#cursor-probe .aimd-vue-cursor').evaluate((node) => node.style.visibility),
     'hidden'
   );
-  // Keep one provider mounted while repeatedly replacing and releasing documents.
-  for (let cycle = 0; cycle < 24; cycle++) {
-    const doc = `stress-${cycle}`;
-    await page.evaluate(
-      (doc) => window.vueStress.update({ show: true, first: true, doc, content: '', tail: '', streaming: true }),
-      doc
-    );
-    let content = '';
-    for (let frame = 0; frame < 12; frame++) {
-      content += ` frame${frame} 👩‍💻`;
-      await page.evaluate((content) => window.vueStress.update({ content, tail: 'queued tail' }), content);
-      assert.equal(await page.locator('#stress-waiting').count(), 1, 'successor waits during sustained append');
-    }
-    if (cycle % 2 === 0) {
-      await page.evaluate(() => window.vueStress.update({ streaming: false }));
-      await page.waitForFunction(
-        (content) => document.querySelector('#stress-first')?.textContent === content.trim(),
-        content
+  // Forced-GC ownership assertions use Chromium's collection hook.
+  if (browserName === 'chromium') {
+    // Keep one provider mounted while repeatedly replacing and releasing documents.
+    for (let cycle = 0; cycle < 24; cycle++) {
+      const doc = `stress-${cycle}`;
+      await page.evaluate(
+        (doc) => window.vueStress.update({ show: true, first: true, doc, content: '', tail: '', streaming: true }),
+        doc
       );
-    } else {
-      // Unmount a producing predecessor with pending animation work.
-      await page.evaluate(() => window.vueStress.update({ first: false }));
+      let content = '';
+      for (let frame = 0; frame < 12; frame++) {
+        content += ` frame${frame} 👩‍💻`;
+        await page.evaluate((content) => window.vueStress.update({ content, tail: 'queued tail' }), content);
+        assert.equal(await page.locator('#stress-waiting').count(), 1, 'successor waits during sustained append');
+      }
+      if (cycle % 2 === 0) {
+        await page.evaluate(() => window.vueStress.update({ streaming: false }));
+        await page.waitForFunction(
+          (content) => document.querySelector('#stress-first')?.textContent === content.trim(),
+          content
+        );
+      } else {
+        // Unmount a producing predecessor with pending animation work.
+        await page.evaluate(() => window.vueStress.update({ first: false }));
+      }
+      await page.waitForFunction(() => document.querySelector('#stress-tail')?.textContent === 'queued tail');
+      await page.evaluate(
+        (doc) => window.vueStress.update({ doc: `${doc}-switched`, content: 'replacement', streaming: false }),
+        doc
+      );
+      await page.waitForFunction(
+        (doc) =>
+          document.querySelector('#stress-reference a')?.getAttribute('href') === `https://example.com/${doc}-switched`,
+        doc
+      );
+      if (cycle % 2 === 0)
+        await page.waitForFunction(() => document.querySelector('#stress-first')?.textContent === 'replacement');
+      // Requeue work immediately before releasing the entire document.
+      await page.evaluate(() =>
+        window.vueStress.update({ content: 'replacement with a long pending animation '.repeat(20), streaming: true })
+      );
+      await page.evaluate(() => window.vueStress.update({ show: false }));
+      assert.equal(await page.locator('#stress-children').count(), 0);
+      assert.equal(
+        await page.evaluate(() => window.vueStress.stats().subscriptions),
+        0,
+        'all document subscriptions are released'
+      );
+      // Let already-scheduled host callbacks settle before checking ownership.
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      for (let collection = 0; collection < 5; collection++) await page.requestGC();
+      assert.deepEqual(
+        await page.evaluate(() => window.vueStress.stats().alive),
+        [],
+        'empty document registries/coordinators must be collectible while provider survives'
+      );
     }
-    await page.waitForFunction(() => document.querySelector('#stress-tail')?.textContent === 'queued tail');
-    await page.evaluate(
-      (doc) => window.vueStress.update({ doc: `${doc}-switched`, content: 'replacement', streaming: false }),
-      doc
-    );
-    await page.waitForFunction(
-      (doc) =>
-        document.querySelector('#stress-reference a')?.getAttribute('href') === `https://example.com/${doc}-switched`,
-      doc
-    );
-    if (cycle % 2 === 0)
-      await page.waitForFunction(() => document.querySelector('#stress-first')?.textContent === 'replacement');
-    // Requeue work immediately before releasing the entire document.
-    await page.evaluate(() =>
-      window.vueStress.update({ content: 'replacement with a long pending animation '.repeat(20), streaming: true })
-    );
-    await page.evaluate(() => window.vueStress.update({ show: false }));
-    assert.equal(await page.locator('#stress-children').count(), 0);
-    assert.equal(
-      await page.evaluate(() => window.vueStress.stats().subscriptions),
-      0,
-      'all document subscriptions are released'
-    );
-    // Let already-scheduled host callbacks settle before checking ownership.
-    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-    for (let collection = 0; collection < 5; collection++) await page.requestGC();
-    assert.deepEqual(
-      await page.evaluate(() => window.vueStress.stats().alive),
-      [],
-      'empty document registries/coordinators must be collectible while provider survives'
+    assert(
+      (await page.evaluate(() => window.vueStress.stats().acquired)) >= 96,
+      'stress must exercise real document allocations'
     );
   }
-  assert(
-    (await page.evaluate(() => window.vueStress.stats().acquired)) >= 96,
-    'stress must exercise real document allocations'
-  );
   await page.evaluate(() => window.vueStress.unmount());
-  console.log(
-    'Vue stress: 24 lifecycles, 288 append updates, drain/cancellation, replacement, document switching, zero subscriptions and collectible document state PASS'
-  );
+  if (browserName === 'chromium')
+    console.log(
+      'Vue stress: 24 lifecycles, 288 append updates, drain/cancellation, replacement, document switching, zero subscriptions and collectible document state PASS'
+    );
   await page.evaluate(() => window.vueProbe.unmount());
   assert.equal(await page.locator('#app .aimd-vue').count(), 0);
   assert.deepEqual(errors, []);
   console.log(
-    'Vue browser: hydration, references, isolation, definition removal, document switch, custom components, smooth drain/turn-taking, cursor layout and unmount PASS'
+    `Vue ${browserName}: hydration, references, isolation, definition removal, document switch, custom components, smooth drain/turn-taking, cursor layout and unmount PASS`
   );
 } finally {
   await browser?.close();

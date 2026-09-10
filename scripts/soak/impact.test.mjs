@@ -84,29 +84,33 @@ test('publication fails closed for failed checks, missing impact, rejected or ca
   assert.equal(approval.environment, 'soak-approval');
   assert.equal(approval.needs, 'verify');
   assert.equal(approval.if, "needs.verify.outputs.soak_required == 'true'");
-  assert.deepEqual(release.needs, ['verify', 'soak-approval']);
+  assert.deepEqual(release.needs, ['verify', 'consumer-compat', 'soak-approval']);
   assert(!verify.steps.some((step) => step.run?.includes('publish-packages.mjs')));
   assert(release.steps.some((step) => step.run?.includes('publish-packages.mjs')));
   assert.equal(release.steps[0].with.ref, '${{ github.sha }}');
   for (const required of ['true', 'false', '']) {
     for (const verified of ['success', 'failure', 'cancelled', 'skipped']) {
-      for (const reviewed of ['success', 'failure', 'cancelled', 'skipped']) {
-        for (const cancelled of [false, true]) {
-          const expression = release.if
-            .replaceAll('always()', 'true')
-            .replaceAll('cancelled()', String(cancelled))
-            .replaceAll('needs.verify.outputs.soak_required', JSON.stringify(required))
-            .replaceAll('needs.verify.result', JSON.stringify(verified))
-            .replaceAll('needs.soak-approval.result', JSON.stringify(reviewed));
-          const expected =
-            !cancelled &&
-            verified === 'success' &&
-            ((required === 'true' && reviewed === 'success') || (required === 'false' && reviewed === 'skipped'));
-          assert.equal(
-            runInNewContext(expression),
-            expected,
-            JSON.stringify({ required, verified, reviewed, cancelled })
-          );
+      for (const compatible of ['success', 'failure', 'cancelled', 'skipped']) {
+        for (const reviewed of ['success', 'failure', 'cancelled', 'skipped']) {
+          for (const cancelled of [false, true]) {
+            const expression = release.if
+              .replaceAll('always()', 'true')
+              .replaceAll('cancelled()', String(cancelled))
+              .replaceAll('needs.verify.outputs.soak_required', JSON.stringify(required))
+              .replaceAll('needs.verify.result', JSON.stringify(verified))
+              .replaceAll('needs.consumer-compat.result', JSON.stringify(compatible))
+              .replaceAll('needs.soak-approval.result', JSON.stringify(reviewed));
+            const expected =
+              !cancelled &&
+              verified === 'success' &&
+              compatible === 'success' &&
+              ((required === 'true' && reviewed === 'success') || (required === 'false' && reviewed === 'skipped'));
+            assert.equal(
+              runInNewContext(expression),
+              expected,
+              JSON.stringify({ required, verified, compatible, reviewed, cancelled })
+            );
+          }
         }
       }
     }

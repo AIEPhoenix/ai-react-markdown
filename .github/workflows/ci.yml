@@ -16,6 +16,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  consumer-compat:
+    uses: ./.github/workflows/consumer-compat.yml
+
   soak-impact:
     name: Assess engine soak impact
     outputs:
@@ -198,9 +201,9 @@ jobs:
       # headless Chromium (via @storybook/addon-vitest) — the only gate that
       # exercises real browser DOM. `pnpm -r test` never reaches it because
       # the project lives at the workspace root, so it gets its own task.
-      - name: Install Playwright Chromium
+      - name: Install Playwright browsers
         if: matrix.task == 'browser-smoke'
-        run: pnpm exec playwright install chromium --with-deps
+        run: pnpm exec playwright install chromium firefox webkit --with-deps
 
       - name: Browser smokes (storybook stories)
         if: matrix.task == 'browser-smoke'
@@ -219,4 +222,6 @@ jobs:
 
       - name: Vue browser adapter contracts
         if: matrix.task == 'browser-smoke'
-        run: pnpm test:vue-browser
+        run: |
+          pnpm test:vue-browser
+          pnpm test:vue-browser:compat

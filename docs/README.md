@@ -1,8 +1,10 @@
 # ai-markdown — Usage & Customization
 
+For release-candidate acceptance, see [Releasing 3.0](./releasing-3.0.md).
+
 For repository development, start with the [development command reference](./development-commands.md).
 
-Start with [Getting started](./getting-started.md) for React 19, Vue 3.5 and Mantine 9 installation, stylesheets and package boundaries. The five main packages share the published `3.0.0-beta.2` train; the highlight plugin versions independently. Advanced adapter authors can use the [core/engine API contracts](./api/core-engine-contracts.md).
+Start with [Getting started](./getting-started.md) for React 19, Vue 3.5 and Mantine 9 installation, stylesheets and package boundaries. The five main packages share the `3.0.0-rc.1` candidate train; the highlight plugin versions independently. Advanced adapter authors can use the [core/engine API contracts](./api/core-engine-contracts.md).
 
 For the final legacy release and the subsequent multi-framework package migration, read [From ai-react-markdown to ai-markdown](./framework-transition.md). The [shared core README](../packages/core/README.md) documents the extracted shared layer.
 
@@ -85,7 +87,7 @@ The documents can be read independently; code recipes that build on earlier defi
 
 ## A note on stability
 
-The current 3.0 prerelease APIs can change between beta versions. Pin an exact version when validating an integration and upgrade the packages together. The table below describes the intended stable React API policy; it is not a compatibility guarantee between prereleases. Vue has a separate public prop/type surface documented in its README.
+The current 3.0 prerelease APIs can change between prerelease versions. Pin an exact version when validating an integration and upgrade the packages together. The table below describes the intended stable React API policy; it is not a compatibility guarantee between prereleases. Vue has a separate public prop/type surface documented in its README.
 
 | Surface                                                                                                              | Stability under minor versions                                                      |
 | -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
@@ -100,7 +102,7 @@ The current 3.0 prerelease APIs can change between beta versions. Pin an exact v
 | Internal byte-for-byte HTML output                                                                                   | Not stable — prefer semantic assertions for application tests; use semantic queries |
 | Everything exported by `@ai-markdown/engine`                                                                         | **Not stable before 3.0.0** — see below                                             |
 
-**On the shared packages.** `@ai-markdown/core` owns framework-independent sessions, planning, contributions and smooth coordination; `@ai-markdown/engine` owns parsing, tree algorithms and registry primitives. Both are public beta packages with explicit exports. Installing `@ai-markdown/react@beta` or `@ai-markdown/vue@beta` resolves both as exact-version dependencies. Adapter authors can use them directly, keeping the five release-train packages (engine, core, react, vue and react-mantine) aligned at the same exact train version. Their advanced contracts may evolve before stable 3.0.0; the React package supplies the component and hook API used in the application guides.
+**On the shared packages.** `@ai-markdown/core` owns framework-independent sessions, planning, contributions and smooth coordination; `@ai-markdown/engine` owns parsing, tree algorithms and registry primitives. Both are public prerelease packages with explicit exports. Installing `@ai-markdown/react@rc` or `@ai-markdown/vue@rc` resolves both as exact-version dependencies. Adapter authors can use them directly, keeping the five release-train packages (engine, core, react, vue and react-mantine) aligned at the same exact train version. Their advanced contracts may evolve before stable 3.0.0; the React package supplies the component and hook API used in the application guides.
 
 When in doubt, pin your overrides explicitly rather than relying on defaults.
 

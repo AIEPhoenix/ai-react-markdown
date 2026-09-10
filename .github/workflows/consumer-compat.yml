@@ -1,0 +1,28 @@
+name: Packed consumer compatibility
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  consumers:
+    name: Packed consumers (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Exercise both declared lower bounds and the current Node 24 line.
+        # Older Node releases cannot require the ESM dependencies in CJS output.
+        node: ['20.19.0', '22.12.0', '24.20.0']
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/setup@v2
+        with:
+          runtime: node@${{ matrix.node }}
+          cache: true
+          install: false
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm test:packed-consumers

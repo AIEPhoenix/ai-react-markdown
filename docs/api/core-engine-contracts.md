@@ -1,6 +1,6 @@
 # Core / engine public API contracts
 
-This guide defines the shared contracts used by framework adapters. The current APIs are beta and may change before stable 3.0.0. Application authors normally use a framework package; adapter authors can use the engine and core interfaces described here. See the package READMEs for installation and the [core testing guide](../core-testing.md) for behavioral validation.
+This guide defines the shared contracts used by framework adapters. The current APIs are frozen for release-candidate review; required changes must be documented in a new candidate before stable 3.0.0. Application authors normally use a framework package; adapter authors can use the engine and core interfaces described here. See the package READMEs for installation and the [core testing guide](../core-testing.md) for behavioral validation.
 
 ## Layers and consumers
 
@@ -80,6 +80,6 @@ The engine controller manages the visible prefix of one source; the core coordin
 
 ## Declaration and consumer guards
 
-After building, run `pnpm check:public-api`. The script compares complete declarations, with comments removed, against the [engine](./engine.api.txt), [core](./core.api.txt), and [Vue](./vue.api.txt) snapshots. It rejects private registry/coordinator types, local node_modules paths, and framework dependencies in shared layers, and checks that root entries have no star exports. Review signature changes before running `node scripts/check-public-api.mjs --update`.
+After building, run `pnpm check:public-api`. The script compares complete declarations, with comments removed, against the [engine](./engine.api.txt), [core](./core.api.txt), [React](./react.api.txt), [React plugins](./react-plugins.api.txt), [Mantine](./react-mantine.api.txt), and [Vue](./vue.api.txt) snapshots. It rejects private registry/coordinator types, local node_modules paths, and framework dependencies in shared layers, and checks that root entries have no star exports. Review signature changes before running `node scripts/check-public-api.mjs --update`.
 
 Snapshots are not semantic proofs. Unit tests cover lifecycle and immutability contracts; real browsers cover Vue's three complete adapter paths. Packed consumers install tarballs outside the workspace and separately exercise ESM/CJS, dev/prod, SSR, and TypeScript. Engine-impacting releases require validated local soak evidence and manual release approval; see [soak coverage](../soak-coverage.md) for the impact policy and evidence reuse rules. Engine soak coverage must not be mistaken for core or adapter lifecycle coverage.

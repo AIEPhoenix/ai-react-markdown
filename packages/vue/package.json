@@ -1,11 +1,11 @@
 {
   "name": "@ai-markdown/vue",
-  "version": "3.0.0-beta.2",
+  "version": "3.0.0-rc.1",
   "description": "Vue 3 Markdown rendering, document coordination and streaming composables for ai-markdown.",
   "type": "module",
   "license": "MIT",
   "engines": {
-    "node": ">=20"
+    "node": "^20.19.0 || >=22.12.0"
   },
   "sideEffects": [
     "**/*.css"

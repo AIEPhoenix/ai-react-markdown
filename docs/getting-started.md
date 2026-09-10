@@ -1,6 +1,6 @@
 # Getting started
 
-ai-markdown renders accumulated Markdown in React 19 or Vue 3.5. Both adapters use the same parsing engine and shared orchestration; their components, customization and lifecycle APIs follow their host framework. The current package train is `3.0.0-beta.2`. Install with `@beta` to select the prerelease train explicitly, or pin that exact version for reproducible integrations.
+ai-markdown renders accumulated Markdown in React 19 or Vue 3.5. Both adapters use the same parsing engine and shared orchestration; their components, customization and lifecycle APIs follow their host framework. The prepared release candidate is `3.0.0-rc.1`; [confirm publication](./releasing-3.0.md) before installing it. Install with `@rc` to select the prerelease train explicitly, or pin that exact version for reproducible integrations.
 
 ## Choose a package
 
@@ -15,7 +15,7 @@ ai-markdown renders accumulated Markdown in React 19 or Vue 3.5. Both adapters u
 
 Every package also exposes `/package.json`. Import only public entries; `src/` and internal `dist/` paths are not supported application imports. `@ai-markdown/react/plugins` is a subpath of the React package, not a separate package to install. Vue exports its sealed plugins from its root.
 
-React and Vue each depend on matching exact versions of core and engine. Core depends on engine. Mantine has an exact React peer during beta, so upgrade those two together. Applications normally install only their adapter and its peers. The highlight plugin is an engine dependency on an independent `1.0.1` version line and does not use the framework `@beta` tag.
+React and Vue each depend on matching exact versions of core and engine. Core depends on engine. Mantine has an exact React peer during beta, so upgrade those two together. Applications normally install only their adapter and its peers. The highlight plugin is an engine dependency on an independent `1.0.2` release and does not use the framework `@rc` tag.
 
 The legacy `@ai-react-markdown/core` was a React renderer; its replacement is `@ai-markdown/react`. The new `@ai-markdown/core` has no React components or Vue components. See the [migration guide](./framework-transition.md) before renaming existing imports.
 
@@ -24,7 +24,7 @@ The legacy `@ai-react-markdown/core` was a React renderer; its replacement is `@
 In a React application:
 
 ```bash
-pnpm add @ai-markdown/react@beta react@^19 react-dom@^19 katex
+pnpm add @ai-markdown/react@rc react@^19 react-dom@^19 katex
 ```
 
 ```tsx
@@ -44,7 +44,7 @@ The default typography CSS supplies the React presentation and `--aim-*` tokens.
 In a Vue application:
 
 ```bash
-pnpm add @ai-markdown/vue@beta vue@^3.5.0 katex
+pnpm add @ai-markdown/vue@rc vue@^3.5.0 katex
 ```
 
 ```vue
@@ -67,7 +67,7 @@ Vue's stylesheet supplies basic code/table layout and cursor animation. Customiz
 ## React with Mantine 9
 
 ```bash
-pnpm add @ai-markdown/react@beta @ai-markdown/react-mantine@beta \
+pnpm add @ai-markdown/react@rc @ai-markdown/react-mantine@rc \
   react@^19 react-dom@^19 @mantine/core@^9 @mantine/code-highlight@^9 \
   highlight.js@^11.11.2 katex
 ```
@@ -97,7 +97,7 @@ export function Answer() {
 
 Keep the stylesheet order above. Mantine supplies its own typography; add the React typography stylesheet only if the application also renders standalone React Markdown. Mermaid arrives as an integration dependency. Vue has no Mantine or built-in code-toolbar/Mermaid integration. See the [Mantine README](../packages/react-mantine/README.md) for `codeBlock` options and slot precedence.
 
-KaTeX is an optional peer of engine and both adapters (`^0.16 || ^0.17`). The setup commands include it for math examples; omit its direct dependency and CSS import if your application does not use math. Declare it directly whenever you import its stylesheet, so installation does not depend on hoisting. The public packages declare Node `>=20`; repository development uses the version in [`.nvmrc`](../.nvmrc) and the pinned pnpm version in [`package.json`](../package.json).
+KaTeX is an optional peer of engine and both adapters (`^0.16 || ^0.17`). The setup commands include it for math examples; omit its direct dependency and CSS import if your application does not use math. Declare it directly whenever you import its stylesheet, so installation does not depend on hoisting. The public packages declare Node `^20.19.0 || >=22.12.0` because their CJS output loads ESM dependencies through Node’s `require(ESM)` support. Earlier Node 20/22 releases can fail with `ERR_REQUIRE_ESM`; repository development uses the version in [`.nvmrc`](../.nvmrc) and the pinned pnpm version in [`package.json`](../package.json).
 
 ## React and Vue API differences
 

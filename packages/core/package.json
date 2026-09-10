@@ -1,11 +1,11 @@
 {
   "name": "@ai-markdown/core",
-  "version": "3.0.0-beta.2",
+  "version": "3.0.0-rc.1",
   "description": "Framework-independent pipeline sessions, block planning, cross-chunk contributions and streaming coordination for ai-markdown adapters.",
   "type": "module",
   "license": "MIT",
   "engines": {
-    "node": ">=20"
+    "node": "^20.19.0 || >=22.12.0"
   },
   "sideEffects": false,
   "main": "./dist/index.cjs",

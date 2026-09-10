@@ -33,7 +33,7 @@ Pure planner, coordinator, tail-derivation, and block-planning/fingerprint tests
 
 ## Fixed-seed state combinations
 
-`stateSequences.test.ts` uses three default seeds: `20260909`, `20260910`, and `20260911`. Each seed drives three properties, with 24 generated sequences per property and 24–48 random operations per sequence. Mandatory operation prefixes keep a sequence from completely skipping a major state axis.
+`stateSequences.test.ts` uses three default seeds: `20260909`, `20260910`, and `20260911`. Each seed drives three properties, with 24 generated sequences per property and 24–48 random operations per sequence. Mandatory operation prefixes keep a sequence from completely skipping a major state axis. Contribution/aggregation properties have a 30-second per-seed timeout because they rebuild two registries after every operation; other tests retain their normal timeout. This is a bounded correctness budget, not a performance threshold, and does not reduce the seed count, sequence count or operation count.
 
 1. **Pipeline / planner:** interleave appends, replacements, configuration/document switches, resets, and one-shot parsing. Compare every frame with an independent full engine parse, then compare the retained planner with complete `buildBlocks` planning.
 2. **Contribution / aggregation:** update three chunks across two registries, remove definitions, switch documents, deactivate/re-register chunks, and replace pipeline configuration. Compare persistent publication with a fresh registry, full parse, and new publisher at each step. Also assert that repeated commits do not increase the version and that release empties registry state and labels.

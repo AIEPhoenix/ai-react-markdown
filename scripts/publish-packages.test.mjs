@@ -15,22 +15,29 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
-test('Vue bootstrap scopes npm credentials to Vue; other train packages use OIDC', () => {
-  const root = mkdtempSync(join(tmpdir(), 'aimd-publish-auth-'));
-  try {
-    mkdirSync(join(root, 'scripts'));
-    mkdirSync(join(root, 'bin'));
-    mkdirSync(join(root, 'state'));
-    mkdirSync(join(root, 'runner'));
-    for (const script of ['publish-packages.mjs', 'check-release.mjs'])
-      copyFileSync(resolve('scripts', script), join(root, 'scripts', script));
-    copyFileSync('package.json', join(root, 'package.json'));
-    const packages = ['engine', 'core', 'react', 'react-mantine', 'vue', 'remark-mark-highlight'];
-    for (const name of packages) {
-      mkdirSync(join(root, 'packages', name), { recursive: true });
-      copyFileSync(resolve('packages', name, 'package.json'), join(root, 'packages', name, 'package.json'));
-    }
-    const command = `#!/usr/bin/env node
+for (const version of ['3.0.0-beta.2', '3.0.0-rc.1', '3.0.0']) {
+  test(`publication channels and scoped bootstrap credentials (${version})`, () => {
+    const root = mkdtempSync(join(tmpdir(), 'aimd-publish-auth-'));
+    try {
+      mkdirSync(join(root, 'scripts'));
+      mkdirSync(join(root, 'bin'));
+      mkdirSync(join(root, 'state'));
+      mkdirSync(join(root, 'runner'));
+      for (const script of ['publish-packages.mjs', 'check-release.mjs'])
+        copyFileSync(resolve('scripts', script), join(root, 'scripts', script));
+      const rootManifest = JSON.parse(readFileSync('package.json', 'utf8'));
+      rootManifest.version = version;
+      writeFileSync(join(root, 'package.json'), JSON.stringify(rootManifest));
+      const packages = ['engine', 'core', 'react', 'react-mantine', 'vue', 'remark-mark-highlight'];
+      for (const name of packages) {
+        mkdirSync(join(root, 'packages', name), { recursive: true });
+        const manifest = JSON.parse(readFileSync(resolve('packages', name, 'package.json'), 'utf8'));
+        if (name !== 'remark-mark-highlight') manifest.version = version;
+        if (name === 'react-mantine')
+          manifest.peerDependencies['@ai-markdown/react'] = version.includes('-') ? version : `^${version}`;
+        writeFileSync(join(root, 'packages', name, 'package.json'), JSON.stringify(manifest));
+      }
+      const command = `#!/usr/bin/env node
 import fs from 'node:fs'; import path from 'node:path';
 const args = process.argv.slice(2), tool = path.basename(process.argv[1]);
 if (args.includes('pack')) process.exit(0);
@@ -45,53 +52,67 @@ if (tool === 'npm') {
 }
 fs.writeFileSync(path.join('state', name), tool);
 `;
-    for (const name of ['pnpm', 'npm']) {
-      const file = join(root, 'bin', name);
-      writeFileSync(file, command);
-      chmodSync(file, 0o755);
-    }
-    const mock = `import fs from 'node:fs';
+      for (const name of ['pnpm', 'npm']) {
+        const file = join(root, 'bin', name);
+        writeFileSync(file, command);
+        chmodSync(file, 0o755);
+      }
+      const mock = `import fs from 'node:fs';
 globalThis.fetch = async (url) => {
  const decoded = decodeURIComponent(url).replace('https://registry.npmjs.org/', '');
  const name = decoded.replace('-/package/', '').split('/')[1];
  const pkg = JSON.parse(fs.readFileSync('packages/' + name + '/package.json'));
  const published = fs.existsSync('state/' + name);
- const tags = { [pkg.version.includes('-') ? 'beta' : 'latest']: pkg.version };
+ const tags = { [pkg.version.includes('-') ? pkg.version.split('-')[1].split('.')[0] : 'latest']: pkg.version };
  if (process.env.SIMULATE_LATEST === name) tags.latest = pkg.version;
  if (decoded.startsWith('-/package/')) return Response.json(tags);
  if (!published) return new Response('', { status: 404 });
  const manifest = { name: pkg.name, version: pkg.version, dist: { tarball: 'https://example.invalid/packed.tgz' } };
  return Response.json(decoded.split('/').length > 2 ? manifest : { versions: { [pkg.version]: manifest } });
 };`;
-    writeFileSync(join(root, 'mock.mjs'), mock);
-    const env = {
-      ...process.env,
-      PATH: join(root, 'bin') + ':' + process.env.PATH,
-      RUNNER_TEMP: join(root, 'runner'),
-      FIRST_PUBLISH_NPM_TOKEN: 'test-placeholder-only',
-      FIRST_PUBLISH_PACKAGE: '@ai-markdown/vue',
-    };
-    delete env.NPM_CONFIG_USERCONFIG;
-    const version = JSON.parse(readFileSync('package.json', 'utf8')).version;
-    execFileSync(
-      process.execPath,
-      ['--import', join(root, 'mock.mjs'), 'scripts/publish-packages.mjs', 'v' + version],
-      { cwd: root, env, stdio: 'pipe', timeout: 15000 }
-    );
-    assert.equal(readFileSync(join(root, 'state/vue'), 'utf8'), 'npm');
-    for (const name of packages.filter((name) => name !== 'vue'))
-      assert.equal(readFileSync(join(root, 'state', name), 'utf8'), 'pnpm');
-    assert(!readdirSync(join(root, 'runner/first-publish-packs')).includes('first-publish.npmrc'));
-    const run = (name) =>
+      writeFileSync(join(root, 'mock.mjs'), mock);
+      const env = {
+        ...process.env,
+        PATH: join(root, 'bin') + ':' + process.env.PATH,
+        RUNNER_TEMP: join(root, 'runner'),
+        FIRST_PUBLISH_NPM_TOKEN: 'test-placeholder-only',
+        FIRST_PUBLISH_PACKAGE: '@ai-markdown/vue',
+      };
+      delete env.NPM_CONFIG_USERCONFIG;
       execFileSync(
         process.execPath,
         ['--import', join(root, 'mock.mjs'), 'scripts/publish-packages.mjs', 'v' + version],
-        { cwd: root, env: { ...env, SIMULATE_LATEST: name }, stdio: 'pipe', timeout: 15000 }
+        { cwd: root, env, stdio: 'pipe', timeout: 15000 }
       );
-    if (version === '3.0.0-beta.2')
-      assert.match(run('vue').toString(), /Retaining approved first-publication latest tag/);
-    assert.throws(() => run('react'), /remove the unintended latest dist-tag/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
+      assert.equal(readFileSync(join(root, 'state/vue'), 'utf8'), 'npm');
+      for (const name of packages.filter((name) => name !== 'vue'))
+        assert.equal(readFileSync(join(root, 'state', name), 'utf8'), 'pnpm');
+      assert(!readdirSync(join(root, 'runner/first-publish-packs')).includes('first-publish.npmrc'));
+      const run = (name) =>
+        execFileSync(
+          process.execPath,
+          ['--import', join(root, 'mock.mjs'), 'scripts/publish-packages.mjs', 'v' + version],
+          { cwd: root, env: { ...env, SIMULATE_LATEST: name }, stdio: 'pipe', timeout: 15000 }
+        );
+      if (version === '3.0.0-beta.2')
+        assert.match(run('vue').toString(), /Retaining approved first-publication latest tag/);
+      if (version.includes('-')) {
+        assert.throws(() => run('react'), /remove the unintended latest dist-tag/);
+        if (version !== '3.0.0-beta.2') assert.throws(() => run('vue'), /remove the unintended latest dist-tag/);
+      } else assert.match(run('react').toString(), /Verified installer metadata and latest tag/);
+      // Existing packages must all publish through OIDC without bootstrap secrets.
+      for (const name of packages) rmSync(join(root, 'state', name));
+      const oidcEnv = { ...env };
+      delete oidcEnv.FIRST_PUBLISH_NPM_TOKEN;
+      delete oidcEnv.FIRST_PUBLISH_PACKAGE;
+      execFileSync(
+        process.execPath,
+        ['--import', join(root, 'mock.mjs'), 'scripts/publish-packages.mjs', 'v' + version],
+        { cwd: root, env: oidcEnv, stdio: 'pipe', timeout: 15000 }
+      );
+      for (const name of packages) assert.equal(readFileSync(join(root, 'state', name), 'utf8'), 'pnpm');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+}
