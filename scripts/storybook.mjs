@@ -1,6 +1,7 @@
 /* eslint-disable no-undef */
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
+import { readCatalogResource } from './storybook-readiness.mjs';
 import { createProcessSupervisor } from './storybook-processes.mjs';
 import { readFileSync, rmSync } from 'node:fs';
 
@@ -46,26 +47,26 @@ async function run(framework, port) {
 }
 async function waitForCatalog(port) {
   const deadline = Date.now() + 120_000;
+  let lastError = 'No response yet';
   while (!supervisor.stopping && Date.now() < deadline) {
     try {
       const base = `http://localhost:${port}`;
-      const index = await fetch(`${base}/index.json`, { signal: AbortSignal.timeout(1000) });
-      if (index.ok && (await index.json()).entries) {
-        // Storybook probes iframe.html when classifying public composition refs.
-        const preview = await fetch(`${base}/iframe.html`, { signal: AbortSignal.timeout(1000) });
-        await preview.arrayBuffer();
-        if (preview.ok) {
-          console.log(`[storybook] Catalog HTTP endpoints ready on port ${port}`);
-          return;
-        }
-      }
-    } catch {
-      // A listening server can still be preparing its index and preview.
+      const index = await readCatalogResource(`${base}/index.json`, { json: true });
+      if (!index.entries) throw new Error(`${base}/index.json: missing entries`);
+      // Storybook probes iframe.html when classifying public composition refs.
+      await readCatalogResource(`${base}/iframe.html`);
+      console.log(`[storybook] Catalog HTTP endpoints ready on port ${port}`);
+      return;
+    } catch (error) {
+      lastError = error.message;
+      // Cold compilation can outlast a probe; every attempt has a body deadline.
     }
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
   throw new Error(
-    supervisor.stopping ? 'Storybook command interrupted' : `Storybook on port ${port} did not become ready`
+    supervisor.stopping
+      ? 'Storybook command interrupted'
+      : `Storybook on port ${port} did not become ready: ${lastError}`
   );
 }
 try {
