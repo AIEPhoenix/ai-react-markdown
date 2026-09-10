@@ -24,6 +24,21 @@ const fallback = {
   'retext-latin': 'retext',
   'retext-stringify': 'retext',
 };
+// Code ported into the engine's own source tree rather than bundled from
+// node_modules. Source maps cannot identify it, so it is listed here and its
+// notice ships with the bundles like any other third-party license.
+const vendored = [
+  {
+    name: 'react-markdown',
+    license: 'MIT',
+    notice: 'react-markdown',
+    files: [
+      'src/components/markdown/transform.ts',
+      'src/components/markdown/processor.ts',
+      'src/components/markdown/types.ts',
+    ],
+  },
+];
 const sections = ['Third-party code bundled in @ai-markdown/engine.\nThe engine project itself remains MIT licensed.'];
 for (const [name, { root, pkg }] of [...packages].sort(([a], [b]) => a.localeCompare(b))) {
   const files = readdirSync(root, { withFileTypes: true })
@@ -35,6 +50,12 @@ for (const [name, { root, pkg }] of [...packages].sort(([a], [b]) => a.localeCom
   else if (fallback[pkg.name]) text = readFileSync(`licenses/${fallback[pkg.name]}.txt`, 'utf8');
   else throw new Error(`Missing bundled dependency license: ${name}`);
   sections.push(`${name} (${pkg.license ?? 'see license below'})\n\n${text.trim()}`);
+}
+for (const { name, license, notice, files } of vendored) {
+  const missing = files.filter((file) => !existsSync(file));
+  if (missing.length) throw new Error(`Vendored ${name} files no longer exist: ${missing.join(', ')}`);
+  const text = readFileSync(`licenses/${notice}.txt`, 'utf8');
+  sections.push(`${name} (${license}), ported into ${files.join(', ')}\n\n${text.trim()}`);
 }
 writeFileSync('dist/THIRD_PARTY_LICENSES.txt', sections.join('\n\n' + '='.repeat(72) + '\n\n') + '\n');
 console.log(`Bundled license notices: ${packages.size} dependencies`);
