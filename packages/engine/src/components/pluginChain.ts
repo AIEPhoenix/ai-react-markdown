@@ -36,7 +36,7 @@ import { remarkMark as remarkMarkHighlight } from '@ai-markdown/remark-mark-high
 import remarkSqueezeParagraphs from 'remark-squeeze-paragraphs';
 import remarkSmartypants from 'remark-smartypants';
 import remarkPangu from 'remark-pangu';
-import remarkRemoveComments from 'remark-remove-comments';
+import remarkStripComments from './remarkStripComments';
 
 import type { PipelineOptions as MarkdownOptions } from './markdown';
 import rehypeRebaseHashLinks from './rehypeRebaseHashLinks';
@@ -60,7 +60,7 @@ const EXTRA_SYNTAX_CHAIN: ReadonlyArray<readonly [AIMarkdownEnginePluginName, Re
   ['definitionList', remarkDefinitionList as RemarkPlugins[number]],
 ];
 const DISPLAY_OPTIMIZE_CHAIN: ReadonlyArray<readonly [AIMarkdownEnginePluginName, RemarkPlugins[number]]> = [
-  ['removeComments', remarkRemoveComments as RemarkPlugins[number]],
+  ['removeComments', remarkStripComments as RemarkPlugins[number]],
   ['smartypants', remarkSmartypants as RemarkPlugins[number]],
   ['pangu', remarkPangu as RemarkPlugins[number]],
 ];

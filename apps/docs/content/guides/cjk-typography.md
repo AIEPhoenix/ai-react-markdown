@@ -8,13 +8,13 @@ This guide distinguishes those responsibilities so that a punctuation problem is
 
 ## What works out of the box
 
-| Feature                                                             | Plugin                                  | Default                      |
-| ------------------------------------------------------------------- | --------------------------------------- | ---------------------------- |
-| Emphasis delimiter recognition beside CJK punctuation               | `remark-cjk-friendly`                   | ✅ Always on                 |
-| GFM strikethrough delimiter recognition beside CJK punctuation      | `remark-cjk-friendly-gfm-strikethrough` | ✅ Always on                 |
-| Auto-insert spaces between CJK and half-width characters (pangu)    | `remark-pangu`                          | ✅ On by default; toggleable |
-| Smart punctuation (SmartyPants) — curly quotes, em-dashes, ellipses | `remark-smartypants`                    | ✅ On by default; toggleable |
-| HTML comment removal                                                | `remark-remove-comments`                | ✅ On by default; toggleable |
+| Feature                                                             | Plugin                                   | Default                      |
+| ------------------------------------------------------------------- | ---------------------------------------- | ---------------------------- |
+| Emphasis delimiter recognition beside CJK punctuation               | `remark-cjk-friendly`                    | ✅ Always on                 |
+| GFM strikethrough delimiter recognition beside CJK punctuation      | `remark-cjk-friendly-gfm-strikethrough`  | ✅ Always on                 |
+| Auto-insert spaces between CJK and half-width characters (pangu)    | `remark-pangu`                           | ✅ On by default; toggleable |
+| Smart punctuation (SmartyPants) — curly quotes, em-dashes, ellipses | `remark-smartypants`                     | ✅ On by default; toggleable |
+| HTML comment removal                                                | built into the engine (`removeComments`) | ✅ On by default; toggleable |
 
 The parser extensions are installed through their `parseOnly` entry points. They affect how Markdown is recognized and do not themselves remove soft line breaks. The selected transforms run when the relevant source is parsed or transformed; incremental parsing can reuse the settled prefix, so this is not necessarily a full-document plugin run on every React render.
 
