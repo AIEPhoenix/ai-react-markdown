@@ -61,7 +61,7 @@ function Harness({
 }
 
 const meta: Meta<typeof Harness> = {
-  title: 'Mantine/QA/Code Block Streaming',
+  title: 'Integrations/Mantine/QA/Code Block Streaming',
   tags: ['qa'],
   component: Harness,
   decorators: [withMantineProvider],

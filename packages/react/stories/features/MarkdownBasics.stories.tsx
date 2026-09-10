@@ -1,15 +1,15 @@
 import '../../src/components/typography/variants/all.scss';
 import AIMarkdown from '../../src/index';
-import { baseCoreMeta, type CoreMeta, type CoreStory } from '../_shared/meta';
-import { docsLink } from '../_shared/docsLinks';
-import { GFM_BASICS, TABLES_DOC, TASK_LIST_DOC } from '../_shared/fixtures';
+import { baseReactMeta, type ReactMeta, type ReactStory } from '../_shared/meta';
+import { docsLink } from '@ai-markdown/storybook-kit/common/docsLinks';
+import { GFM_BASICS, TABLES_DOC, TASK_LIST_DOC } from '@ai-markdown/storybook-kit/common/fixtures';
 
 /**
  * The GFM baseline every other feature builds on.
  */
-const meta: CoreMeta = {
-  ...baseCoreMeta,
-  title: 'Core/Features/Markdown Basics',
+const meta: ReactMeta = {
+  ...baseReactMeta,
+  title: 'Basics/Markdown Basics',
   tags: ['autodocs'],
   component: AIMarkdown,
   parameters: {
@@ -31,7 +31,7 @@ const meta: CoreMeta = {
           'fenced code, and thematic breaks.',
           '',
           'Code fences are emitted as `<pre><code class="language-…">` and left',
-          'unhighlighted — the core package ships no tokenizer, so the class name is',
+          'unhighlighted — the React renderer ships no tokenizer, so the class name is',
           'the hook your own highlighter (or the Mantine package, which substitutes a',
           'highlighting code block) attaches to. See',
           `${docsLink('architecture', 'the architecture guide')} for the full pipeline.`,
@@ -48,7 +48,7 @@ export default meta;
  * they look at anything else. Paste your own markdown into the `content`
  * control to render it here.
  */
-export const Overview: CoreStory = {
+export const Overview: ReactStory = {
   args: {
     content: GFM_BASICS,
   },
@@ -64,7 +64,7 @@ export const Overview: CoreStory = {
  * Cells carry inline formatting, but not block content — a fenced code block
  * cannot live inside a table cell.
  */
-export const Tables: CoreStory = {
+export const Tables: ReactStory = {
   args: {
     content: TABLES_DOC,
   },
@@ -81,7 +81,7 @@ export const Tables: CoreStory = {
  * than the item text beside it. It is the reason this file's a11y check runs
  * in report-only mode.
  */
-export const TaskLists: CoreStory = {
+export const TaskLists: ReactStory = {
   args: {
     content: TASK_LIST_DOC,
   },

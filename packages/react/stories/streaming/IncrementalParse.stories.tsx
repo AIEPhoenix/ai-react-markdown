@@ -22,7 +22,7 @@ import { subscribeStageTimings } from '@ai-markdown/engine';
 import { buildChunkSources, sliceChunkContents } from './crossChunkFixtures';
 import 'katex/dist/katex.min.css';
 import '../../src/components/typography/variants/all.scss';
-import { DEFAULT_PAYLOAD, withDefs } from './scenarios';
+import { DEFAULT_PAYLOAD, withDefs } from '../../../engine/src/fixtures/scenarios';
 import { codePointSnapshots } from '../../../engine/src/components/incrementalParse/codePointSnapshots';
 import { normalizeClobberPrefix, useDomEqualityStats } from './useDomEqualityStats';
 
@@ -195,7 +195,7 @@ function CrossChunkSmoke({ payload }: { payload: string }) {
 }
 
 const meta: Meta<typeof IncrementalParseSmoke> = {
-  title: 'Core/QA/Incremental Parse',
+  title: 'QA/Incremental Parse',
   tags: ['qa'],
   component: IncrementalParseSmoke,
   parameters: {

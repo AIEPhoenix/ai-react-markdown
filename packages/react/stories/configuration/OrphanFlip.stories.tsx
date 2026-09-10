@@ -42,7 +42,7 @@ function OrphanFlipHarness() {
 }
 
 const meta: Meta<typeof OrphanFlipHarness> = {
-  title: 'Core/QA/Orphan Policy Flip',
+  title: 'QA/Orphan Policy Flip',
   tags: ['qa'],
   component: OrphanFlipHarness,
   parameters: {

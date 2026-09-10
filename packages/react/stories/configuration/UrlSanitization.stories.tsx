@@ -2,20 +2,20 @@ import type { CSSProperties } from 'react';
 import '../../src/components/typography/variants/all.scss';
 import AIMarkdown, { defaultUrlTransform, extendSanitizeSchema, type UrlTransform } from '../../src/index';
 import { ThemedAIMarkdown } from '../_shared/ThemedAIMarkdown';
-import { useStoryColorScheme, PAGE_PALETTE } from '../_shared/colorScheme';
-import { SideBySide } from '../_shared/layouts';
-import { baseCoreMeta, type CoreMeta, type CoreStory } from '../_shared/meta';
-import { docsLink } from '../_shared/docsLinks';
-import { URL_SCHEMES_DOC } from '../_shared/fixtures';
-import { getStreamingTheme } from '../streaming/theme';
+import { useStoryColorScheme, PAGE_PALETTE } from '@ai-markdown/storybook-kit/react/colorScheme';
+import { SideBySide } from '@ai-markdown/storybook-kit/react/layouts';
+import { baseReactMeta, type ReactMeta, type ReactStory } from '../_shared/meta';
+import { docsLink } from '@ai-markdown/storybook-kit/common/docsLinks';
+import { URL_SCHEMES_DOC } from '@ai-markdown/storybook-kit/common/fixtures';
+import { getStreamingTheme } from '@ai-markdown/storybook-kit/react/theme';
 
 /**
  * What the two URL gates do to a link, and what it takes to get a private
  * scheme past both of them.
  */
-const meta: CoreMeta = {
-  ...baseCoreMeta,
-  title: 'Core/Configuration/URL Sanitization',
+const meta: ReactMeta = {
+  ...baseReactMeta,
+  title: 'Customization/URL Sanitization',
   tags: ['autodocs'],
   component: AIMarkdown,
   parameters: {
@@ -133,7 +133,7 @@ const ObservedTable = () => {
  * emit ids on headings — so the link is safe yet inert. Footnote anchors are
  * the exception: those ids are emitted, and the same rewrite makes them work.
  */
-export const DefaultPolicy: CoreStory = {
+export const DefaultPolicy: ReactStory = {
   args: { content: URL_SCHEMES_DOC },
   render: (args) => (
     <div>
@@ -187,7 +187,7 @@ const SCHEMA = extendSanitizeSchema((s) => {
  * the whole document on every render. Development builds log a warning when
  * they catch it.
  */
-export const AllowCustomScheme: CoreStory = {
+export const AllowCustomScheme: ReactStory = {
   args: { content: URL_SCHEMES_DOC },
   render: (args) => (
     <SideBySide

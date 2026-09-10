@@ -2,18 +2,22 @@ import type { StoryObj } from '@storybook/react-vite';
 import 'katex/dist/katex.min.css';
 import '../../src/components/typography/variants/all.scss';
 import AIMarkdown, { AIMarkdownStreamingCursor } from '../../src/index';
-import { WithScheme, type StoryColorScheme } from '../_shared/colorScheme';
-import type { CoreMeta } from '../_shared/meta';
-import { docsLink } from '../_shared/docsLinks';
-import { StreamingReplay, ThemedReplayButton, STREAMING_DEMO_CONTENT } from '../_shared/streaming';
-import { getStreamingTheme } from './theme';
+import { WithScheme, type StoryColorScheme } from '@ai-markdown/storybook-kit/react/colorScheme';
+import type { ReactMeta } from '../_shared/meta';
+import { docsLink } from '@ai-markdown/storybook-kit/common/docsLinks';
+import {
+  StreamingReplay,
+  ThemedReplayButton,
+  STREAMING_DEMO_CONTENT,
+} from '@ai-markdown/storybook-kit/react/streaming';
+import { getStreamingTheme } from '@ai-markdown/storybook-kit/react/theme';
 
 /**
  * The entry point for everything under Streaming: one prop, a growing string,
  * and a document that holds its shape while it is still half-written.
  */
-const meta: CoreMeta = {
-  title: 'Core/Streaming/Streaming Basics',
+const meta: ReactMeta = {
+  title: 'Streaming/Streaming Basics',
   tags: ['autodocs'],
   component: AIMarkdown,
   parameters: {

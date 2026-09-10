@@ -3,7 +3,7 @@ import type { Decorator } from '@storybook/react-vite';
 import { MantineProvider } from '@mantine/core';
 import { CodeHighlightAdapterProvider, createHighlightJsAdapter } from '@mantine/code-highlight';
 import hljs from 'highlight.js';
-import { useStoryColorScheme } from '../../react/stories/_shared/colorScheme';
+import { useStoryColorScheme } from '@ai-markdown/storybook-kit/react/colorScheme';
 import { storyTheme } from './_shared/theme';
 import '@mantine/core/styles.css';
 import '@mantine/code-highlight/styles.css';

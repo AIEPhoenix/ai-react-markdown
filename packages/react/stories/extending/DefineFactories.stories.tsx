@@ -2,18 +2,18 @@ import React, { type CSSProperties } from 'react';
 import '../../src/components/typography/variants/all.scss';
 import AIMarkdown, { defineBehaviors, definePipeline, defineTheme } from '../../src/index';
 import { ThemedAIMarkdown } from '../_shared/ThemedAIMarkdown';
-import { useStoryColorScheme, PAGE_PALETTE } from '../_shared/colorScheme';
-import { baseCoreMeta, type CoreMeta, type CoreStory } from '../_shared/meta';
-import { docsLink } from '../_shared/docsLinks';
-import { PROSE_SAMPLE } from '../_shared/fixtures';
-import { getStreamingTheme } from '../streaming/theme';
+import { useStoryColorScheme, PAGE_PALETTE } from '@ai-markdown/storybook-kit/react/colorScheme';
+import { baseReactMeta, type ReactMeta, type ReactStory } from '../_shared/meta';
+import { docsLink } from '@ai-markdown/storybook-kit/common/docsLinks';
+import { PROSE_SAMPLE } from '@ai-markdown/storybook-kit/common/fixtures';
+import { getStreamingTheme } from '@ai-markdown/storybook-kit/react/theme';
 
 /**
  * Packaging integration-time configuration into frozen, reusable fragments.
  */
-const meta: CoreMeta = {
-  ...baseCoreMeta,
-  title: 'Core/Extending/Define Factories',
+const meta: ReactMeta = {
+  ...baseReactMeta,
+  title: 'Customization/Extending/Define Factories',
   tags: ['autodocs'],
   component: AIMarkdown,
   parameters: {
@@ -144,7 +144,7 @@ const FragmentTable = () => {
  * `THEME.fontSize = '2rem'` throws in strict mode rather than silently
  * retheming every document in the application.
  */
-export const ComposedProps: CoreStory = {
+export const ComposedProps: ReactStory = {
   args: { content: PROSE_SAMPLE },
   render: (args) => (
     <div>

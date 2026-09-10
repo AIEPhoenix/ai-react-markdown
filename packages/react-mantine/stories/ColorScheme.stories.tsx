@@ -5,7 +5,7 @@ import hljs from 'highlight.js';
 import MantineAIMarkdown from '../src/index';
 import { baseMantineMeta, storyTheme, type MantineMeta, type MantineStory } from './_shared/meta';
 import { SCHEME_SAMPLE_DOC } from './_shared/fixtures';
-import { docsLink } from '../../react/stories/_shared/docsLinks';
+import { docsLink } from '@ai-markdown/storybook-kit/common/docsLinks';
 // The stylesheets normally arrive with `withMantineProvider`, which this file
 // does not use. Importing them here keeps the story self-contained rather than
 // dependent on some other Mantine story having been visited first.
@@ -20,7 +20,7 @@ const highlightJsAdapter = createHighlightJsAdapter(hljs);
  */
 const meta: MantineMeta = {
   ...baseMantineMeta,
-  title: 'Mantine/Color Scheme',
+  title: 'Integrations/Mantine/Color Scheme',
   tags: ['autodocs'],
   component: MantineAIMarkdown,
   // No `withMantineProvider` here. Storybook decorators compose rather than
@@ -65,7 +65,7 @@ const meta: MantineMeta = {
           '',
           '### Where the colours actually come from',
           '',
-          'Worth being precise about, because it is not what the Core branch would lead you',
+          'Worth being precise about, because it is not what the React catalog would lead you',
           "to expect. The wrapper substitutes its own `Typography`, so core's typography",
           "root — and with it core's `--aim-*` token surface and its `.light` / `.dark`",
           'classes — is **not** in the tree at all. Prose colour, code-block backgrounds,',

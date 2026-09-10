@@ -1,0 +1,16 @@
+{
+  "name": "@ai-markdown/storybook-hub",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "devDependencies": {
+    "storybook": "10.5.10",
+    "@storybook/addon-docs": "10.5.10",
+    "@ai-markdown/storybook-kit": "workspace:*",
+    "@storybook/react-vite": "10.5.10",
+    "react": "^19",
+    "react-dom": "^19",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7"
+  }
+}

@@ -2,18 +2,18 @@ import React, { memo } from 'react';
 import '../../src/components/typography/variants/all.scss';
 import AIMarkdown, { type AIMarkdownExtraStylesComponent, type AIMarkdownTypographyProps } from '../../src/index';
 import { ThemedAIMarkdown } from '../_shared/ThemedAIMarkdown';
-import { SideBySide } from '../_shared/layouts';
-import { baseCoreMeta, type CoreMeta, type CoreStory } from '../_shared/meta';
-import { docsLink } from '../_shared/docsLinks';
-import { PROSE_SAMPLE } from '../_shared/fixtures';
+import { SideBySide } from '@ai-markdown/storybook-kit/react/layouts';
+import { baseReactMeta, type ReactMeta, type ReactStory } from '../_shared/meta';
+import { docsLink } from '@ai-markdown/storybook-kit/common/docsLinks';
+import { PROSE_SAMPLE } from '@ai-markdown/storybook-kit/common/fixtures';
 
 /**
  * The two slots that let you replace the library's presentation without
  * touching its rendering.
  */
-const meta: CoreMeta = {
-  ...baseCoreMeta,
-  title: 'Core/Theming/Custom Typography & ExtraStyles',
+const meta: ReactMeta = {
+  ...baseReactMeta,
+  title: 'Customization/Theming/Custom Typography & ExtraStyles',
   tags: ['autodocs'],
   component: AIMarkdown,
   parameters: {
@@ -100,7 +100,7 @@ SerifTypography.displayName = 'SerifTypography';
  * `fontSize` keeps working across the swap, because `SerifTypography` applies
  * the prop and spreads the `style` object the renderer hands it.
  */
-export const CustomTypography: CoreStory = {
+export const CustomTypography: ReactStory = {
   args: { content: PROSE_SAMPLE },
   render: (args) => (
     <SideBySide
@@ -155,7 +155,7 @@ const FancyQuotes: AIMarkdownExtraStylesComponent = ({ children }) => (
  * It composes with token overrides rather than competing with them, and it
  * cannot accidentally strip a default the way replacing `Typography` does.
  */
-export const ExtraStyles: CoreStory = {
+export const ExtraStyles: ReactStory = {
   args: { content: PROSE_SAMPLE },
   render: (args) => (
     <SideBySide

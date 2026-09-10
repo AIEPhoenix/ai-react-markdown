@@ -789,7 +789,7 @@ pnpm install
 pnpm build
 
 # Run Storybook (interactive playground for development)
-pnpm storybook
+pnpm storybook # Hub :6006, React :6007, Vue :6008
 
 # Lint / autofix
 pnpm lint
@@ -803,6 +803,8 @@ pnpm format:check
 pnpm --filter @ai-markdown/react test
 pnpm --filter @ai-markdown/react typecheck
 ```
+
+See [Interactive examples](docs/storybook.md) for corpus sample selection, independent renderer tests and portable static builds.
 
 ## Contributing
 

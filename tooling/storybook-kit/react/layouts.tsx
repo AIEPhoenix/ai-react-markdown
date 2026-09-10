@@ -1,6 +1,6 @@
 import React, { type CSSProperties, type ReactNode } from 'react';
-import { useStoryColorScheme, PAGE_PALETTE } from './colorScheme';
-import { getStreamingTheme } from '../streaming/theme';
+import { useStoryColorScheme, PAGE_PALETTE } from '@ai-markdown/storybook-kit/react/colorScheme';
+import { getStreamingTheme } from '@ai-markdown/storybook-kit/react/theme';
 
 /**
  * Shared presentation shells for the documentation stories. The benchmark

@@ -1,5 +1,5 @@
 import { Meta } from '@storybook/addon-docs/blocks';
-import { DOCS_LINKS, REPO_URL } from './_shared/docsLinks';
+import { DOCS_LINKS, REPO_URL } from '@ai-markdown/storybook-kit/common/docsLinks';
 
 <Meta title="Introduction" />
 
@@ -23,7 +23,7 @@ actually emit — GFM, KaTeX math, mermaid diagrams, CJK text, and untrusted URL
 sanitizing before they reach the DOM.
 
 ```bash
-npm install @ai-markdown/react
+npm install @ai-markdown/react@beta
 ```
 
 ```tsx
@@ -41,37 +41,39 @@ to reach for.
 
 | Package                              | Install it when                                                                                                             | In this Storybook                            |
 | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
-| `@ai-markdown/react`                 | You are rendering markdown in React, with any UI library or none.                                                           | The **Core** branch.                         |
-| `@ai-markdown/react-mantine`         | Your app already uses Mantine and you want highlighted code blocks, mermaid diagrams, and automatic color-scheme following. | The **Mantine** branch.                      |
+| `@ai-markdown/react`                 | You are rendering markdown in React, with any UI library or none.                                                           | The React catalog.                           |
+| `@ai-markdown/react-mantine`         | Your app already uses Mantine and you want highlighted code blocks, mermaid diagrams, and automatic color-scheme following. | The **Integrations / Mantine** branch.       |
 | `@ai-markdown/engine`                | You are building a renderer for another framework. It is the parsing engine, with no React in it.                           | Not shown — it has no UI to demonstrate.     |
 | `@ai-markdown/remark-mark-highlight` | You want `==highlight==` syntax in some other remark pipeline.                                                              | Not shown — it is a plugin, not a component. |
 
-The Mantine package **wraps** core rather than replacing it: same props, same engine, same
-streaming behaviour, plus its own renderers. Nothing in the Core branch stops being true over
+The Mantine package **wraps** the React adapter rather than replacing it: same props, same engine, same
+streaming behaviour, plus its own renderers. Nothing in the React catalog stops being true over
 there, which is why the Mantine stories only cover the differences.
 
-You never install `engine` yourself — `core` pins it as a transitive dependency.
+React and Vue already depend on core and engine at their release-train version. Renderer consumers install the adapter; authors building a new adapter can use core for coordination and engine for parsing.
+
+The Vue 3.5+ catalog is a separate renderer instance in the composition entry. The core package layer is framework-independent and has no standalone Storybook. Shared examples are drawn from `corpus/documents`; syntax-specific regressions retain dedicated inputs.
 
 ## How this Storybook is organized
 
 The sidebar is a reading order, top to bottom: evaluate, then integrate, then dig.
 
-- **Core / Playground** — every prop wired to a control. Start here to judge output quality.
-- **Core / Features** — what the renderer does with markdown: GFM basics, footnotes and
+- **Playground** — every prop wired to a control. Start here to judge output quality.
+- **Basics** — what the renderer does with markdown: GFM basics, footnotes and
   definition lists, math, CJK and international text, and the engine plugin catalog.
-- **Core / Theming** — design tokens, font size, color scheme.
-- **Core / Configuration** — custom components, metadata, URL sanitization, orphan references.
-- **Core / Streaming** — the streaming feature set: basics, the cursor, smooth streaming,
+- **Customization / Theming** — design tokens, font size, color scheme.
+- **Customization** — custom components, metadata, URL sanitization, orphan references.
+- **Streaming** — the streaming feature set: basics, the cursor, smooth streaming,
   incremental parsing.
-- **Core / Documents** — coordinating one answer split across several components.
-- **Core / Extending** — the `define*` factories and the context/hook surface, from the point of
+- **Documents** — coordinating one answer split across several components.
+- **Customization / Extending** — the `define*` factories and the context/hook surface, from the point of
   view of someone writing a wrapper package.
-- **Core / Performance Lab** — the reproducible measurement harnesses behind the numbers in the
+- **Performance Lab** — the reproducible measurement harnesses behind the numbers in the
   benchmark guide. They are instruments, not demos: they start streaming on mount and report
   render counts, DOM equality, and long-task budgets.
-- **Core / QA** — `play`-function assertion suites. They run in CI and are visible here for
+- **QA** — `play`-function assertion suites. They run in CI and are visible here for
   debugging; they are not documentation.
-- **Mantine / …** — overview, playground, code blocks, mermaid diagrams, color scheme, and a
+- **Integrations / Mantine / …** — overview, playground, code blocks, mermaid diagrams, color scheme, and a
   kitchen-sink showcase.
 
 ## Using the canvas
@@ -100,13 +102,13 @@ repository: <a href={DOCS_LINKS.readme}>docs/README.md</a>, alongside the{' '}
 
 Things worth knowing before you adopt this, all of them deliberate:
 
-- **Core does not highlight code.** It emits `<pre><code class="language-ts">` and stops.
+- **The React adapter does not highlight code.** It emits `<pre><code class="language-ts">` and stops.
   Bundling a highlighter would charge every consumer for a dependency many of them already
   solve differently. Use `@ai-markdown/react-mantine`, or bring your own via a custom `pre`
   component.
 - **Mermaid diagrams render in the Mantine package only.** Same reason — mermaid is a large
   dependency, and it does not belong in the base renderer.
-- **Core ships one typography variant.** The token surface is large and fully overridable, but
+- **The React adapter ships one typography variant.** The token surface is large and fully overridable, but
   there is no library of prebuilt looks to pick from.
 - **The engine plugin catalog is sealed.** You enable and disable what is in it; you cannot add
   arbitrary remark or rehype plugins through that prop. Content preprocessors and custom

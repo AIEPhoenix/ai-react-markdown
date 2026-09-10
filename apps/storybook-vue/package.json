@@ -1,0 +1,20 @@
+{
+  "name": "@ai-markdown/storybook-vue",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "devDependencies": {
+    "storybook": "10.5.10",
+    "@storybook/addon-docs": "10.5.10",
+    "@ai-markdown/storybook-kit": "workspace:*",
+    "@storybook/vue3-vite": "10.5.10",
+    "@storybook/addon-vitest": "10.5.10",
+    "@storybook/addon-a11y": "10.5.10",
+    "vue": "^3.5.0",
+    "@ai-markdown/vue": "workspace:*",
+    "katex": "^0.17.0",
+    "typescript": "^6.0.3",
+    "react": "^19",
+    "react-dom": "^19"
+  }
+}

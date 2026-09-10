@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, type CSSProperties } from 'react';
 import type { ChunkSample } from './useRenderProfiler';
-import { getStreamingTheme, type ColorScheme } from './theme';
+import { getStreamingTheme, type ColorScheme } from '@ai-markdown/storybook-kit/react/theme';
 
 export const ChunkPanel = ({ chunks, colorScheme }: { chunks: ChunkSample[]; colorScheme: ColorScheme }) => {
   const tailRef = useRef<HTMLDivElement>(null);

@@ -1,7 +1,7 @@
 import React from 'react';
 import type { Meta } from '@storybook/react-vite';
 import AIMarkdown from '../../src/index';
-import { useStoryColorScheme } from './colorScheme';
+import { useStoryColorScheme } from '@ai-markdown/storybook-kit/react/colorScheme';
 
 type AIMarkdownStoryProps = React.ComponentProps<typeof AIMarkdown>;
 
@@ -16,7 +16,7 @@ export const ThemedAIMarkdown = (props: AIMarkdownStoryProps) => {
 };
 
 /**
- * The default `render` for core metas (see `baseCoreMeta`). A story only needs
+ * The default `render` for core metas (see `baseReactMeta`). A story only needs
  * its own `render` when it wraps `<AIMarkdown>` in something else — streaming
  * replay, a comparison layout, a benchmark harness.
  */

@@ -10,9 +10,9 @@ import type { StoryObj } from '@storybook/react-vite';
 import AIMarkdown from '../../src/index';
 import 'katex/dist/katex.min.css';
 import '../../src/components/typography/variants/all.scss';
-import { WithScheme } from '../_shared/colorScheme';
-import type { CoreMeta } from '../_shared/meta';
-import { coreArgTypes } from '../_shared/argTypes';
+import { WithScheme } from '@ai-markdown/storybook-kit/react/colorScheme';
+import type { ReactMeta } from '../_shared/meta';
+import { reactArgTypes } from '@ai-markdown/storybook-kit/react/argTypes';
 import { StreamingPlayground } from '../streaming/StreamingPlayground';
 import { BlockMemoComparison } from '../streaming/BlockMemoComparison';
 import { IncrementalParseComparison } from '../streaming/IncrementalParseComparison';
@@ -21,8 +21,8 @@ import { IsolatedComparison } from '../streaming/IsolatedComparison';
 import { IsolatedSide } from '../streaming/IsolatedSide';
 import { DEFAULT_PAYLOAD } from '../streaming/scenarios';
 
-const meta: CoreMeta = {
-  title: 'Core/Performance Lab/Streaming Comparisons',
+const meta: ReactMeta = {
+  title: 'Performance Lab/Streaming Comparisons',
   component: AIMarkdown,
   parameters: {
     // Off, not 'todo': these are instrument panels — dense monospace readouts
@@ -33,7 +33,7 @@ const meta: CoreMeta = {
     a11y: { test: 'off' },
   },
   argTypes: {
-    ...coreArgTypes,
+    ...reactArgTypes,
     variant: { control: 'select', options: ['default'], description: 'Typography variant name.' },
   },
   render: (args) => <WithScheme>{(colorScheme) => <AIMarkdown {...args} colorScheme={colorScheme} />}</WithScheme>,

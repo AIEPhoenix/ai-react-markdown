@@ -7,19 +7,23 @@ import AIMarkdown, {
 } from '../../src/index';
 import 'katex/dist/katex.min.css';
 import '../../src/components/typography/variants/all.scss';
-import { WithScheme, type StoryColorScheme } from '../_shared/colorScheme';
-import type { CoreMeta, CoreStory } from '../_shared/meta';
-import { docsLink } from '../_shared/docsLinks';
-import { StreamingReplay, ThemedReplayButton, STREAMING_DEMO_CONTENT } from '../_shared/streaming';
-import { getStreamingTheme } from './theme';
+import { WithScheme, type StoryColorScheme } from '@ai-markdown/storybook-kit/react/colorScheme';
+import type { ReactMeta, ReactStory } from '../_shared/meta';
+import { docsLink } from '@ai-markdown/storybook-kit/common/docsLinks';
+import {
+  StreamingReplay,
+  ThemedReplayButton,
+  STREAMING_DEMO_CONTENT,
+} from '@ai-markdown/storybook-kit/react/streaming';
+import { getStreamingTheme } from '@ai-markdown/storybook-kit/react/theme';
 
 /**
  * Typewriter pacing: `<AIMarkdownSmoothStream>` accepts the same bursty chunks
  * a model actually emits and reveals them grapheme by grapheme at a steady
  * cadence.
  */
-const meta: CoreMeta = {
-  title: 'Core/Streaming/Smooth Streaming',
+const meta: ReactMeta = {
+  title: 'Streaming/Smooth Streaming',
   tags: ['autodocs'],
   component: AIMarkdown,
   parameters: {
@@ -55,7 +59,7 @@ export default meta;
  * watch the reveal stay even while the source arrives in clumps up to 96
  * characters separated by gaps of up to 400ms.
  */
-export const Demo: CoreStory = {
+export const Demo: ReactStory = {
   render: () => (
     <WithScheme>
       {(colorScheme) => (

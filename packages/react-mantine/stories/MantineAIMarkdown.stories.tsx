@@ -3,7 +3,7 @@ import MantineAIMarkdown from '../src/index';
 import 'katex/dist/katex.min.css';
 import { baseMantineMeta, type MantineMeta, type MantineStory } from './_shared/meta';
 import { expect, waitFor } from 'storybook/test';
-import { CJK_EMPHASIS_REGRESSION, GFM_BASICS } from '../../react/stories/_shared/fixtures';
+import { CJK_EMPHASIS_REGRESSION, GFM_BASICS } from '@ai-markdown/storybook-kit/common/fixtures';
 
 /**
  * The Mantine wrapper with every prop wired to a control — core's surface plus
@@ -12,7 +12,7 @@ import { CJK_EMPHASIS_REGRESSION, GFM_BASICS } from '../../react/stories/_shared
  */
 const meta: MantineMeta = {
   ...baseMantineMeta,
-  title: 'Mantine/Playground',
+  title: 'Integrations/Mantine/Playground',
   tags: ['autodocs'],
   component: MantineAIMarkdown,
   parameters: {

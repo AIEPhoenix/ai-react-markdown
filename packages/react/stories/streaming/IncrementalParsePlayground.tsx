@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import AIMarkdown from '../../src/index';
 import { codePointSnapshots } from '../../../engine/src/components/incrementalParse/codePointSnapshots';
 import { computeFreezeBoundary, subscribeStageTimings } from '@ai-markdown/engine';
-import { getStreamingTheme } from './theme';
+import { getStreamingTheme } from '@ai-markdown/storybook-kit/react/theme';
 import { useDomEqualityStats } from './useDomEqualityStats';
 
 /** Both panes share one documentId so their clobber-prefixed ids match and the

@@ -2,17 +2,17 @@ import 'katex/dist/katex.min.css';
 import '../../src/components/typography/variants/all.scss';
 import AIMarkdown from '../../src/index';
 import { expect, waitFor } from 'storybook/test';
-import { baseCoreMeta, type CoreMeta, type CoreStory } from '../_shared/meta';
-import { docsLink } from '../_shared/docsLinks';
-import { CJK_EMPHASIS_REGRESSION, CJK_MIXED_DOC, RTL_DOC } from '../_shared/fixtures';
+import { baseReactMeta, type ReactMeta, type ReactStory } from '../_shared/meta';
+import { docsLink } from '@ai-markdown/storybook-kit/common/docsLinks';
+import { CJK_EMPHASIS_REGRESSION, CJK_MIXED_DOC, RTL_DOC } from '@ai-markdown/storybook-kit/common/fixtures';
 
 /**
  * CJK and other non-Latin scripts, where the CommonMark emphasis rules and
  * real-world text disagree.
  */
-const meta: CoreMeta = {
-  ...baseCoreMeta,
-  title: 'Core/Features/CJK & International Text',
+const meta: ReactMeta = {
+  ...baseReactMeta,
+  title: 'Basics/CJK & International Text',
   tags: ['autodocs'],
   component: AIMarkdown,
   parameters: {
@@ -47,7 +47,7 @@ export default meta;
  * asterisks. The last three repeat the set with `~~` strikethrough nested
  * inside, which is where the naive fix breaks.
  */
-export const EmphasisPunctuationFix: CoreStory = {
+export const EmphasisPunctuationFix: ReactStory = {
   args: {
     content: CJK_EMPHASIS_REGRESSION,
   },
@@ -72,7 +72,7 @@ export const EmphasisPunctuationFix: CoreStory = {
  * correct rather than a miss — the spacing rule is defined for Han characters
  * and kana, and Hangul is left alone.
  */
-export const MixedCJK: CoreStory = {
+export const MixedCJK: ReactStory = {
   args: {
     content: CJK_MIXED_DOC,
   },
@@ -89,7 +89,7 @@ export const MixedCJK: CoreStory = {
  * it have to resolve against the paragraph direction rather than against the
  * code span.
  */
-export const RTL: CoreStory = {
+export const RTL: ReactStory = {
   args: {
     content: RTL_DOC,
   },

@@ -1,14 +1,13 @@
 import type { Meta } from '@storybook/react-vite';
-import AIMarkdown from '../../src/index';
 
-type CoreArgTypes = NonNullable<Meta<typeof AIMarkdown>['argTypes']>;
+type ReactArgTypes = NonNullable<Meta['argTypes']>;
 
 /**
  * Controls-panel definitions for the props both packages expose. The Mantine
- * meta spreads this and adds its own `codeBlock` group; core's *Playground*
- * meta spreads it and adds `variant` (core ships the typography variants;
+ * meta spreads this and adds its own `codeBlock` group; React's *Playground*
+ * meta spreads it and adds `variant` (React ships the typography variants;
  * the Mantine wrapper substitutes its own Typography, so the control would
- * be misleading there — and `baseCoreMeta` deliberately leaves it out).
+ * be misleading there — and `baseReactMeta` deliberately leaves it out).
  *
  * Hiding the live `streaming` control in replay stories: use ONE mechanism —
  * a `controls.include` whitelist where the story/meta already has one,
@@ -18,7 +17,7 @@ type CoreArgTypes = NonNullable<Meta<typeof AIMarkdown>['argTypes']>;
  * Explicit annotation rather than `satisfies` — this package builds with
  * `declaration: true`, where `satisfies` on an exported const trips TS2742.
  */
-export const coreArgTypes: CoreArgTypes = {
+export const reactArgTypes: ReactArgTypes = {
   content: { control: 'text', description: 'Raw markdown content to render.' },
   streaming: { control: 'boolean', description: 'Whether content is actively being streamed.' },
   fontSize: { control: 'text', description: 'Base font size (e.g. `"0.9375rem"`, `"14px"`, or a number for px).' },

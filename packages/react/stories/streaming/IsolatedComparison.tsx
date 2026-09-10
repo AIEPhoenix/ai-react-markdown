@@ -40,7 +40,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { ScenarioRow, PayloadScaleRow } from './ComparisonControls';
 import { DEFAULT_PAYLOAD, type ScenarioKey } from './scenarios';
 import { emptySnapshot, type RenderProfilerSnapshot } from './useRenderProfiler';
-import { controlStyles, getStreamingTheme, type ColorScheme } from './theme';
+import { controlStyles, getStreamingTheme, type ColorScheme } from '@ai-markdown/storybook-kit/react/theme';
 import { AXIS_LABELS, computeSummary, RunHistory, SummaryBanner, VerdictBanner } from './BlockMemoComparison';
 import { useComparisonRuns } from './useComparisonRuns';
 import {

@@ -1,13 +1,9 @@
 import type { Preview } from '@storybook/react-vite';
-import { getUserPreferredColorTheme } from './utils/sb-theme';
-// The React-dependent story infrastructure lives under packages/react/stories/_shared.
-// It cannot live in this directory: pnpm's strict node_modules layout puts `react`
-// only in packages/*/node_modules, so a `.tsx` file here fails to resolve both
-// `react` and the JSX runtime under the dev server and vitest. This file stays a
-// plain `.ts` registration layer.
-import { armReactScan, withReactScan } from '../packages/react/stories/_shared/reactScan';
-import { withColorScheme } from '../packages/react/stories/_shared/withColorScheme';
-import { AimDocsContainer } from '../packages/react/stories/_shared/AimDocsContainer';
+import { getUserPreferredColorTheme } from '@ai-markdown/storybook-kit/common/sb-theme';
+// React-only decorators are shared with Mantine through the private kit.
+import { armReactScan, withReactScan } from '@ai-markdown/storybook-kit/react/reactScan';
+import { withColorScheme } from '@ai-markdown/storybook-kit/react/withColorScheme';
+import { AimDocsContainer } from '@ai-markdown/storybook-kit/react/AimDocsContainer';
 
 armReactScan();
 
@@ -38,22 +34,16 @@ const preview: Preview = {
       storySort: {
         order: [
           'Introduction',
-          'Core',
-          [
-            'Playground',
-            'Features',
-            'Theming',
-            'Configuration',
-            'Streaming',
-            'Documents',
-            'Extending',
-            'Performance Lab',
-            // The methodology page reads before the instruments it explains.
-            ['About', '*'],
-            'QA',
-          ],
-          'Mantine',
-          ['Overview', 'Playground', 'Code Blocks', 'Mermaid Diagrams', 'Color Scheme', 'Kitchen Sink'],
+          'Playground',
+          'Basics',
+          'Customization',
+          'Streaming',
+          'Documents',
+          'Integrations',
+          ['Mantine'],
+          'Performance Lab',
+          ['About', '*'],
+          'QA',
         ],
       },
     },

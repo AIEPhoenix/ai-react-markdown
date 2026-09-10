@@ -3,17 +3,17 @@ import type { StoryObj } from '@storybook/react-vite';
 import '../../src/components/typography/variants/all.scss';
 import AIMarkdown from '../../src/index';
 import { ThemedAIMarkdown } from '../_shared/ThemedAIMarkdown';
-import { Labeled, SideBySide, TokenGrid } from '../_shared/layouts';
-import { baseCoreMeta, type CoreMeta, type CoreStory } from '../_shared/meta';
-import { docsLink, REPO_URL } from '../_shared/docsLinks';
-import { GFM_BASICS } from '../_shared/fixtures';
+import { Labeled, SideBySide, TokenGrid } from '@ai-markdown/storybook-kit/react/layouts';
+import { baseReactMeta, type ReactMeta, type ReactStory } from '../_shared/meta';
+import { docsLink, REPO_URL } from '@ai-markdown/storybook-kit/common/docsLinks';
+import { GFM_BASICS } from '@ai-markdown/storybook-kit/common/fixtures';
 
 /**
  * The CSS custom properties the default typography variant is built from.
  */
-const meta: CoreMeta = {
-  ...baseCoreMeta,
-  title: 'Core/Theming/Design Tokens',
+const meta: ReactMeta = {
+  ...baseReactMeta,
+  title: 'Customization/Theming/Design Tokens',
   tags: ['autodocs'],
   component: AIMarkdown,
   parameters: {
@@ -101,7 +101,7 @@ const TokenReadout = ({ content }: { content: string }) => {
  * spacing and size rows hold: the colour tokens are redeclared per scheme, the
  * geometry tokens are not.
  */
-export const Defaults: CoreStory = {
+export const Defaults: ReactStory = {
   args: {
     content: GFM_BASICS,
   },

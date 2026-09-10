@@ -4,15 +4,15 @@ import MantineAIMarkdown from '../src/index';
 import 'katex/dist/katex.min.css';
 import { baseMantineMeta, type MantineMeta, type MantineStory } from './_shared/meta';
 import { MANTINE_SHOWCASE } from './_shared/fixtures';
-import { StreamingReplay } from '../../react/stories/_shared/streaming';
-import { docsLink } from '../../react/stories/_shared/docsLinks';
+import { StreamingReplay } from '@ai-markdown/storybook-kit/react/streaming';
+import { docsLink } from '@ai-markdown/storybook-kit/common/docsLinks';
 
 /**
  * Everything the Mantine package renders, in one answer.
  */
 const meta: MantineMeta = {
   ...baseMantineMeta,
-  title: 'Mantine/Kitchen Sink',
+  title: 'Integrations/Mantine/Kitchen Sink',
   tags: ['autodocs'],
   component: MantineAIMarkdown,
   // Streaming stories cannot gate on a11y — axe samples a partially typed DOM,

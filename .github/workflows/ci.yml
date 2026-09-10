@@ -148,7 +148,7 @@ jobs:
         run: pnpm -r typecheck
 
       # `pnpm -r` skips the workspace root, so the root script — the only
-      # gate covering .storybook and packages/*/stories — must run
+      # gate covering apps/storybook-* and packages/*/stories — must run
       # explicitly. It also resolves core through dist, built above.
       - name: Typecheck (storybook + stories)
         if: matrix.task == 'typecheck'
@@ -190,7 +190,7 @@ jobs:
         if: matrix.task == 'build'
         run: pnpm test:packed-consumers
 
-      # The root vitest config's `storybook` project renders every story in
+      # The root vitest config's framework Storybook projects render every story in
       # headless Chromium (via @storybook/addon-vitest) — the only gate that
       # exercises real browser DOM. `pnpm -r test` never reaches it because
       # the project lives at the workspace root, so it gets its own task.
@@ -200,7 +200,13 @@ jobs:
 
       - name: Browser smokes (storybook stories)
         if: matrix.task == 'browser-smoke'
-        run: pnpm vitest run --project=storybook
+        run: pnpm test:storybook
+
+      - name: Build and verify composed Storybook site
+        if: matrix.task == 'browser-smoke'
+        run: |
+          STORYBOOK_DOCS_EXPORT=1 pnpm build-storybook
+          pnpm test:storybook-site
 
       - name: Concurrent document scope lifetime
         if: matrix.task == 'browser-smoke'

@@ -13,10 +13,10 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, waitFor } from 'storybook/test';
 import AIMarkdown from '../../src';
 import { AIMarkdownDocuments } from '../../src/components/AIMarkdownDocuments';
-import { WithScheme } from '../_shared/colorScheme';
+import { WithScheme } from '@ai-markdown/storybook-kit/react/colorScheme';
 
 const meta: Meta<typeof AIMarkdownDocuments> = {
-  title: 'Core/Performance Lab/Cross-Chunk Stress',
+  title: 'Performance Lab/Cross-Chunk Stress',
   component: AIMarkdownDocuments,
   parameters: {
     // Sixty stacked documents each render their own footnote <section>, which

@@ -7,7 +7,12 @@ import { DEFAULT_PAYLOAD, type ScenarioKey } from './scenarios';
 import { useRenderProfiler } from './useRenderProfiler';
 import { AXIS_HEADINGS, AXIS_SIDES, sideConfig, type ComparisonAxis } from './isolatedProtocol';
 import { ProfilerPanel } from './ProfilerPanel';
-import { controlStyles, getStreamingTheme, thinScrollbar, type ColorScheme } from './theme';
+import {
+  controlStyles,
+  getStreamingTheme,
+  thinScrollbar,
+  type ColorScheme,
+} from '@ai-markdown/storybook-kit/react/theme';
 import { useComparisonRuns } from './useComparisonRuns';
 import { normalizeClobberPrefix, useDomEqualityStats } from './useDomEqualityStats';
 

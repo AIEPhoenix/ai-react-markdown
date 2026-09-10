@@ -2,16 +2,16 @@ import React from 'react';
 import MantineAIMarkdown from '../src/index';
 import { baseMantineMeta, type MantineMeta, type MantineStory } from './_shared/meta';
 import { JSON_PAYLOAD_DOC, LONG_CODE_DOC, UNLABELED_CODE_DOC } from './_shared/fixtures';
-import { CODE_SAMPLES_DOC } from '../../react/stories/_shared/fixtures';
-import { SideBySide } from '../../react/stories/_shared/layouts';
-import { docsLink } from '../../react/stories/_shared/docsLinks';
+import { CODE_SAMPLES_DOC } from '@ai-markdown/storybook-kit/common/fixtures';
+import { SideBySide } from '@ai-markdown/storybook-kit/react/layouts';
+import { docsLink } from '@ai-markdown/storybook-kit/common/docsLinks';
 
 /**
  * What the Mantine package puts in place of core's plain `<pre>`.
  */
 const meta: MantineMeta = {
   ...baseMantineMeta,
-  title: 'Mantine/Code Blocks',
+  title: 'Integrations/Mantine/Code Blocks',
   tags: ['autodocs'],
   component: MantineAIMarkdown,
   parameters: {

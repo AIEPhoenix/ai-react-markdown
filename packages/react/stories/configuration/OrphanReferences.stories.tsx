@@ -1,18 +1,18 @@
 import '../../src/components/typography/variants/all.scss';
 import AIMarkdown from '../../src/index';
 import { ThemedAIMarkdown } from '../_shared/ThemedAIMarkdown';
-import { SideBySide } from '../_shared/layouts';
-import { baseCoreMeta, type CoreMeta, type CoreStory } from '../_shared/meta';
-import { docsLink } from '../_shared/docsLinks';
-import { ORPHAN_FOOTNOTE_CHUNK } from '../_shared/fixtures';
+import { SideBySide } from '@ai-markdown/storybook-kit/react/layouts';
+import { baseReactMeta, type ReactMeta, type ReactStory } from '../_shared/meta';
+import { docsLink } from '@ai-markdown/storybook-kit/common/docsLinks';
+import { ORPHAN_FOOTNOTE_CHUNK } from '@ai-markdown/storybook-kit/common/fixtures';
 
 /**
  * What happens to a footnote definition whose reference has not arrived yet —
  * the half-written state every streamed answer passes through.
  */
-const meta: CoreMeta = {
-  ...baseCoreMeta,
-  title: 'Core/Configuration/Orphan References',
+const meta: ReactMeta = {
+  ...baseReactMeta,
+  title: 'Customization/Orphan References',
   tags: ['autodocs'],
   component: AIMarkdown,
   parameters: {
@@ -73,7 +73,7 @@ export default meta;
  * orphan really is an authoring mistake and hiding it is arguably the more
  * honest render. For anything streamed, leave it on.
  */
-export const PausedStreamComparison: CoreStory = {
+export const PausedStreamComparison: ReactStory = {
   args: { content: ORPHAN_FOOTNOTE_CHUNK },
   render: (args) => (
     <SideBySide

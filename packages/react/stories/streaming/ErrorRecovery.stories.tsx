@@ -2,17 +2,17 @@ import React from 'react';
 import '../../src/components/typography/variants/all.scss';
 import AIMarkdown, { createRemendPreprocessor, type AIMDContentPreprocessor } from '../../src/index';
 import { ThemedAIMarkdown } from '../_shared/ThemedAIMarkdown';
-import { SideBySide } from '../_shared/layouts';
-import { baseCoreMeta, type CoreMeta, type CoreStory } from '../_shared/meta';
-import { docsLink } from '../_shared/docsLinks';
-import { BROKEN_TAIL_FRAME } from '../_shared/fixtures';
+import { SideBySide } from '@ai-markdown/storybook-kit/react/layouts';
+import { baseReactMeta, type ReactMeta, type ReactStory } from '../_shared/meta';
+import { docsLink } from '@ai-markdown/storybook-kit/common/docsLinks';
+import { BROKEN_TAIL_FRAME } from '@ai-markdown/storybook-kit/common/fixtures';
 
 /**
  * Repairing the half-written tail of a streaming frame.
  */
-const meta: CoreMeta = {
-  ...baseCoreMeta,
-  title: 'Core/Streaming/Error Recovery',
+const meta: ReactMeta = {
+  ...baseReactMeta,
+  title: 'Streaming/Error Recovery',
   tags: ['autodocs'],
   component: AIMarkdown,
   parameters: {
@@ -97,7 +97,7 @@ const REPAIR_PREPROCESSORS: AIMDContentPreprocessor[] = [createRemendPreprocesso
  * already treats end-of-input as closing a code block, so a half-written fence
  * renders as a code block either way and there is nothing to repair.
  */
-export const RemendComparison: CoreStory = {
+export const RemendComparison: ReactStory = {
   args: { content: BROKEN_TAIL_FRAME },
   render: (args) => (
     <SideBySide

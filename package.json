@@ -21,9 +21,9 @@
     "bench:web:scale": "node benchmarks/runner/scale.mjs --prefix scale-",
     "bench:web:scale:cold": "node benchmarks/runner/scale.mjs --prefix cold-",
     "bench:web:scale:steps": "node benchmarks/runner/scale.mjs --prefix steps-",
-    "preflight": "pnpm check:overrides && pnpm check:soak-coverage && pnpm lint && pnpm format:check && pnpm build && pnpm check:public-api && pnpm test:core-contracts && pnpm test:soak-control && pnpm test:release-control && pnpm packcheck && pnpm -r typecheck && pnpm typecheck && pnpm vitest run && pnpm test:document-lifetime && pnpm test:vue-browser && pnpm test:packed-consumers",
-    "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build",
+    "preflight": "pnpm check:overrides && pnpm check:soak-coverage && pnpm lint && pnpm format:check && pnpm build && pnpm check:public-api && pnpm test:core-contracts && pnpm test:soak-control && pnpm test:release-control && pnpm packcheck && pnpm -r typecheck && pnpm typecheck && pnpm vitest run && STORYBOOK_DOCS_EXPORT=1 pnpm build-storybook && pnpm test:storybook-site && pnpm test:document-lifetime && pnpm test:vue-browser && pnpm test:packed-consumers",
+    "storybook": "node scripts/storybook.mjs dev",
+    "build-storybook": "node scripts/storybook.mjs build",
     "test:soak-control": "node --test scripts/soak/soak-control.test.mjs scripts/soak/impact.test.mjs",
     "test:document-lifetime": "node scripts/test-document-scope-lifetime.mjs",
     "test:packed-consumers": "node scripts/check-packed-consumers.mjs",
@@ -32,7 +32,14 @@
     "test:release-control": "node --test scripts/publish-packages.test.mjs",
     "test:core-contracts": "node scripts/check-core-contracts.mjs",
     "check:soak-impact": "node scripts/soak/impact.mjs",
-    "check:release-soak": "node scripts/soak/check-release.mjs"
+    "check:release-soak": "node scripts/soak/check-release.mjs",
+    "storybook:react": "storybook dev -c apps/storybook-react/.storybook -p 6007",
+    "storybook:vue": "storybook dev -c apps/storybook-vue/.storybook -p 6008",
+    "build:storybook": "pnpm build-storybook",
+    "test:storybook:react": "vitest run --project=storybook-react",
+    "test:storybook:vue": "vitest run --project=storybook-vue",
+    "test:storybook": "pnpm test:storybook:react && pnpm test:storybook:vue",
+    "test:storybook-site": "node scripts/test-storybook-site.mjs"
   },
   "keywords": [
     "react",
@@ -85,6 +92,7 @@
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.58.2",
     "vitest": "^4.1.11",
-    "yaml": "2.9.0"
+    "yaml": "2.9.0",
+    "@storybook/vue3-vite": "10.5.10"
   }
 }

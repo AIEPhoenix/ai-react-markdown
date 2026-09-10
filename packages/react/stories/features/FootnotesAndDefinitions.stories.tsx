@@ -1,19 +1,19 @@
 import '../../src/components/typography/variants/all.scss';
 import AIMarkdown from '../../src/index';
-import { WithScheme } from '../_shared/colorScheme';
-import { baseCoreMeta, type CoreMeta, type CoreStory } from '../_shared/meta';
-import { docsLink } from '../_shared/docsLinks';
-import { StreamingReplay, ThemedReplayButton } from '../_shared/streaming';
-import { DEFINITION_LIST_DOC, FOOTNOTES_DOC } from '../_shared/fixtures';
-import { getStreamingTheme } from '../streaming/theme';
+import { WithScheme } from '@ai-markdown/storybook-kit/react/colorScheme';
+import { baseReactMeta, type ReactMeta, type ReactStory } from '../_shared/meta';
+import { docsLink } from '@ai-markdown/storybook-kit/common/docsLinks';
+import { StreamingReplay, ThemedReplayButton } from '@ai-markdown/storybook-kit/react/streaming';
+import { DEFINITION_LIST_DOC, FOOTNOTES_DOC } from '@ai-markdown/storybook-kit/common/fixtures';
+import { getStreamingTheme } from '@ai-markdown/storybook-kit/react/theme';
 
 /**
  * Two list-shaped extensions: GFM footnotes and PHP-Markdown-Extra
  * definition lists.
  */
-const meta: CoreMeta = {
-  ...baseCoreMeta,
-  title: 'Core/Features/Footnotes & Definition Lists',
+const meta: ReactMeta = {
+  ...baseReactMeta,
+  title: 'Basics/Footnotes & Definition Lists',
   tags: ['autodocs'],
   component: AIMarkdown,
   parameters: {
@@ -40,7 +40,7 @@ const meta: CoreMeta = {
           '',
           'Definition lists are the `definitionList` engine plugin, which is part of the',
           'default plugin set. Turn it off and the same source renders as ordinary',
-          'paragraphs with literal colons — see **Core/Features/Engine Plugins** for the',
+          'paragraphs with literal colons — see **Basics/Engine Plugins** for the',
           'side-by-side. For footnotes that have to survive being split across streamed',
           `chunks, see ${docsLink('cross-chunk-coordination', 'cross-chunk coordination')}.`,
         ].join('\n'),
@@ -60,7 +60,7 @@ export default meta;
  * second one in the prose. A label referenced twice keeps one entry in the
  * footer and gets a second back-reference arrow.
  */
-export const Footnotes: CoreStory = {
+export const Footnotes: ReactStory = {
   args: {
     content: FOOTNOTES_DOC,
   },
@@ -76,7 +76,7 @@ export const Footnotes: CoreStory = {
  * `enginePlugins` array you replace that set wholesale, and leaving this
  * plugin out of your array turns the `: ` lines back into literal text.
  */
-export const DefinitionLists: CoreStory = {
+export const DefinitionLists: ReactStory = {
   args: {
     content: DEFINITION_LIST_DOC,
   },
@@ -92,7 +92,7 @@ export const DefinitionLists: CoreStory = {
  * Press **Restart** to replay. The cadence is seeded, so every replay
  * delivers the identical arrival pattern.
  */
-export const FootnotesStreaming: CoreStory = {
+export const FootnotesStreaming: ReactStory = {
   args: {
     content: FOOTNOTES_DOC,
   },

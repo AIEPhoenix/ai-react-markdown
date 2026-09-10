@@ -2,21 +2,21 @@ import { useState, type ComponentPropsWithoutRef } from 'react';
 import '../../src/components/typography/variants/all.scss';
 import AIMarkdown, { type AIMarkdownCustomComponents } from '../../src/index';
 import { ThemedAIMarkdown } from '../_shared/ThemedAIMarkdown';
-import { WithScheme } from '../_shared/colorScheme';
-import { baseCoreMeta, type CoreMeta, type CoreStory } from '../_shared/meta';
-import { docsLink } from '../_shared/docsLinks';
-import { LINKED_PROSE_DOC } from '../_shared/fixtures';
-import { StreamingReplay, ThemedReplayButton } from '../_shared/streaming';
-import { getStreamingTheme } from '../streaming/theme';
+import { WithScheme } from '@ai-markdown/storybook-kit/react/colorScheme';
+import { baseReactMeta, type ReactMeta, type ReactStory } from '../_shared/meta';
+import { docsLink } from '@ai-markdown/storybook-kit/common/docsLinks';
+import { LINKED_PROSE_DOC } from '@ai-markdown/storybook-kit/common/fixtures';
+import { StreamingReplay, ThemedReplayButton } from '@ai-markdown/storybook-kit/react/streaming';
+import { getStreamingTheme } from '@ai-markdown/storybook-kit/react/theme';
 
 /**
  * Replacing the renderer for an individual markdown element, and the
  * reference-stability rule that decides whether the replacement is cheap or
  * ruinous.
  */
-const meta: CoreMeta = {
-  ...baseCoreMeta,
-  title: 'Core/Configuration/Custom Components',
+const meta: ReactMeta = {
+  ...baseReactMeta,
+  title: 'Customization/Custom Components',
   tags: ['autodocs'],
   component: AIMarkdown,
   parameters: {
@@ -137,7 +137,7 @@ const COMPONENTS: AIMarkdownCustomComponents = { a: BadgedLink, pre: CopyPre };
  * the inner `<code>`. An override replaces a renderer, not the pipeline that
  * feeds it.
  */
-export const CustomLinkAndPre: CoreStory = {
+export const CustomLinkAndPre: ReactStory = {
   args: { content: LINKED_PROSE_DOC },
   render: (args) => <ThemedAIMarkdown content={args.content ?? ''} customComponents={COMPONENTS} />,
 };
@@ -153,7 +153,7 @@ export const CustomLinkAndPre: CoreStory = {
  * The copy button stays usable mid-stream — it reads the DOM at click time, so
  * it copies whatever has arrived so far rather than a stale snapshot.
  */
-export const StreamingSafe: CoreStory = {
+export const StreamingSafe: ReactStory = {
   args: { content: LINKED_PROSE_DOC },
   parameters: {
     // Mid-stream axe sampling catches half-written headings; see the streaming

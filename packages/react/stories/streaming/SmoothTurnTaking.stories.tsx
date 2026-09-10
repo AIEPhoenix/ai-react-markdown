@@ -26,8 +26,8 @@ import AIMarkdown, {
 } from '../../src/index';
 import 'katex/dist/katex.min.css';
 import '../../src/components/typography/variants/all.scss';
-import { WithScheme } from '../_shared/colorScheme';
-import { getStreamingTheme } from './theme';
+import { WithScheme } from '@ai-markdown/storybook-kit/react/colorScheme';
+import { getStreamingTheme } from '@ai-markdown/storybook-kit/react/theme';
 
 interface ChunkPhase {
   content: string;
@@ -193,7 +193,7 @@ const TurnTakingHarness = ({ theme }: { theme: 'light' | 'dark' }) => {
 };
 
 const meta: Meta<typeof TurnTakingHarness> = {
-  title: 'Core/QA/Turn Taking',
+  title: 'QA/Turn Taking',
   tags: ['qa'],
   component: TurnTakingHarness,
   parameters: {

@@ -6,7 +6,11 @@ import hljs from 'highlight.js';
 import MantineAIMarkdown from '../src/index';
 import { withMantineProvider } from './decorators';
 
-const meta: Meta = { title: 'Mantine/QA/Code highlight scheduling', tags: ['qa'], decorators: [withMantineProvider] };
+const meta: Meta = {
+  title: 'Integrations/Mantine/QA/Code highlight scheduling',
+  tags: ['qa'],
+  decorators: [withMantineProvider],
+};
 export default meta;
 const replacementAdapter = {
   getHighlighter: () => () => ({

@@ -115,8 +115,8 @@ export const isProtocolMessage = (data: unknown): data is HostToSideMessage | Si
   (data as { type: string }).type.startsWith('bmc:');
 
 /** Storybook story id of the single-side story (title
- *  `Core/Performance Lab/Streaming Comparisons`, export `BlockMemoSide`).
+ *  `Performance Lab/Streaming Comparisons`, export `BlockMemoSide`).
  *  Used to build the iframe URLs. Storybook derives the id from the title, so
  *  retitling that file means editing this line — verify any new value against
  *  `storybook-static/index.json` rather than deriving it by hand. */
-export const SIDE_STORY_ID = 'core-performance-lab-streaming-comparisons--block-memo-side';
+export const SIDE_STORY_ID = 'performance-lab-streaming-comparisons--block-memo-side';

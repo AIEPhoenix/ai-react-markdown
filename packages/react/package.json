@@ -148,6 +148,7 @@
     "remark-squeeze-paragraphs": "^6.0.0",
     "remark-toc": "^9.0.0",
     "unified": "^11.0.5",
-    "vfile": "^6.0.3"
+    "vfile": "^6.0.3",
+    "@ai-markdown/storybook-kit": "workspace:*"
   }
 }

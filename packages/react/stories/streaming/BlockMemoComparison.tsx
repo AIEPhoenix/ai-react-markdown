@@ -9,7 +9,12 @@ import { useRenderProfiler, type RenderProfilerSnapshot } from './useRenderProfi
 import { AXIS_HEADINGS, type ComparisonAxis } from './isolatedProtocol';
 import { ProfilerPanel } from './ProfilerPanel';
 import { createSpyComponents } from './spyComponents';
-import { controlStyles, getStreamingTheme, thinScrollbar, type ColorScheme } from './theme';
+import {
+  controlStyles,
+  getStreamingTheme,
+  thinScrollbar,
+  type ColorScheme,
+} from '@ai-markdown/storybook-kit/react/theme';
 import { useComparisonRuns, type PayloadScale, type RunRecord } from './useComparisonRuns';
 
 interface BlockMemoComparisonProps {

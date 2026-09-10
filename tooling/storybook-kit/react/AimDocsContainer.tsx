@@ -3,8 +3,8 @@ import { DocsContainer } from '@storybook/addon-docs/blocks';
 import { addons } from 'storybook/preview-api';
 import { themes } from 'storybook/theming';
 import { GLOBALS_UPDATED } from 'storybook/internal/core-events';
-import { getUserPreferredColorTheme } from '../../../../.storybook/utils/sb-theme';
-import type { StoryColorScheme } from './colorScheme';
+import { getUserPreferredColorTheme } from '@ai-markdown/storybook-kit/common/sb-theme';
+import type { StoryColorScheme } from '@ai-markdown/storybook-kit/react/colorScheme';
 
 const normalize = (theme: unknown): StoryColorScheme => (theme === 'dark' ? 'dark' : 'light');
 

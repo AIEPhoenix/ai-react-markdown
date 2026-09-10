@@ -1,8 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import AIMarkdown from '../../src';
 import { AIMarkdownDocuments } from '../../src/components/AIMarkdownDocuments';
-import { WithScheme } from '../_shared/colorScheme';
-import { docsLink } from '../_shared/docsLinks';
+import { WithScheme } from '@ai-markdown/storybook-kit/react/colorScheme';
+import { docsLink } from '@ai-markdown/storybook-kit/common/docsLinks';
 
 /**
  * Several `<AIMarkdown>` chunks that share one `documentId` behave as a single
@@ -10,7 +10,7 @@ import { docsLink } from '../_shared/docsLinks';
  * across chunk boundaries even when a reference arrives before its definition.
  */
 const meta: Meta<typeof AIMarkdownDocuments> = {
-  title: 'Core/Documents/Cross-Chunk Coordination',
+  title: 'Documents/Cross-Chunk Coordination',
   tags: ['autodocs'],
   component: AIMarkdownDocuments,
   parameters: {
@@ -54,7 +54,7 @@ const meta: Meta<typeof AIMarkdownDocuments> = {
           '**unconditional**: whatever the wrapper says overrides every chunk below it, and',
           'omitting it reads as an explicit `true`. It has to default that way here —',
           'mid-stream, a definition whose citation lives in a chunk that has not arrived is',
-          'the normal case, not an error. See the Configuration → Orphan References story',
+          'the normal case, not an error. See the Customization → Orphan References story',
           'for what the switch does on its own.',
           '',
           `See ${docsLink('cross-chunk-coordination', 'cross-chunk coordination')} for the registry model,`,
@@ -100,7 +100,7 @@ export const TwoChunks: StoryObj<typeof meta> = {
  *
  * This is the baseline the coordinated stories build on: mid-stream, a
  * definition without a reference is a document that is not finished yet, not a
- * document with a mistake in it. The Configuration → Orphan References story
+ * document with a mistake in it. The Customization → Orphan References story
  * shows the same document with the protection switched off.
  */
 export const OrphanDef: StoryObj<typeof meta> = {

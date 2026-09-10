@@ -53,7 +53,7 @@ function PluginSwapHarness() {
 }
 
 const meta: Meta<typeof PluginSwapHarness> = {
-  title: 'Core/QA/Plugin Swap Refresh',
+  title: 'QA/Plugin Swap Refresh',
   tags: ['qa'],
   component: PluginSwapHarness,
   parameters: {

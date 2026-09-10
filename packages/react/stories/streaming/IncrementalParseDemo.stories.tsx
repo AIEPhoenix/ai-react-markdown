@@ -3,9 +3,9 @@ import type { StoryObj } from '@storybook/react-vite';
 import AIMarkdown from '../../src/index';
 import 'katex/dist/katex.min.css';
 import '../../src/components/typography/variants/all.scss';
-import { WithScheme } from '../_shared/colorScheme';
-import type { CoreMeta } from '../_shared/meta';
-import { docsLink } from '../_shared/docsLinks';
+import { WithScheme } from '@ai-markdown/storybook-kit/react/colorScheme';
+import type { ReactMeta } from '../_shared/meta';
+import { docsLink } from '@ai-markdown/storybook-kit/common/docsLinks';
 import { IncrementalParsePlayground } from './IncrementalParsePlayground';
 import { DEFAULT_PAYLOAD, withDefs } from './scenarios';
 
@@ -13,8 +13,8 @@ import { DEFAULT_PAYLOAD, withDefs } from './scenarios';
  * `incrementalParse` in the open: what the engine freezes, what it re-parses,
  * and proof that the two paths produce the same DOM.
  */
-const meta: CoreMeta = {
-  title: 'Core/Streaming/Incremental Parsing',
+const meta: ReactMeta = {
+  title: 'Streaming/Incremental Parsing',
   tags: ['autodocs'],
   component: AIMarkdown,
   parameters: {

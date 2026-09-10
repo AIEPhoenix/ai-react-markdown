@@ -235,7 +235,7 @@ function CursorSmoke({
 }
 
 const meta: Meta<typeof CursorSmoke> = {
-  title: 'Core/QA/Streaming Cursor',
+  title: 'QA/Streaming Cursor',
   tags: ['qa'],
   component: CursorSmoke,
   parameters: {
