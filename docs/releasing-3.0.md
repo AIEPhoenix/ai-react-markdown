@@ -1,6 +1,6 @@
 # Releasing 3.0
 
-The prepared candidate is `3.0.0-rc.1` for engine, core, React, React/Mantine and Vue. The independent highlight plugin is `1.0.2`; its patch corrects the Node engine declaration. Candidate preparation is not evidence that a version is published. Confirm publication in the [release records](https://github.com/ai-markdown/ai-markdown/releases) before following `@rc` installation examples.
+The stable target is `3.0.0` for engine, core, React, React/Mantine and Vue, following candidate `3.0.0-rc.1`. The independent highlight plugin is `1.0.2`; its patch corrects the Node engine declaration. Candidate preparation is not evidence that a version is published. Confirm publication in the [release records](https://github.com/ai-markdown/ai-markdown/releases) before installing a prepared version.
 
 ## Compatibility contract
 
@@ -25,3 +25,13 @@ A local green run cannot substitute for remote CI, published-artifact verificati
 Resolve candidate regressions and publish another RC if public behavior or compatibility changes. Then run `pnpm version-packages 3.0.0`, update current guides and badges from `@rc` to stable, and refresh release highlights. Rebuild and validate the final tarballs and peer ranges. Reassess soak impact; only reuse an ancestor campaign if the evidence gate accepts it for the final clean candidate.
 
 Publish `v3.0.0` through the release workflow, with npm `latest` for all five train packages and a non-prerelease GitHub release. Check fresh installs without explicit tags. Do not move existing tags or overwrite a published version; use a new patch or candidate to correct a faulty release. Keep the prior beta/RC artifacts available for diagnosis.
+
+## Recorded RC acceptance and review exception
+
+The fresh campaign `rc1-acceptance-20260910T102525Z-e575f03` tested clean commit `e575f03e6f940c21e0a3e0fc1ca30166752eaefb` with seed `202689100` and all 84 tasks. It passed in 10,917 seconds with `repositoryChanged: false`. Its original reports are retained under the maintainer's `.soak-logs/` archive.
+
+Commit `2cdbf9a4be93fc5eaf62c3c1b27b6de276048bc8` only fixes ANSI normalization in the evidence aggregator and adds colored-verdict regression tests. All 37 soak control tests pass, and the corrected aggregator accepts the original 84-task evidence without editing any report. The candidate coverage gate still rejects that ancestor because it conservatively treats any aggregator change as a mechanism change.
+
+On 2026-09-10 the maintainer explicitly authorized retaining the ancestor campaign and making the exception at human review instead of repeating the soak. The replacement run was interrupted and is not passing evidence. This is a narrow reviewed exception for the parser-only fix; it does not change future impact rules or the required-reviewer environment.
+
+The [RC release workflow](https://github.com/ai-markdown/ai-markdown/actions/runs/34491579512) executes automated verification before human `soak-approval`. Its existence is not proof of publication; confirm its final result and npm artifacts before stable promotion. Stable changes must remain limited to version metadata, stable peer ranges and documentation, or require renewed compatibility and soak assessment.

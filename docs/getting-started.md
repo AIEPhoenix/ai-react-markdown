@@ -1,6 +1,6 @@
 # Getting started
 
-ai-markdown renders accumulated Markdown in React 19 or Vue 3.5. Both adapters use the same parsing engine and shared orchestration; their components, customization and lifecycle APIs follow their host framework. The prepared release candidate is `3.0.0-rc.1`; [confirm publication](./releasing-3.0.md) before installing it. Install with `@rc` to select the prerelease train explicitly, or pin that exact version for reproducible integrations.
+ai-markdown renders accumulated Markdown in React 19 or Vue 3.5. Both adapters use the same parsing engine and shared orchestration; their components, customization and lifecycle APIs follow their host framework. This guide targets stable `3.0.0`. Install without a dist-tag to select `latest`, or pin `3.0.0` for reproducible integrations.
 
 ## Choose a package
 
@@ -15,7 +15,7 @@ ai-markdown renders accumulated Markdown in React 19 or Vue 3.5. Both adapters u
 
 Every package also exposes `/package.json`. Import only public entries; `src/` and internal `dist/` paths are not supported application imports. `@ai-markdown/react/plugins` is a subpath of the React package, not a separate package to install. Vue exports its sealed plugins from its root.
 
-React and Vue each depend on matching exact versions of core and engine. Core depends on engine. Mantine has an exact React peer during beta, so upgrade those two together. Applications normally install only their adapter and its peers. The highlight plugin is an engine dependency on an independent `1.0.2` release and does not use the framework `@rc` tag.
+React and Vue each depend on matching exact versions of core and engine. Core depends on engine. Mantine declares the stable React adapter peer `^3.0.0`; upgrade those two together. Applications normally install only their adapter and its peers. The highlight plugin is an engine dependency on an independent `1.0.2` release and is versioned separately from the framework train.
 
 The legacy `@ai-react-markdown/core` was a React renderer; its replacement is `@ai-markdown/react`. The new `@ai-markdown/core` has no React components or Vue components. See the [migration guide](./framework-transition.md) before renaming existing imports.
 
@@ -24,7 +24,7 @@ The legacy `@ai-react-markdown/core` was a React renderer; its replacement is `@
 In a React application:
 
 ```bash
-pnpm add @ai-markdown/react@rc react@^19 react-dom@^19 katex
+pnpm add @ai-markdown/react react@^19 react-dom@^19 katex
 ```
 
 ```tsx
@@ -44,7 +44,7 @@ The default typography CSS supplies the React presentation and `--aim-*` tokens.
 In a Vue application:
 
 ```bash
-pnpm add @ai-markdown/vue@rc vue@^3.5.0 katex
+pnpm add @ai-markdown/vue vue@^3.5.0 katex
 ```
 
 ```vue
@@ -67,7 +67,7 @@ Vue's stylesheet supplies basic code/table layout and cursor animation. Customiz
 ## React with Mantine 9
 
 ```bash
-pnpm add @ai-markdown/react@rc @ai-markdown/react-mantine@rc \
+pnpm add @ai-markdown/react @ai-markdown/react-mantine \
   react@^19 react-dom@^19 @mantine/core@^9 @mantine/code-highlight@^9 \
   highlight.js@^11.11.2 katex
 ```

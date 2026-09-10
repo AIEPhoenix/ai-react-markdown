@@ -9,7 +9,7 @@ Start with one `<AIMarkdown>` per assistant message. Use separate renderers only
 The examples use React 19, browser Fetch/Streams APIs, and a Next.js-compatible route handler. Install the React adapter and explicitly install KaTeX when importing its stylesheet:
 
 ```sh
-pnpm add @ai-markdown/react@rc katex
+pnpm add @ai-markdown/react katex
 ```
 
 ## What you'll build

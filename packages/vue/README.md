@@ -1,6 +1,6 @@
 # @ai-markdown/vue
 
-[![@ai-markdown/vue rc](https://img.shields.io/npm/v/@ai-markdown/vue/rc?label=npm%20rc&color=orange)](https://www.npmjs.com/package/@ai-markdown/vue?activeTab=versions)
+[![@ai-markdown/vue stable](https://img.shields.io/npm/v/@ai-markdown/vue?label=npm&color=blue)](https://www.npmjs.com/package/@ai-markdown/vue?activeTab=versions)
 [![@ai-markdown/vue monthly downloads](https://img.shields.io/npm/dm/@ai-markdown/vue?label=downloads%2Fmonth&color=blue)](https://www.npmjs.com/package/@ai-markdown/vue)
 [![TypeScript declarations included](https://img.shields.io/badge/TypeScript-included-3178c6?logo=typescript&logoColor=white)](https://github.com/ai-markdown/ai-markdown/tree/main/packages/vue)
 [![MIT license](https://img.shields.io/badge/license-MIT-blue)](https://github.com/ai-markdown/ai-markdown/blob/main/LICENSE)
@@ -9,7 +9,7 @@
 
 Vue 3 Markdown rendering built on the framework-independent `@ai-markdown/core` and `@ai-markdown/engine`. This package supplies real Vue VNodes, server rendering and hydration, scoped document references, component/slot customization, smooth streaming and a measured streaming cursor. It replaces the earlier private lifecycle prototype.
 
-**Available starting with `3.0.0-beta.2`.** The earlier `3.0.0-beta.1` release did not include Vue. Stable 3.0.0 remains a separate release decision after the API review and release gates.
+**Available starting with `3.0.0-beta.2`.** The earlier `3.0.0-beta.1` release did not include Vue. Vue joins the stable 3.0.0 train with the same shared engine and core as React.
 
 ## Requirements and dependencies
 
@@ -19,10 +19,10 @@ Vue 3 Markdown rendering built on the framework-independent `@ai-markdown/core` 
 - `@ai-markdown/core` and `@ai-markdown/engine` are ordinary dependencies at the exact release-train version. Applications do not need to install them separately. Vue remains a peer and is external to both ESM and CJS output.
 - KaTeX is an optional peer (`^0.16 || ^0.17`). Declare it directly when importing its stylesheet rather than depending on hoisting.
 
-Install the release candidate:
+Install the stable release:
 
 ```bash
-pnpm add @ai-markdown/vue@rc vue@^3.5.0 katex
+pnpm add @ai-markdown/vue vue@^3.5.0 katex
 ```
 
 See [Getting started](../../docs/getting-started.md) for the package map and React/Vue API differences. The Vue package exposes its helpers from the root; it has no `/plugins` entry or React typography variants.

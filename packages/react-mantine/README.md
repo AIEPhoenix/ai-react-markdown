@@ -1,6 +1,6 @@
 # @ai-markdown/react-mantine
 
-[![@ai-markdown/react-mantine rc](https://img.shields.io/npm/v/@ai-markdown/react-mantine/rc?label=npm%20rc&color=orange)](https://www.npmjs.com/package/@ai-markdown/react-mantine?activeTab=versions)
+[![@ai-markdown/react-mantine stable](https://img.shields.io/npm/v/@ai-markdown/react-mantine?label=npm&color=blue)](https://www.npmjs.com/package/@ai-markdown/react-mantine?activeTab=versions)
 [![@ai-markdown/react-mantine monthly downloads](https://img.shields.io/npm/dm/@ai-markdown/react-mantine?label=downloads%2Fmonth&color=blue)](https://www.npmjs.com/package/@ai-markdown/react-mantine)
 [![TypeScript declarations included](https://img.shields.io/badge/TypeScript-included-3178c6?logo=typescript&logoColor=white)](https://github.com/ai-markdown/ai-markdown/tree/main/packages/react-mantine)
 [![MIT license](https://img.shields.io/badge/license-MIT-blue)](https://github.com/ai-markdown/ai-markdown/blob/main/LICENSE)
@@ -8,7 +8,7 @@
 [![React 19](https://img.shields.io/badge/React-19-149eca?logo=react&logoColor=white)](#compatibility)
 [![Mantine 9](https://img.shields.io/badge/Mantine-9-339af0?logo=mantine&logoColor=white)](#compatibility)
 
-> **3.0.0-rc.1:** React and Vue adapters share the public `@ai-markdown/core` and `@ai-markdown/engine` packages. Use `@rc` for this release candidate; stable 3.0.0 is not released. See the [migration guide](../../docs/framework-transition.md).
+> **3.0.0:** React and Vue adapters share the public `@ai-markdown/core` and `@ai-markdown/engine` packages. See the [migration guide](../../docs/framework-transition.md).
 
 `@ai-markdown/react-mantine` adds Mantine presentation to the React renderer: theme-aware typography, expandable highlighted code, source-preserving JSON formatting, and Mermaid diagrams. Its `MantineAIMarkdown` wrapper accepts the React adapter's props and adds one `codeBlock` behavior group.
 
@@ -34,7 +34,7 @@ All React adapter features (GFM, LaTeX math, CJK support, streaming, metadata co
 | [`@ai-markdown/core`](https://www.npmjs.com/package/@ai-markdown/core)                                   | Framework-independent sessions, block planning, contributions and smooth coordination                       | Release train; exact engine dependency                    |
 | [`@ai-markdown/react`](https://www.npmjs.com/package/@ai-markdown/react)                                 | The React renderer — `<AIMarkdown>`, `<AIMarkdownSmoothStream>`, `<AIMarkdownDocuments>`, hooks, providers  | Release train                                             |
 | [`@ai-markdown/vue`](https://www.npmjs.com/package/@ai-markdown/vue)                                     | Vue 3.5 renderer — components, scoped slots, SSR/hydration and smooth composables                           | Release train; exact core and engine dependencies         |
-| [`@ai-markdown/react-mantine`](https://www.npmjs.com/package/@ai-markdown/react-mantine)                 | Mantine UI bindings — themed typography, code-highlight tabs, Mermaid, color-scheme wiring                  | Release train; exact React peer during prereleases        |
+| [`@ai-markdown/react-mantine`](https://www.npmjs.com/package/@ai-markdown/react-mantine)                 | Mantine UI bindings — themed typography, code-highlight tabs, Mermaid, color-scheme wiring                  | Release train; compatible React 3.x peer                  |
 | [`@ai-markdown/engine`](https://www.npmjs.com/package/@ai-markdown/engine)                               | Framework-agnostic engine — incremental parsing, LaTeX preprocessing, plugin pipeline, cross-chunk registry | Release train; pinned exactly by shared core and adapters |
 | [`@ai-markdown/remark-mark-highlight`](https://www.npmjs.com/package/@ai-markdown/remark-mark-highlight) | remark plugin for `==mark==` highlight syntax                                                               | Independent semver                                        |
 
@@ -47,19 +47,19 @@ All React adapter features (GFM, LaTeX math, CJK support, streaming, metadata co
 | React          | ^19.0.0                                                                                                |
 | Node           | `^20.19.0 \|\| >=22.12.0` (`engines.node`)                                                             |
 | Module formats | ESM and CJS with types; the compiled stylesheet is exported as `@ai-markdown/react-mantine/styles.css` |
-| React adapter  | `@ai-markdown/react` peer exactly `3.0.0-rc.1`; upgrade both packages together                         |
+| React adapter  | `@ai-markdown/react` peer `^3.0.0`; upgrade both packages together                                     |
 
 ## Installation
 
 ```bash
 # npm
-npm install @ai-markdown/react-mantine@rc @ai-markdown/react@rc
+npm install @ai-markdown/react-mantine @ai-markdown/react
 
 # pnpm
-pnpm add @ai-markdown/react-mantine@rc @ai-markdown/react@rc
+pnpm add @ai-markdown/react-mantine @ai-markdown/react
 
 # yarn
-yarn add @ai-markdown/react-mantine@rc @ai-markdown/react@rc
+yarn add @ai-markdown/react-mantine @ai-markdown/react
 ```
 
 The commands above add the integration and its React peer. For a new React application, also install the UI peers and KaTeX for the math example:
@@ -76,7 +76,7 @@ Mantine uses the React adapter and does not depend directly on shared core. Vue 
 {
   "react": "^19.0.0",
   "react-dom": "^19.0.0",
-  "@ai-markdown/react": "3.0.0-rc.1",
+  "@ai-markdown/react": "3.0.0",
   "@mantine/core": "^9.0.0",
   "@mantine/code-highlight": "^9.0.0",
   "highlight.js": "^11.11.2"

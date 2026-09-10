@@ -1,6 +1,6 @@
 # @ai-markdown/react
 
-[![@ai-markdown/react rc](https://img.shields.io/npm/v/@ai-markdown/react/rc?label=npm%20rc&color=orange)](https://www.npmjs.com/package/@ai-markdown/react?activeTab=versions)
+[![@ai-markdown/react stable](https://img.shields.io/npm/v/@ai-markdown/react?label=npm&color=blue)](https://www.npmjs.com/package/@ai-markdown/react?activeTab=versions)
 [![@ai-markdown/react monthly downloads](https://img.shields.io/npm/dm/@ai-markdown/react?label=downloads%2Fmonth&color=blue)](https://www.npmjs.com/package/@ai-markdown/react)
 [![TypeScript declarations included](https://img.shields.io/badge/TypeScript-included-3178c6?logo=typescript&logoColor=white)](https://github.com/ai-markdown/ai-markdown/tree/main/packages/react)
 [![MIT license](https://img.shields.io/badge/license-MIT-blue)](https://github.com/ai-markdown/ai-markdown/blob/main/LICENSE)
@@ -9,7 +9,7 @@
 
 React 19 application adapter. For Vue 3.5, use [`@ai-markdown/vue`](../vue/README.md). For package selection, CSS setup and API differences, see [Getting started](../../docs/getting-started.md).
 
-> **3.0.0-rc.1:** React and Vue adapters share the public `@ai-markdown/core` and `@ai-markdown/engine` packages. Use `@rc` for this release candidate; stable 3.0.0 is not released. See the [migration guide](../../docs/framework-transition.md).
+> **3.0.0:** React and Vue adapters share the public `@ai-markdown/core` and `@ai-markdown/engine` packages. See the [migration guide](../../docs/framework-transition.md).
 
 `@ai-markdown/react` renders accumulated Markdown strings in React. It combines GFM, KaTeX math, CJK delimiter handling, optional typography transforms, and a verified incremental parsing path for append-heavy content. Use it with the built-in CSS or supply your own typography and element components.
 
@@ -38,7 +38,7 @@ The React adapter owns the React lifecycle, context hooks, document coordination
 | [`@ai-markdown/core`](https://www.npmjs.com/package/@ai-markdown/core)                                   | Framework-independent sessions, block planning, contributions and smooth coordination                       | Release train; exact engine dependency                    |
 | [`@ai-markdown/react`](https://www.npmjs.com/package/@ai-markdown/react)                                 | The React renderer — `<AIMarkdown>`, `<AIMarkdownSmoothStream>`, `<AIMarkdownDocuments>`, hooks, providers  | Release train                                             |
 | [`@ai-markdown/vue`](https://www.npmjs.com/package/@ai-markdown/vue)                                     | Vue 3.5 renderer — components, scoped slots, SSR/hydration and smooth composables                           | Release train; exact core and engine dependencies         |
-| [`@ai-markdown/react-mantine`](https://www.npmjs.com/package/@ai-markdown/react-mantine)                 | Mantine UI bindings — themed typography, code-highlight tabs, Mermaid, color-scheme wiring                  | Release train; exact React peer during prereleases        |
+| [`@ai-markdown/react-mantine`](https://www.npmjs.com/package/@ai-markdown/react-mantine)                 | Mantine UI bindings — themed typography, code-highlight tabs, Mermaid, color-scheme wiring                  | Release train; compatible React 3.x peer                  |
 | [`@ai-markdown/engine`](https://www.npmjs.com/package/@ai-markdown/engine)                               | Framework-agnostic engine — incremental parsing, LaTeX preprocessing, plugin pipeline, cross-chunk registry | Release train; pinned exactly by shared core and adapters |
 | [`@ai-markdown/remark-mark-highlight`](https://www.npmjs.com/package/@ai-markdown/remark-mark-highlight) | remark plugin for `==mark==` highlight syntax                                                               | Independent semver                                        |
 
@@ -57,16 +57,16 @@ The React adapter owns the React lifecycle, context hooks, document coordination
 
 ```bash
 # npm
-npm install @ai-markdown/react@rc
+npm install @ai-markdown/react
 
 # pnpm
-pnpm add @ai-markdown/react@rc
+pnpm add @ai-markdown/react
 
 # yarn
-yarn add @ai-markdown/react@rc
+yarn add @ai-markdown/react
 ```
 
-The React adapter declares both `@ai-markdown/core` and `@ai-markdown/engine` as ordinary dependencies, pinned to the same train version when packed (`3.0.0-rc.1` in this checkout). Applications install `@ai-markdown/react@rc`; the package manager resolves the shared layers automatically. Core owns sessions, planning and coordination, while engine owns parsing and tree algorithms. Adapter authors may depend on these layers directly and should keep their versions aligned. Exact pins reduce version mismatch; they do not guarantee a single module instance across arbitrary nested installations.
+The React adapter declares both `@ai-markdown/core` and `@ai-markdown/engine` as ordinary dependencies, pinned to the same train version when packed (`3.0.0` in this checkout). Applications install `@ai-markdown/react`; the package manager resolves the shared layers automatically. Core owns sessions, planning and coordination, while engine owns parsing and tree algorithms. Adapter authors may depend on these layers directly and should keep their versions aligned. Exact pins reduce version mismatch; they do not guarantee a single module instance across arbitrary nested installations.
 
 ### Peer Dependencies
 

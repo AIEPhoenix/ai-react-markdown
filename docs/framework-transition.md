@@ -2,7 +2,7 @@
 
 **v2.14.1 is the final planned legacy release; 3.0.0-beta.1 starts the new `@ai-markdown` package train.** The GitHub repository has moved to `ai-markdown/ai-markdown`. Package names, directory ownership and shared-core distribution change together. React components, hooks, configuration names and stylesheet behavior retain their existing shape.
 
-The first beta established the new package boundaries. The published beta.2 adds the Vue adapter and narrows the advanced engine/core APIs before stable 3.0.0. Use the explicit `beta` tag when installing the new framework packages. Existing legacy versions and Git tags remain available.
+The first beta established the new package boundaries. Beta.2 added the Vue adapter and narrowed the advanced engine/core APIs. This migration guide now targets stable 3.0.0; install without a prerelease tag. Existing legacy versions and Git tags remain available.
 
 ## Package and import mapping
 
@@ -19,13 +19,13 @@ The first beta established the new package boundaries. The published beta.2 adds
 
 **The old React core becomes `react`, not the new shared `core`.** Applications should install the framework package. Engine and shared core are normal dependencies and arrive automatically. Custom adapter authors can depend on both explicitly. No alias wrapper joins the old and new graphs; update application imports and integration dependencies together.
 
-Vue has no legacy React import mapping. Install `@ai-markdown/vue@beta` with Vue `^3.5.0`, import `@ai-markdown/vue/styles.css`, and use the [Vue setup](./getting-started.md#vue-35). React components and hooks cannot be migrated by substituting `/vue` in every import.
+Vue has no legacy React import mapping. Install `@ai-markdown/vue` with Vue `^3.5.0`, import `@ai-markdown/vue/styles.css`, and use the [Vue setup](./getting-started.md#vue-35). React components and hooks cannot be migrated by substituting `/vue` in every import.
 
 ## React installation and API continuity
 
 ```bash
 pnpm remove @ai-react-markdown/core
-pnpm add @ai-markdown/react@beta react@^19 react-dom@^19
+pnpm add @ai-markdown/react react@^19 react-dom@^19
 ```
 
 ```tsx
@@ -45,10 +45,10 @@ React 19 is the supported initial peer range. ESM/CJS, development/production co
 
 ```bash
 pnpm remove @ai-react-markdown/mantine
-pnpm add @ai-markdown/react@beta @ai-markdown/react-mantine@beta
+pnpm add @ai-markdown/react @ai-markdown/react-mantine
 ```
 
-Keep the existing React 19, Mantine 9 and highlight.js peers. The beta integration requires the exact React adapter beta version, so upgrade the two together. Import `@ai-markdown/react-mantine/styles.css` after the Mantine styles and retain the providers shown in the [Mantine README](../packages/react-mantine/README.md). `MantineAIMarkdown`, `codeBlock` and caller slot precedence are unchanged.
+Keep the existing React 19, Mantine 9 and highlight.js peers. The stable integration declares the React adapter peer `^3.0.0`; upgrade the two together. Import `@ai-markdown/react-mantine/styles.css` after the Mantine styles and retain the providers shown in the [Mantine README](../packages/react-mantine/README.md). `MantineAIMarkdown`, `codeBlock` and caller slot precedence are unchanged.
 
 The integration remains React-specific; it cannot render Vue nodes. Mermaid loading and the optional math stylesheet follow the existing integration behavior.
 
@@ -68,9 +68,9 @@ SSR does not run the registration effects and retains local footnote behavior. T
 
 ## Public API and release policy
 
-Engine, core, react and react-mantine started one version train at `3.0.0-beta.1`; Vue joined at `3.0.0-beta.2`. All five publish under `beta`. The highlight plugin remains on its independent 1.x line; the existing rehype/raw forks retain their own repositories and upstream-related versions. Subsequent prereleases must not move npm `latest` or become stable GitHub releases. Vue’s first publication retained the initial `latest → 3.0.0-beta.2` mapping by maintainer decision; applications should still select `@beta` explicitly. The [release record](./release-highlights.md#300-beta2--vue-35-adapter-and-explicit-shared-apis) documents that exception.
+Engine, core, react and react-mantine started one version train at `3.0.0-beta.1`; Vue joined at `3.0.0-beta.2`. All five follow the stable `3.0.0` train on npm `latest`. The highlight plugin remains on its independent 1.x line; the existing rehype/raw forks retain their own repositories and upstream-related versions. Subsequent prereleases must not move npm `latest` or become stable GitHub releases. Vue’s first publication retained the initial `latest → 3.0.0-beta.2` mapping by maintainer decision; that historical mapping is superseded by stable publication. The [release record](./release-highlights.md#300-beta2--vue-35-adapter-and-explicit-shared-apis) documents that exception.
 
-Advanced engine/core contracts may evolve during beta. Test fixtures and implementation containers are excluded from the public root. Framework apps should avoid importing source paths or undocumented helpers. Stable 3.0.0 requires signature review, supported consumer checks and the complete release gate. See the [shared API contracts](./api/core-engine-contracts.md) and [architecture guide](./architecture.md).
+Documented engine/core contracts follow semantic versioning from 3.0.0. Test fixtures and implementation containers are excluded from the public root. Framework apps should avoid importing source paths or undocumented helpers. Release verification includes signature review, supported consumer checks and the complete release gate. See the [shared API contracts](./api/core-engine-contracts.md) and [architecture guide](./architecture.md).
 
 The repository transfer and first publication of all five train packages are complete. npm registry metadata checked on 2026-09-10 reports `beta → 3.0.0-beta.2` for [engine](https://registry.npmjs.org/@ai-markdown%2Fengine), [core](https://registry.npmjs.org/@ai-markdown%2Fcore), [React](https://registry.npmjs.org/@ai-markdown%2Freact), [Vue](https://registry.npmjs.org/@ai-markdown%2Fvue) and [Mantine](https://registry.npmjs.org/@ai-markdown%2Freact-mantine). Publishing additional packages still requires package-specific credentials and trusted-publisher setup; repository ownership alone does not configure it.
 

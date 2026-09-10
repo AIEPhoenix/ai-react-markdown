@@ -1,6 +1,6 @@
 # Core / engine public API contracts
 
-This guide defines the shared contracts used by framework adapters. The current APIs are frozen for release-candidate review; required changes must be documented in a new candidate before stable 3.0.0. Application authors normally use a framework package; adapter authors can use the engine and core interfaces described here. See the package READMEs for installation and the [core testing guide](../core-testing.md) for behavioral validation.
+This guide defines the shared contracts used by framework adapters. The documented public APIs follow semantic versioning from 3.0.0; breaking changes require a new major version. Application authors normally use a framework package; adapter authors can use the engine and core interfaces described here. See the package READMEs for installation and the [core testing guide](../core-testing.md) for behavioral validation.
 
 ## Layers and consumers
 

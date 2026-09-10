@@ -6,6 +6,16 @@ Read an entry as a statement about that version. Older configuration names, depe
 
 Verification counts are historical results reported for the corresponding candidate. They are not newly executed checks for this documentation revision. Likewise, a clean fuzz or soak campaign establishes the result for its input families and configuration; later entries explain where expanding those families exposed additional defects.
 
+## 3.0.0
+
+The stable train aligns `@ai-markdown/engine`, `@ai-markdown/core`, `@ai-markdown/react`, `@ai-markdown/react-mantine` and `@ai-markdown/vue` at `3.0.0`. Applications install React or Vue directly; Mantine integration remains React-only. The independent highlight plugin remains `1.0.2`. See [Getting started](./getting-started.md) and the [package migration guide](./framework-transition.md) for installation and the legacy scope mapping.
+
+The public core and engine contracts, React root/plugins, Mantine and Vue declarations are covered by checked API snapshots. Public contracts follow semantic versioning from this stable line. Stable Mantine declares a `^3.0.0` React adapter peer; core and engine remain exact train dependencies. ESM/CJS, development/production entries and public stylesheets retain the RC API shape.
+
+Node consumers require `^20.19.0 || >=22.12.0`, matching the CJS dependencies' `require(ESM)` requirements. Packed consumers are checked at both declared lower bounds and Node 24. Vue functional acceptance covers Chromium, Firefox and WebKit; forced-GC lifetime checks remain Chromium-specific. Nuxt, KeepAlive and Suspense integration remain outside the advertised Vue coverage.
+
+The fresh RC engine campaign passed all six legs and **84/84 shards** on clean commit `e575f03`, with seed `202689100`, in 10,917 seconds. A subsequent ANSI-log parsing fix (`2cdbf9a`) lets the aggregator read colored Vitest verdicts while preserving failed-verdict rejection and all structured evidence checks. The maintainer explicitly authorized reusing that ancestor campaign for the parser-only fix through human release review; the conservative automated evidence-coverage check was not overridden or reported as passing. See [release acceptance](./releasing-3.0.md) for publication gates and records.
+
 ## 3.0.0-rc.1 (in preparation)
 
 The five-package train moves to a release candidate with the same runtime APIs as beta.2. Node support is corrected to `^20.19.0 || >=22.12.0`: earlier Node 20 versions cannot load the ESM dependencies from the CJS entry. The independent highlight plugin receives the same metadata correction in `1.0.2`.

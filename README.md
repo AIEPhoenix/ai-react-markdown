@@ -1,14 +1,14 @@
 # ai-markdown
 
 [![CI on main](https://img.shields.io/github/actions/workflow/status/ai-markdown/ai-markdown/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/ai-markdown/ai-markdown/actions/workflows/ci.yml)
-[![GitHub release including prereleases](https://img.shields.io/github/v/release/ai-markdown/ai-markdown?include_prereleases&sort=semver&label=release)](https://github.com/ai-markdown/ai-markdown/releases)
+[![Latest stable GitHub release](https://img.shields.io/github/v/release/ai-markdown/ai-markdown?sort=semver&label=release)](https://github.com/ai-markdown/ai-markdown/releases)
 [![MIT license](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
 
 [![React 19](https://img.shields.io/badge/React-19-149eca?logo=react&logoColor=white)](./packages/react#readme)
 [![Vue ^3.5](https://img.shields.io/badge/Vue-%5E3.5-42b883?logo=vuedotjs&logoColor=white)](./packages/vue#readme)
 [![Mantine 9](https://img.shields.io/badge/Mantine-9-339af0?logo=mantine&logoColor=white)](./packages/react-mantine#readme)
 
-> **3.0.0-rc.1 (in preparation):** React and Vue adapters share the public `@ai-markdown/core` and `@ai-markdown/engine` packages. After [publication](./docs/releasing-3.0.md), use `@rc` for this release candidate; stable 3.0.0 is not released. See the [migration guide](./docs/framework-transition.md).
+> **3.0.0:** React and Vue adapters share the public `@ai-markdown/core` and `@ai-markdown/engine` packages. See the [migration guide](./docs/framework-transition.md).
 
 > React and Vue Markdown rendering for AI responses: GFM, KaTeX math, CJK-aware parsing, incremental streaming, and shared references across logical document sections. Use either framework adapter with your own UI, or the React Mantine integration for highlighted code, JSON presentation, and Mermaid diagrams.
 
@@ -60,14 +60,14 @@ Parsing features are shared by React and Vue. The context hooks, typography slot
 
 | Package                                                                  | Role                                                                     | Version                                                                                                                                                                                                                                   | Downloads                                                                                                                                                                                                                        |
 | ------------------------------------------------------------------------ | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`@ai-markdown/react`](./packages/react)                                 | React renderer, hooks and customizable typography.                       | [![@ai-markdown/react rc](https://img.shields.io/npm/v/@ai-markdown/react/rc?label=npm%20rc&color=orange)](https://www.npmjs.com/package/@ai-markdown/react?activeTab=versions)                                                           | [![@ai-markdown/react monthly downloads](https://img.shields.io/npm/dm/@ai-markdown/react?label=downloads%2Fmonth&color=blue)](https://www.npmjs.com/package/@ai-markdown/react)                                                 |
-| [`@ai-markdown/vue`](./packages/vue)                                     | Vue renderer, scoped slots and SSR/hydration.                            | [![@ai-markdown/vue rc](https://img.shields.io/npm/v/@ai-markdown/vue/rc?label=npm%20rc&color=orange)](https://www.npmjs.com/package/@ai-markdown/vue?activeTab=versions)                                                                 | [![@ai-markdown/vue monthly downloads](https://img.shields.io/npm/dm/@ai-markdown/vue?label=downloads%2Fmonth&color=blue)](https://www.npmjs.com/package/@ai-markdown/vue)                                                       |
-| [`@ai-markdown/react-mantine`](./packages/react-mantine)                 | React + Mantine typography, highlighted code and Mermaid.                | [![@ai-markdown/react-mantine rc](https://img.shields.io/npm/v/@ai-markdown/react-mantine/rc?label=npm%20rc&color=orange)](https://www.npmjs.com/package/@ai-markdown/react-mantine?activeTab=versions)                                   | [![@ai-markdown/react-mantine monthly downloads](https://img.shields.io/npm/dm/@ai-markdown/react-mantine?label=downloads%2Fmonth&color=blue)](https://www.npmjs.com/package/@ai-markdown/react-mantine)                         |
-| [`@ai-markdown/core`](./packages/core)                                   | Framework-independent sessions, block plans and coordination.            | [![@ai-markdown/core rc](https://img.shields.io/npm/v/@ai-markdown/core/rc?label=npm%20rc&color=orange)](https://www.npmjs.com/package/@ai-markdown/core?activeTab=versions)                                                              | [![@ai-markdown/core monthly downloads](https://img.shields.io/npm/dm/@ai-markdown/core?label=downloads%2Fmonth&color=blue)](https://www.npmjs.com/package/@ai-markdown/core)                                                    |
-| [`@ai-markdown/engine`](./packages/engine)                               | Parsing, preprocessing, incremental algorithms and reference registries. | [![@ai-markdown/engine rc](https://img.shields.io/npm/v/@ai-markdown/engine/rc?label=npm%20rc&color=orange)](https://www.npmjs.com/package/@ai-markdown/engine?activeTab=versions)                                                        | [![@ai-markdown/engine monthly downloads](https://img.shields.io/npm/dm/@ai-markdown/engine?label=downloads%2Fmonth&color=blue)](https://www.npmjs.com/package/@ai-markdown/engine)                                              |
+| [`@ai-markdown/react`](./packages/react)                                 | React renderer, hooks and customizable typography.                       | [![@ai-markdown/react stable](https://img.shields.io/npm/v/@ai-markdown/react?label=npm&color=blue)](https://www.npmjs.com/package/@ai-markdown/react?activeTab=versions)                                                                 | [![@ai-markdown/react monthly downloads](https://img.shields.io/npm/dm/@ai-markdown/react?label=downloads%2Fmonth&color=blue)](https://www.npmjs.com/package/@ai-markdown/react)                                                 |
+| [`@ai-markdown/vue`](./packages/vue)                                     | Vue renderer, scoped slots and SSR/hydration.                            | [![@ai-markdown/vue stable](https://img.shields.io/npm/v/@ai-markdown/vue?label=npm&color=blue)](https://www.npmjs.com/package/@ai-markdown/vue?activeTab=versions)                                                                       | [![@ai-markdown/vue monthly downloads](https://img.shields.io/npm/dm/@ai-markdown/vue?label=downloads%2Fmonth&color=blue)](https://www.npmjs.com/package/@ai-markdown/vue)                                                       |
+| [`@ai-markdown/react-mantine`](./packages/react-mantine)                 | React + Mantine typography, highlighted code and Mermaid.                | [![@ai-markdown/react-mantine stable](https://img.shields.io/npm/v/@ai-markdown/react-mantine?label=npm&color=blue)](https://www.npmjs.com/package/@ai-markdown/react-mantine?activeTab=versions)                                         | [![@ai-markdown/react-mantine monthly downloads](https://img.shields.io/npm/dm/@ai-markdown/react-mantine?label=downloads%2Fmonth&color=blue)](https://www.npmjs.com/package/@ai-markdown/react-mantine)                         |
+| [`@ai-markdown/core`](./packages/core)                                   | Framework-independent sessions, block plans and coordination.            | [![@ai-markdown/core stable](https://img.shields.io/npm/v/@ai-markdown/core?label=npm&color=blue)](https://www.npmjs.com/package/@ai-markdown/core?activeTab=versions)                                                                    | [![@ai-markdown/core monthly downloads](https://img.shields.io/npm/dm/@ai-markdown/core?label=downloads%2Fmonth&color=blue)](https://www.npmjs.com/package/@ai-markdown/core)                                                    |
+| [`@ai-markdown/engine`](./packages/engine)                               | Parsing, preprocessing, incremental algorithms and reference registries. | [![@ai-markdown/engine stable](https://img.shields.io/npm/v/@ai-markdown/engine?label=npm&color=blue)](https://www.npmjs.com/package/@ai-markdown/engine?activeTab=versions)                                                              | [![@ai-markdown/engine monthly downloads](https://img.shields.io/npm/dm/@ai-markdown/engine?label=downloads%2Fmonth&color=blue)](https://www.npmjs.com/package/@ai-markdown/engine)                                              |
 | [`@ai-markdown/remark-mark-highlight`](./packages/remark-mark-highlight) | Standalone remark plugin for `==mark==` syntax.                          | [![@ai-markdown/remark-mark-highlight latest](https://img.shields.io/npm/v/@ai-markdown/remark-mark-highlight/latest?label=npm%20latest&color=blue)](https://www.npmjs.com/package/@ai-markdown/remark-mark-highlight?activeTab=versions) | [![@ai-markdown/remark-mark-highlight monthly downloads](https://img.shields.io/npm/dm/@ai-markdown/remark-mark-highlight?label=downloads%2Fmonth&color=blue)](https://www.npmjs.com/package/@ai-markdown/remark-mark-highlight) |
 
-The five framework/shared packages track `rc`; the independent highlight plugin tracks `latest`. Download counts are package-wide monthly totals across all versions, not counts for the displayed tag or unique applications. Core and engine are normally installed transitively by an adapter.
+The five framework/shared packages track `latest`; the independent highlight plugin tracks `latest`. Download counts are package-wide monthly totals across all versions, not counts for the displayed tag or unique applications. Core and engine are normally installed transitively by an adapter.
 
 ## Vue adapter
 
@@ -81,19 +81,19 @@ The Vue 3.5+ adapter is published starting with `3.0.0-beta.2`. See the [Vue REA
 
 ```bash
 # npm
-npm install @ai-markdown/react@rc
+npm install @ai-markdown/react
 
 # pnpm
-pnpm add @ai-markdown/react@rc
+pnpm add @ai-markdown/react
 
 # yarn
-yarn add @ai-markdown/react@rc
+yarn add @ai-markdown/react
 ```
 
 ### Vue 3.5
 
 ```bash
-pnpm add @ai-markdown/vue@rc vue@^3.5.0
+pnpm add @ai-markdown/vue vue@^3.5.0
 ```
 
 Import `@ai-markdown/vue/styles.css` for base presentation. For math, also install `katex` and import `katex/dist/katex.min.css`.
@@ -102,7 +102,7 @@ Import `@ai-markdown/vue/styles.css` for base presentation. For math, also insta
 
 ```bash
 # pnpm (illustrative — the same applies to npm / yarn)
-pnpm add @ai-markdown/react-mantine@rc @ai-markdown/react@rc \
+pnpm add @ai-markdown/react-mantine @ai-markdown/react \
          @mantine/core@^9 @mantine/code-highlight@^9 highlight.js@^11.11.2
 ```
 
@@ -830,7 +830,7 @@ Issues and pull requests are welcome. For non-trivial changes, please open an is
 
 Reporting a bug helps most when it includes:
 
-- The package and version (`@ai-markdown/react@3.0.0-rc.1` …)
+- The package and version (`@ai-markdown/react@3.0.0` …)
 - The relevant `<AIMarkdown>` / `<MantineAIMarkdown>` props
 - A minimal markdown sample that reproduces the issue
 - For streaming-related bugs: the chunk sequence (one string per chunk)

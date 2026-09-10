@@ -1,6 +1,6 @@
 # Migrating from 1.x to 2.0
 
-This is the historical React 1.x → 2.x API migration. To adopt the current 3.0 beta packages, also follow [From ai-react-markdown to ai-markdown](./framework-transition.md); the old React core package is now `@ai-markdown/react`, while `@ai-markdown/core` is framework-independent.
+This is the historical React 1.x → 2.x API migration. To adopt the current stable 3.0 packages, also follow [From ai-react-markdown to ai-markdown](./framework-transition.md); the old React core package is now `@ai-markdown/react`, while `@ai-markdown/core` is framework-independent.
 
 The 2.0 migration replaces `config` and `defaultConfig` with flat component props, a sealed engine-plugin selection, and separate contexts for document identity, metadata, state, theme, and behaviors. The old config types and render-state hooks were removed; upgrading requires updating imports and call sites rather than enabling a compatibility flag.
 

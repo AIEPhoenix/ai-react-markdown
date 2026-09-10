@@ -1,6 +1,6 @@
 # Extending via a Sub-package
 
-These examples target the 3.0.0-rc.1 package train. Match the React peer version when distributing an integration; see [Getting started](./getting-started.md) for installation and package boundaries.
+These examples target the 3.0.0 package train. Match the React peer version when distributing an integration; see [Getting started](./getting-started.md) for installation and package boundaries.
 
 Here, the base renderer, its props, providers and hooks belong to `@ai-markdown/react`. The separate `@ai-markdown/core` supplies framework-independent orchestration and has no React context or UI API. UI integrations keep the React adapter as a peer; framework adapters depend on shared core and engine.
 
@@ -417,7 +417,7 @@ Match the shape of `@ai-markdown/react-mantine`'s barrel for consistency. Re-exp
 // packages/your-integration/package.json
 {
   "peerDependencies": {
-    "@ai-markdown/react": "3.0.0-rc.1",
+    "@ai-markdown/react": "3.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "your-design-system": "^1.0.0",

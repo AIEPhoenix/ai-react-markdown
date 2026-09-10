@@ -1,13 +1,13 @@
 # @ai-markdown/core
 
-[![@ai-markdown/core rc](https://img.shields.io/npm/v/@ai-markdown/core/rc?label=npm%20rc&color=orange)](https://www.npmjs.com/package/@ai-markdown/core?activeTab=versions)
+[![@ai-markdown/core stable](https://img.shields.io/npm/v/@ai-markdown/core?label=npm&color=blue)](https://www.npmjs.com/package/@ai-markdown/core?activeTab=versions)
 [![@ai-markdown/core monthly downloads](https://img.shields.io/npm/dm/@ai-markdown/core?label=downloads%2Fmonth&color=blue)](https://www.npmjs.com/package/@ai-markdown/core)
 [![TypeScript declarations included](https://img.shields.io/badge/TypeScript-included-3178c6?logo=typescript&logoColor=white)](https://github.com/ai-markdown/ai-markdown/tree/main/packages/core)
 [![MIT license](https://img.shields.io/badge/license-MIT-blue)](https://github.com/ai-markdown/ai-markdown/blob/main/LICENSE)
 
-Framework-independent orchestration for ai-markdown adapters, on the **3.0.0-rc.1** train alongside the React and Vue adapters. It supplies pipeline sessions, block planning, cross-chunk contributions, aggregate footnote trees and streaming coordination. Applications install `@ai-markdown/react@rc` or `@ai-markdown/vue@rc`; adapter authors can install `@ai-markdown/core@rc` and `@ai-markdown/engine@rc` directly.
+Framework-independent orchestration for ai-markdown adapters, on the **3.0.0** train alongside the React and Vue adapters. It supplies pipeline sessions, block planning, cross-chunk contributions, aggregate footnote trees and streaming coordination. Applications install `@ai-markdown/react` or `@ai-markdown/vue`; adapter authors can install `@ai-markdown/core` and `@ai-markdown/engine` directly.
 
-This package was the private runtime in the legacy v2.14.1 release. It is now a real external dependency of both framework adapters, with an explicit public export list. The old `@ai-react-markdown/core` React package maps to `@ai-markdown/react`, not this package. See the [migration guide](../../docs/framework-transition.md). Beta contracts may change before stable 3.0.0; keep the shared packages at the same exact train version.
+This package was the private runtime in the legacy v2.14.1 release. It is now a real external dependency of both framework adapters, with an explicit public export list. The old `@ai-react-markdown/core` React package maps to `@ai-markdown/react`, not this package. See the [migration guide](../../docs/framework-transition.md). Public contracts follow semantic versioning from 3.0.0; keep the shared packages at the same exact train version.
 
 ## Responsibility and dependency direction
 
@@ -136,4 +136,4 @@ The root entry explicitly lists supported beta exports. Session creation, parsin
 
 `createSmoothCoordinator` returns the read-only state and documented methods of `SmoothCoordinator`, excluding internal refcounts and notification containers. `ContributionOptions.registry` accepts only a `ContributionRegistry` write capability with `contributeChunkData`; it does not require an implementation registry. Create a registry through engine's `createRegistry`, whose `RegistryController` adds registration and publication to the read-only `Registry` contract. Pair every registration with release in the owning adapter.
 
-These are type-level API boundaries, not object freezing or arbitrary deep cloning. Mutating returned sets, tree data or undocumented implementation fields is unsupported. A beta upgrade can refine the contract; the contracts and checked signatures are recorded in the [API contract document](../../docs/api/core-engine-contracts.md). Stable 3.0.0 still requires release approval and current-candidate validation.
+These are type-level API boundaries, not object freezing or arbitrary deep cloning. Mutating returned sets, tree data or undocumented implementation fields is unsupported. Public contracts and checked signatures are recorded in the [API contract document](../../docs/api/core-engine-contracts.md).
