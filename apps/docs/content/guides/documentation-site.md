@@ -66,7 +66,7 @@ To add another documentation language, add its locale configuration and translat
 
 `.github/workflows/pages.yml` builds the homepage, documentation and composed Storybook from the same commit. Pull requests validate and upload the assembled artifact; pushes to `main` and manual runs on `main` also deploy it. PR artifacts are downloadable builds, not hosted PR preview URLs.
 
-Enable **Settings → Pages → Build and deployment → GitHub Actions**. `actions/configure-pages` supplies the actual origin and base path, including a configured custom domain. No domain is hardcoded in the workflow. On the default project URL, the homepage is `/ai-markdown/`, documentation is `/ai-markdown/docs/`, and examples are `/ai-markdown/storybook/`.
+Enable **Settings → Pages → Build and deployment → GitHub Actions**. `actions/configure-pages` supplies the actual origin and base path, including a configured custom domain. No domain is hardcoded in the workflow. On the default project URL, the homepage is `/ai-markdown/`, documentation is `/ai-markdown/docs/`, and the examples page is `/ai-markdown/examples/`, which embeds the composed Storybook catalog served from `/ai-markdown/storybook/`.
 
 Reproduce the combined build from the repository root:
 
