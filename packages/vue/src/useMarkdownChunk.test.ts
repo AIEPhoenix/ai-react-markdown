@@ -2,7 +2,7 @@ import { sanitizeSchema } from '@ai-markdown/engine';
 import { createRegistry } from '../../engine/src/components/documentRegistry';
 import { createRenderer, createSSRApp, defineComponent, h, nextTick, shallowRef } from 'vue';
 import { renderToString } from '@vue/server-renderer';
-import { expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 
 import { useMarkdownChunk, type ChunkInput } from './useMarkdownChunk';
 
@@ -136,4 +136,85 @@ test('Vue SSR prepares local footnotes without publishing or allocating a chunk'
   expect(registry.chunkOrder).toHaveLength(0);
   expect(registry.chunkData.size).toBe(0);
   expect(registry._subscribers.size).toBe(0);
+});
+
+describe('chunk identity without crypto.randomUUID', () => {
+  const realCrypto = globalThis.crypto;
+  const setCrypto = (value: unknown) =>
+    Object.defineProperty(globalThis, 'crypto', { value, configurable: true, writable: true });
+  afterEach(() => {
+    setCrypto(realCrypto);
+    vi.restoreAllMocks();
+  });
+  const standalone = (): ChunkInput => ({
+    content: 'Claim[^n] and [site][u].',
+    documentId: 'doc',
+    registry: null,
+    preserveOrphanReferences: false,
+    incrementalParse: false,
+    clobberPrefix: 'doc-',
+    enginePlugins: [],
+    sanitizeSchema,
+  });
+  const Probe = defineComponent({
+    props: { sink: { type: Array as () => string[], required: true } },
+    setup(props) {
+      const chunk = useMarkdownChunk(standalone);
+      props.sink.push(chunk.provenance);
+      return () => h('pre', JSON.stringify(chunk.prepared.value.trees.hast));
+    },
+  });
+
+  test('a non-secure browser context (getRandomValues without randomUUID) mounts and SSR-renders', async () => {
+    setCrypto({ getRandomValues: realCrypto.getRandomValues.bind(realCrypto) });
+    expect((globalThis.crypto as { randomUUID?: unknown }).randomUUID).toBeUndefined();
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const mounted: string[] = [];
+    const app = host.createApp({ render: () => h('main', [h(Probe, { sink: mounted }), h(Probe, { sink: mounted })]) });
+    expect(() => app.mount(node())).not.toThrow();
+    await settle();
+    app.unmount();
+    const server: string[] = [];
+    const html = await renderToString(createSSRApp({ render: () => h(Probe, { sink: server }) }));
+    expect(html).toContain('Claim');
+    expect(mounted).toHaveLength(2);
+    expect(mounted[0]).not.toBe(mounted[1]);
+    for (const value of [...mounted, ...server]) expect(value).toMatch(/^[0-9a-f]{32}$/);
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  test('a runtime without Web Crypto falls back to a unique value and reports it once per instance', async () => {
+    setCrypto(undefined);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const mounted: string[] = [];
+    const app = host.createApp({ render: () => h('main', [h(Probe, { sink: mounted }), h(Probe, { sink: mounted })]) });
+    expect(() => app.mount(node())).not.toThrow();
+    await settle();
+    app.unmount();
+    expect(mounted).toHaveLength(2);
+    expect(mounted[0]).not.toBe(mounted[1]);
+    expect(error).toHaveBeenCalledTimes(2);
+    expect(String(error.mock.calls[0][0])).toContain('getRandomValues');
+  });
+
+  test('registry registrations stay distinct per instance without randomUUID', async () => {
+    setCrypto(undefined);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const registry = createRegistry();
+    const Chunk = defineComponent({
+      setup() {
+        const chunk = useMarkdownChunk(() => ({ ...standalone(), registry }));
+        return () => h('pre', JSON.stringify(chunk.prepared.value.trees.hast));
+      },
+    });
+    const app = host.createApp({ render: () => h('main', [h(Chunk), h(Chunk)]) });
+    app.mount(node());
+    await settle();
+    expect(registry.chunkOrder).toHaveLength(2);
+    expect(registry.chunkOrder[0]).not.toBe(registry.chunkOrder[1]);
+    app.unmount();
+    await settle();
+    expect(registry.chunkData.size).toBe(0);
+    expect(registry._subscribers.size).toBe(0);
+  });
 });

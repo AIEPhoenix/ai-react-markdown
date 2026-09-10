@@ -1,4 +1,4 @@
-import { computed, onMounted, onUnmounted, shallowRef, watch, watchPostEffect } from 'vue';
+import { computed, onMounted, onUnmounted, shallowRef, useId, watch, watchPostEffect } from 'vue';
 import {
   buildCoreRemarkPlugins,
   buildCoreRehypePlugins,
@@ -35,6 +35,43 @@ export interface ChunkInput {
   sanitizeSchema: SanitizeSchema;
 }
 
+/** Diagnostic for the provenance fallback path. Same wording as the React
+ * adapter so both packages report the degraded credential the same way. */
+export const PROVENANCE_FALLBACK_MESSAGE =
+  'Web Crypto (globalThis.crypto.getRandomValues) is unavailable; the cross-chunk placeholder credential is unique but not secret. Forged placeholders are still unwrapped by the property-name channel.';
+
+let fallbackCounter = 0;
+
+function hex(bytes: Uint8Array): string {
+  let out = '';
+  for (let i = 0; i < bytes.length; i++) out += bytes[i].toString(16).padStart(2, '0');
+  return out;
+}
+
+/** Placeholder credential for one chunk: 128 random bits from Web Crypto.
+ * `crypto.randomUUID` is deliberately not used. Browsers expose it only in
+ * secure contexts, so on a plain http:// origin other than localhost every
+ * chunk would throw during setup. `getRandomValues` has no such restriction.
+ * Without Web Crypto at all the value degrades to unique but not secret, and
+ * the verifier's property-name channel keeps unwrapping forged placeholders.
+ * Never throws; never returns an empty value.
+ */
+export function createProvenance(): string {
+  // `globalThis.crypto`, not a bare `crypto` identifier: absence must be a
+  // detectable `undefined`, not a `ReferenceError`.
+  const webCrypto = globalThis.crypto as { getRandomValues?: (a: Uint8Array) => Uint8Array } | undefined;
+  if (webCrypto && typeof webCrypto.getRandomValues === 'function') {
+    const bytes = new Uint8Array(16);
+    webCrypto.getRandomValues(bytes);
+    return hex(bytes);
+  }
+  fallbackCounter += 1;
+  if (process.env.NODE_ENV !== 'production') {
+    console.error(`[ai-react-markdown] ${PROVENANCE_FALLBACK_MESSAGE}`);
+  }
+  return `fallback-${fallbackCounter}-${Date.now().toString(36)}`;
+}
+
 /** Vue lifecycle binding for one mounted chunk.
  * Engine trees/registries stay outside deep reactive proxies. Vue tracks only
  * source inputs, allocation and the monotonic registry notification signal.
@@ -44,8 +81,12 @@ export function useMarkdownChunk(input: () => ChunkInput) {
   const publisher = createContributionSession();
   const planner = createBlockPlanner();
   const scanner = createDefLabelScanner();
-  const provenance = globalThis.crypto.randomUUID();
-  const chunkId = globalThis.crypto.randomUUID();
+  const provenance = createProvenance();
+  // The registry keys allocations by this string and uses it as the Symbol
+  // description. It only has to be unique per instance within one app, and
+  // a registry never outlives its AIMarkdownDocuments provider, so Vue's
+  // app-local counter id is enough; no randomness is needed here.
+  const chunkId = useId();
   const allocation = shallowRef<{ registry: RegistryController; sym: symbol } | null>(null);
   const version = shallowRef(0);
   let targets: PhantomTargets | undefined;
@@ -145,5 +186,5 @@ export function useMarkdownChunk(input: () => ChunkInput) {
     if (!frame.registry || !frame.sym || frame.registry.chunkOrder.at(-1) !== frame.sym) return null;
     return buildAggregateTree(frame.registry, frame.clobberPrefix, input().preserveOrphanReferences);
   });
-  return { prepared, aggregate };
+  return { prepared, aggregate, provenance };
 }
