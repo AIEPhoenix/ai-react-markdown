@@ -1,5 +1,7 @@
 # Custom Components
 
+React uses `customComponents` and React children. Vue uses `components` or named element slots with `MarkdownElementContext`. See the [Vue guide](../packages/vue/README.md#custom-vue-components-and-slots) and [package setup](./getting-started.md).
+
 `customComponents` lets you replace the React renderer for an HTML element produced by the Markdown pipeline. Use it for links, images, tables, headings, task controls, and code blocks that need application behavior. The parser still owns Markdown syntax; your component receives the resulting element's attributes, React children, and an optional hast `node`.
 
 ```tsx
@@ -96,7 +98,7 @@ const COMPONENTS = {
 
 This changes the displayed control only; it does not edit `content`. Persist changes through an application callback carried by [metadata](./metadata-context.md), with a stable task identifier and an accessible name derived from your data. A source offset can locate a task within one parsed revision, but it is not a durable ID across source edits or preprocessing.
 
-### Custom code block with copy button (core, no Mantine)
+### Custom code block with copy button (React, no Mantine)
 
 A `pre` renderer usually receives a React `<code>` element as its child. `String(children)` therefore produces an object description rather than the code text, and putting those children inside another `<code>` creates nested code elements. Read the textual hast child and preserve the original React children for display:
 

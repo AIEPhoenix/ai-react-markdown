@@ -1,5 +1,7 @@
 # Metadata Context
 
+The hooks and providers below are React-specific. Vue passes `metadata` and `streaming` to mapped components and scoped element slots. See the [Vue guide](../packages/vue/README.md#custom-vue-components-and-slots) and [package setup](./getting-started.md).
+
 `metadata` carries application data to custom Markdown components through a dedicated React context. Use it for message IDs, callbacks, citation records, and other information that a renderer needs without changing the Markdown parser's configuration. The library passes the value through without cloning or deep comparison.
 
 ```tsx
@@ -36,7 +38,7 @@ const COMPONENTS = { pre: CopyablePre } satisfies AIMarkdownCustomComponents;
 />;
 ```
 
-The hook returns `ChatMeta | undefined`. Handle the absent value even when supplying a generic type argument: a type argument cannot establish that a matching provider exists at runtime. For a general-purpose code-copy component, including raw-HTML fallback and clipboard errors, see [custom components](./custom-components.md#custom-code-block-with-copy-button-core-no-mantine).
+The hook returns `ChatMeta | undefined`. Handle the absent value even when supplying a generic type argument: a type argument cannot establish that a matching provider exists at runtime. For a general-purpose code-copy component, including raw-HTML fallback and clipboard errors, see [custom components](./custom-components.md#custom-code-block-with-copy-button-react-no-mantine).
 
 ## Why a separate context?
 

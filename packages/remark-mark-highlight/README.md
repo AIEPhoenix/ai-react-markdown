@@ -1,22 +1,13 @@
 # @ai-markdown/remark-mark-highlight
 
-[![npm version](https://img.shields.io/npm/v/@ai-markdown/remark-mark-highlight?logo=npm&color=cb3837)](https://www.npmjs.com/package/@ai-markdown/remark-mark-highlight)
-[![npm downloads](https://img.shields.io/npm/dm/@ai-markdown/remark-mark-highlight?color=blue)](https://www.npmjs.com/package/@ai-markdown/remark-mark-highlight)
-[![minzipped size](https://img.shields.io/bundlephobia/minzip/@ai-markdown/remark-mark-highlight?label=minzip)](https://bundlephobia.com/package/@ai-markdown/remark-mark-highlight)
-[![types](https://img.shields.io/npm/types/@ai-markdown/remark-mark-highlight?logo=typescript&logoColor=white&color=3178c6)](https://www.typescriptlang.org/)
-
-[![Node ≥20](https://img.shields.io/badge/Node-%E2%89%A520-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
-[![ESM + CJS](https://img.shields.io/badge/module-ESM%20%2B%20CJS-f7df1e?logo=javascript&logoColor=black)](#install)
-[![remark plugin](https://img.shields.io/badge/remark-plugin-2c1e60?logo=markdown&logoColor=white)](https://github.com/remarkjs/remark)
-[![license](https://img.shields.io/npm/l/@ai-markdown/remark-mark-highlight?color=green)](https://github.com/ai-markdown/ai-markdown/blob/main/packages/remark-mark-highlight/LICENSE)
-
-[![CI](https://img.shields.io/github/actions/workflow/status/ai-markdown/ai-markdown/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/ai-markdown/ai-markdown/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/actions/workflow/status/ai-markdown/ai-markdown/release.yml?label=release&logo=githubactions&logoColor=white)](https://github.com/ai-markdown/ai-markdown/actions/workflows/release.yml)
-[![part of ai-markdown](https://img.shields.io/badge/monorepo-ai--markdown-8a2be2?logo=github)](https://github.com/ai-markdown/ai-markdown)
+[![@ai-markdown/remark-mark-highlight latest](https://img.shields.io/npm/v/@ai-markdown/remark-mark-highlight/latest?label=npm%20latest&color=blue)](https://www.npmjs.com/package/@ai-markdown/remark-mark-highlight?activeTab=versions)
+[![@ai-markdown/remark-mark-highlight monthly downloads](https://img.shields.io/npm/dm/@ai-markdown/remark-mark-highlight?label=downloads%2Fmonth&color=blue)](https://www.npmjs.com/package/@ai-markdown/remark-mark-highlight)
+[![TypeScript declarations included](https://img.shields.io/badge/TypeScript-included-3178c6?logo=typescript&logoColor=white)](https://github.com/ai-markdown/ai-markdown/tree/main/packages/remark-mark-highlight)
+[![MIT license](https://img.shields.io/badge/license-MIT-blue)](https://github.com/ai-markdown/ai-markdown/blob/main/packages/remark-mark-highlight/LICENSE)
 
 A [remark](https://github.com/remarkjs/remark) syntax plugin for highlighted text. `==text==` becomes an mdast `mark` node whose `data.hName` tells remark-rehype to produce `<mark>text</mark>`. The package registers both parsing and Markdown serialization extensions; it does not provide CSS or an HTML sanitizer.
 
-Use the named `remarkMarkHighlight` export with unified. The alias `remarkMark` retains the upstream export name, and lower-level micromark/mdast extensions are available for custom pipelines. The core renderer already enables this capability through its sealed `highlight` plugin, so core users do not need to register this package separately.
+Use the named `remarkMarkHighlight` export with unified. The alias `remarkMark` retains the upstream export name, and lower-level micromark/mdast extensions are available for custom pipelines. Both framework adapters enable this capability through the engine’s sealed `highlight` plugin by default, so React and Vue applications do not need to install or register this package separately.
 
 First-party continuation of the unmaintained [`remark-mark-highlight`](https://www.npmjs.com/package/remark-mark-highlight), used internally by [`@ai-markdown/react`](https://github.com/ai-markdown/ai-markdown/blob/main/packages/react)'s sealed `highlight` engine plugin — published standalone because it is useful outside this repo, and because the upstream's ESM-only exports map broke bare-Node CJS `require()` consumers.
 
@@ -105,11 +96,11 @@ Works with `remark-rehype` out of the box (`data.hName = 'mark'`); no custom han
 
 ## Versioning
 
-This package versions independently of the `@ai-markdown/react` release train — core depends on it through a normal semver range.
+This package versions independently of the `@ai-markdown/react` release train — `@ai-markdown/engine` depends on it through a normal semver range. Shared core and the React/Vue adapters receive it transitively.
 
 ## Integration boundaries and verification
 
-The delimiter must be exactly two equals signs with valid attention-style flanking. A single or triple run remains text; code spans and escapes take precedence, and nested strong/emphasis can appear inside a mark. This package does not itself relax delimiter flanking for CJK text or replace the separate CJK plugins used by core.
+The delimiter must be exactly two equals signs with valid attention-style flanking. A single or triple run remains text; code spans and escapes take precedence, and nested strong/emphasis can appear inside a mark. This package does not itself relax delimiter flanking for CJK text or replace the separate CJK plugins used by engine.
 
 Importing the plugin's types registers `Mark` in mdast's content maps. The resulting node is phrasing content with children, so a tree visitor should recurse rather than assume a single text child. `data.hName` carries the HTML element mapping; removing that data in an intervening transform changes how the next stage renders the node.
 

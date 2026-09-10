@@ -1,5 +1,12 @@
 # @ai-markdown/vue
 
+[![@ai-markdown/vue beta](https://img.shields.io/npm/v/@ai-markdown/vue/beta?label=npm%20beta&color=orange)](https://www.npmjs.com/package/@ai-markdown/vue?activeTab=versions)
+[![@ai-markdown/vue monthly downloads](https://img.shields.io/npm/dm/@ai-markdown/vue?label=downloads%2Fmonth&color=blue)](https://www.npmjs.com/package/@ai-markdown/vue)
+[![TypeScript declarations included](https://img.shields.io/badge/TypeScript-included-3178c6?logo=typescript&logoColor=white)](https://github.com/ai-markdown/ai-markdown/tree/main/packages/vue)
+[![MIT license](https://img.shields.io/badge/license-MIT-blue)](https://github.com/ai-markdown/ai-markdown/blob/main/LICENSE)
+
+[![Vue ^3.5](https://img.shields.io/badge/Vue-%5E3.5-42b883?logo=vuedotjs&logoColor=white)](#requirements-and-dependencies)
+
 Vue 3 Markdown rendering built on the framework-independent `@ai-markdown/core` and `@ai-markdown/engine`. This package supplies real Vue VNodes, server rendering and hydration, scoped document references, component/slot customization, smooth streaming and a measured streaming cursor. It replaces the earlier private lifecycle prototype.
 
 **Available starting with `3.0.0-beta.2`.** The earlier `3.0.0-beta.1` release did not include Vue. Stable 3.0.0 remains a separate release decision after the API review and release gates.
@@ -17,6 +24,8 @@ Install the beta:
 ```bash
 pnpm add @ai-markdown/vue@beta vue@^3.5.0 katex
 ```
+
+See [Getting started](../../docs/getting-started.md) for the package map and React/Vue API differences. The Vue package exposes its helpers from the root; it has no `/plugins` entry or React typography variants.
 
 ## Minimal component
 
@@ -48,7 +57,7 @@ Pass the **complete accumulated Markdown string**. Append decoded network data t
 | `documentIndex`            | Mount order              | Optional ordering hint for the reference registry; supply it for reordered/remounted logical chunks |
 | `streaming`                | `false`                  | Passed to custom components and element slots, controls cursor and `aria-busy`                      |
 | `incrementalParse`         | `true` after mount       | Uses verified retained-prefix parsing; server and hydration's first render use the full pipeline    |
-| `preserveOrphanReferences` | `false`                  | Preserve unreferenced footnote bodies according to shared engine/core policy                        |
+| `preserveOrphanReferences` | `false`                  | Preserve unreferenced footnote definitions in rendered output                                       |
 | `enginePlugins`            | All five shipped plugins | Sealed catalog selection; membership changes, canonical ordering does not                           |
 | `contentPreprocessors`     | `[]`                     | Synchronous string transforms after built-in LaTeX normalization                                    |
 | `sanitizeSchema`           | Library schema           | Treat as immutable; derive a fresh schema with `extendSanitizeSchema`                               |
@@ -128,11 +137,24 @@ SSR renders each chunk's local content and local footnotes without registering o
 Inside `AIMarkdownDocuments`, explicitly named smooth chunks share a turn-taking coordinator. A chunk mounted empty waits until earlier registered smooth chunks finish. A chunk mounted with content does not hide already visible text. Completion is sticky for the current registration: a later resumed stream does not re-gate successors. Reveal order is mount order; `documentIndex` orders references, not smooth turns.
 
 ```vue
-<AIMarkdownSmoothStream :content="content" :streaming="!finished" pacing="responsive" document-id="answer-1">
-  <template #waiting><span>Waiting for the previous section…</span></template>
-  <template #cursor><span>▍</span></template>
-</AIMarkdownSmoothStream>
+<script setup lang="ts">
+import { ref } from 'vue';
+import { AIMarkdownSmoothStream } from '@ai-markdown/vue';
+
+const content = ref('');
+const finished = ref(false);
+// Append decoded transport data to content.value; set finished.value on completion.
+</script>
+
+<template>
+  <AIMarkdownSmoothStream :content="content" :streaming="!finished" pacing="responsive" document-id="answer-1">
+    <template #waiting><span>Waiting for the previous section…</span></template>
+    <template #cursor><span>▍</span></template>
+  </AIMarkdownSmoothStream>
+</template>
 ```
+
+The `waiting` slot is used only when this component is inside `AIMarkdownDocuments` and an earlier smooth chunk is still producing or draining. The standalone example above does not enter that waiting state.
 
 The component exposes `flush()` through its template ref. Flushing respects the engine's grapheme hold-back while the source is live; it does not pretend that an unfinished grapheme is complete.
 
@@ -165,7 +187,7 @@ This implementation does not claim React/Mantine UI parity: Mantine remains Reac
 
 ## Interactive examples
 
-Run `pnpm storybook:vue` from the repository root. The launcher builds the public package dependencies before opening the catalog on port 6008; `pnpm storybook` also starts React and the combined entry on port 6006.
+Run `pnpm storybook:vue` from the repository root. The development launcher resolves package source and styles directly for live updates on port 6008; `pnpm storybook` also starts React and the combined entry on port 6006.
 
 The chapter names and order follow the React catalog. Start with **Streaming/Streaming Basics**, then **Incremental Parsing**, **Smooth Streaming**, **Streaming Cursor**, **Turn Taking** and **Error Recovery** for the corresponding lifecycle contracts. **Documents/Cross-Chunk Coordination** covers late definitions and repeated footnotes; **Definition Lifecycle** covers updates and isolation. **Basics/Engine Plugins** demonstrates reactive plugin selection. **Customization/Custom Components** and **Metadata** cover mapping, scoped slots and context; **URL Sanitization**, **Content Preprocessors** and **Orphan References** cover output policies. Each chapter includes usage notes and browser assertions; relevant examples expose editable Controls.
 

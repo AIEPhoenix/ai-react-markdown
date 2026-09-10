@@ -1,5 +1,7 @@
 # Content Preprocessors
 
+Preprocessing runs in the shared engine. The examples use React imports; Vue exports `createRemendPreprocessor` and `AIMDContentPreprocessor` from `@ai-markdown/vue` and accepts `:content-preprocessors`. See the [Vue guide](../packages/vue/README.md#component-props) and [package setup](./getting-started.md).
+
 A content preprocessor is a synchronous `(content: string) => string` function. It runs before Markdown parsing and is suitable for source-format cleanup: removing a known frontmatter header, translating an application marker, or normalizing a controlled dialect. It receives text, not syntax nodes or React context.
 
 ```tsx
@@ -30,9 +32,9 @@ The built-in stage recognizes supported math delimiters and currency, protects c
 
 Unclosed display-math truncation is based on the source grammar, not the `streaming` prop: preprocessing does not receive that flag. It can therefore affect an incomplete static document too. Since the line-start fixes, a doubled dollar in the middle of a prose line is not treated as an opening display block merely because it is unpaired.
 
-Core owns one append-aware LaTeX preprocessor per mounted renderer. It reuses a verified prefix when possible and resets on non-append input; its result must equal the stateless `preprocessLaTeX` result for the same complete input. Your functions still receive the entire normalized string on every content change. The incremental parser cannot remove the cost of those full-string passes.
+Each mounted React renderer owns one append-aware LaTeX preprocessor. It reuses a verified prefix when possible and resets on non-append input; its result must equal the stateless `preprocessLaTeX` result for the same complete input. Your functions still receive the entire normalized string on every content change. The incremental parser cannot remove the cost of those full-string passes.
 
-An empty input bypasses the preprocessing call in core. A preprocessor is consequently not a reliable place to manufacture an empty-message placeholder. Render that placeholder in the application.
+An empty input bypasses the preprocessing call in the React adapter. A preprocessor is consequently not a reliable place to manufacture an empty-message placeholder. Render that placeholder in the application.
 
 ## Built-in optional: streaming tail repair (`createRemendPreprocessor`)
 
@@ -173,7 +175,7 @@ my-frontmatter-looking-block
 
 A `stripFrontmatter` preprocessor that runs `content.replace(/^---[\s\S]*?---\n/, '')` against this input… is fine here (the `---` is not at the start). But a less careful regex might munge the fenced block. For changes to element presentation, use `customComponents`, which receives the parsed element. A true syntax transformation needs an AST-aware pipeline and a corresponding correctness contract.
 
-Core exposes a sealed plugin selection, not arbitrary remark/rehype injection. The boundary scanner and equivalence tests cover that selected grammar. A [React integration package](./extending-via-subpackage.md) composes public slots and providers; it does not open a hidden plugin slot. Propose a new syntax feature upstream, or own a separate engine integration and its validation when a different grammar is required.
+The React adapter exposes a sealed plugin selection, not arbitrary remark/rehype injection. The boundary scanner and equivalence tests cover that selected grammar. A [React integration package](./extending-via-subpackage.md) composes public slots and providers; it does not open a hidden plugin slot. Propose a new syntax feature upstream, or own a separate engine integration and its validation when a different grammar is required.
 
 ---
 
@@ -236,4 +238,4 @@ With smooth streaming, decide whether repair follows source completion or visibl
 
 For each transform, test empty input, partial headers or markers, a completed document, and the same text inside code fences. For streaming use, compare a sequence of accumulated prefixes rather than independent deltas. Include a replacement update: append-aware functions must discard stale state when a message is regenerated.
 
-The orchestration lives in [`preprocessors/index.ts`](../packages/engine/src/preprocessors/index.ts), with the per-instance wrapper created in [`core/src/index.tsx`](../packages/react/src/index.tsx). [`latex.ts`](../packages/engine/src/preprocessors/latex.ts) owns normalization and its incremental implementation; [`remend.ts`](../packages/engine/src/preprocessors/remend.ts) fixes the repair options. The LaTeX entry-equivalence and soft-atom differential suites test the built-in implementations against their reference paths. They do not validate arbitrary caller functions.
+The orchestration lives in [`preprocessors/index.ts`](../packages/engine/src/preprocessors/index.ts), with the per-instance wrapper created in [`react/src/index.tsx`](../packages/react/src/index.tsx). [`latex.ts`](../packages/engine/src/preprocessors/latex.ts) owns normalization and its incremental implementation; [`remend.ts`](../packages/engine/src/preprocessors/remend.ts) fixes the repair options. The LaTeX entry-equivalence and soft-atom differential suites test the built-in implementations against their reference paths. They do not validate arbitrary caller functions.

@@ -1,5 +1,7 @@
 # CJK Typography
 
+Parsing and Pangu behavior come from engine and apply to both adapters. Typography variants and tokens below are React-specific; Vue uses its base stylesheet and application CSS, and exports `pangu` from its root. See the [Vue guide](../packages/vue/README.md#minimal-component) and [package setup](./getting-started.md).
+
 CJK rendering combines three separate concerns: recognizing Markdown delimiters beside Chinese, Japanese, or Korean punctuation; adding optional spaces at mixed-script boundaries; and laying out the result with an appropriate font and line height. The library supplies parser extensions and default typography, while your application chooses language, fonts, and editorial spacing policy.
 
 This guide distinguishes those responsibilities so that a punctuation problem is not treated as a CSS problem, and a line-break policy is not attributed to the wrong plugin. It also documents the limits of `==highlight==`, which does not use the CJK emphasis extension's delimiter rules.

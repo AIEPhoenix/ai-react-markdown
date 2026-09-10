@@ -1,5 +1,7 @@
 # Cross-Chunk Coordination
 
+The examples and registry hook below use React. Vue supplies its own `AIMarkdownDocuments` and `AIMarkdown` with the same explicit document ID model, but no React registry hook or provider-level orphan override. See the [Vue guide](../packages/vue/README.md#multiple-chunks-in-one-document) and [package setup](./getting-started.md).
+
 A logical document can be displayed by several `<AIMarkdown>` instances: for example, independently updated answer sections with references to a shared citation list. Each instance parses its own Markdown. `<AIMarkdownDocuments>` connects their reference definitions and footnote numbering when they share an explicit, non-empty `documentId`.
 
 This is a reference-coordination layer, not a parser for arbitrarily split transport data. Accumulate SSE/token deltas into one string for the usual chat interface. Use multiple renderers only when each chunk is a meaningful Markdown unit: a fence, paragraph, table, or emphasis span cannot begin in one renderer and finish in another.

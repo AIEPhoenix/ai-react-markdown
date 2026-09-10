@@ -1,14 +1,21 @@
 # @ai-markdown/core
 
-Framework-independent orchestration for ai-markdown adapters, first published on the **3.0.0-beta.1** train; this checkout prepares **3.0.0-beta.2**. It supplies pipeline sessions, block planning, cross-chunk contributions, aggregate footnote trees and streaming coordination. React applications install `@ai-markdown/react@beta`; adapter authors can install `@ai-markdown/core@beta` and `@ai-markdown/engine@beta` directly.
+[![@ai-markdown/core beta](https://img.shields.io/npm/v/@ai-markdown/core/beta?label=npm%20beta&color=orange)](https://www.npmjs.com/package/@ai-markdown/core?activeTab=versions)
+[![@ai-markdown/core monthly downloads](https://img.shields.io/npm/dm/@ai-markdown/core?label=downloads%2Fmonth&color=blue)](https://www.npmjs.com/package/@ai-markdown/core)
+[![TypeScript declarations included](https://img.shields.io/badge/TypeScript-included-3178c6?logo=typescript&logoColor=white)](https://github.com/ai-markdown/ai-markdown/tree/main/packages/core)
+[![MIT license](https://img.shields.io/badge/license-MIT-blue)](https://github.com/ai-markdown/ai-markdown/blob/main/LICENSE)
 
-This package was the private runtime in the legacy v2.14.1 release. It is now a real external dependency of the React adapter, with an explicit public export list. The old `@ai-react-markdown/core` React package maps to `@ai-markdown/react`, not this package. See the [migration guide](../../docs/framework-transition.md). Beta contracts may change before stable 3.0.0; keep the shared packages at the same exact train version.
+Framework-independent orchestration for ai-markdown adapters, published on the **3.0.0-beta.2** train alongside the React and Vue adapters. It supplies pipeline sessions, block planning, cross-chunk contributions, aggregate footnote trees and streaming coordination. Applications install `@ai-markdown/react@beta` or `@ai-markdown/vue@beta`; adapter authors can install `@ai-markdown/core@beta` and `@ai-markdown/engine@beta` directly.
+
+This package was the private runtime in the legacy v2.14.1 release. It is now a real external dependency of both framework adapters, with an explicit public export list. The old `@ai-react-markdown/core` React package maps to `@ai-markdown/react`, not this package. See the [migration guide](../../docs/framework-transition.md). Beta contracts may change before stable 3.0.0; keep the shared packages at the same exact train version.
 
 ## Responsibility and dependency direction
 
 ```text
-engine ← core ← React adapter ← Mantine integration
-   ↑___________________|
+@ai-markdown/react-mantine → @ai-markdown/react (peer)
+@ai-markdown/react         → @ai-markdown/core + @ai-markdown/engine
+@ai-markdown/vue           → @ai-markdown/core + @ai-markdown/engine
+@ai-markdown/core          → @ai-markdown/engine
 ```
 
 The adapter may also consume engine primitives directly. Shared core does not duplicate the engine's public barrel or wrap every engine function merely to rename it. It owns reusable orchestration that would otherwise have to be copied into another framework adapter.
@@ -27,7 +34,7 @@ The adapter may also consume engine primitives directly. Shared core does not du
 
 The engine remains responsible for grammar, preprocessing, plugin chains, scanners, incremental parsing algorithms, registry storage/indexing, reference resolution and URL policy primitives. Shared core uses those algorithms to implement reusable rendering decisions.
 
-React retains component construction, `ReactNode` caching, contexts, effects, `useSyncExternalStore`, registration lifetimes, provenance credential allocation, final element conversion and DOM cursor measurement. Shared core's root has no React, Vue, Svelte or DOM dependency. Its production source is typechecked without the DOM libraries. Node types supply declarations for cross-host primitives such as `queueMicrotask`; they do not add a Node runtime dependency.
+Framework adapters retain component construction and lifecycle integration. React retains `ReactNode` caching, contexts, effects, `useSyncExternalStore`, registration lifetimes, provenance credential allocation, final element conversion and DOM cursor measurement. Shared core's root has no React, Vue, Svelte or DOM dependency. Its production source is typechecked without the DOM libraries. Node types supply declarations for cross-host primitives such as `queueMicrotask`; they do not add a Node runtime dependency.
 
 ## A pipeline session is local to one consumer
 
@@ -66,7 +73,7 @@ const blocks = planBlocks(trees.mdast, trees.hast, content);
 // Convert blocks.plan using the host renderer; use item.key for sibling identity.
 ```
 
-This is an standalone example using the public package entries. A coordinated adapter must obtain a per-instance provenance credential, pass the same credential to the engine's verifier and coordinated handlers, derive actual phantom targets, and preserve definition bodies while registered. A constant credential from an example is not suitable for that path.
+This is a standalone example using the public package entries. A coordinated adapter must obtain a per-instance provenance credential, pass the same credential to the engine's verifier and coordinated handlers, derive actual phantom targets, and preserve definition bodies while registered. A constant credential from an example is not suitable for that path.
 
 The host chooses `incrementalParse: false` for a one-shot server render. Shared core does not inspect `window` to infer the host. A later incremental frame starts from fresh state after a non-incremental frame. Call `reset()` when the host invalidates retained parse state because render policy changed. Parse-input identities are also checked by the engine's dependency key; phantom suffix changes remain always-tail input rather than invalidating all retained source.
 
@@ -82,7 +89,7 @@ An incremental failure clears the retained state before retrying the full pipeli
 
 These functions do not register, subscribe, publish or mutate their supplied snapshots. Treat label sets and returned objects as immutable; pass a previous result only from the same logical consumer. React retains the previous snapshots in refs and uses memoization; Vue uses local variables behind computed values. The engine and planner still own correctness when a source is replaced or a retained render is discarded.
 
-The Vue prototype validates these decisions with real component lifecycle and SSR execution, while keeping AST/registry objects out of deep reactive proxies. It is not a production Vue renderer and does not yet validate DOM hydration, slots, styling or cursor behavior.
+The published [Vue adapter](../vue/README.md) uses these decisions in its component lifecycle while keeping AST/registry objects out of deep reactive proxies. It has SSR, hydration, slots, base styles and cursor support, with separate adapter and Chromium lifecycle tests. The earlier private prototype is archived under `prototypes/` and is not the application entry point.
 
 ## Preparation and commit have different effects
 
@@ -121,7 +128,7 @@ The dedicated `test:core-contracts` gate builds core and its workspace dependenc
 
 `assert-boundary.mjs` checks public-package identity, allowed production dependencies, source import direction and folded environment gates. The React distribution guard requires external core and engine imports. Core's declarations must not expose `RegistryInternal`, `SmoothCoordinatorInternal` or private refcount/subscriber containers.
 
-The release train is engine/core/react/react-mantine/vue at the same version. Vue now consumes the same shared contracts; see the [API contracts](../../docs/api/core-engine-contracts.md) for the current unreleased signature changes. Core depends on engine through `workspace:*`, which becomes the exact train version in the published manifest. Both ESM and CJS have production and development entries; every build folds environment gates separately. Core has no `use client` directive and does not inline a second engine implementation.
+The release train is engine/core/react/react-mantine/vue at the same version. Vue now consumes the same shared contracts; see the [API contracts](../../docs/api/core-engine-contracts.md) for the beta.1-to-beta.2 signature changes. Core depends on engine through `workspace:*`, which becomes the exact train version in the published manifest. Both ESM and CJS have production and development entries; every build folds environment gates separately. Core has no `use client` directive and does not inline a second engine implementation.
 
 ## Public API and write capabilities
 

@@ -1,5 +1,7 @@
 # Smooth Streaming (Typewriter Pacing)
 
+Examples below use React hooks and component slots; the engine controller is framework-independent. Vue exposes similarly named composables that accept a live getter and return computed refs. See the [Vue guide](../packages/vue/README.md#smooth-streaming-and-turn-taking) and [package setup](./getting-started.md).
+
 LLM tokens arrive in bursty network chunks — a 40-character clump, a 300 ms
 stall, three clumps back-to-back. Rendering each chunk the moment it lands
 makes the message jump in visible lurches. Smooth streaming decouples the
@@ -26,7 +28,7 @@ shell renders a plain `<AIMarkdown>` with a paced `content` string.
 
 ## Why this composes well here
 
-A reveal can update content once per animation frame, much more frequently than network delivery. Each revealed prefix is still an accumulated Markdown string, so core can reuse a verified frozen prefix and previously planned blocks while parsing the mutable tail.
+A reveal can update content once per animation frame, much more frequently than network delivery. Each revealed prefix is still an accumulated Markdown string, so the shared pipeline can reuse a verified frozen prefix and previously planned blocks while parsing the mutable tail.
 
 This makes smoothing practical on many long documents, but it does not make every frame O(new characters). A frame may still scan or parse a long unfrozen tail; edits and syntax hazards can trigger a full parse. The block planner traverses the document's blocks, and references, raw HTML, or definitions can require broader context. React reconciliation, custom renderers, highlighting, layout, and observers add work beyond parsing.
 

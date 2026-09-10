@@ -1,21 +1,14 @@
 # @ai-markdown/react-mantine
 
-> **3.0.0-beta.2 candidate (unreleased):** the new `@ai-markdown` scope separates the shared core from the React adapter. Install framework packages with `@beta`; The Vue adapter is implemented in source; its first npm publication is pending. See the [migration guide](../../docs/framework-transition.md).
+[![@ai-markdown/react-mantine beta](https://img.shields.io/npm/v/@ai-markdown/react-mantine/beta?label=npm%20beta&color=orange)](https://www.npmjs.com/package/@ai-markdown/react-mantine?activeTab=versions)
+[![@ai-markdown/react-mantine monthly downloads](https://img.shields.io/npm/dm/@ai-markdown/react-mantine?label=downloads%2Fmonth&color=blue)](https://www.npmjs.com/package/@ai-markdown/react-mantine)
+[![TypeScript declarations included](https://img.shields.io/badge/TypeScript-included-3178c6?logo=typescript&logoColor=white)](https://github.com/ai-markdown/ai-markdown/tree/main/packages/react-mantine)
+[![MIT license](https://img.shields.io/badge/license-MIT-blue)](https://github.com/ai-markdown/ai-markdown/blob/main/LICENSE)
 
-[![npm version](https://img.shields.io/npm/v/@ai-markdown/react-mantine?logo=npm&color=cb3837)](https://www.npmjs.com/package/@ai-markdown/react-mantine)
-[![npm downloads](https://img.shields.io/npm/dm/@ai-markdown/react-mantine?color=blue)](https://www.npmjs.com/package/@ai-markdown/react-mantine)
-[![minzipped size](https://img.shields.io/bundlephobia/minzip/@ai-markdown/react-mantine?label=minzip)](https://bundlephobia.com/package/@ai-markdown/react-mantine)
-[![types](https://img.shields.io/npm/types/@ai-markdown/react-mantine?logo=typescript&logoColor=white&color=3178c6)](https://www.typescriptlang.org/)
+[![React 19](https://img.shields.io/badge/React-19-149eca?logo=react&logoColor=white)](#compatibility)
+[![Mantine 9](https://img.shields.io/badge/Mantine-9-339af0?logo=mantine&logoColor=white)](#compatibility)
 
-[![React 19](https://img.shields.io/badge/React-19-149eca?logo=react&logoColor=white)](https://react.dev/)
-[![Node ≥20](https://img.shields.io/badge/Node-%E2%89%A520-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
-[![ESM + CJS](https://img.shields.io/badge/module-ESM%20%2B%20CJS-f7df1e?logo=javascript&logoColor=black)](#installation)
-[![Mantine ≥9](https://img.shields.io/badge/Mantine-%E2%89%A59-339af0?logo=mantine&logoColor=white)](https://mantine.dev/)
-[![license](https://img.shields.io/npm/l/@ai-markdown/react-mantine?color=green)](https://github.com/ai-markdown/ai-markdown/blob/main/LICENSE)
-
-[![CI](https://img.shields.io/github/actions/workflow/status/ai-markdown/ai-markdown/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/ai-markdown/ai-markdown/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/actions/workflow/status/ai-markdown/ai-markdown/release.yml?label=release&logo=githubactions&logoColor=white)](https://github.com/ai-markdown/ai-markdown/actions/workflows/release.yml)
-[![part of ai-markdown](https://img.shields.io/badge/monorepo-ai--markdown-8a2be2?logo=github)](https://github.com/ai-markdown/ai-markdown)
+> **3.0.0-beta.2:** React and Vue adapters share the public `@ai-markdown/core` and `@ai-markdown/engine` packages. All five release-train packages are published under `@beta`; stable 3.0.0 is not released. See the [migration guide](../../docs/framework-transition.md).
 
 `@ai-markdown/react-mantine` adds Mantine presentation to the React renderer: theme-aware typography, expandable highlighted code, source-preserving JSON formatting, and Mermaid diagrams. Its `MantineAIMarkdown` wrapper accepts the React adapter's props and adds one `codeBlock` behavior group.
 
@@ -23,7 +16,7 @@ Parsing, URL policy, metadata, and cross-chunk references remain engine/React ad
 
 > **Upgrading from 1.x?** v2.0.0 removes the 1.x object-based `config` channel — the Mantine code-block options move to a flat `codeBlock` prop, and the render-state hook is replaced by narrow hooks plus `useMantineCodeBlockOptions()`. See the [migration guide](https://github.com/ai-markdown/ai-markdown/blob/main/docs/migrating-to-v2.md).
 
-## What It Adds on Top of Core
+## What It Adds to the React Adapter
 
 - **Mantine typography** -- markdown content is wrapped in Mantine's `<Typography>` so it inherits the active theme's font family, line height, and color tokens
 - **Syntax highlighting** -- code blocks render via `@mantine/code-highlight` (powered by highlight.js), with language-labelled tabs, expand/collapse, and optional auto-detection for unlabelled blocks
@@ -32,7 +25,7 @@ Parsing, URL policy, metadata, and cross-chunk references remain engine/React ad
 - **Automatic color scheme** -- detects Mantine's computed color scheme (`useComputedColorScheme`) and forwards it to the core renderer when no explicit `colorScheme` prop is supplied
 - **Mantine-scoped CSS** -- extra-styles wrapper overrides Mantine spacing/font-size custom properties to use relative `em` units, giving consistent scaling at any base font size
 
-All core features (GFM, LaTeX math, CJK support, streaming, metadata context, content preprocessors, custom components, cross-chunk coordination via `<AIMarkdownDocuments>`) are inherited unchanged from `@ai-markdown/react`. See the [React README](https://github.com/ai-markdown/ai-markdown/blob/main/packages/react/README.md) for the base API.
+All React adapter features (GFM, LaTeX math, CJK support, streaming, metadata context, content preprocessors, custom components, cross-chunk coordination via `<AIMarkdownDocuments>`) are inherited unchanged from `@ai-markdown/react`. See the [React README](https://github.com/ai-markdown/ai-markdown/blob/main/packages/react/README.md) for the base API.
 
 ## Package family
 
@@ -40,6 +33,7 @@ All core features (GFM, LaTeX math, CJK support, streaming, metadata context, co
 | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
 | [`@ai-markdown/core`](https://www.npmjs.com/package/@ai-markdown/core)                                   | Framework-independent sessions, block planning, contributions and smooth coordination                       | Release train; exact engine dependency                    |
 | [`@ai-markdown/react`](https://www.npmjs.com/package/@ai-markdown/react)                                 | The React renderer — `<AIMarkdown>`, `<AIMarkdownSmoothStream>`, `<AIMarkdownDocuments>`, hooks, providers  | Release train                                             |
+| [`@ai-markdown/vue`](https://www.npmjs.com/package/@ai-markdown/vue)                                     | Vue 3.5 renderer — components, scoped slots, SSR/hydration and smooth composables                           | Release train; exact core and engine dependencies         |
 | [`@ai-markdown/react-mantine`](https://www.npmjs.com/package/@ai-markdown/react-mantine)                 | Mantine UI bindings — themed typography, code-highlight tabs, Mermaid, color-scheme wiring                  | Release train; exact React peer during beta               |
 | [`@ai-markdown/engine`](https://www.npmjs.com/package/@ai-markdown/engine)                               | Framework-agnostic engine — incremental parsing, LaTeX preprocessing, plugin pipeline, cross-chunk registry | Release train; pinned exactly by shared core and adapters |
 | [`@ai-markdown/remark-mark-highlight`](https://www.npmjs.com/package/@ai-markdown/remark-mark-highlight) | remark plugin for `==mark==` highlight syntax                                                               | Independent semver                                        |
@@ -49,11 +43,11 @@ All core features (GFM, LaTeX math, CJK support, streaming, metadata context, co
 |                |                                                                                                        |
 | -------------- | ------------------------------------------------------------------------------------------------------ |
 | Mantine        | `@mantine/core` ^9 and `@mantine/code-highlight` ^9 (peer dependencies)                                |
-| highlight.js   | ^11.11 (peer; loaded on demand for auto-detection, otherwise via your adapter)                         |
-| React          | ≥ 19                                                                                                   |
+| highlight.js   | ^11.11.2 (peer; loaded on demand for auto-detection, otherwise via your adapter)                       |
+| React          | ^19.0.0                                                                                                |
 | Node           | ≥ 20 (`engines.node`)                                                                                  |
 | Module formats | ESM and CJS with types; the compiled stylesheet is exported as `@ai-markdown/react-mantine/styles.css` |
-| Core           | Core peer `^2.13.3` in this checkout; publish versions follow the core release train                   |
+| React adapter  | `@ai-markdown/react` peer exactly `3.0.0-beta.2`; upgrade both packages together                       |
 
 ## Installation
 
@@ -67,6 +61,14 @@ pnpm add @ai-markdown/react-mantine@beta @ai-markdown/react@beta
 # yarn
 yarn add @ai-markdown/react-mantine@beta @ai-markdown/react@beta
 ```
+
+The commands above add the integration and its React peer. For a new React application, also install the UI peers and KaTeX for the math example:
+
+```bash
+pnpm add react@^19 react-dom@^19 @mantine/core@^9 @mantine/code-highlight@^9 highlight.js@^11.11.2 katex
+```
+
+Mantine uses the React adapter and does not depend directly on shared core. Vue applications use the [Vue adapter](../vue/README.md); this integration provides React components only.
 
 ### Peer Dependencies
 
@@ -428,7 +430,7 @@ See [docs/smooth-streaming.md](https://github.com/ai-markdown/ai-markdown/blob/m
        colorScheme         = useComputedColorScheme('light')  (when not overridden)
 ```
 
-Caller-provided `Typography`, `ExtraStyles`, and `customComponents` props override the Mantine defaults at their respective slots. Inside the wrapped `<AIMarkdown>`, the rest of the render pipeline (the five per-system contexts, content preprocessors, remark/rehype plugin chain) is identical to standalone core -- see the [core architecture overview](https://github.com/ai-markdown/ai-markdown/blob/main/packages/react/README.md#architecture-overview).
+Caller-provided `Typography`, `ExtraStyles`, and `customComponents` props override the Mantine defaults at their respective slots. Inside the wrapped `<AIMarkdown>`, the rest of the render pipeline (the five per-system contexts, content preprocessors, remark/rehype plugin chain) is identical to the standalone React adapter -- see the [React architecture overview](https://github.com/ai-markdown/ai-markdown/blob/main/packages/react/README.md#architecture-overview).
 
 ## Exported API
 
@@ -484,7 +486,7 @@ Everything below applies unchanged through `<MantineAIMarkdown>`; the mantine-sp
 | [Architecture](https://github.com/ai-markdown/ai-markdown/blob/main/docs/architecture.md) · [Benchmark](https://github.com/ai-markdown/ai-markdown/blob/main/docs/benchmark.md)                                                                                                                         | How the packages fit together, measured numbers                                          |
 | [Migrating to v2](https://github.com/ai-markdown/ai-markdown/blob/main/docs/migrating-to-v2.md) · [Release highlights](https://github.com/ai-markdown/ai-markdown/blob/main/docs/release-highlights.md)                                                                                                 | Old → new API mapping, what changed per version                                          |
 
-## Core Package
+## React Adapter
 
 For base features, configuration options, content preprocessors, TypeScript generics, and architecture details, see the [`@ai-markdown/react` README](https://github.com/ai-markdown/ai-markdown/blob/main/packages/react/README.md).
 
@@ -502,7 +504,7 @@ Only a plain pre/code shape is eligible for replacement: one positioned code chi
 
 Check light and dark schemes, a known language, an unannotated block, JSON with a large numeric literal, a nested JSON string, and a Mermaid fence that is incomplete before becoming valid. Copy each source and compare its whitespace with the original. Then replace a block with different content of the same length, complete a stream during a pending highlight interval, and change the theme after a diagram has rendered.
 
-For custom wrappers, test an outer behavior provider both with an absent `codeBlock` prop and a present partial group. For multiple logical chunks, use the same core `AIMarkdownDocuments` wrapper and explicit document ids; no Mantine-specific registry exists. Smooth presentation composes through the React adapter's hooks, whose returned streaming state includes the reveal drain.
+For custom wrappers, test an outer behavior provider both with an absent `codeBlock` prop and a present partial group. For multiple logical chunks, use the same React `AIMarkdownDocuments` wrapper and explicit document ids; no Mantine-specific registry exists. Smooth presentation composes through the React adapter's hooks, whose returned streaming state includes the reveal drain.
 
 See [`src/MantineAIMarkdown.tsx`](./src/MantineAIMarkdown.tsx) for wrapper precedence and [`src/defs.tsx`](./src/defs.tsx) for the authoritative group defaults. The package's README describes its presentation layer; the [React README](../react/README.md) remains the reference for inherited parsing and coordination behavior.
 

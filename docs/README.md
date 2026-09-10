@@ -1,18 +1,27 @@
-# ai-markdown — Extending & Customization Guide
+# ai-markdown — Usage & Customization
 
 For repository development, start with the [development command reference](./development-commands.md).
 
-Current development: [core/engine API contracts](./api/core-engine-contracts.md) and [Vue adapter](../packages/vue/README.md). The workspace prepares an unreleased 3.0.0-beta.2 candidate; Vue was not included in the published beta.1 packages.
+Start with [Getting started](./getting-started.md) for React 19, Vue 3.5 and Mantine 9 installation, stylesheets and package boundaries. The five main packages share the published `3.0.0-beta.2` train; the highlight plugin versions independently. Advanced adapter authors can use the [core/engine API contracts](./api/core-engine-contracts.md).
 
 For the final legacy release and the subsequent multi-framework package migration, read [From ai-react-markdown to ai-markdown](./framework-transition.md). The [shared core README](../packages/core/README.md) documents the extracted shared layer.
 
 These guides explain how to integrate, customize, and maintain ai-markdown against the code in this repository. Start with the [project README](../README.md) for package selection and installation, or a package's README for its full public API. This directory goes deeper into rendering contracts, lifecycle behavior, implementation boundaries, and verification.
 
-The examples use the current 2.x flat-prop API unless explicitly labeled as historical. The [migration guide](./migrating-to-v2.md) includes removed 1.x APIs for comparison; [release highlights](./release-highlights.md) and benchmark records preserve the behavior and measurements of the versions they describe.
+The examples target the current `@ai-markdown` 3.0 beta package structure. React retains the flat-prop API introduced in 2.x; Vue uses its own component props and setup composables. React hooks, `customComponents`, typography variants and behavior providers are not Vue APIs. Each usage guide identifies its framework scope and links to the corresponding Vue entry when applicable. The [migration guide](./migrating-to-v2.md) includes removed 1.x APIs for comparison; [release highlights](./release-highlights.md) and benchmark records preserve the behavior and measurements of the versions they describe.
 
 For an ordinary chat message, accumulate transport deltas into one Markdown string and update one renderer. Add custom components for application behavior, tokens for visual adjustments, and `<AIMarkdownDocuments>` only when one logical document is deliberately split into multiple Markdown units. This distinction matters because reference coordination cannot join syntax split across component boundaries.
 
 The scenario index below is the shortest route to a working integration. The full index also includes architecture and maintenance material for contributors.
+
+## Choose your adapter
+
+| Application           | Package reference                                                          | Usage path                                                                               |
+| --------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| React 19              | [React README](../packages/react/README.md)                                | The React recipes below; Mantine inherits these props                                    |
+| Vue 3.5               | [Vue README](../packages/vue/README.md)                                    | Vue setup, scoped slots, SSR, streaming and references                                   |
+| React with Mantine 9  | [Mantine README](../packages/react-mantine/README.md)                      | Providers, styles, code highlighting and Mermaid                                         |
+| New framework adapter | [Core](../packages/core/README.md), [engine](../packages/engine/README.md) | [Public contracts](./api/core-engine-contracts.md) and [architecture](./architecture.md) |
 
 ## By scenario (start here)
 
@@ -65,9 +74,8 @@ If none of these matches, the full topic index below covers every surface.
 | ★   | [CJK typography](./cjk-typography.md)                        | Chinese / Japanese / Korean text — line breaking, pangu spacing, font stack                                  |
 | ★   | [Release highlights](./release-highlights.md)                | What's notable in each version — distilled from the commit log                                               |
 | ★   | [Benchmark](./benchmark.md)                                  | Measured numbers for block-memo × incremental parse, methodology, and how to reproduce them                  |
-
-| ★ | [Soak coverage](./soak-coverage.md) | Map stateful optimizations to oracles, tests, release legs, and engagement checks |
-| ★ | [Core contracts and state sequences](./core-testing.md) | Independent core gate, module ownership, fixed-seed sequences and failure replay |
+| ★   | [Soak coverage](./soak-coverage.md)                          | Map stateful optimizations to oracles, tests, release legs, and engagement checks                            |
+| ★   | [Core contracts and state sequences](./core-testing.md)      | Independent core gate, module ownership, fixed-seed sequences and failure replay                             |
 
 The documents can be read independently; code recipes that build on earlier definitions say so. Cross-references are inlined where helpful.
 
@@ -77,7 +85,7 @@ The documents can be read independently; code recipes that build on earlier defi
 
 ## A note on stability
 
-The library follows semver:
+The current 3.0 prerelease APIs can change between beta versions. Pin an exact version when validating an integration and upgrade the packages together. The table below describes the intended stable React API policy; it is not a compatibility guarantee between prereleases. Vue has a separate public prop/type surface documented in its README.
 
 | Surface                                                                                                              | Stability under minor versions                                                      |
 | -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
@@ -92,7 +100,7 @@ The library follows semver:
 | Internal byte-for-byte HTML output                                                                                   | Not stable — prefer semantic assertions for application tests; use semantic queries |
 | Everything exported by `@ai-markdown/engine`                                                                         | **Not stable before 3.0.0** — see below                                             |
 
-**On the shared packages.** `@ai-markdown/core` owns framework-independent sessions, planning, contributions and smooth coordination; `@ai-markdown/engine` owns parsing, tree algorithms and registry primitives. Both are public beta packages with explicit exports. Installing `@ai-markdown/react@beta` resolves both as exact-version dependencies. Adapter authors can use them directly, keeping the four release-train packages aligned at the same exact train version. Their advanced contracts may evolve before stable 3.0.0; the React package supplies the component and hook API used in the application guides.
+**On the shared packages.** `@ai-markdown/core` owns framework-independent sessions, planning, contributions and smooth coordination; `@ai-markdown/engine` owns parsing, tree algorithms and registry primitives. Both are public beta packages with explicit exports. Installing `@ai-markdown/react@beta` or `@ai-markdown/vue@beta` resolves both as exact-version dependencies. Adapter authors can use them directly, keeping the five release-train packages (engine, core, react, vue and react-mantine) aligned at the same exact train version. Their advanced contracts may evolve before stable 3.0.0; the React package supplies the component and hook API used in the application guides.
 
 When in doubt, pin your overrides explicitly rather than relying on defaults.
 
@@ -122,13 +130,13 @@ Issue tracker: <https://github.com/ai-markdown/ai-markdown/issues>
 
 Follow a value through its owner before changing its documentation. Public props are resolved in the React adapter; syntax and incremental algorithms belong to engine; pipeline sessions, plans and contribution orchestration belong to shared core; React providers, effects, and cached element construction belong to the React adapter; Mantine owns its code presentation and group defaults. An export in engine is not automatically a supported React API.
 
-| Question                                   | Implementation to inspect                               | Guide to keep aligned                      |
-| ------------------------------------------ | ------------------------------------------------------- | ------------------------------------------ |
-| What does an omitted prop do?              | Core prop resolver and the wrapper's parameter defaults | Package props reference, migration guide   |
-| When can an old parse or block be reused?  | Incremental advance, block planner, MarkdownContent     | Architecture, streaming and performance    |
-| Which chunk owns a reference?              | Document registry and consuming placeholder             | Cross-chunk coordination, URL sanitization |
-| What text is displayed or copied?          | Core preprocessor chain and Mantine code renderer       | Content preprocessors, Mantine README      |
-| When is a streamed result complete?        | Transport state, smooth controller, document queue      | Chat example, smooth streaming             |
-| What proves an optimization was exercised? | Coverage map, oracle tests, soak manifests              | Soak coverage, experimental record         |
+| Question                                   | Implementation to inspect                                | Guide to keep aligned                      |
+| ------------------------------------------ | -------------------------------------------------------- | ------------------------------------------ |
+| What does an omitted prop do?              | React prop resolver and the wrapper's parameter defaults | Package props reference, migration guide   |
+| When can an old parse or block be reused?  | Incremental advance, block planner, MarkdownContent      | Architecture, streaming and performance    |
+| Which chunk owns a reference?              | Document registry and consuming placeholder              | Cross-chunk coordination, URL sanitization |
+| What text is displayed or copied?          | Engine preprocessor chain and Mantine code renderer      | Content preprocessors, Mantine README      |
+| When is a streamed result complete?        | Transport state, smooth controller, document queue       | Chat example, smooth streaming             |
+| What proves an optimization was exercised? | Coverage map, oracle tests, soak manifests               | Soak coverage, experimental record         |
 
 When contributing documentation, retain useful examples and historical measurements, but identify their version and scope. Verify current API names, defaults, relative links, and commands against this checkout. A successful build establishes that package artifacts compile; it does not by itself validate every prose claim or performance estimate.

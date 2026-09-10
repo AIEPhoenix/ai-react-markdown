@@ -1,6 +1,6 @@
 # Architecture Overview
 
-The repository separates Markdown computation from React rendering. `@ai-markdown/engine` owns normalization, parsing, tree transformation, incremental state, and document registries. The shared `@ai-markdown/core` adds pipeline sessions, block planning, contribution publishing, aggregate footnote HAST and smooth reveal coordination. `@ai-markdown/react` consumes those results as a React adapter, supplies contexts and slots, and manages render caches. `@ai-markdown/react-mantine` composes the React adapter's public API to provide Mantine typography and code/diagram UI.
+The repository separates Markdown computation from React and Vue rendering. `@ai-markdown/engine` owns normalization, parsing, tree transformation, incremental state, and document registries. The shared `@ai-markdown/core` adds pipeline sessions, block planning, contribution publishing, aggregate footnote HAST and smooth reveal coordination. `@ai-markdown/react` consumes those results as a React adapter, supplies contexts and slots, and manages render caches. `@ai-markdown/react-mantine` composes the React adapter's public API to provide Mantine typography and code/diagram UI.
 
 Read this guide when tracing a rendering defect, changing an optimization, or building an integration. The important distinction is between an input changing, a syntax tree being recomputed, a block plan being rebuilt, and a React consumer rendering. Those are separate events with different dependencies. A context update need not reparse Markdown, and a successful incremental parse does not make all remaining work proportional to the latest token.
 
@@ -12,7 +12,7 @@ Shared core owns computation sessions, not React lifecycle. `MarkdownContent` ke
 
 ## Vue adapter
 
-The unreleased Vue adapter uses the same sessions, planner and contribution preparation as React. It keeps AST and registry identities outside deep reactive proxies, selects stable plugin/schema inputs through computed refs, and publishes only after mount. VNode conversion clones HAST before final URL policy; resolved cross-chunk links/images use the shared resolver. SSR and initial hydration do not allocate registries. Vue 3.5 useId supplies stable automatic IDs, and DOM observers belong to the Vue cursor component. See the [Vue README](../packages/vue/README.md) and [shared API contracts](./api/core-engine-contracts.md).
+The Vue adapter, published since 3.0.0-beta.2, uses the same sessions, planner and contribution preparation as React. It keeps AST and registry identities outside deep reactive proxies, selects stable plugin/schema inputs through computed refs, and publishes only after mount. VNode conversion clones HAST before final URL policy; resolved cross-chunk links/images use the shared resolver. SSR and initial hydration do not allocate registries. Vue 3.5 useId supplies stable automatic IDs, and DOM observers belong to the Vue cursor component. See the [Vue README](../packages/vue/README.md) and [shared API contracts](./api/core-engine-contracts.md).
 
 ## The React component tree
 
@@ -160,7 +160,7 @@ Long ids (>16 chars) are hashed via MurmurHash3 → Base62 before encoding, to k
 
 ## The cross-chunk registry
 
-Located at `packages/engine/src/components/documentRegistry.ts` (framework-agnostic; core re-exports its public types). Key invariants:
+Located at `packages/engine/src/components/documentRegistry.ts` (framework-agnostic; React re-exports its read-side public types). Key invariants:
 
 1. **Per-`documentId` partitioning**. The wrapper holds a `Map<documentId, Registry>`. Each unique id gets its own registry.
 2. **Symbol-keyed contributions**. Each chunk allocates a `Symbol(reactId)` on mount and contributes to the registry under that symbol. The symbol is the chunk's identity for the registry's lifetime.
@@ -185,7 +185,7 @@ Shared planning and fingerprints live in `packages/core/src/blockPlan.ts` and `b
 
 These invariants are enforced by tests (`byteEquivalence.test.tsx` is the harness that verifies byte-identical output across every plugin permutation and `blockMemo` on/off).
 
-Before changing planning or rendering, read the [runtime contracts](../packages/core/README.md#planning-and-rendering-contracts). They document cache identity, ownership and commit timing; no untracked local design file is required.
+Before changing planning or rendering, read the [shared core contracts](../packages/core/README.md#planning-and-rendering-contracts). They document cache identity, ownership and commit timing; no untracked local design file is required.
 
 ---
 
@@ -243,7 +243,7 @@ The fork is intentional and the surface area is small. Consumers don't need to i
 
 ```text
 packages/engine/src/                ← @ai-markdown/engine (framework-agnostic)
-├── index.ts                    ← entry barrel (internal supplier for core)
+├── index.ts                    ← explicit public algorithm exports for core and adapters
 ├── plugins/
 │   ├── catalog.ts              ← the five sealed engine plugins + defaultEnginePlugins
 │   └── defs.ts                 ← AIMarkdownEnginePlugin type + seal brand
@@ -276,6 +276,30 @@ packages/engine/src/                ← @ai-markdown/engine (framework-agnostic)
     ├── hastPredicates.ts       ← shared hast detection helpers
     ├── normalizeId.ts / shortenDocumentId.ts / devStageTimings.ts
     └── …
+```
+
+```text
+packages/core/src/                 ← @ai-markdown/core (framework-independent)
+├── index.ts                       ← explicit public orchestration exports
+├── coordinationPreparation.ts     ← phantom targets and shared policy decisions
+├── pipelineSession.ts             ← one consumer’s parse session
+├── blockPlan.ts / blockPlanner.ts ← neutral plan and retained-plan reuse
+├── contribution.ts                ← committed publication
+├── aggregateFootnotes.ts          ← aggregate footer HAST
+├── cloneHastForRender.ts           ← render-owned structural clone
+├── smoothCoordinator.ts           ← document reveal queue
+└── tailSignal.ts                  ← source-tail classification
+
+packages/vue/src/                  ← @ai-markdown/vue (Vue 3.5)
+├── index.ts                       ← components, composables and shared helpers
+├── AIMarkdown.ts                  ← props and Vue lifecycle
+├── useMarkdownChunk.ts            ← per-chunk session/planner integration
+├── documents.ts                   ← provider and document scopes
+├── render.ts                      ← HAST to VNodes, components and slots
+├── smooth.ts                      ← smooth component and composables
+├── cursor.ts                      ← DOM cursor and observer lifecycle
+├── types.ts                       ← public props and element context
+└── styles.css                     ← base presentation
 ```
 
 ```text
@@ -321,7 +345,9 @@ packages/react-mantine/src/
     └── useMantineAIMarkdownMetadata.ts
 ```
 
-The trail of file names is intentionally descriptive — when you're debugging or extending, grep is your friend.
+`packages/remark-mark-highlight` is the independently versioned remark plugin consumed by engine. It is the sixth public package; `packages/react/plugins` is only an export subpath.
+
+Storybook apps live in `apps/storybook-{hub,react,vue}`, with shared helpers in `tooling/storybook-kit`. Those workspaces, the corpus, benchmarks and archived prototypes are private. See [development commands](./development-commands.md) for package-filtered builds and tests.
 
 ## Package boundary and verification ownership
 

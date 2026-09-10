@@ -1,6 +1,8 @@
 # TypeScript Generics
 
-Core has one component generic: `TMetadata`. It describes the value supplied through `metadata`, while ordinary props describe theme, lifecycle, pipeline choices, and rendering slots. There is no configuration generic in v2.
+These metadata generics and definition factories belong to `@ai-markdown/react`. Vue exposes `AIMarkdownProps`, `MarkdownComponents` and a `MarkdownElementContext` whose metadata is `unknown`. See the [Vue guide](../packages/vue/README.md#api-and-distribution) and [package setup](./getting-started.md).
+
+The React adapter has one component generic: `TMetadata`. It describes the value supplied through `metadata`, while ordinary props describe theme, lifecycle, pipeline choices, and rendering slots. There is no configuration generic in v2.
 
 ```ts
 function AIMarkdown<TMetadata extends AIMarkdownMetadata = AIMarkdownMetadata>(
@@ -257,6 +259,6 @@ Optional fields deserve particular care in group hooks. `{ ...defaults, ...group
 
 ## Other typed streaming surfaces
 
-Core also exports `AIMarkdownSmoothStreamProps<TMetadata>`, `UseSmoothStreamOptions`, `UseSmoothStreamResult`, and `UseDocumentSmoothStreamOptions`. The smooth shell preserves the same metadata generic; the hooks operate on strings and lifecycle state and do not need one. Controller types (`SmoothStreamController`, `SmoothStreamOptions`, `SmoothStreamPacing`, `SmoothStreamPacingParams`) describe the framework-independent pacing layer.
+The React adapter also exports `AIMarkdownSmoothStreamProps<TMetadata>`, `UseSmoothStreamOptions`, `UseSmoothStreamResult`, and `UseDocumentSmoothStreamOptions`. The smooth shell preserves the same metadata generic; the hooks operate on strings and lifecycle state and do not need one. Controller types (`SmoothStreamController`, `SmoothStreamOptions`, `SmoothStreamPacing`, `SmoothStreamPacingParams`) describe the framework-independent pacing layer.
 
-The authoritative exported names are in [`core/src/index.tsx`](../packages/react/src/index.tsx), with payload types in [`context.tsx`](../packages/react/src/context.tsx). The [subpackage guide](./extending-via-subpackage.md) shows how a wrapper's props, group hook, and widened factory fit together.
+The authoritative exported names are in [`react/src/index.tsx`](../packages/react/src/index.tsx), with payload types in [`context.tsx`](../packages/react/src/context.tsx). The [subpackage guide](./extending-via-subpackage.md) shows how a wrapper's props, group hook, and widened factory fit together.

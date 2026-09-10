@@ -1,5 +1,7 @@
 # Migrating from 1.x to 2.0
 
+This is the historical React 1.x → 2.x API migration. To adopt the current 3.0 beta packages, also follow [From ai-react-markdown to ai-markdown](./framework-transition.md); the old React core package is now `@ai-markdown/react`, while `@ai-markdown/core` is framework-independent.
+
 The 2.0 migration replaces `config` and `defaultConfig` with flat component props, a sealed engine-plugin selection, and separate contexts for document identity, metadata, state, theme, and behaviors. The old config types and render-state hooks were removed; upgrading requires updating imports and call sites rather than enabling a compatibility flag.
 
 Use the mapping tables below to preserve your selections, then migrate custom renderers and wrapper defaults. The before snippets intentionally use removed 1.x APIs; only the after snippets target 2.x. Template values such as `content`, `MY_SCHEMA`, and application wrapper types stand for code in your project.
@@ -339,7 +341,7 @@ replacement (nothing on the v2 surface is deep-partial).
   `extendSanitizeSchema` — unchanged from 1.x.
 - **Flat props share one namespace across core and wrappers.** Wrapper
   authors must check the prop-name registry (the props table in the
-  [core README](../packages/core/README.md#props-api-reference)) before
+  [core README](../packages/react/README.md#props-api-reference)) before
   adding fields; collisions are compile errors for TS consumers but
   silent overrides for plain-JS consumers.
 

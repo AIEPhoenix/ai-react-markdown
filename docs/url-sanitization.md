@@ -1,5 +1,7 @@
 # URL Sanitization & Custom Schemes
 
+The two-stage policy is shared by React and Vue. Examples use React imports; Vue exports `extendSanitizeSchema`, `defaultUrlTransform` and `UrlTransform` from its root and accepts `:sanitize-schema` and `:url-transform`. See the [Vue guide](../packages/vue/README.md#component-props) and [package setup](./getting-started.md).
+
 URL handling has two stages. The sanitize schema first decides which HTML elements, attributes, and protocols survive. The render-time `urlTransform` then evaluates each surviving URL-bearing attribute. To allow a private protocol such as `myapp:`, configure both stages for the particular attribute that needs it.
 
 These stages have different outputs. A schema rejection can remove an attribute before your callback runs. A callback can return an empty string, `null`, or `undefined`; these values should not be described as interchangeable HTML. A legal empty destination is also different from a blocked destination. This guide explains that distinction, shows a typed extension recipe, and describes how the same policy applies to coordinated references.
@@ -129,7 +131,7 @@ const URL_TRANSFORM = (url) => {
 
 ### Setting `urlTransform={null}`
 
-Passing `null` is equivalent to omitting the prop entirely — `<AIMarkdown>` falls back to `defaultUrlTransform` (core normalizes the absent value before forwarding it). There is no "disable the per-attribute pass" mode; the urlTransform stage always runs. If you need to widen the allowlist, compose with `defaultUrlTransform` as shown above.
+Passing `null` is equivalent to omitting the prop entirely — `<AIMarkdown>` falls back to `defaultUrlTransform` (the React adapter normalizes the absent value before forwarding it). There is no "disable the per-attribute pass" mode; the urlTransform stage always runs. If you need to widen the allowlist, compose with `defaultUrlTransform` as shown above.
 
 ---
 
@@ -336,7 +338,7 @@ The engine's private placeholder tags are also checked for provenance between ra
 
 ## Keep the policy boundary explicit
 
-Schema customization replaces the supplied schema; core does not merge it with defaults afterward. `extendSanitizeSchema` starts you from the complete library schema, but returning a different object or deleting material can still remove its invariants. In particular, removing a `protocols` restriction is not the same operation as blocking all protocols on that attribute.
+Schema customization replaces the supplied schema; the React adapter does not merge it with defaults afterward. `extendSanitizeSchema` starts you from the complete library schema, but returning a different object or deleting material can still remove its invariants. In particular, removing a `protocols` restriction is not the same operation as blocking all protocols on that attribute.
 
 The default schema strips certain raw-text elements together with their content, including `script`, `style`, `title`, and `iframe`. KaTeX renders after sanitization, using the admitted math markers. A custom component or downstream HTML injection creates output outside that earlier sanitize pass. Assess such output at the point you introduce it.
 

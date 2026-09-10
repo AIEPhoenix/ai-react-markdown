@@ -1,6 +1,8 @@
 # Streaming Cursor
 
-`streamingCursor` is a component slot for a visual “still generating” indicator. Core mounts it inside the typography wrapper while `streaming` is true. The exported `AIMarkdownStreamingCursor` positions a small overlay after the final supported text anchor and keeps animating during pauses in delivery.
+The component-slot API below is React-specific. Vue enables its cursor by default with a boolean `streamingCursor` prop and customizes it through the `cursor` slot. See the [Vue guide](../packages/vue/README.md#cursor-behavior) and [package setup](./getting-started.md).
+
+`streamingCursor` is a component slot for a visual “still generating” indicator. The React adapter mounts it inside the typography wrapper while `streaming` is true. The exported `AIMarkdownStreamingCursor` positions a small overlay after the final supported text anchor and keeps animating during pauses in delivery.
 
 ```tsx
 import AIMarkdown, { AIMarkdownStreamingCursor } from '@ai-markdown/react';
@@ -32,7 +34,7 @@ The obvious approach — `content={content + '▍'}` while streaming — used to
 
 Three layers, mechanics separated from visuals:
 
-1. **The slot** (`streamingCursor?: ComponentType` on `<AIMarkdown>`): core renders the given component after the content — inside the typography wrapper and both context providers — only while `streaming === true`. No props are injected; the slot controls only _when_ and _where_ the component mounts. Like `Typography`, it is compared by identity: **define it at module scope**.
+1. **The slot** (`streamingCursor?: ComponentType` on `<AIMarkdown>`): the React adapter renders the given component after the content — inside the typography wrapper and both context providers — only while `streaming === true`. No props are injected; the slot controls only _when_ and _where_ the component mounts. Like `Typography`, it is compared by identity: **define it at module scope**.
 
 2. **The positioner shell** (`<AIMarkdownStreamingCursor />`): a zero-height overlay that finds the last text node of the rendered content (a whitelist DOM walk), measures its final character with the Range API (surrogate-pair aware, so emoji tails measure correctly), and imperatively translates an absolutely-positioned holder to sit right after it. Repositioning is driven by three pre-paint signals — a MutationObserver on the content root (tokens, tail-block morphs), a ResizeObserver (container reflow), and `document.fonts.ready` (font swap) — so positioning responds to content and geometry changes without routing x/y coordinates through React state. Actual observer and paint timing remains browser-dependent. Pixels move, not DOM nodes: the cursor never enters the text flow, so select-all/copy never picks it up.
 

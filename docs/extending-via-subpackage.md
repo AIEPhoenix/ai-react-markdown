@@ -1,6 +1,6 @@
 # Extending via a Sub-package
 
-These examples target the unreleased 3.0.0-beta.2 workspace candidate; use the matching released train when distributing an integration.
+These examples target the published 3.0.0-beta.2 package train. Match the React peer version when distributing an integration; see [Getting started](./getting-started.md) for installation and package boundaries.
 
 Here, the base renderer, its props, providers and hooks belong to `@ai-markdown/react`. The separate `@ai-markdown/core` supplies framework-independent orchestration and has no React context or UI API. UI integrations keep the React adapter as a peer; framework adapters depend on shared core and engine.
 
@@ -8,7 +8,7 @@ Build a React integration by wrapping `@ai-markdown/react` and defining the desi
 
 This guide follows that same construction in nine steps, from a behavior-group interface to the package's public barrel and peer dependencies. The `Your…` components and `your-design-system` imports are template names to implement in your package; they are not installed modules. Examples show the contracts you need to preserve, with the source of defaults and the ownership of each prop made explicit.
 
-Use the React adapter's public props, slots, additive providers, stable-value helpers, and factories. A React design-system integration does not need direct engine imports. The engine is a separately published internal supplier whose exports may change in any release before 3.0.0. A non-React adapter is a different project: it consumes syntax trees directly, pins an exact engine version, and takes responsibility for its own rendering lifecycle.
+Use the React adapter's public props, slots, additive providers, stable-value helpers, and factories. A React design-system integration does not need direct engine imports. Engine and shared core are public adapter-author packages whose advanced exports may change between betas before 3.0.0. A non-React adapter is a different project: it consumes syntax trees directly, depends on matching exact core and engine versions, and takes responsibility for its own rendering lifecycle. The [Vue adapter](../packages/vue/README.md) is the existing second-framework implementation; use its public components for a Vue UI integration.
 
 ## The extension points, at a glance
 

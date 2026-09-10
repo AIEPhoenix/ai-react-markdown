@@ -1,6 +1,8 @@
 # Streaming & Performance
 
-Streaming repeatedly renders a growing Markdown document. Core reduces that work at three levels: append-aware preprocessing, verified incremental parsing, and block-level React-node caching. The `streaming` prop describes lifecycle state; it does not enable those optimizations. `blockMemo` and `incrementalParse` are both on by default.
+The `blockMemo` prop, hooks and profiling examples below are React-specific. Vue shares the incremental engine and core planner, but does not expose React’s block cache switch. See the [Vue guide](../packages/vue/README.md#component-props) and [package setup](./getting-started.md).
+
+Streaming repeatedly renders a growing Markdown document. Engine provides append-aware preprocessing and verified incremental parsing; shared core plans blocks; the React adapter caches rendered React nodes. The `streaming` prop describes lifecycle state; it does not enable those optimizations. `blockMemo` and `incrementalParse` are both on by default.
 
 This guide explains which work each mechanism saves and which changes invalidate it. It also covers cross-chunk costs, stable prop references, profiling, and the Mantine code-display cadence. The goal is to identify the expensive stage in your workload rather than infer performance from a flag or from a single historical benchmark.
 
@@ -10,7 +12,7 @@ This guide explains which work each mechanism saves and which changes invalidate
 <AIMarkdown content={chunk} streaming={!done} />
 ```
 
-`streaming` is a plain boolean exposed via the `useAIMarkdownState()` narrow hook. Core uses the flag to mount the cursor slot and expose a source-tail signal; custom components can also read it. Mantine uses it for code-display scheduling and diagram/language-detection behavior. The parser optimization gates are separate.
+`streaming` is a plain boolean exposed via the `useAIMarkdownState()` narrow hook. The React adapter uses the flag to mount the cursor slot and expose a source-tail signal; custom components can also read it. Mantine uses it for code-display scheduling and diagram/language-detection behavior. The parser optimization gates are separate.
 
 Since the v2 context split, a `streaming` flip wakes **only `useAIMarkdownState()` subscribers** — components that read other narrow hooks (`useAIMarkdownTheme()`, `useAIMarkdownBehaviors()`, …) no longer re-render on stream start/end. The aggregate `useAIMarkdown()` subscribes to all five contexts and _does_ re-render on every flip; keep it out of per-block components.
 

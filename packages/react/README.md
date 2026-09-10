@@ -1,24 +1,19 @@
 # @ai-markdown/react
 
-> **3.0.0-beta.2 candidate (unreleased):** the new `@ai-markdown` scope separates the shared core from the React adapter. Install framework packages with `@beta`; The Vue adapter is implemented in source; its first npm publication is pending. See the [migration guide](../../docs/framework-transition.md).
+[![@ai-markdown/react beta](https://img.shields.io/npm/v/@ai-markdown/react/beta?label=npm%20beta&color=orange)](https://www.npmjs.com/package/@ai-markdown/react?activeTab=versions)
+[![@ai-markdown/react monthly downloads](https://img.shields.io/npm/dm/@ai-markdown/react?label=downloads%2Fmonth&color=blue)](https://www.npmjs.com/package/@ai-markdown/react)
+[![TypeScript declarations included](https://img.shields.io/badge/TypeScript-included-3178c6?logo=typescript&logoColor=white)](https://github.com/ai-markdown/ai-markdown/tree/main/packages/react)
+[![MIT license](https://img.shields.io/badge/license-MIT-blue)](https://github.com/ai-markdown/ai-markdown/blob/main/LICENSE)
 
-[![npm version](https://img.shields.io/npm/v/@ai-markdown/react?logo=npm&color=cb3837)](https://www.npmjs.com/package/@ai-markdown/react)
-[![npm downloads](https://img.shields.io/npm/dm/@ai-markdown/react?color=blue)](https://www.npmjs.com/package/@ai-markdown/react)
-[![minzipped size](https://img.shields.io/bundlephobia/minzip/@ai-markdown/react?label=minzip)](https://bundlephobia.com/package/@ai-markdown/react)
-[![types](https://img.shields.io/npm/types/@ai-markdown/react?logo=typescript&logoColor=white&color=3178c6)](https://www.typescriptlang.org/)
+[![React 19](https://img.shields.io/badge/React-19-149eca?logo=react&logoColor=white)](#compatibility)
 
-[![React 19](https://img.shields.io/badge/React-19-149eca?logo=react&logoColor=white)](https://react.dev/)
-[![Node ≥20](https://img.shields.io/badge/Node-%E2%89%A520-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
-[![ESM + CJS](https://img.shields.io/badge/module-ESM%20%2B%20CJS-f7df1e?logo=javascript&logoColor=black)](#installation)
-[![license](https://img.shields.io/npm/l/@ai-markdown/react?color=green)](https://github.com/ai-markdown/ai-markdown/blob/main/LICENSE)
+React 19 application adapter. For Vue 3.5, use [`@ai-markdown/vue`](../vue/README.md). For package selection, CSS setup and API differences, see [Getting started](../../docs/getting-started.md).
 
-[![CI](https://img.shields.io/github/actions/workflow/status/ai-markdown/ai-markdown/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/ai-markdown/ai-markdown/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/actions/workflow/status/ai-markdown/ai-markdown/release.yml?label=release&logo=githubactions&logoColor=white)](https://github.com/ai-markdown/ai-markdown/actions/workflows/release.yml)
-[![part of ai-markdown](https://img.shields.io/badge/monorepo-ai--markdown-8a2be2?logo=github)](https://github.com/ai-markdown/ai-markdown)
+> **3.0.0-beta.2:** React and Vue adapters share the public `@ai-markdown/core` and `@ai-markdown/engine` packages. All five release-train packages are published under `@beta`; stable 3.0.0 is not released. See the [migration guide](../../docs/framework-transition.md).
 
 `@ai-markdown/react` renders accumulated Markdown strings in React. It combines GFM, KaTeX math, CJK delimiter handling, optional typography transforms, and a verified incremental parsing path for append-heavy content. Use it with the built-in CSS or supply your own typography and element components.
 
-Core owns the React lifecycle, context hooks, document coordination, and cached element construction. Its exact-version engine dependency owns syntax processing. Code fences remain code text in core; syntax highlighting, JSON presentation, and rendered Mermaid diagrams are supplied by the Mantine package or your custom `pre` component. Start with the installation and quick start, then use the API tables to make each customization explicit.
+The React adapter owns the React lifecycle, context hooks, document coordination, and cached element construction. Its exact-version engine dependency owns syntax processing. Code fences remain code text in the React adapter; syntax highlighting, JSON presentation, and rendered Mermaid diagrams are supplied by the Mantine package or your custom `pre` component. Start with the installation and quick start, then use the API tables to make each customization explicit.
 
 > **Upgrading from 1.x?** v2.0.0 removes the 1.x object-based `config` channel (and its integrator default channel) in favor of flat props, a sealed engine-plugin catalog, and five narrow hooks. See the [migration guide](https://github.com/ai-markdown/ai-markdown/blob/main/docs/migrating-to-v2.md) for the complete old → new mapping with before/after code.
 
@@ -42,6 +37,7 @@ Core owns the React lifecycle, context hooks, document coordination, and cached 
 | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
 | [`@ai-markdown/core`](https://www.npmjs.com/package/@ai-markdown/core)                                   | Framework-independent sessions, block planning, contributions and smooth coordination                       | Release train; exact engine dependency                    |
 | [`@ai-markdown/react`](https://www.npmjs.com/package/@ai-markdown/react)                                 | The React renderer — `<AIMarkdown>`, `<AIMarkdownSmoothStream>`, `<AIMarkdownDocuments>`, hooks, providers  | Release train                                             |
+| [`@ai-markdown/vue`](https://www.npmjs.com/package/@ai-markdown/vue)                                     | Vue 3.5 renderer — components, scoped slots, SSR/hydration and smooth composables                           | Release train; exact core and engine dependencies         |
 | [`@ai-markdown/react-mantine`](https://www.npmjs.com/package/@ai-markdown/react-mantine)                 | Mantine UI bindings — themed typography, code-highlight tabs, Mermaid, color-scheme wiring                  | Release train; exact React peer during beta               |
 | [`@ai-markdown/engine`](https://www.npmjs.com/package/@ai-markdown/engine)                               | Framework-agnostic engine — incremental parsing, LaTeX preprocessing, plugin pipeline, cross-chunk registry | Release train; pinned exactly by shared core and adapters |
 | [`@ai-markdown/remark-mark-highlight`](https://www.npmjs.com/package/@ai-markdown/remark-mark-highlight) | remark plugin for `==mark==` highlight syntax                                                               | Independent semver                                        |
@@ -70,16 +66,19 @@ pnpm add @ai-markdown/react@beta
 yarn add @ai-markdown/react@beta
 ```
 
-The React adapter declares both `@ai-markdown/core` and `@ai-markdown/engine` as ordinary dependencies, pinned to the same train version when packed (`3.0.0-beta.2` in this unreleased candidate). Applications install `@ai-markdown/react@beta`; the package manager resolves the shared layers automatically. Core owns sessions, planning and coordination, while engine owns parsing and tree algorithms. Adapter authors may depend on these layers directly and should keep their versions aligned. Exact pins reduce version mismatch; they do not guarantee a single module instance across arbitrary nested installations.
+The React adapter declares both `@ai-markdown/core` and `@ai-markdown/engine` as ordinary dependencies, pinned to the same train version when packed (`3.0.0-beta.2` in this checkout). Applications install `@ai-markdown/react@beta`; the package manager resolves the shared layers automatically. Core owns sessions, planning and coordination, while engine owns parsing and tree algorithms. Adapter authors may depend on these layers directly and should keep their versions aligned. Exact pins reduce version mismatch; they do not guarantee a single module instance across arbitrary nested installations.
 
 ### Peer Dependencies
 
 ```json
 {
   "react": "^19.0.0",
-  "react-dom": "^19.0.0"
+  "react-dom": "^19.0.0",
+  "katex": "^0.16.0 || ^0.17.0"
 }
 ```
+
+`katex` is optional. For a new application using the math examples, also run `pnpm add react@^19 react-dom@^19 katex`; declare KaTeX directly when importing its CSS.
 
 ### CSS Dependencies
 
@@ -131,7 +130,7 @@ function StreamingChat({ content, isStreaming }: { content: string; isStreaming:
 
 All configuration is **flat props** resolved once against shipped defaults. An explicitly passed prop (`v != null`) overrides the shipped default; an absent prop falls to the shipped default. Passing `null` counts as absent — this guards against serialization boundaries (RSC, persistence) materializing "not passed" as `null` and punching through defaults.
 
-The table below is also the **prop-name registry**: flat props share one namespace across core and every wrapper layer, so wrapper authors must check it — plus the wrappers they extend (e.g. mantine adds `codeBlock`) — before naming a new prop. A collision is a compile error at the `extends` site for TS consumers but a silent override for plain-JS consumers.
+The table below is also the **prop-name registry**: flat props share one namespace across the React adapter and every wrapper layer, so wrapper authors must check it — plus the wrappers they extend (e.g. mantine adds `codeBlock`) — before naming a new prop. A collision is a compile error at the `extends` site for TS consumers but a silent override for plain-JS consumers.
 
 | Prop                       | Type                                | Default                | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | -------------------------- | ----------------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -190,7 +189,7 @@ Rules worth knowing:
 
 - Omitting `enginePlugins` means `defaultEnginePlugins` (all five).
 - Each plugin's position in the produced chain comes from its internal stage metadata; the order of your array is irrelevant. Duplicates are deduplicated with a dev warning.
-- The set is **sealed**: only core constructs plugins (the incremental engine's boundary scanner must know every construct's syntax; open injection would void its verification record). Third-party content extension stays open through `contentPreprocessors` + `customComponents`.
+- The set is **sealed**: only engine constructs plugins (the incremental engine's boundary scanner must know every construct's syntax; open injection would void its verification record). Third-party content extension stays open through `contentPreprocessors` + `customComponents`.
 - Plugin objects are not serializable. For remote-config scenarios, store `plugin.name` strings (typed as `AIMarkdownEnginePluginName`) and map them back to the exported singletons at the edge.
 - The prop is deep-equal-stabilized as a backstop, but an inline array still pays one comparison per render — define the array at module scope.
 
@@ -498,7 +497,7 @@ const stable = useStableRecord({ panel }, TABLE);
 
 ## Additive Providers
 
-Core exports two stackable Providers — `AIMarkdownBehaviorsProvider` and `AIMarkdownStateProvider` — so wrappers and applications can transport their own extension groups through the React adapter's contexts. Stack the Provider **outside** `<AIMarkdown>`; consumers still see exactly one context:
+The React adapter exports two stackable Providers — `AIMarkdownBehaviorsProvider` and `AIMarkdownStateProvider` — so wrappers and applications can transport their own extension groups through the React adapter's contexts. Stack the Provider **outside** `<AIMarkdown>`; consumers still see exactly one context:
 
 ```tsx
 import { useMemo } from 'react';
@@ -518,7 +517,7 @@ function MyMarkdown({ panel, ...rest }: MyMarkdownProps) {
 }
 ```
 
-- **Core keys are locked.** Behaviors (`blockMemo`, `incrementalParse`, `preserveOrphanReferences`) and state (`streaming`) cannot be injected from outside — type-forbidden, unconditionally overwritten by the prop-resolved values at the innermost merge, and warned about in dev.
+- **Built-in React prop keys are locked.** Behaviors (`blockMemo`, `incrementalParse`, `preserveOrphanReferences`) and state (`streaming`) cannot be injected from outside — type-forbidden, unconditionally overwritten by the prop-resolved values at the innermost merge, and warned about in dev.
 - Multi-level wrappers stack naturally; for a duplicated group key the inner layer wins.
 - `AIMarkdownStateProvider` carries extension lifecycle states (aborted, reasoning, tool-call-in-progress, …). Group members must be message-lifecycle frequency — frame-rate data (per-token progress etc.) still goes through metadata's stable-container pattern.
 - Apply group defaults inside your wrapper's narrow hook exactly once (the pattern behind mantine's `useMantineCodeBlockOptions()`); bare `??` fallbacks at multiple read sites will drift.
@@ -531,7 +530,7 @@ Group keys share one namespace per context (behaviors, state) across every wrapp
 | ----------- | --------- | ---------------------------- |
 | `codeBlock` | behaviors | `@ai-markdown/react-mantine` |
 
-**Reservation policy**: core will not promote a registered group key into a core-locked key (the `never`-typed lock) within the 2.x line — promotion retroactively breaks every downstream compile that used the key, so it is by definition a major-version change.
+**Reservation policy**: the React adapter will not promote a registered group key into a core-locked key (the `never`-typed lock) within a stable major release line (beta APIs can still change) — promotion retroactively breaks every downstream compile that used the key, so it is by definition a major-version change.
 
 ## Typography and Styling
 
@@ -581,7 +580,7 @@ All `default`-variant styles are driven by CSS custom properties declared on `.a
 
 ### Custom Typography Component
 
-Replace the typography wrapper by passing a custom component. The `style` prop carries CSS custom properties injected by the core renderer — **merge it onto your root element** so that descendant CSS can reference these variables:
+Replace the typography wrapper by passing a custom component. The `style` prop carries CSS custom properties injected by the React renderer — **merge it onto your root element** so that descendant CSS can reference these variables:
 
 ```tsx
 import type { AIMarkdownTypographyProps } from '@ai-markdown/react';
@@ -599,7 +598,7 @@ function MyTypography({ children, fontSize, variant, colorScheme, style }: AIMar
 
 #### Injected CSS Custom Properties
 
-The core renderer injects the following CSS custom properties via the Typography `style` prop:
+The React renderer injects the following CSS custom properties via the Typography `style` prop:
 
 | Variable               | Value           | Purpose                                                                                                                                                                                             |
 | ---------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

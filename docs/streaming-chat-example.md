@@ -1,5 +1,7 @@
 # Streaming Chat: End-to-End Example
 
+This end-to-end recipe uses React and a Next.js-style route. The transport rules also apply to Vue; feed accumulated text to the Vue component instead of using React state or hooks. See the [Vue guide](../packages/vue/README.md#minimal-component) and [package setup](./getting-started.md).
+
 A streaming chat integration needs three contracts: how the server frames a response, how the client accumulates and terminates it, and what the Markdown renderer receives. This example makes those contracts explicit. The renderer receives the full accumulated string; the transport owns deltas, cancellation, errors, and completion.
 
 Start with one `<AIMarkdown>` per assistant message. Use separate renderers only for independently parseable logical sections that need their own UI or metadata. An HTTP read boundary is not a Markdown boundary: a read can end inside a UTF-8 character, an SSE event, a code fence, or a formula.
@@ -224,7 +226,7 @@ Aborting a client request does not guarantee that a provider has stopped billabl
 
 ### Why this works
 
-Core receives accumulated content, so unchanged prefixes are eligible for incremental parsing and block caching. Eligibility still depends on the source grammar: a long open construct or unresolved reference can keep the active tail large. The example does not claim constant work per token.
+The React adapter receives accumulated content, so unchanged prefixes are eligible for incremental parsing and block caching. Eligibility still depends on the source grammar: a long open construct or unresolved reference can keep the active tail large. The example does not claim constant work per token.
 
 `streaming` remains true while waiting or receiving data, and becomes false for completion, stop, or error. The built-in cursor hides when there is no suitable text anchor, so the explicit waiting paragraph covers the pre-first-token state. `aria-busy` conveys message activity without making every token a live-region announcement.
 
@@ -232,7 +234,7 @@ Core receives accumulated content, so unchanged prefixes are eligible for increm
 
 ## Next.js App Router specifics
 
-Place interactive request state and function-valued renderer configuration in a client component. Core's published entry preserves its client boundary, but application Hooks and callbacks still need the appropriate client-side module. Do not send component functions, preprocessors, or URL callbacks through a server-to-client serializable prop boundary; define them in the client wrapper.
+Place interactive request state and function-valued renderer configuration in a client component. The React adapter's published entry preserves its client boundary, but application Hooks and callbacks still need the appropriate client-side module. Do not send component functions, preprocessors, or URL callbacks through a server-to-client serializable prop boundary; define them in the client wrapper.
 
 ### CSS imports go in `layout.tsx`
 

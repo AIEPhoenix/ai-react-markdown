@@ -1,5 +1,7 @@
 # Custom Typography
 
+`Typography`, `ExtraStyles` and variant props are React APIs. Vue uses its base stylesheet, wrapper class/style attributes and element slots. See the [Vue guide](../packages/vue/README.md#minimal-component) and [package setup](./getting-started.md).
+
 The `Typography` slot owns the outer presentation of a Markdown instance: its root element, font size, classes, and any surrounding design-system providers. Replace it when the built-in wrapper cannot express the structure you need. For changes limited to colors, spacing, or heading sizes, start with [design tokens](./design-tokens.md); those keep the existing wrapper and stylesheet.
 
 A wrapper is part of the renderer's layout contract. It receives resolved theme values and injected CSS variables, and it must render its children intact. The children can contain Markdown blocks, a hidden tail signal, and an optional streaming cursor. A wrapper that drops styles or assumes a single child can break math sizing or cursor placement even if a short paragraph looks correct.
@@ -14,11 +16,11 @@ interface AIMarkdownTypographyProps {
   fontSize: string; // resolved (e.g. '0.9375rem')
   variant?: AIMarkdownVariant; // 'default' | string
   colorScheme?: AIMarkdownColorScheme; // 'light' | 'dark' | string
-  style?: React.CSSProperties; // CSS custom properties injected by the core renderer
+  style?: React.CSSProperties; // CSS custom properties injected by the React renderer
 }
 ```
 
-The `style` prop is **the critical part**. The core renderer injects CSS custom properties (currently `--aim-font-size-root`, more may be added in future minor versions) through `style`. Your typography component **must** merge `style` onto its root element — otherwise descendant CSS rules that reference `var(--aim-font-size-root)` (including the built-in `default` variant and all design tokens) will fall back to their inherited values.
+The `style` prop is **the critical part**. The React renderer injects CSS custom properties (currently `--aim-font-size-root`, more may be added in future minor versions) through `style`. Your typography component **must** merge `style` onto its root element — otherwise descendant CSS rules that reference `var(--aim-font-size-root)` (including the built-in `default` variant and all design tokens) will fall back to their inherited values.
 
 ```tsx
 import AIMarkdown, { type AIMarkdownTypographyComponent } from '@ai-markdown/react';
@@ -212,7 +214,7 @@ const Fixed: AIMarkdownTypographyComponent = ({ children, fontSize, style }) => 
 
 ### Changing the rendered root element on every render
 
-The built-in typography component is memoized, but core does not automatically wrap every caller-provided slot in `memo`. React identifies a component by its function or class reference. Recreating that reference changes the component type, so React can unmount the old subtree and mount a new one, discarding state and caches. Define the slot at module scope; add `memo` only when its prop usage benefits from it.
+The built-in typography component is memoized, but the React adapter does not automatically wrap every caller-provided slot in `memo`. React identifies a component by its function or class reference. Recreating that reference changes the component type, so React can unmount the old subtree and mount a new one, discarding state and caches. Define the slot at module scope; add `memo` only when its prop usage benefits from it.
 
 ```tsx
 // ⚠️ A new MyTypography reference every render = full re-render of the markdown tree.
@@ -249,7 +251,7 @@ If you add custom inline values that overlap the injected `style`, choose a spre
 
 ## Children, DOM structure, and cursor placement
 
-Render `{children}` verbatim. Do not call `Children.only`, assume that the child is `<AIMarkdownContent>`, or clone it to attach a ref. Core supplies a Fragment containing the content and cursor slot. `ExtraStyles`, when present, receives that same group.
+Render `{children}` verbatim. Do not call `Children.only`, assume that the child is `<AIMarkdownContent>`, or clone it to attach a ref. React supplies a Fragment containing the content and cursor slot. `ExtraStyles`, when present, receives that same group.
 
 The built-in cursor finds its content root through its DOM parent. Keep the cursor and rendered blocks beneath the same real element. Wrapping the entire group in one `<div>` works; moving selected children into separate containers or portals can make detection inspect the wrong subtree. A `display: contents` root can help a grid, but it has no ordinary layout box for the cursor's coordinate calculations. Use a regular layout element when combining custom typography with the built-in cursor.
 
