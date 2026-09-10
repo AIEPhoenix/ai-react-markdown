@@ -57,6 +57,25 @@ function run(framework, port) {
   else args.push('-o', framework === 'hub' ? 'storybook-static' : `storybook-static/${framework}`);
   return command(framework, args);
 }
+async function waitForCatalog(port) {
+  const deadline = Date.now() + 120_000;
+  while (!stopping && Date.now() < deadline) {
+    try {
+      const base = `http://localhost:${port}`;
+      const index = await fetch(`${base}/index.json`, { signal: AbortSignal.timeout(1000) });
+      if (index.ok && (await index.json()).entries) {
+        // Storybook probes iframe.html when classifying public composition refs.
+        const preview = await fetch(`${base}/iframe.html`, { signal: AbortSignal.timeout(1000) });
+        await preview.arrayBuffer();
+        if (preview.ok) return;
+      }
+    } catch {
+      // A listening server can still be preparing its index and preview.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  throw new Error(stopping ? 'Storybook command interrupted' : `Storybook on port ${port} did not become ready`);
+}
 try {
   console.log('Building Storybook package dependencies...');
   const buildArgs =
@@ -72,7 +91,16 @@ try {
     await run('react');
     await run('vue');
   } else if (target !== 'all') await run(target, target === 'react' ? 6007 : 6008);
-  else await Promise.all([run('hub', 6006), run('react', 6007), run('vue', 6008)]);
+  else {
+    await Promise.all([
+      run('react', 6007),
+      run('vue', 6008),
+      (async () => {
+        await Promise.all([waitForCatalog(6007), waitForCatalog(6008)]);
+        if (!stopping) await run('hub', 6006);
+      })(),
+    ]);
+  }
 } catch (error) {
   console.error(error);
   stop();

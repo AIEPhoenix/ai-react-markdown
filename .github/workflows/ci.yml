@@ -207,6 +207,7 @@ jobs:
         run: |
           STORYBOOK_DOCS_EXPORT=1 pnpm build-storybook
           pnpm test:storybook-site
+          pnpm test:storybook-dev
 
       - name: Concurrent document scope lifetime
         if: matrix.task == 'browser-smoke'

@@ -39,6 +39,7 @@
     "test:storybook:react": "vitest run --project=storybook-react",
     "test:storybook:vue": "vitest run --project=storybook-vue",
     "test:storybook": "pnpm test:storybook:react && pnpm test:storybook:vue",
+    "test:storybook-dev": "node scripts/test-storybook-dev.mjs",
     "test:storybook-site": "node scripts/test-storybook-site.mjs"
   },
   "keywords": [
