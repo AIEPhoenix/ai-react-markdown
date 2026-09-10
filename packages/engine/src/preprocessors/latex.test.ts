@@ -796,6 +796,49 @@ y$ which spans lines`;
     expect(preprocessLaTeX(content)).toBe(content);
   });
 
+  // --- An inline `$$` opener does not survive a blank line ---
+  //
+  // remark-math pairs a mid-line `$$` (math TEXT) only inside its paragraph:
+  // when the paragraph ends without a closer the `$$` is literal. Only a
+  // line-start `$$` (math FLOW) runs on across blank lines to its closing
+  // fence — that is the block the truncation exists for. The scan used to
+  // toggle on every `$$` regardless, so a price written `$$100` "closed" at
+  // the next display block's opener, the block's closer became an unclosed
+  // opener, and everything from the block onwards was truncated.
+
+  test('an unpaired mid-line $$ before a blank line does not truncate a later display block', () => {
+    const content = 'It costs $$100 per month.\n\n$$\nE = mc^2\n$$\n\nAfter the block.';
+    expect(preprocessLaTeX(content)).toBe(content);
+  });
+
+  test('an unpaired mid-line $$ before a blank line does not pair pipes across the blank', () => {
+    const content = 'It costs $$100 | per month.\n\n$$\n| a |\n$$\n\n| c | d |';
+    const expected = 'It costs $$100 | per month.\n\n$$\n\\vert{} a \\vert{}\n$$\n\n| c | d |';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('a real streaming tail after such a price is still truncated', () => {
+    expect(preprocessLaTeX('It costs $$100 per month.\n\n$$\nE =')).toBe('It costs $$100 per month.');
+    expect(preprocessLaTeX('text\n\n$$\nE =')).toBe('text');
+  });
+
+  test('a mid-line $$ still pairs across a plain line ending inside its paragraph', () => {
+    // No blank line between them: inline math may span a soft break.
+    expect(preprocessLaTeX('so $$a |\nb$$ done')).toBe('so $$a \\vert{}\nb$$ done');
+  });
+
+  test('a line-start $$ block still spans blank lines to its closer', () => {
+    const content = '$$\n| a |\n\n| b |\n$$\n\nafter';
+    const expected = '$$\n\\vert{} a \\vert{}\n\n\\vert{} b \\vert{}\n$$\n\nafter';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('a mid-line $$ still open at the end of input is unclosed until its paragraph ends', () => {
+    // Nothing after it settles the question yet: the pipes after it are
+    // escaped (as for any unclosed tail) and nothing is truncated (mid-line).
+    expect(preprocessLaTeX('so $$a | b\nc | d')).toBe('so $$a \\vert{} b\nc \\vert{} d');
+  });
+
   // --- Escaped $$ should not trigger unclosed-block truncation (H3) ---
 
   test('does not truncate on escaped \\$$ currency followed by digits', () => {

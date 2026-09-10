@@ -191,6 +191,19 @@ describe('createIncrementalLatexPreprocessor — failed-freeze backoff and blank
     replay(['US$ first\n\n$a | b', ' | c$\n']);
   });
 
+  test('a mid-line `$$` settles at its paragraph end: the display block after it streams and freezes', () => {
+    // Byte-equal at every frame, and the finished document keeps its block
+    // and the text after it (the price used to pair with the block's
+    // opener and everything from the block onwards was truncated).
+    const chunks = ['It costs $$100 per month.\n\n', '$$\nE = mc^2\n', '$$\n\n', 'After the block.\n'];
+    replay(chunks);
+    replayFreezing([PARA.repeat(4), ...chunks, PARA.repeat(4)]);
+    expect(preprocessLaTeX(chunks.join(''))).toBe(chunks.join(''));
+    // The blank line is what settles it: without one the `$$` stays open
+    // into the next line and pairs with the block's opener, as it always did.
+    replay(['It costs $$100 | per month.\n', '$$\nE | F\n', '$$\n']);
+  });
+
   test('a lone backtick: the hazard latch releases at the next blank line and the stream keeps freezing', () => {
     // A code span cannot cross a blank line, so a lone backtick on a
     // finished paragraph can never be re-paired by a later append: lines

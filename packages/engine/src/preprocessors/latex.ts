@@ -335,7 +335,9 @@ const CURRENCY_REGEX = /(?<![\\$])\$(?!\$)(?=\d+(?:,\d{3})*(?:\.\d+)?(?:[KMBkmb]
 // - \[...\]( (markdown link)
 const DELIMITERS_REGEX = /(?<!!)\\\[([\S\s]*?[^\\])\\](?!\()|\\\((.*?)\\\)/g;
 const ARRAY_COL_SPEC_OR_PIPE_REGEX = /(\\begin\{(?:array|tabular[x*]?)\}\{[^}]*\})|(?<!\\)\|/g;
-// Display $$ allows multiline; inline $ forbids newlines (consistent with SINGLE_DOLLAR_REGEX).
+// Display $$ allows multiline (the blank-line bound on a mid-line opener is
+// applied by the exec loop in escapeLatexPipes, not here); inline $ forbids
+// newlines (consistent with SINGLE_DOLLAR_REGEX).
 // Both display delimiters use EXACTLY the delimiter lexicon of
 // findUnclosedDelimiter / isEscapedByBackslashRun: a `$$` preceded by
 // an EVEN run of backslashes (zero included) is a delimiter, an odd run
@@ -506,19 +508,74 @@ const replaceUnescapedPipes = (formula: string): string =>
     colSpec !== undefined ? match : '\\vert{}'
   );
 /**
+ * Is the line ending at `pos` (`\n`, `\r`, or the `\r` of a CRLF) followed by
+ * a blank line — optional spaces/tabs and then another line ending? The end
+ * of input does NOT complete a blank line: the next line has not arrived,
+ * and a verdict that settled on EOF would settle differently once it did
+ * (the incremental wrapper freezes on these verdicts).
+ */
+function isBlankLineAt(text: string, pos: number): boolean {
+  let j = pos + 1;
+  if (text[pos] === '\r' && text[j] === '\n') j += 1;
+  while (j < text.length && (text[j] === ' ' || text[j] === '\t')) j += 1;
+  return j < text.length && (text[j] === '\n' || text[j] === '\r');
+}
+
+/** Does `text[from, to)` contain a line ending that starts a blank line? */
+function hasBlankLineBetween(text: string, from: number, to: number): boolean {
+  for (let i = from; i < to; i++) {
+    const c = text[i];
+    if ((c === '\n' || c === '\r') && isBlankLineAt(text, i)) return true;
+  }
+  return false;
+}
+
+/**
  * Escape pipes in LaTeX expressions to prevent them from being interpreted as
  * column separators in markdown tables.
  *
+ * A `$$` pair may span line endings, but only a MATH-FLOW opener
+ * (`opensMathFlow`: line start, at most three columns in) may span a blank
+ * line. remark-math pairs a mid-line `$$` (math text) inside its paragraph
+ * alone, and a paragraph ends at a blank line, so a mid-line `$$` whose
+ * nearest `$$` lies past a blank line is literal text; the scan resumes
+ * right after it so that `$$` can open the next pair — which it really is.
+ * The price in `It costs $$100 …` used to pair with the opener of the
+ * display block below it, and the block's own closer then read as an
+ * unclosed opener. Same rule as `findUnclosedDelimiter`'s inline reset.
+ *
  * @param text Input string containing LaTeX expressions
+ * @param runStartsAtLineStart Virtual predecessor for `opensMathFlow` when
+ *   an opener sits at offset 0 (see `transformRun`).
  * @returns String with pipes escaped in LaTeX expressions
  * @modified from https://github.com/lobehub/lobe-ui/blob/master/src/hooks/useMarkdown/latex.ts
  */
-function escapeLatexPipes(text: string): string {
-  return text.replaceAll(LATEX_BLOCK_REGEX, (match, display, inline) => {
-    if (display !== undefined) return `$$${replaceUnescapedPipes(display)}$$`;
-    if (inline !== undefined) return `$${replaceUnescapedPipes(inline)}$`;
-    return match;
-  });
+function escapeLatexPipes(text: string, runStartsAtLineStart: boolean): string {
+  let out = '';
+  let last = 0;
+  LATEX_BLOCK_REGEX.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = LATEX_BLOCK_REGEX.exec(text)) !== null) {
+    const match = m[0];
+    const display = m[1];
+    const inline = m[2];
+    if (display !== undefined) {
+      if (
+        hasBlankLineBetween(text, m.index + 2, m.index + match.length - 2) &&
+        !opensMathFlow(text, m.index, runStartsAtLineStart)
+      ) {
+        LATEX_BLOCK_REGEX.lastIndex = m.index + 2;
+        continue;
+      }
+      out += text.slice(last, m.index) + `$$${replaceUnescapedPipes(display)}$$`;
+    } else if (inline !== undefined) {
+      out += text.slice(last, m.index) + `$${replaceUnescapedPipes(inline)}$`;
+    } else {
+      out += text.slice(last, m.index) + match;
+    }
+    last = m.index + match.length;
+  }
+  return out + text.slice(last);
 }
 
 /**
@@ -581,6 +638,13 @@ function nextDoubleDollarOnLine(text: string, from: number): number {
  *   stay open: one `US$` in a sentence made every `|` of a table three
  *   paragraphs later a `\vert{}`. Only a `$` on the LAST line (no line
  *   ending after it — the streaming tail) is reported unclosed.
+ * - An INLINE `$$` opener is PARAGRAPH-LOCAL: remark-math pairs it inside
+ *   its paragraph only, so one still open at a blank line is literal and
+ *   the scan forgets it — the `$$` after the blank is then the opener it
+ *   really is. A FLOW opener runs on across blank lines to its closer, or
+ *   to the end of input: that is the genuinely open trailing block the
+ *   truncation exists for. (The end of input does not complete a blank
+ *   line — see `isBlankLineAt`.)
  * - Inside an open `$$` a single `$` is content — the closed-pair regexes
  *   agree: a display pair is `$$…$$` whatever `$` it holds, and an inline
  *   `$…$` cannot hold a bare `$`. Conversely a `$$` arriving while a single
@@ -642,7 +706,7 @@ function findUnclosedDelimiter(
       i += 1;
     } else {
       if ((c === '\n' || c === '\r') && open !== null) {
-        if (open.kind === 'single') open = null;
+        if (open.kind === 'single' || (open.kind === 'inline' && isBlankLineAt(text, i))) open = null;
         else pastOpenerLine = true;
       }
       i += 1;
@@ -702,6 +766,13 @@ function escapeLatexPipesInUnclosed(text: string, runStartsAtLineStart: boolean)
  * single `$`, so the doubled one read as an opener and the rest of the page
  * disappeared. Nothing errored, because a truncated document is perfectly
  * valid markdown — just not the one anyone wrote.
+ *
+ * The pairing that decides "unclosed" is paragraph-aware as well
+ * (`findUnclosedDelimiter`): a mid-line `$$` still open at a blank line is
+ * literal, so `It costs $$100 per month.` followed by a real display block
+ * no longer "closes" at that block's opener and leaves its closer looking
+ * like an unclosed opener — which truncated the block and every line after
+ * it, in a finished document.
  *
  * KNOWN RESIDUAL, deliberately not fixed here. The predicate is positional,
  * not container-aware, so a `$$` opening a line INSIDE a list item or
@@ -1031,7 +1102,7 @@ function transformRun(
   text = escapeCurrencyDollarSigns(text);
   text = convertLatexDelimiters(text);
   if (probe && RESIDUAL_OPEN_BRACKET_RE.test(text)) tailSensitive = true;
-  text = escapeLatexPipes(text);
+  text = escapeLatexPipes(text, runStartsAtLineStart);
   if (probe && findUnclosedDelimiter(text, 'both', runStartsAtLineStart) !== null) tailSensitive = true;
   text = escapeLatexPipesInUnclosed(text, runStartsAtLineStart);
   if (probe && hasUnclosedTextCommand(text)) tailSensitive = true;
