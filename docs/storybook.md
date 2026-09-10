@@ -4,15 +4,16 @@ AI Markdown has one Storybook catalog per rendering framework and a composition 
 
 ## Run locally
 
-Build the public packages before starting the catalogs:
+Install dependencies and start the catalogs:
 
 ```bash
 pnpm install
-pnpm build
 pnpm storybook
 ```
 
 The composition entry opens at `http://localhost:6006`, React at `http://localhost:6007`, and Vue at `http://localhost:6008`. The combined command starts all three servers; stop it with Ctrl+C. To work on one renderer, use `pnpm storybook:react` or `pnpm storybook:vue`.
+
+Each startup command first builds its public package dependencies, including the Vue stylesheet exported from `dist/styles.css`. The combined command builds all public packages; individual renderer commands build their dependency closure. A failed package build prevents the servers from starting. Stories use renderer source files for hot updates, while imported engine/core packages use their built output; restart the command after changing those packages to refresh that output.
 
 The React catalog contains Playground, Basics, Customization, Streaming, Documents, Integrations/Mantine, Performance Lab and QA. Vue uses the same capability categories where supported. Vue does not provide Mantine widgets or React render-count instrumentation. Composition groups are navigation boundaries: controls, theme state and replay clocks are not synchronized across frameworks.
 
@@ -56,7 +57,7 @@ storybook-static/
 
 The hub references `./react` and `./vue`, allowing the complete directory to live under a version or preview prefix. The smoke command serves it under `/preview/storybook/` and checks both direct iframe entries, refreshes, composed navigation, live Vue Controls updates and the React isolated-performance iframe target. Keep all three builds from the same commit. For a deliberately separate deployment, set `STORYBOOK_REACT_URL` and `STORYBOOK_VUE_URL` while building the hub; those overrides must point at the matching version or PR preview.
 
-The build command clears `storybook-static` first, builds the hub, then builds both children. Upload the complete directory only after all builds and smoke checks succeed. No hosting provider, public domain or release archive policy is implied by this build layout.
+The build command first builds the public packages, then clears `storybook-static`, builds the hub, then builds both children. Upload the complete directory only after all builds and smoke checks succeed. No hosting provider, public domain or release archive policy is implied by this build layout.
 
 ## Repository ownership and links
 
