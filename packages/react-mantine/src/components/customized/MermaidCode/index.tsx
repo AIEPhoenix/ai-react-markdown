@@ -6,6 +6,7 @@ import React, { memo, useEffect, useRef, useState, useCallback } from 'react';
 import { CodeHighlightControl, CodeHighlightTabs } from '@mantine/code-highlight';
 import { ActionIcon, CopyButton, Flex, Tooltip } from '@mantine/core';
 import type mermaidModule from 'mermaid';
+import { CheckIcon, CodeIcon, DiagramIcon } from './icons';
 import { useAIMarkdownState, useAIMarkdownTheme } from '@ai-markdown/react';
 import { useMantineCodeBlockOptions } from '../../../hooks/useMantineCodeBlockOptions';
 import './styles.scss';
@@ -436,14 +437,13 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
               ? [
                   <CodeHighlightControl
                     tooltipLabel="Render Mermaid"
+                    aria-label="Render Mermaid diagram"
                     key="gpt"
                     onClick={() => {
                       setShowOriginalCode(false);
                     }}
                   >
-                    <Flex align="center" justify="center" w={18} h={18}>
-                      <span className="icon-[gravity-ui--logo-mermaid] relative bottom-[1px] text-[16px]"></span>
-                    </Flex>
+                    <DiagramIcon size={16} />
                   </CodeHighlightControl>,
                 ]
               : []
@@ -514,9 +514,7 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
                   setShowOriginalCode(true);
                 }}
               >
-                <Flex align="center" justify="center" w={18} h={18}>
-                  <span className="icon-[entypo--code] relative bottom-[0.25px] text-[16px]"></span>
-                </Flex>
+                <CodeIcon />
               </ActionIcon>
             </Tooltip>
             <CopyButton value={props.code}>
@@ -530,7 +528,7 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
                     onClick={copy}
                   >
                     {copied ? (
-                      <span className="icon-origin-[lucide--check] text-[18px]"></span>
+                      <CheckIcon />
                     ) : (
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
@@ -542,6 +540,7 @@ const MantineAIMMermaidCode = memo((props: { code: string }) => {
                         strokeLinejoin="round"
                         width="18px"
                         height="18px"
+                        aria-hidden="true"
                       >
                         <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
                         <path d="M8 8m0 2a2 2 0 0 1 2 -2h8a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-8a2 2 0 0 1 -2 -2z"></path>
