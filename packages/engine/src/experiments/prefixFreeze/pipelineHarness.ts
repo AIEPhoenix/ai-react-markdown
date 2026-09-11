@@ -31,7 +31,7 @@
  * Infinity. The first `m` children attributed before the boundary are then
  * compared INDEX-WISE against the final frame's first `m` children.
  *
- * Scope: single-instance streaming (docs/streaming-and-performance.md
+ * Scope: single-instance streaming (apps/docs/content/guides/streaming-and-performance.md
  * "Approach A"), Stage-A preprocessors bypassed (raw markdown in), no
  * cross-chunk registry. Appending never shifts earlier offsets, so start
  * offsets are directly comparable across frames.

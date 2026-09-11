@@ -1,6 +1,6 @@
 # Metadata Context
 
-The hooks and providers below are React-specific. Vue passes `metadata` and `streaming` to mapped components and scoped element slots. See the [Vue guide](../packages/vue/README.md#custom-vue-components-and-slots) and [package setup](./getting-started.md).
+The hooks and providers below are React-specific. Vue passes `metadata` and `streaming` to mapped components and scoped element slots. See the [Vue guide](../../../../packages/vue/README.md#custom-vue-components-and-slots) and [package setup](getting-started.md).
 
 `metadata` carries application data to custom Markdown components through a dedicated React context. Use it for message IDs, callbacks, citation records, and other information that a renderer needs without changing the Markdown parser's configuration. The library passes the value through without cloning or deep comparison.
 
@@ -38,7 +38,7 @@ const COMPONENTS = { pre: CopyablePre } satisfies AIMarkdownCustomComponents;
 />;
 ```
 
-The hook returns `ChatMeta | undefined`. Handle the absent value even when supplying a generic type argument: a type argument cannot establish that a matching provider exists at runtime. For a general-purpose code-copy component, including raw-HTML fallback and clipboard errors, see [custom components](./custom-components.md#custom-code-block-with-copy-button-react-no-mantine).
+The hook returns `ChatMeta | undefined`. Handle the absent value even when supplying a generic type argument: a type argument cannot establish that a matching provider exists at runtime. For a general-purpose code-copy component, including raw-HTML fallback and clipboard errors, see [custom components](custom-components.md#custom-code-block-with-copy-button-react-no-mantine).
 
 ## Why a separate context?
 
@@ -128,7 +128,7 @@ function CitedLink({ href, children }: { href?: string; children?: React.ReactNo
 }
 ```
 
-This pairs well with [URL Sanitization](./url-sanitization.md) — opting `cite://` through both gates means the LLM can emit citations and the custom component resolves them at render time.
+This pairs well with [URL Sanitization](url-sanitization.md) — opting `cite://` through both gates means the LLM can emit citations and the custom component resolves them at render time.
 
 ### Per-message identity for analytics
 
@@ -211,7 +211,7 @@ function MyCodeBlock() {
 }
 ```
 
-This mirrors the pattern `@ai-markdown/react-mantine` uses for `useMantineAIMarkdownMetadata`. See [TypeScript Generics](./typescript-generics.md) and [Extending via a Sub-package](./extending-via-subpackage.md) for the same idea applied to behavior groups.
+This mirrors the pattern `@ai-markdown/react-mantine` uses for `useMantineAIMarkdownMetadata`. See [TypeScript Generics](typescript-generics.md) and [Extending via a Sub-package](extending-via-subpackage.md) for the same idea applied to behavior groups.
 
 ---
 
@@ -310,4 +310,4 @@ Metadata belongs to the nearest Markdown instance's provider. A sibling outside 
 
 A custom citation component that replaces `cite://42` with a URL from metadata creates a new destination after the Markdown URL pass. Validate the citation store's destination according to the application's link policy. Permitting the marker protocol through both gates validates the marker's route through Markdown; it does not validate arbitrary values later read from application state.
 
-When reviewing a metadata integration, change the callback while keeping `content` fixed, omit metadata entirely, and mount two messages with different IDs and callbacks. Those checks establish callback freshness, absent-value handling, and scope isolation. The implementation and regression references are [`context.tsx`](../packages/react/src/context.tsx), [`context.test.tsx`](../packages/react/src/context.test.tsx), and [`contextsV2.test.tsx`](../packages/react/src/contextsV2.test.tsx).
+When reviewing a metadata integration, change the callback while keeping `content` fixed, omit metadata entirely, and mount two messages with different IDs and callbacks. Those checks establish callback freshness, absent-value handling, and scope isolation. The implementation and regression references are [`context.tsx`](../../../../packages/react/src/context.tsx), [`context.test.tsx`](../../../../packages/react/src/context.test.tsx), and [`contextsV2.test.tsx`](../../../../packages/react/src/contextsV2.test.tsx).

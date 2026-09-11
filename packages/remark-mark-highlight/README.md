@@ -1,5 +1,7 @@
 # @ai-markdown/remark-mark-highlight
 
+[Documentation](https://ai-markdown.github.io/docs/plugins/highlight/) · [Examples](https://ai-markdown.github.io/examples/) · [Website](https://ai-markdown.github.io/)
+
 [![@ai-markdown/remark-mark-highlight latest](https://img.shields.io/npm/v/@ai-markdown/remark-mark-highlight/latest?label=npm%20latest&color=blue)](https://www.npmjs.com/package/@ai-markdown/remark-mark-highlight?activeTab=versions)
 [![@ai-markdown/remark-mark-highlight monthly downloads](https://img.shields.io/npm/dm/@ai-markdown/remark-mark-highlight?label=downloads%2Fmonth&color=blue)](https://www.npmjs.com/package/@ai-markdown/remark-mark-highlight)
 [![TypeScript declarations included](https://img.shields.io/badge/TypeScript-included-3178c6?logo=typescript&logoColor=white)](https://github.com/ai-markdown/ai-markdown/tree/main/packages/remark-mark-highlight)

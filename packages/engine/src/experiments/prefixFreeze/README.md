@@ -6,7 +6,7 @@ The L0–L4 tiers below isolate candidate rules so their failures and coverage c
 
 Consequently, `production boundary <= experiment L4` holds only on the corpus in the directional consistency test. It is not a universal ordering: production can freeze beyond text that the historical L4 tier marks as tainted. The recorded coverage percentages describe the study inputs and implementations; they are neither present-day guarantees nor bounds on every document.
 
-Nothing in this experimental directory is imported by the engine's production `src/index.ts`. The production splice-equivalence arbiter, sensitivity tests, coverage map, and current release runner establish the active verification contract. Use this record to understand why the rules and tests exist, and use [soak coverage](../../../../../docs/soak-coverage.md) for the current leg ownership and release-evidence requirements.
+Nothing in this experimental directory is imported by the engine's production `src/index.ts`. The production splice-equivalence arbiter, sensitivity tests, coverage map, and current release runner establish the active verification contract. Use this record to understand why the rules and tests exist, and use [soak coverage](https://ai-markdown.github.io/docs/guides/soak-coverage/) for the current leg ownership and release-evidence requirements.
 
 ## Question
 
@@ -14,7 +14,7 @@ Nothing in this experimental directory is imported by the engine's production `s
 the last blank-line boundary and re-lexes only the tail, cutting cumulative
 streaming parse cost from O(N²) to O(N). Our block-memoization already avoids
 re-RENDERING unchanged blocks, but, at the start of this study, `unified.parse` still ran over the full
-document every frame (docs/streaming-and-performance.md, "Profiling").
+document every frame (apps/docs/content/guides/streaming-and-performance.md, "Profiling").
 
 Could a prefix-freeze rule be **safe** for our CommonMark/unified pipeline —
 and how much parse work would it actually skip?

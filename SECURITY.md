@@ -44,7 +44,7 @@ Out of scope:
 | Legacy `@ai-react-markdown` 2.x                  | Deprecated; critical fixes considered as needed, no new features |
 | Older legacy versions and superseded prereleases | Upgrade to the current stable packages                           |
 
-See the [migration guide](./docs/framework-transition.md) for package mappings. Legacy artifacts remain available; deprecation adds migration notices without removing existing versions.
+See the [migration guide](https://ai-markdown.github.io/docs/guides/framework-transition/) for package mappings. Legacy artifacts remain available; deprecation adds migration notices without removing existing versions.
 
 ## Public disclosure
 

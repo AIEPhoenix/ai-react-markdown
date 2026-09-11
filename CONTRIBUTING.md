@@ -1,6 +1,6 @@
 # Contributing to ai-markdown
 
-Thanks for your interest in contributing. This file covers the practical "how" — for "what" and "why", see [`README.md`](./README.md) and the topic docs under [`docs/`](./docs/).
+Thanks for your interest in contributing. This file covers the practical "how" — for "what" and "why", see [`README.md`](./README.md) and the topic docs under [documentation](https://ai-markdown.github.io/docs/guides/).
 
 ## Quick orientation
 
@@ -15,7 +15,7 @@ This is a **pnpm monorepo** with six public packages:
 
 The engine/core/adapter boundary is where most orientation mistakes happen. **Anything that turns Markdown text into a hast tree belongs in the engine; anything that turns a hast tree into React belongs in the React adapter.** If a change needs `useState`, a context, or a DOM node, it is adapter-side by construction. `core` depends on `engine` at an exact version (pnpm rewrites `workspace:*` to the published version), so the two always ship in lockstep.
 
-Source of truth for the public API surface, sanitization model, cross-chunk coordination, and block-level memoization invariants is in [`docs/`](./docs/). If you're touching internals, **read [`docs/architecture.md`](./docs/architecture.md) first** — its module-layout tree shows which package owns which file.
+Source of truth for the public API surface, sanitization model, cross-chunk coordination, and block-level memoization invariants is in [documentation](https://ai-markdown.github.io/docs/guides/). If you're touching internals, **read [`apps/docs/content/guides/architecture.md`](https://ai-markdown.github.io/docs/guides/architecture/) first** — its module-layout tree shows which package owns which file.
 
 ## Setup
 
@@ -56,11 +56,11 @@ pnpm format          # auto-fix
 pnpm preflight
 ```
 
-CI runs static checks, package and browser tests, build/export validation and soak-impact reporting on every PR. See the [development command reference](./docs/development-commands.md) for prerequisites, focused checks and compatibility aliases. `preflight` does not run a long soak or validate release approval.
+CI runs static checks, package and browser tests, build/export validation and soak-impact reporting on every PR. See the [development command reference](https://ai-markdown.github.io/docs/guides/development-commands/) for prerequisites, focused checks and compatibility aliases. `preflight` does not run a long soak or validate release approval.
 
 ### Changing the shared core
 
-`packages/core` is public and framework-independent. React declares it as a normal exact-version dependency; it is external in both JavaScript and declarations. Build before running its distribution tests (`pnpm exec vitest run --project unit packages/core/src/runtime.test.ts`): these execute actual ESM/CJS artifacts in Node without a framework or DOM. Its build checks source import boundaries, and the React build checks external core/engine references. See the [core README](./packages/core/README.md) and [transition guide](./docs/framework-transition.md) before moving lifecycle work across packages.
+`packages/core` is public and framework-independent. React declares it as a normal exact-version dependency; it is external in both JavaScript and declarations. Build before running its distribution tests (`pnpm exec vitest run --project unit packages/core/src/runtime.test.ts`): these execute actual ESM/CJS artifacts in Node without a framework or DOM. Its build checks source import boundaries, and the React build checks external core/engine references. See the [core README](./packages/core/README.md) and [transition guide](https://ai-markdown.github.io/docs/guides/framework-transition/) before moving lifecycle work across packages.
 
 ### Changing the incremental-parse engine
 
@@ -109,7 +109,7 @@ ledger entries without shard counts conservatively reserve 100 seeds per leg.
 A reservation lock left by an abruptly killed metadata process fails closed;
 confirm that no metadata writer is active before removing that stale lock.
 
-A green soak is an **engine-impacting release** gate, not a per-PR one; CI does not execute the full campaign. `pnpm check:soak-impact` determines whether the committed candidate needs it. Validate local evidence with `pnpm check:release-soak --evidence <run-dir>...`; release CI waits for `soak-approval` when required. See [soak coverage](./docs/soak-coverage.md) for trigger rules, evidence reuse, and reviewer responsibilities. If your PR changes engine behavior, say in the description whether you ran it and what the result was.
+A green soak is an **engine-impacting release** gate, not a per-PR one; CI does not execute the full campaign. `pnpm check:soak-impact` determines whether the committed candidate needs it. Validate local evidence with `pnpm check:release-soak --evidence <run-dir>...`; release CI waits for `soak-approval` when required. See [soak coverage](https://ai-markdown.github.io/docs/guides/soak-coverage/) for trigger rules, evidence reuse, and reviewer responsibilities. If your PR changes engine behavior, say in the description whether you ran it and what the result was.
 
 #### Where a number goes
 
@@ -161,11 +161,11 @@ This rule was learned once before, recorded in a commit named for it, and then n
 ## What makes a good PR
 
 - **Test coverage for behavior changes.** New behavior gets new tests; bug fixes get regression tests. The `byteEquivalence.test.tsx` harness exists to catch silent drift between code paths — leverage it.
-- **Reference stability discipline.** Anything that participates in the block-memo cache (`customComponents`, `urlTransform`, `sanitizeSchema`, `contentPreprocessors`, `config`) must be safe under inline / module-scope / `useMemo`. See [`docs/streaming-and-performance.md`](./docs/streaming-and-performance.md).
+- **Reference stability discipline.** Anything that participates in the block-memo cache (`customComponents`, `urlTransform`, `sanitizeSchema`, `contentPreprocessors`, `config`) must be safe under inline / module-scope / `useMemo`. See [`apps/docs/content/guides/streaming-and-performance.md`](https://ai-markdown.github.io/docs/guides/streaming-and-performance/).
 - **Docs updates.** If your PR changes public API or visible behavior, update the relevant doc(s):
   - Props / config → root `README.md` + `packages/<pkg>/README.md` + JSDoc.
-  - Mechanism / invariant → relevant file under `docs/`.
-  - Notable release-level changes → `docs/release-highlights.md`.
+  - Mechanism / invariant → relevant file under `apps/docs/content/guides/`.
+  - Notable release-level changes → `apps/docs/content/guides/release-highlights.md`.
 - **No new dependencies without a reason.** Each `package.json` dep adds bundle weight and supply-chain surface. Justify them in the PR description.
 
 ## Style
@@ -197,7 +197,7 @@ each package's `scripts/assert-dist-clean.mjs` greps its emitted artifacts for
 
 For anything that touches the rendering pipeline, sanitization model, or cross-chunk registry: **open a Discussion or Issue first**. These areas have walked-through design constraints (documented at the top of each implementation file); a quick design sync saves a lot of rework.
 
-The `docs/architecture.md` overview is the orientation; the file-level JSDoc explains _why_ each constraint exists.
+The `apps/docs/content/guides/architecture.md` overview is the orientation; the file-level JSDoc explains _why_ each constraint exists.
 
 ## Code of Conduct
 
@@ -220,7 +220,7 @@ The five main packages are published as stable 3.0.0 on npm `latest`. Future sta
 
 Run `pnpm preflight` before tagging to catch gate failures locally — it is the same check suite the workflow runs, minus the publish. There is deliberately no local publish path: a local `npm publish` cannot attach provenance, so publishing happens only via the tag flow.
 
-The workflow also creates the GitHub release, with notes taken from the version's section in `docs/release-highlights.md` — write that section before tagging (it falls back to auto-generated notes otherwise).
+The workflow also creates the GitHub release, with notes taken from the version's section in `apps/docs/content/guides/release-highlights.md` — write that section before tagging (it falls back to auto-generated notes otherwise).
 
 ## Questions?
 
@@ -233,7 +233,7 @@ The workflow also creates the GitHub release, with notes taken from the version'
 
 Vue requires 3.5+ within the Vue 3 major line. Its production implementation and lifecycle tests live in `packages/vue`; the earlier prototype directory is an archive pointer. Run `pnpm test:vue-browser` after building for Chromium hydration, references, customization, smooth turn-taking, cursor layout and forced-GC lifecycle checks. `pnpm test:vue-browser:compat` runs the functional paths in Firefox and WebKit. CI and release workflows include both gates.
 
-The engine/core/React/React-plugins/Mantine/Vue public declarations are checked with `pnpm check:public-api`. Review contract changes against `docs/api/core-engine-contracts.md`, then intentionally regenerate snapshots with `node scripts/check-public-api.mjs --update`. Updating the snapshot alone does not establish behavioral compatibility.
+The engine/core/React/React-plugins/Mantine/Vue public declarations are checked with `pnpm check:public-api`. Review contract changes against `apps/docs/content/guides/api/core-engine-contracts.md`, then intentionally regenerate snapshots with `node scripts/check-public-api.mjs --update`. Updating the snapshot alone does not establish behavioral compatibility.
 
 Vue and the other existing packages have completed publication through their configured trusted publishers. Leave `bootstrap_vue` disabled for subsequent releases. The maintainer retains the bootstrap secret for future first publications; it is not needed for the current packages. Recovery must use the intended release tag and preserve source/tag equivalence and all release gates.
 
@@ -241,4 +241,4 @@ Vue and the other existing packages have completed publication through their con
 
 Commit reader-facing documentation in English, including READMEs, usage/API references, architecture explanations, and contributor/testing guides. Use English for explanatory code comments and PR descriptions as well. Preserve non-English strings when they are meaningful CJK examples, test fixtures, or source data; explain their behavior in English.
 
-Keep internal planning matrices, agent instructions and scratch notes, execution/status logs, and review-process records local. Do not commit them under `docs/` or elsewhere in the repository. Use the ignored `.local-notes/` directory for local material. Extract durable contracts or contributor instructions into the appropriate public guide without carrying over the internal work log. Test fixtures, API snapshots, and license notices are repository assets with their own purposes, not internal planning documents.
+Keep internal planning matrices, agent instructions and scratch notes, execution/status logs, and review-process records local. Do not commit them under `apps/docs/content/guides/` or elsewhere in the repository. Use the ignored `.local-notes/` directory for local material. Extract durable contracts or contributor instructions into the appropriate public guide without carrying over the internal work log. Test fixtures, API snapshots, and license notices are repository assets with their own purposes, not internal planning documents.

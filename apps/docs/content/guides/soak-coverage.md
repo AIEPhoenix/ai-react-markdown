@@ -2,7 +2,7 @@
 
 The release soak compares stateful and incremental implementations with simpler, stateless oracles. A passing equality assertion is useful only if the optimized path actually ran. Each entry therefore records both the oracle and an anti-vacuity condition: a measurable requirement for engagement with the path being tested.
 
-The machine-readable source is [`scripts/soak/coverage-map.json`](../scripts/soak/coverage-map.json). Its validator, [`assert-coverage-map.mjs`](../scripts/soak/assert-coverage-map.mjs), checks that referenced source and tests exist and that every release leg has an owner.
+The machine-readable source is [`scripts/soak/coverage-map.json`](../../../../scripts/soak/coverage-map.json). Its validator, [`assert-coverage-map.mjs`](../../../../scripts/soak/assert-coverage-map.mjs), checks that referenced source and tests exist and that every release leg has an owner.
 
 ## Coverage by optimization
 
@@ -37,7 +37,7 @@ Replace the placeholder directories with the actual run directories. Do not infe
 
 ## Related records
 
-The [prefix-freeze experiment](../packages/engine/src/experiments/prefixFreeze/README.md) explains the boundary study and the evolution of the verification stack. The [architecture guide](./architecture.md) identifies the production pipeline. Historical soak sizes in release notes describe those releases; the current coverage map and runner define the present release contract.
+The [prefix-freeze experiment](../../../../packages/engine/src/experiments/prefixFreeze/README.md) explains the boundary study and the evolution of the verification stack. The [architecture guide](architecture.md) identifies the production pipeline. Historical soak sizes in release notes describe those releases; the current coverage map and runner define the present release contract.
 
 ## When a release needs engine soak
 

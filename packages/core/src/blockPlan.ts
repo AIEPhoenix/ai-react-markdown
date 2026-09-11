@@ -1,6 +1,6 @@
 /** Framework-neutral block planning and dependency fingerprints.
  * Cache ownership and conversion to framework nodes belong to adapters.
- * See docs/architecture.md and packages/core/README.md for the contract.
+ * See apps/docs/content/guides/architecture.md and packages/core/README.md for the contract.
  */
 import type { Element as HastElement, Root as HastRoot, RootContent as HastChild } from 'hast';
 import type { Root as MdastRoot, RootContent as MdastContent, Nodes as MdastNodes } from 'mdast';

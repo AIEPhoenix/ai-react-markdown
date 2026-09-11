@@ -1,5 +1,5 @@
 /**
- * The measurement bench behind `docs/benchmark.md`: same content, same
+ * The measurement bench behind `apps/docs/content/guides/benchmark.md`: same content, same
  * scenario, two render paths, one A/B per story. Every number the benchmark
  * document quotes is reproducible from this file — the export names are the
  * document's vocabulary, so they outlive any retitling.

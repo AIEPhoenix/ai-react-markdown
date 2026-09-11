@@ -6,13 +6,13 @@ Read this guide when tracing a rendering defect, changing an optimization, or bu
 
 ## Shared core and framework adapters
 
-The legacy v2.14.1 release completed the private-runtime split. In stable 3.0.0, that implementation is the public `@ai-markdown/core`, while the React implementation is `@ai-markdown/react`. Core depends on engine; adapters declare both core and engine as exact-version external dependencies. Mantine is a peer-based integration over React. [The migration guide](./framework-transition.md) lists consumer import and stylesheet changes.
+The legacy v2.14.1 release completed the private-runtime split. In stable 3.0.0, that implementation is the public `@ai-markdown/core`, while the React implementation is `@ai-markdown/react`. Core depends on engine; adapters declare both core and engine as exact-version external dependencies. Mantine is a peer-based integration over React. [The migration guide](framework-transition.md) lists consumer import and stylesheet changes.
 
-Shared core owns computation sessions, not React lifecycle. `MarkdownContent` keeps one pipeline session and planner per instance, resets retained state on render-policy invalidation, and delegates parsing without moving registration into render. `useRegistryContribution` invokes the shared publisher only after commit. React still owns cached nodes, context subscriptions, SSR/hydration behavior and cursor DOM measurement. The [shared core module map](../packages/core/README.md#responsibility-and-dependency-direction) is the source guide for this layer.
+Shared core owns computation sessions, not React lifecycle. `MarkdownContent` keeps one pipeline session and planner per instance, resets retained state on render-policy invalidation, and delegates parsing without moving registration into render. `useRegistryContribution` invokes the shared publisher only after commit. React still owns cached nodes, context subscriptions, SSR/hydration behavior and cursor DOM measurement. The [shared core module map](../../../../packages/core/README.md#responsibility-and-dependency-direction) is the source guide for this layer.
 
 ## Vue adapter
 
-The stable `@ai-markdown/vue@3.0.0` adapter uses the same sessions, planner and contribution preparation as React. It keeps AST and registry identities outside deep reactive proxies, selects stable plugin/schema inputs through computed refs, and publishes only after mount. VNode conversion clones HAST before final URL policy; resolved cross-chunk links/images use the shared resolver. SSR and initial hydration do not allocate registries. Vue 3.5 useId supplies stable automatic IDs, and DOM observers belong to the Vue cursor component. See the [Vue README](../packages/vue/README.md) and [shared API contracts](./api/core-engine-contracts.md).
+The stable `@ai-markdown/vue@3.0.0` adapter uses the same sessions, planner and contribution preparation as React. It keeps AST and registry identities outside deep reactive proxies, selects stable plugin/schema inputs through computed refs, and publishes only after mount. VNode conversion clones HAST before final URL policy; resolved cross-chunk links/images use the shared resolver. SSR and initial hydration do not allocate registries. Vue 3.5 useId supplies stable automatic IDs, and DOM observers belong to the Vue cursor component. See the [Vue README](../../../../packages/vue/README.md) and [shared API contracts](api/core-engine-contracts.md).
 
 ## The React component tree
 
@@ -54,7 +54,7 @@ The split matches change frequency. **Metadata** (user callbacks, ids, app-level
 
 If everything lived in one context (the v1.x render-state design), every metadata change or `streaming` flip would re-render every consumer. With the split, components re-render only when their own system changes, and block-level memoization stays effective.
 
-See [Metadata Context](./metadata-context.md) for the consumer-side implications.
+See [Metadata Context](metadata-context.md) for the consumer-side implications.
 
 ---
 
@@ -95,7 +95,7 @@ React commit
 
 The React adapter creates one incremental LaTeX preprocessor per mounted instance and memoizes the preprocessing result by source and caller-preprocessor identity. The built-in function protects supported code regions, normalizes math delimiters, distinguishes currency, escapes math pipes, and truncates incomplete display-math tails where the grammar permits an opener. It runs independently of the `streaming` flag.
 
-Caller preprocessors receive the normalized complete string and run in order. They can alter source positions and the append relationship between consecutive parser inputs. A source append does not guarantee a parser-input append if a preprocessor rewrites earlier text or removes a synthetic closer. See [content preprocessors](./content-preprocessors.md).
+Caller preprocessors receive the normalized complete string and run in order. They can alter source positions and the append relationship between consecutive parser inputs. A source append does not guarantee a parser-input append if a preprocessor rewrites earlier text or removes a synthetic closer. See [content preprocessors](content-preprocessors.md).
 
 ### Stage B: Parse and transform
 
@@ -154,7 +154,7 @@ clobberPrefix = `${encodeURIComponent(shortenDocumentId(documentId))}-user-conte
 
 Long ids (>16 chars) are hashed via MurmurHash3 → Base62 before encoding, to keep the rendered HTML compact when consumers pass UUIDs/nanoids. The shortening only affects the rendered prefix — `useAIMarkdownDocument().documentId` retains the raw value, so registry keying and consumer code reading `documentId` see the original. Ill-formed UTF-16 ids (unpaired surrogates, e.g. from a string truncated mid-emoji upstream) are always hashed regardless of length — over their raw UTF-16 code units with a domain-separating seed — so they derive a valid prefix instead of throwing `URIError`, and distinct corrupted ids keep distinct prefixes (up to the same 2^32 hash bound long ids always had). The raw value in `useAIMarkdownDocument().documentId` is still untouched, and dev builds log a warning pointing at the upstream corruption.
 
-**Chunks of the same logical document share `documentId`**, so their prefixes align. This is the bridge between [`<AIMarkdownDocuments>`](./cross-chunk-coordination.md) and cross-chunk anchor navigation.
+**Chunks of the same logical document share `documentId`**, so their prefixes align. This is the bridge between [`<AIMarkdownDocuments>`](cross-chunk-coordination.md) and cross-chunk anchor navigation.
 
 ---
 
@@ -185,7 +185,7 @@ Shared planning and fingerprints live in `packages/core/src/blockPlan.ts` and `b
 
 These invariants are enforced by tests (`byteEquivalence.test.tsx` is the harness that verifies byte-identical output across every plugin permutation and `blockMemo` on/off).
 
-Before changing planning or rendering, read the [shared core contracts](../packages/core/README.md#planning-and-rendering-contracts). They document cache identity, ownership and commit timing; no untracked local design file is required.
+Before changing planning or rendering, read the [shared core contracts](../../../../packages/core/README.md#planning-and-rendering-contracts). They document cache identity, ownership and commit timing; no untracked local design file is required.
 
 ---
 
@@ -201,7 +201,7 @@ Hand-rolling a schema via `{ ...defaultSchema, … }` silently drops these. `ext
 
 The library default is **not** exported as a value from `@ai-markdown/react` — only the helper. This prevents the shallow-spread footgun by construction on the consumer-facing surface: there's no `sanitizeSchema` constant in the core API to shallow-spread _from_. (`@ai-markdown/engine` does export the singleton, because core builds its pipeline from it; it is deep-frozen; use the extension helper to obtain a mutable independent draft.)
 
-See [URL Sanitization & Custom Schemes](./url-sanitization.md) for the two-gate model.
+See [URL Sanitization & Custom Schemes](url-sanitization.md) for the two-gate model.
 
 ---
 
@@ -215,7 +215,7 @@ See [URL Sanitization & Custom Schemes](./url-sanitization.md) for the two-gate 
 4. Overrides `customComponents.pre` with `MantineAIMPreCode` (CodeHighlight + Mermaid + JSON pretty-print).
 5. Auto-detects color scheme via Mantine's `useComputedColorScheme`.
 
-Every one of these uses **public** extension points from core. No internal access. See [Extending via a Sub-package](./extending-via-subpackage.md) for the template.
+Every one of these uses **public** extension points from core. No internal access. See [Extending via a Sub-package](extending-via-subpackage.md) for the template.
 
 ---
 
@@ -347,7 +347,7 @@ packages/react-mantine/src/
 
 `packages/remark-mark-highlight` is the independently versioned remark plugin consumed by engine. It is the sixth public package; `packages/react/plugins` is only an export subpath.
 
-Storybook apps live in `apps/storybook-{hub,react,vue}`, with shared helpers in `tooling/storybook-kit`. Those workspaces, the corpus, benchmarks and archived prototypes are private. See [development commands](./development-commands.md) for package-filtered builds and tests.
+Storybook apps live in `apps/storybook-{hub,react,vue}`, with shared helpers in `tooling/storybook-kit`. Those workspaces, the corpus, benchmarks and archived prototypes are private. See [development commands](development-commands.md) for package-filtered builds and tests.
 
 ## Package boundary and verification ownership
 
@@ -364,7 +364,7 @@ The principal verification layers answer different questions:
 | Browser stories                    | Do contexts, cursor placement, queues and DOM output work through real React commits? |
 | Browser benchmarks                 | What cost and responsiveness does a particular workload exhibit?                      |
 
-A performance measurement is not an equivalence proof, and a green equivalence test is not a bound on latency. Current release verification is described in [soak coverage](./soak-coverage.md); historical experiments retain the evidence and limitations of their original measurements.
+A performance measurement is not an equivalence proof, and a green equivalence test is not a bound on latency. Current release verification is described in [soak coverage](soak-coverage.md); historical experiments retain the evidence and limitations of their original measurements.
 
 ## Where to investigate a defect
 

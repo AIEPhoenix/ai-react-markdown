@@ -1,6 +1,6 @@
 # Streaming Cursor
 
-The component-slot API below is React-specific. Vue enables its cursor by default with a boolean `streamingCursor` prop and customizes it through the `cursor` slot. See the [Vue guide](../packages/vue/README.md#cursor-behavior) and [package setup](./getting-started.md).
+The component-slot API below is React-specific. Vue enables its cursor by default with a boolean `streamingCursor` prop and customizes it through the `cursor` slot. See the [Vue guide](../../../../packages/vue/README.md#cursor-behavior) and [package setup](getting-started.md).
 
 `streamingCursor` is a component slot for a visual “still generating” indicator. The React adapter mounts it inside the typography wrapper while `streaming` is true. The exported `AIMarkdownStreamingCursor` positions a small overlay after the final supported text anchor and keeps animating during pauses in delivery.
 
@@ -24,7 +24,7 @@ For a smooth-stream wrapper, the inner streaming flag remains active until the r
 
 The obvious approach — `content={content + '▍'}` while streaming — used to be documented here and is now actively harmful:
 
-1. **It defeats incremental parsing on every frame.** The [prefix-freeze engine](./streaming-and-performance.md#incremental-parse-prefix-freeze)'s append gate requires each frame's content to be a pure append of the previous frame's. `c1 + '▍'` → `c1 + delta + '▍'` is never a pure append (the `▍` is removed and re-added), so every frame silently falls back to a full parse.
+1. **It defeats incremental parsing on every frame.** The [prefix-freeze engine](streaming-and-performance.md#incremental-parse-prefix-freeze)'s append gate requires each frame's content to be a pure append of the previous frame's. `c1 + '▍'` → `c1 + delta + '▍'` is never a pure append (the `▍` is removed and re-added), so every frame silently falls back to a full parse.
 2. **The character lands inside source-sensitive constructs.** Inside an unclosed `$$` block it breaks the KaTeX parse; inside a streaming mermaid fence it corrupts the diagram source (text-extracting renderers see it).
 3. **It invalidates the last block's memo cache every frame**, even when the real content didn't change.
 
@@ -142,7 +142,7 @@ The character-append hack does render inside code fences (the built-in cursor hi
 
 ### Expecting a waiting indicator before the first token
 
-Empty content has nothing to anchor to, so the cursor is hidden until the first text arrives. The pre-first-token spinner is one conditional render in your own component — see [Streaming chat: end-to-end](./streaming-chat-example.md) — and by owning it you also control its placement (avatar, message bubble, etc.), which an inline cursor can't do anyway.
+Empty content has nothing to anchor to, so the cursor is hidden until the first text arrives. The pre-first-token spinner is one conditional render in your own component — see [Streaming chat: end-to-end](streaming-chat-example.md) — and by owning it you also control its placement (avatar, message bubble, etc.), which an inline cursor can't do anyway.
 
 ### Wrapping the indicator in extra text-flow elements
 

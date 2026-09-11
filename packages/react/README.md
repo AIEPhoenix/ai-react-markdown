@@ -1,5 +1,7 @@
 # @ai-markdown/react
 
+[Documentation](https://ai-markdown.github.io/docs/react/) · [Examples](https://ai-markdown.github.io/examples/) · [Website](https://ai-markdown.github.io/)
+
 [![@ai-markdown/react stable](https://img.shields.io/npm/v/@ai-markdown/react?label=npm&color=blue)](https://www.npmjs.com/package/@ai-markdown/react?activeTab=versions)
 [![@ai-markdown/react monthly downloads](https://img.shields.io/npm/dm/@ai-markdown/react?label=downloads%2Fmonth&color=blue)](https://www.npmjs.com/package/@ai-markdown/react)
 [![TypeScript declarations included](https://img.shields.io/badge/TypeScript-included-3178c6?logo=typescript&logoColor=white)](https://github.com/ai-markdown/ai-markdown/tree/main/packages/react)
@@ -7,15 +9,15 @@
 
 [![React 19](https://img.shields.io/badge/React-19-149eca?logo=react&logoColor=white)](#compatibility)
 
-React 19 application adapter. For Vue 3.5, use [`@ai-markdown/vue`](../vue/README.md). For package selection, CSS setup and API differences, see [Getting started](../../docs/getting-started.md).
+React 19 application adapter. For Vue 3.5, use [`@ai-markdown/vue`](../vue/README.md). For package selection, CSS setup and API differences, see [Getting started](https://ai-markdown.github.io/docs/guides/getting-started/).
 
-> **3.0.0:** React and Vue adapters share the public `@ai-markdown/core` and `@ai-markdown/engine` packages. See the [migration guide](../../docs/framework-transition.md).
+> **3.0.0:** React and Vue adapters share the public `@ai-markdown/core` and `@ai-markdown/engine` packages. See the [migration guide](https://ai-markdown.github.io/docs/guides/framework-transition/).
 
 `@ai-markdown/react` renders accumulated Markdown strings in React. It combines GFM, KaTeX math, CJK delimiter handling, optional typography transforms, and a verified incremental parsing path for append-heavy content. Use it with the built-in CSS or supply your own typography and element components.
 
 The React adapter owns the React lifecycle, context hooks, document coordination, and cached element construction. Its exact-version engine dependency owns syntax processing. Code fences remain code text in the React adapter; syntax highlighting, JSON presentation, and rendered Mermaid diagrams are supplied by the Mantine package or your custom `pre` component. Start with the installation and quick start, then use the API tables to make each customization explicit.
 
-> **Upgrading from 1.x?** v2.0.0 removes the 1.x object-based `config` channel (and its integrator default channel) in favor of flat props, a sealed engine-plugin catalog, and five narrow hooks. See the [migration guide](https://github.com/ai-markdown/ai-markdown/blob/main/docs/migrating-to-v2.md) for the complete old → new mapping with before/after code.
+> **Upgrading from 1.x?** v2.0.0 removes the 1.x object-based `config` channel (and its integrator default channel) in favor of flat props, a sealed engine-plugin catalog, and five narrow hooks. See the [migration guide](https://ai-markdown.github.io/docs/guides/migrating-to-v2/) for the complete old → new mapping with before/after code.
 
 ## Features
 
@@ -26,7 +28,7 @@ The React adapter owns the React lifecycle, context hooks, document coordination
 - **Extra syntax** -- highlight (`==text==`), definition lists
 - **Display optimizations** -- SmartyPants typography, pangu CJK spacing, HTML comment removal
 - **Streaming-aware** -- built-in `streaming` flag propagated via context for custom components
-- **Smooth streaming** -- `AIMarkdownSmoothStream` shell (and the `useSmoothStream` hook beneath it) reveals bursty token chunks as a steady grapheme-by-grapheme typewriter; see [docs/smooth-streaming.md](https://github.com/ai-markdown/ai-markdown/blob/main/docs/smooth-streaming.md)
+- **Smooth streaming** -- `AIMarkdownSmoothStream` shell (and the `useSmoothStream` hook beneath it) reveals bursty token chunks as a steady grapheme-by-grapheme typewriter; see [apps/docs/content/guides/smooth-streaming.md](https://ai-markdown.github.io/docs/guides/smooth-streaming/)
 - **Customizable** -- swap typography, color scheme, individual markdown element renderers, and inject extra style wrappers
 - **Metadata context** -- pass arbitrary data to deeply nested custom components without prop drilling, isolated from render state to avoid unnecessary re-renders
 - **TypeScript** -- fully typed flat props plus a metadata generic (`AIMarkdownProps<TMetadata>`)
@@ -44,14 +46,14 @@ The React adapter owns the React lifecycle, context hooks, document coordination
 
 ## Compatibility
 
-|                |                                                                                                                                                                                                                                                                                |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| React          | ^19.0.0 (`react`, `react-dom` peer dependencies)                                                                                                                                                                                                                               |
-| KaTeX          | `^0.16` or `^0.17` (optional peer — only if you render math)                                                                                                                                                                                                                   |
-| Node           | `^20.19.0 \|\| >=22.12.0` (`engines.node`)                                                                                                                                                                                                                                     |
-| Module formats | ESM and CJS, TypeScript types for both, `sideEffects` declared                                                                                                                                                                                                                 |
-| Runtimes       | Browser, Node, edge/workers; server rendering via `renderToString`, and the bundle keeps its `"use client"` directive for React Server Components apps — see [Streaming & performance](https://github.com/ai-markdown/ai-markdown/blob/main/docs/streaming-and-performance.md) |
-| Bundling       | ESM/CJS artifacts and declared side effects; selecting fewer plugins disables their pipeline behavior, but does not guarantee their dependencies disappear from the bundle                                                                                                     |
+|                |                                                                                                                                                                                                                                                              |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| React          | ^19.0.0 (`react`, `react-dom` peer dependencies)                                                                                                                                                                                                             |
+| KaTeX          | `^0.16` or `^0.17` (optional peer — only if you render math)                                                                                                                                                                                                 |
+| Node           | `^20.19.0 \|\| >=22.12.0` (`engines.node`)                                                                                                                                                                                                                   |
+| Module formats | ESM and CJS, TypeScript types for both, `sideEffects` declared                                                                                                                                                                                               |
+| Runtimes       | Browser, Node, edge/workers; server rendering via `renderToString`, and the bundle keeps its `"use client"` directive for React Server Components apps — see [Streaming & performance](https://ai-markdown.github.io/docs/guides/streaming-and-performance/) |
+| Bundling       | ESM/CJS artifacts and declared side effects; selecting fewer plugins disables their pipeline behavior, but does not guarantee their dependencies disappear from the bundle                                                                                   |
 
 ## Installation
 
@@ -255,11 +257,11 @@ order, so existing code needs no update.
 
 ### `<AIMarkdownDocuments>` Props
 
-| Prop                       | Type        | Default | Description                                                                                                                                                                                                                                                                                                                                                         |
-| -------------------------- | ----------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `preserveOrphanReferences` | `boolean`   | `true`  | Controls orphan-reference protection for every chunk under this wrapper. Unconditionally overrides each chunk's `preserveOrphanReferences` prop. Does not gate cross-chunk coordination itself (that's gated by wrapper + `documentId`).                                                                                                                            |
-| `smoothTurnTaking`         | `boolean`   | `true`  | Wrapper-level switch for smooth-stream turn-taking: when `true`, `<AIMarkdownSmoothStream>` chunks sharing this `documentId` type one at a time in mount order. `false` lets every chunk pace independently. See [smooth streaming → turn-taking](https://github.com/ai-markdown/ai-markdown/blob/main/docs/smooth-streaming.md#multi-chunk-documents-turn-taking). |
-| `children`                 | `ReactNode` | -       | The `<AIMarkdown>` instances to coordinate. Nesting `<AIMarkdownDocuments>` inside another `<AIMarkdownDocuments>` throws.                                                                                                                                                                                                                                          |
+| Prop                       | Type        | Default | Description                                                                                                                                                                                                                                                                                                                                       |
+| -------------------------- | ----------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `preserveOrphanReferences` | `boolean`   | `true`  | Controls orphan-reference protection for every chunk under this wrapper. Unconditionally overrides each chunk's `preserveOrphanReferences` prop. Does not gate cross-chunk coordination itself (that's gated by wrapper + `documentId`).                                                                                                          |
+| `smoothTurnTaking`         | `boolean`   | `true`  | Wrapper-level switch for smooth-stream turn-taking: when `true`, `<AIMarkdownSmoothStream>` chunks sharing this `documentId` type one at a time in mount order. `false` lets every chunk pace independently. See [smooth streaming → turn-taking](https://ai-markdown.github.io/docs/guides/smooth-streaming/#multi-chunk-documents-turn-taking). |
+| `children`                 | `ReactNode` | -       | The `<AIMarkdown>` instances to coordinate. Nesting `<AIMarkdownDocuments>` inside another `<AIMarkdownDocuments>` throws.                                                                                                                                                                                                                        |
 
 ### `useDocumentRegistry(documentId)`
 
@@ -460,7 +462,7 @@ function CustomCodeBlock({ children }: PropsWithChildren) {
 }
 ```
 
-This small renderer extracts the visible code text from the actual `<pre>` and keeps the button outside it. `String(children)` would stringify React elements rather than recover their code. For transformed displays, preserve original source from the hast node instead; the [custom component guide](../../docs/custom-components.md) provides that fuller recipe.
+This small renderer extracts the visible code text from the actual `<pre>` and keeps the button outside it. `String(children)` would stringify React elements rather than recover their code. For transformed displays, preserve original source from the hast node instead; the [custom component guide](https://ai-markdown.github.io/docs/guides/custom-components/) provides that fuller recipe.
 
 Metadata is passed through without a deep-equality wrapper. Reuse a stable object when values have not changed; use a new object when reactive metadata changes. A stable container holding callbacks or an external store is useful for high-frequency application data, but mutating a ref alone does not notify a React view.
 
@@ -661,7 +663,7 @@ For paced presentation, replace the renderer with `AIMarkdownSmoothStream`, or p
 
 Use one renderer for a normal transport stream. Multiple logical Markdown chunks can share an explicit document id under `AIMarkdownDocuments`, with block memoization enabled. The wrapper coordinates references; it does not reconnect fences, tables, or paragraphs split at arbitrary token boundaries.
 
-See [the full chat example](../../docs/streaming-chat-example.md), [smooth streaming](../../docs/smooth-streaming.md), and [streaming performance](../../docs/streaming-and-performance.md) for framing, cancellation, lifecycle, and cache behavior.
+See [the full chat example](https://ai-markdown.github.io/docs/guides/streaming-chat-example/), [smooth streaming](https://ai-markdown.github.io/docs/guides/smooth-streaming/), and [streaming performance](https://ai-markdown.github.io/docs/guides/streaming-and-performance/) for framing, cancellation, lifecycle, and cache behavior.
 
 ## Metadata
 
@@ -718,7 +720,7 @@ The metadata hook accepts the matching generic:
 const metadata = useAIMarkdownMetadata<MyMetadata>();
 ```
 
-Sub-packages extend the **flat prop surface** instead of a config generic: `@ai-markdown/react-mantine`'s `MantineAIMarkdownProps<TMetadata> extends AIMarkdownProps<TMetadata>` adds a `codeBlock` prop, transports it through `AIMarkdownBehaviorsProvider`, and asserts the group type exactly once inside its own narrow hook (`useMantineCodeBlockOptions()`). See [Additive Providers](#additive-providers) above and [Extending via a sub-package](https://github.com/ai-markdown/ai-markdown/blob/main/docs/extending-via-subpackage.md).
+Sub-packages extend the **flat prop surface** instead of a config generic: `@ai-markdown/react-mantine`'s `MantineAIMarkdownProps<TMetadata> extends AIMarkdownProps<TMetadata>` adds a `codeBlock` prop, transports it through `AIMarkdownBehaviorsProvider`, and asserts the group type exactly once inside its own narrow hook (`useMantineCodeBlockOptions()`). See [Additive Providers](#additive-providers) above and [Extending via a sub-package](https://ai-markdown.github.io/docs/guides/extending-via-subpackage/).
 
 ## Architecture Overview
 
@@ -748,7 +750,7 @@ State is deliberately split across five per-system contexts (document, metadata,
 
 - `AIMarkdownDocuments` -- optional outer wrapper enabling cross-chunk coordination
 - `AIMarkdownStreamingCursor` -- built-in inline cursor for the `streamingCursor` slot
-- `AIMarkdownSmoothStream` -- `<AIMarkdown>` plus typewriter pacing (`smooth*` props); chunks sharing a `documentId` under `<AIMarkdownDocuments>` reveal turn-by-turn (one typewriter, one cursor); see [docs/smooth-streaming.md](https://github.com/ai-markdown/ai-markdown/blob/main/docs/smooth-streaming.md)
+- `AIMarkdownSmoothStream` -- `<AIMarkdown>` plus typewriter pacing (`smooth*` props); chunks sharing a `documentId` under `<AIMarkdownDocuments>` reveal turn-by-turn (one typewriter, one cursor); see [apps/docs/content/guides/smooth-streaming.md](https://ai-markdown.github.io/docs/guides/smooth-streaming/)
 
 ### Providers
 
@@ -807,20 +809,20 @@ State is deliberately split across five per-system contexts (document, metadata,
 
 ## Documentation
 
-| Guide                                                                                                                                                                                                                                                                                                   | What it covers                                                                           |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| [Streaming & performance](https://github.com/ai-markdown/ai-markdown/blob/main/docs/streaming-and-performance.md)                                                                                                                                                                                       | Block memoization, incremental (prefix-freeze) parsing, what to pass while tokens arrive |
-| [Smooth streaming](https://github.com/ai-markdown/ai-markdown/blob/main/docs/smooth-streaming.md)                                                                                                                                                                                                       | `<AIMarkdownSmoothStream>` typewriter reveal, pacing presets, document turn-taking       |
-| [Streaming cursor](https://github.com/ai-markdown/ai-markdown/blob/main/docs/streaming-cursor.md)                                                                                                                                                                                                       | The overlay cursor that tracks the streaming tail                                        |
-| [Cross-chunk coordination](https://github.com/ai-markdown/ai-markdown/blob/main/docs/cross-chunk-coordination.md)                                                                                                                                                                                       | `<AIMarkdownDocuments>`, footnotes and link references across chunks, the registry       |
-| [URL sanitization & custom schemes](https://github.com/ai-markdown/ai-markdown/blob/main/docs/url-sanitization.md)                                                                                                                                                                                      | The two-gate model, `urlTransform`, `extendSanitizeSchema`                               |
-| [Custom components](https://github.com/ai-markdown/ai-markdown/blob/main/docs/custom-components.md) · [Custom typography](https://github.com/ai-markdown/ai-markdown/blob/main/docs/custom-typography.md) · [Design tokens](https://github.com/ai-markdown/ai-markdown/blob/main/docs/design-tokens.md) | Swapping renderers, theming, the `--aim-*` variables                                     |
-| [CJK typography](https://github.com/ai-markdown/ai-markdown/blob/main/docs/cjk-typography.md)                                                                                                                                                                                                           | Line breaking, spacing, pangu                                                            |
-| [Metadata context](https://github.com/ai-markdown/ai-markdown/blob/main/docs/metadata-context.md) · [TypeScript generics](https://github.com/ai-markdown/ai-markdown/blob/main/docs/typescript-generics.md)                                                                                             | Passing typed metadata to custom components                                              |
-| [Content preprocessors](https://github.com/ai-markdown/ai-markdown/blob/main/docs/content-preprocessors.md)                                                                                                                                                                                             | Rewriting the source before it parses                                                    |
-| [Extending via subpackage](https://github.com/ai-markdown/ai-markdown/blob/main/docs/extending-via-subpackage.md)                                                                                                                                                                                       | Building your own UI-kit binding (the mantine package is the reference)                  |
-| [Architecture](https://github.com/ai-markdown/ai-markdown/blob/main/docs/architecture.md) · [Benchmark](https://github.com/ai-markdown/ai-markdown/blob/main/docs/benchmark.md)                                                                                                                         | How the packages fit together, measured numbers                                          |
-| [Migrating to v2](https://github.com/ai-markdown/ai-markdown/blob/main/docs/migrating-to-v2.md) · [Release highlights](https://github.com/ai-markdown/ai-markdown/blob/main/docs/release-highlights.md)                                                                                                 | Old → new API mapping, what changed per version                                          |
+| Guide                                                                                                                                                                                                                                             | What it covers                                                                           |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| [Streaming & performance](https://ai-markdown.github.io/docs/guides/streaming-and-performance/)                                                                                                                                                   | Block memoization, incremental (prefix-freeze) parsing, what to pass while tokens arrive |
+| [Smooth streaming](https://ai-markdown.github.io/docs/guides/smooth-streaming/)                                                                                                                                                                   | `<AIMarkdownSmoothStream>` typewriter reveal, pacing presets, document turn-taking       |
+| [Streaming cursor](https://ai-markdown.github.io/docs/guides/streaming-cursor/)                                                                                                                                                                   | The overlay cursor that tracks the streaming tail                                        |
+| [Cross-chunk coordination](https://ai-markdown.github.io/docs/guides/cross-chunk-coordination/)                                                                                                                                                   | `<AIMarkdownDocuments>`, footnotes and link references across chunks, the registry       |
+| [URL sanitization & custom schemes](https://ai-markdown.github.io/docs/guides/url-sanitization/)                                                                                                                                                  | The two-gate model, `urlTransform`, `extendSanitizeSchema`                               |
+| [Custom components](https://ai-markdown.github.io/docs/guides/custom-components/) · [Custom typography](https://ai-markdown.github.io/docs/guides/custom-typography/) · [Design tokens](https://ai-markdown.github.io/docs/guides/design-tokens/) | Swapping renderers, theming, the `--aim-*` variables                                     |
+| [CJK typography](https://ai-markdown.github.io/docs/guides/cjk-typography/)                                                                                                                                                                       | Line breaking, spacing, pangu                                                            |
+| [Metadata context](https://ai-markdown.github.io/docs/guides/metadata-context/) · [TypeScript generics](https://ai-markdown.github.io/docs/guides/typescript-generics/)                                                                           | Passing typed metadata to custom components                                              |
+| [Content preprocessors](https://ai-markdown.github.io/docs/guides/content-preprocessors/)                                                                                                                                                         | Rewriting the source before it parses                                                    |
+| [Extending via subpackage](https://ai-markdown.github.io/docs/guides/extending-via-subpackage/)                                                                                                                                                   | Building your own UI-kit binding (the mantine package is the reference)                  |
+| [Architecture](https://ai-markdown.github.io/docs/guides/architecture/) · [Benchmark](https://ai-markdown.github.io/docs/guides/benchmark/)                                                                                                       | How the packages fit together, measured numbers                                          |
+| [Migrating to v2](https://ai-markdown.github.io/docs/guides/migrating-to-v2/) · [Release highlights](https://ai-markdown.github.io/docs/guides/release-highlights/)                                                                               | Old → new API mapping, what changed per version                                          |
 
 ## Integration checks and implementation boundaries
 
@@ -832,7 +834,7 @@ For coordination, test a late definition and a chunk remount. `documentIndex` or
 
 The default schema removes disallowed tags and attributes before `urlTransform`; the callback cannot restore an attribute already removed. Cross-chunk references apply the consuming chunk's policy to their final `a` or `img`, including ancestor constraints. Registry selectors expose raw definition URLs, so a custom sidebar must apply its own URL policy before rendering them.
 
-Source owners: [`src/index.tsx`](./src/index.tsx) resolves public inputs, [`MarkdownContent`](./src/components/MarkdownContent.tsx) owns rendering and contribution effects, and the [engine README](../engine/README.md) describes the syntax layer. The [development guide index](../../docs/README.md) connects every customization surface to a detailed recipe.
+Source owners: [`src/index.tsx`](./src/index.tsx) resolves public inputs, [`MarkdownContent`](./src/components/MarkdownContent.tsx) owns rendering and contribution effects, and the [engine README](../engine/README.md) describes the syntax layer. The [development guide index](https://ai-markdown.github.io/docs/guides/) connects every customization surface to a detailed recipe.
 
 ## License
 

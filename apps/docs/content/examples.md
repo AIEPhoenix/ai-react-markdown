@@ -10,7 +10,7 @@ Explore live rendering behavior in the Storybook catalogs. React and Vue share c
 | [Vue](storybook:vue/)                                                        | Vue props, scoped slots, composables and streaming lifecycle     |
 | [Mantine](storybook:react/?path=/docs/integrations-mantine-playground--docs) | React integration with theme-aware typography, code and diagrams |
 
-If no hosted catalog is configured, these links open the [local Storybook instructions](../../../docs/storybook.md). Run `pnpm storybook` from the repository root to start the combined catalog on port 6006, React on 6007 and Vue on 6008.
+If no hosted catalog is configured, these links open the [local Storybook instructions](guides/storybook.md). Run `pnpm storybook` from the repository root to start the combined catalog on port 6006, React on 6007 and Vue on 6008.
 
 For installation and supported APIs, use the [React](../../../packages/react/README.md), [Vue](../../../packages/vue/README.md) and [Mantine](../../../packages/react-mantine/README.md) references.
 

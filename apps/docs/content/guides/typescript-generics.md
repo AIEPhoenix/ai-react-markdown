@@ -1,6 +1,6 @@
 # TypeScript Generics
 
-These metadata generics and definition factories belong to `@ai-markdown/react`. Vue exposes `AIMarkdownProps`, `MarkdownComponents` and a `MarkdownElementContext` whose metadata is `unknown`. See the [Vue guide](../packages/vue/README.md#api-and-distribution) and [package setup](./getting-started.md).
+These metadata generics and definition factories belong to `@ai-markdown/react`. Vue exposes `AIMarkdownProps`, `MarkdownComponents` and a `MarkdownElementContext` whose metadata is `unknown`. See the [Vue guide](../../../../packages/vue/README.md#api-and-distribution) and [package setup](getting-started.md).
 
 The React adapter has one component generic: `TMetadata`. It describes the value supplied through `metadata`, while ordinary props describe theme, lifecycle, pipeline choices, and rendering slots. There is no configuration generic in v2.
 
@@ -14,7 +14,7 @@ function AIMarkdown<TMetadata extends AIMarkdownMetadata = AIMarkdownMetadata>(
 
 The consumer hook's type argument is separate. `useAIMarkdownMetadata<ChatMeta>()` tells TypeScript how to treat the nearest context value, but it cannot prove that the provider supplied that shape. Centralize this assertion in an application hook and keep its runtime absent-value handling explicit.
 
-For v1 code, remove the first generic argument: `AIMarkdownProps<MyConfig, MyMeta>` becomes `AIMarkdownProps<MyMeta>`. Behavior extensions now use wrapper props and provider groups, as shown below and in the [migration guide](./migrating-to-v2.md).
+For v1 code, remove the first generic argument: `AIMarkdownProps<MyConfig, MyMeta>` becomes `AIMarkdownProps<MyMeta>`. Behavior extensions now use wrapper props and provider groups, as shown below and in the [migration guide](migrating-to-v2.md).
 
 ## Extending metadata
 
@@ -99,7 +99,7 @@ export function useMantineCodeBlockOptions(): Required<MantineCodeBlockOptions> 
 }
 ```
 
-Group defaults are applied here too — the hook is the one place both the assertion and the defaults live. See [Extending via a Sub-package](./extending-via-subpackage.md) for the full wrapper recipe.
+Group defaults are applied here too — the hook is the one place both the assertion and the defaults live. See [Extending via a Sub-package](extending-via-subpackage.md) for the full wrapper recipe.
 
 ---
 
@@ -189,7 +189,7 @@ Both types are **aliases** that track their upstream package shapes:
 
 These types **may change with the upstream packages' major versions**. The library re-exports them so consumers don't need a direct dependency on the upstream packages for type imports; the trade-off is that if `rehype-sanitize` ships a major bump that changes the schema shape, `SanitizeSchema` here changes in lockstep.
 
-Build your sanitize schema via [`extendSanitizeSchema`](./url-sanitization.md#sanitizeschema-gate-1-via-extendsanitizeschema) rather than hand-typing the schema literal — the helper insulates you from most upstream shape changes.
+Build your sanitize schema via [`extendSanitizeSchema`](url-sanitization.md#sanitizeschema-gate-1-via-extendsanitizeschema) rather than hand-typing the schema literal — the helper insulates you from most upstream shape changes.
 
 ---
 
@@ -215,11 +215,11 @@ TS won't catch this. The wrapper-hook pattern doesn't make the assertion _safe_ 
 <AIMarkdown<ChatMeta> … />           // ✓
 ```
 
-Same for `MantineAIMarkdownProps<MyMantineConfig, MyMeta>` → `MantineAIMarkdownProps<MyMeta>`. If you're mid-migration, the [migration guide](./migrating-to-v2.md#generic-signature-mapping-ts-users) has the full signature table (including the removed `PartialDeep` export).
+Same for `MantineAIMarkdownProps<MyMantineConfig, MyMeta>` → `MantineAIMarkdownProps<MyMeta>`. If you're mid-migration, the [migration guide](migrating-to-v2.md#generic-signature-mapping-ts-users) has the full signature table (including the removed `PartialDeep` export).
 
 ### Scattering `as` assertions at read sites
 
-If you find yourself writing `behaviors.myGroup as MyGroupOptions` in more than one file, you've skipped the narrow hook. Centralize: one hook, one assertion, defaults applied inside it (bare `??` fallbacks at multiple read sites will drift — see [Extending via a Sub-package](./extending-via-subpackage.md#footguns)).
+If you find yourself writing `behaviors.myGroup as MyGroupOptions` in more than one file, you've skipped the narrow hook. Centralize: one hook, one assertion, defaults applied inside it (bare `??` fallbacks at multiple read sites will drift — see [Extending via a Sub-package](extending-via-subpackage.md#footguns)).
 
 ## Preserve inference in wrappers
 
@@ -261,4 +261,4 @@ Optional fields deserve particular care in group hooks. `{ ...defaults, ...group
 
 The React adapter also exports `AIMarkdownSmoothStreamProps<TMetadata>`, `UseSmoothStreamOptions`, `UseSmoothStreamResult`, and `UseDocumentSmoothStreamOptions`. The smooth shell preserves the same metadata generic; the hooks operate on strings and lifecycle state and do not need one. Controller types (`SmoothStreamController`, `SmoothStreamOptions`, `SmoothStreamPacing`, `SmoothStreamPacingParams`) describe the framework-independent pacing layer.
 
-The authoritative exported names are in [`react/src/index.tsx`](../packages/react/src/index.tsx), with payload types in [`context.tsx`](../packages/react/src/context.tsx). The [subpackage guide](./extending-via-subpackage.md) shows how a wrapper's props, group hook, and widened factory fit together.
+The authoritative exported names are in [`react/src/index.tsx`](../../../../packages/react/src/index.tsx), with payload types in [`context.tsx`](../../../../packages/react/src/context.tsx). The [subpackage guide](extending-via-subpackage.md) shows how a wrapper's props, group hook, and widened factory fit together.

@@ -20,7 +20,7 @@
  * identity per render would defeat `contentPreprocessors`' stable-value
  * memoization and re-run the whole pipeline every frame.
  *
- * Interactions (see docs/content-preprocessors.md for the full discussion):
+ * Interactions (see apps/docs/content/guides/content-preprocessors.md for the full discussion):
  *
  * - **block-memo**: zero conflict. Repairs only append/adjust the tail;
  *   earlier blocks' bytes are untouched, so their hast digests still hit.

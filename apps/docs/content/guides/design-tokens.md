@@ -1,6 +1,6 @@
 # Design Tokens (CSS Custom Properties)
 
-These `--aim-*` tokens belong to React’s typography stylesheet. Vue’s base stylesheet and Mantine’s presentation have separate styling contracts. See the [Vue guide](../packages/vue/README.md#minimal-component) and [package setup](./getting-started.md).
+These `--aim-*` tokens belong to React’s typography stylesheet. Vue’s base stylesheet and Mantine’s presentation have separate styling contracts. See the [Vue guide](../../../../packages/vue/README.md#minimal-component) and [package setup](getting-started.md).
 
 The default React typography stylesheet exposes CSS custom properties for spacing, text sizes, heading hierarchy, colors, and math. Override those properties to adapt Markdown to your design system while retaining the built-in element rules. The tokens belong to the React adapter's default stylesheet; Mantine uses its own typography and scoped Mantine variables.
 
@@ -190,7 +190,7 @@ The selectors above are global. To scope, raise specificity with a parent class:
 }
 ```
 
-The wrapper `<div className="chat-message">` could come from your own layout or via a [custom Typography component](./custom-typography.md).
+The wrapper `<div className="chat-message">` could come from your own layout or via a [custom Typography component](custom-typography.md).
 
 ---
 
@@ -235,7 +235,7 @@ import '@ai-markdown/react/typography/default.css';
 import '@ai-markdown/react/typography/all.css';
 ```
 
-If you write a [custom typography component](./custom-typography.md), you can also ship your own CSS file that declares these tokens (or your own) on your custom root selector. The token names themselves are not required when you fully replace the typography — they're a contract specifically between the built-in `default` variant's CSS and consumer overrides.
+If you write a [custom typography component](custom-typography.md), you can also ship your own CSS file that declares these tokens (or your own) on your custom root selector. The token names themselves are not required when you fully replace the typography — they're a contract specifically between the built-in `default` variant's CSS and consumer overrides.
 
 ---
 
@@ -298,6 +298,6 @@ The light and dark classes declare the same property names. This table records t
 4. Check computed values for a heading, a table cell, inline code, and KaTeX in a blockquote.
 5. Check both light and dark mode. A color declared on `.light` or `.dark` may compete with a generic variant override of equal specificity.
 
-The root variable is supplied as an inline style. A normal stylesheet declaration will lose to that inline value immediately, not only after the next React render. Custom wrappers must forward `style` to preserve it. See [custom typography](./custom-typography.md) for the wrapper and Fragment contracts.
+The root variable is supplied as an inline style. A normal stylesheet declaration will lose to that inline value immediately, not only after the next React render. Custom wrappers must forward `style` to preserve it. See [custom typography](custom-typography.md) for the wrapper and Fragment contracts.
 
-The maintained source is [`default.scss`](../packages/react/src/components/typography/variants/default.scss). Token tables describe that file's current defaults; they do not promise that every generated or caller-supplied component consumes every token.
+The maintained source is [`default.scss`](../../../../packages/react/src/components/typography/variants/default.scss). Token tables describe that file's current defaults; they do not promise that every generated or caller-supplied component consumes every token.

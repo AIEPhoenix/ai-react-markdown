@@ -6,7 +6,7 @@ This guide defines the shared contracts used by framework adapters. The document
 
 Engine supplies syntax, tree transformations, incremental algorithms, reference registries, and streaming controllers. Core supplies reusable sessions, block planning, contribution preparation/publication, aggregate footnotes, and turn-taking coordination. React and Vue explicitly depend on both core and engine; UI integrations depend on their corresponding framework adapter.
 
-Core does not re-export the entire engine API or accept ReactNode, VNode, DOM elements, or framework lifecycles. Adapters own tree-to-component conversion, subscription/unmount timing, SSR hydration, slots/context, and cursor measurement. See the [Vue README](../../packages/vue/README.md) for implementation and usage.
+Core does not re-export the entire engine API or accept ReactNode, VNode, DOM elements, or framework lifecycles. Adapters own tree-to-component conversion, subscription/unmount timing, SSR hydration, slots/context, and cursor measurement. See the [Vue README](../../../../../packages/vue/README.md) for implementation and usage.
 
 ## API differences from beta.1
 
@@ -80,6 +80,6 @@ The engine controller manages the visible prefix of one source; the core coordin
 
 ## Declaration and consumer guards
 
-After building, run `pnpm check:public-api`. The script compares complete declarations, with comments removed, against the [engine](./engine.api.txt), [core](./core.api.txt), [React](./react.api.txt), [React plugins](./react-plugins.api.txt), [Mantine](./react-mantine.api.txt), and [Vue](./vue.api.txt) snapshots. It rejects private registry/coordinator types, local node_modules paths, and framework dependencies in shared layers, and checks that root entries have no star exports. Review signature changes before running `node scripts/check-public-api.mjs --update`.
+After building, run `pnpm check:public-api`. The script compares complete declarations, with comments removed, against the [engine](../../../../../tooling/api-reports/engine.api.txt), [core](../../../../../tooling/api-reports/core.api.txt), [React](../../../../../tooling/api-reports/react.api.txt), [React plugins](../../../../../tooling/api-reports/react-plugins.api.txt), [Mantine](../../../../../tooling/api-reports/react-mantine.api.txt), and [Vue](../../../../../tooling/api-reports/vue.api.txt) snapshots. It rejects private registry/coordinator types, local node_modules paths, and framework dependencies in shared layers, and checks that root entries have no star exports. Review signature changes before running `node scripts/check-public-api.mjs --update`.
 
 Snapshots are not semantic proofs. Unit tests cover lifecycle and immutability contracts; real browsers cover Vue's three complete adapter paths. Packed consumers install tarballs outside the workspace and separately exercise ESM/CJS, dev/prod, SSR, and TypeScript. Engine-impacting releases require validated local soak evidence and manual release approval; see [soak coverage](../soak-coverage.md) for the impact policy and evidence reuse rules. Engine soak coverage must not be mistaken for core or adapter lifecycle coverage.

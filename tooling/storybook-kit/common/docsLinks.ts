@@ -1,36 +1,26 @@
-/**
- * Absolute GitHub URLs for the `docs/` guides.
- *
- * Story descriptions link to the guides constantly, and a relative
- * `../../docs/foo.md` resolves to nothing once Storybook is exported as a
- * static site — the markdown files are not part of the build. Absolute URLs
- * into the repository are the only form that works in the dev server, in the
- * published export, and in a sub-path deployment alike.
- */
+/** Public documentation links shared by all Storybook catalogs. */
+const GUIDES_BASE = 'https://ai-markdown.github.io/docs/guides';
 
-const REPO_BLOB_BASE = 'https://github.com/ai-markdown/ai-markdown/blob/main';
-
-/** Every file in `docs/`, keyed by slug (the filename without `.md`). */
 export const DOCS_LINKS = {
-  architecture: `${REPO_BLOB_BASE}/docs/architecture.md`,
-  benchmark: `${REPO_BLOB_BASE}/docs/benchmark.md`,
-  'cjk-typography': `${REPO_BLOB_BASE}/docs/cjk-typography.md`,
-  'content-preprocessors': `${REPO_BLOB_BASE}/docs/content-preprocessors.md`,
-  'cross-chunk-coordination': `${REPO_BLOB_BASE}/docs/cross-chunk-coordination.md`,
-  'custom-components': `${REPO_BLOB_BASE}/docs/custom-components.md`,
-  'custom-typography': `${REPO_BLOB_BASE}/docs/custom-typography.md`,
-  'design-tokens': `${REPO_BLOB_BASE}/docs/design-tokens.md`,
-  'extending-via-subpackage': `${REPO_BLOB_BASE}/docs/extending-via-subpackage.md`,
-  'metadata-context': `${REPO_BLOB_BASE}/docs/metadata-context.md`,
-  'migrating-to-v2': `${REPO_BLOB_BASE}/docs/migrating-to-v2.md`,
-  readme: `${REPO_BLOB_BASE}/docs/README.md`,
-  'release-highlights': `${REPO_BLOB_BASE}/docs/release-highlights.md`,
-  'smooth-streaming': `${REPO_BLOB_BASE}/docs/smooth-streaming.md`,
-  'streaming-and-performance': `${REPO_BLOB_BASE}/docs/streaming-and-performance.md`,
-  'streaming-chat-example': `${REPO_BLOB_BASE}/docs/streaming-chat-example.md`,
-  'streaming-cursor': `${REPO_BLOB_BASE}/docs/streaming-cursor.md`,
-  'typescript-generics': `${REPO_BLOB_BASE}/docs/typescript-generics.md`,
-  'url-sanitization': `${REPO_BLOB_BASE}/docs/url-sanitization.md`,
+  architecture: `${GUIDES_BASE}/architecture/`,
+  benchmark: `${GUIDES_BASE}/benchmark/`,
+  'cjk-typography': `${GUIDES_BASE}/cjk-typography/`,
+  'content-preprocessors': `${GUIDES_BASE}/content-preprocessors/`,
+  'cross-chunk-coordination': `${GUIDES_BASE}/cross-chunk-coordination/`,
+  'custom-components': `${GUIDES_BASE}/custom-components/`,
+  'custom-typography': `${GUIDES_BASE}/custom-typography/`,
+  'design-tokens': `${GUIDES_BASE}/design-tokens/`,
+  'extending-via-subpackage': `${GUIDES_BASE}/extending-via-subpackage/`,
+  'metadata-context': `${GUIDES_BASE}/metadata-context/`,
+  'migrating-to-v2': `${GUIDES_BASE}/migrating-to-v2/`,
+  readme: `${GUIDES_BASE}/`,
+  'release-highlights': `${GUIDES_BASE}/release-highlights/`,
+  'smooth-streaming': `${GUIDES_BASE}/smooth-streaming/`,
+  'streaming-and-performance': `${GUIDES_BASE}/streaming-and-performance/`,
+  'streaming-chat-example': `${GUIDES_BASE}/streaming-chat-example/`,
+  'streaming-cursor': `${GUIDES_BASE}/streaming-cursor/`,
+  'typescript-generics': `${GUIDES_BASE}/typescript-generics/`,
+  'url-sanitization': `${GUIDES_BASE}/url-sanitization/`,
 } as const;
 
 export type DocSlug = keyof typeof DOCS_LINKS;

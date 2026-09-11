@@ -1,6 +1,6 @@
 # Content Preprocessors
 
-Preprocessing runs in the shared engine. The examples use React imports; Vue exports `createRemendPreprocessor` and `AIMDContentPreprocessor` from `@ai-markdown/vue` and accepts `:content-preprocessors`. See the [Vue guide](../packages/vue/README.md#component-props) and [package setup](./getting-started.md).
+Preprocessing runs in the shared engine. The examples use React imports; Vue exports `createRemendPreprocessor` and `AIMDContentPreprocessor` from `@ai-markdown/vue` and accepts `:content-preprocessors`. See the [Vue guide](../../../../packages/vue/README.md#component-props) and [package setup](getting-started.md).
 
 A content preprocessor is a synchronous `(content: string) => string` function. It runs before Markdown parsing and is suitable for source-format cleanup: removing a known frontmatter header, translating an application marker, or normalizing a controlled dialect. It receives text, not syntax nodes or React context.
 
@@ -88,7 +88,7 @@ The opening check limits this transform to a header at offset zero, and the clos
 
 ### Normalize curly quotes back to straight
 
-The library enables SmartyPants by default, which converts straight quotes to curly. If your downstream tooling (e.g. an `<input>` autocomplete) expects straight quotes, undo it _before_ the pipeline sees them by filtering `smartypants` out of `enginePlugins` (see [the filter idiom](./cjk-typography.md#engineplugins-replaces-the-array)) — preprocessors run too early to undo decisions the remark plugins haven't made yet.
+The library enables SmartyPants by default, which converts straight quotes to curly. If your downstream tooling (e.g. an `<input>` autocomplete) expects straight quotes, undo it _before_ the pipeline sees them by filtering `smartypants` out of `enginePlugins` (see [the filter idiom](cjk-typography.md#engineplugins-replaces-the-array)) — preprocessors run too early to undo decisions the remark plugins haven't made yet.
 
 ### Auto-link bare URLs that the model emitted without `<…>`
 
@@ -144,7 +144,7 @@ Compose by ordering, not by combining functions inside one preprocessor — this
 
 ## Reference stability
 
-`contentPreprocessors` is a **`WARN_ONLY`** prop in the stability firewall (see [streaming and performance → the function-valued exception](./streaming-and-performance.md#the-function-valued-exception-urltransform-contentpreprocessors)): a function array cannot be deep-compared, so there is no deep-equal safety net. An inline array is a fresh identity every render — it re-runs preprocessing on a parent render even when source text is unchanged; downstream work is invalidated when the resulting string or other dependencies actually change; development builds warn after a few identity flips. Use a stable module binding for fixed transforms, or `useMemo`/`useCallback` with complete dependencies for dynamic ones:
+`contentPreprocessors` is a **`WARN_ONLY`** prop in the stability firewall (see [streaming and performance → the function-valued exception](streaming-and-performance.md#the-function-valued-exception-urltransform-contentpreprocessors)): a function array cannot be deep-compared, so there is no deep-equal safety net. An inline array is a fresh identity every render — it re-runs preprocessing on a parent render even when source text is unchanged; downstream work is invalidated when the resulting string or other dependencies actually change; development builds warn after a few identity flips. Use a stable module binding for fixed transforms, or `useMemo`/`useCallback` with complete dependencies for dynamic ones:
 
 ```ts
 // ✅ Stable identity — the chain runs only when `content` changes.
@@ -175,7 +175,7 @@ my-frontmatter-looking-block
 
 A `stripFrontmatter` preprocessor that runs `content.replace(/^---[\s\S]*?---\n/, '')` against this input… is fine here (the `---` is not at the start). But a less careful regex might munge the fenced block. For changes to element presentation, use `customComponents`, which receives the parsed element. A true syntax transformation needs an AST-aware pipeline and a corresponding correctness contract.
 
-The React adapter exposes a sealed plugin selection, not arbitrary remark/rehype injection. The boundary scanner and equivalence tests cover that selected grammar. A [React integration package](./extending-via-subpackage.md) composes public slots and providers; it does not open a hidden plugin slot. Propose a new syntax feature upstream, or own a separate engine integration and its validation when a different grammar is required.
+The React adapter exposes a sealed plugin selection, not arbitrary remark/rehype injection. The boundary scanner and equivalence tests cover that selected grammar. A [React integration package](extending-via-subpackage.md) composes public slots and providers; it does not open a hidden plugin slot. Propose a new syntax feature upstream, or own a separate engine integration and its validation when a different grammar is required.
 
 ---
 
@@ -238,4 +238,4 @@ With smooth streaming, decide whether repair follows source completion or visibl
 
 For each transform, test empty input, partial headers or markers, a completed document, and the same text inside code fences. For streaming use, compare a sequence of accumulated prefixes rather than independent deltas. Include a replacement update: append-aware functions must discard stale state when a message is regenerated.
 
-The orchestration lives in [`preprocessors/index.ts`](../packages/engine/src/preprocessors/index.ts), with the per-instance wrapper created in [`react/src/index.tsx`](../packages/react/src/index.tsx). [`latex.ts`](../packages/engine/src/preprocessors/latex.ts) owns normalization and its incremental implementation; [`remend.ts`](../packages/engine/src/preprocessors/remend.ts) fixes the repair options. The LaTeX entry-equivalence and soft-atom differential suites test the built-in implementations against their reference paths. They do not validate arbitrary caller functions.
+The orchestration lives in [`preprocessors/index.ts`](../../../../packages/engine/src/preprocessors/index.ts), with the per-instance wrapper created in [`react/src/index.tsx`](../../../../packages/react/src/index.tsx). [`latex.ts`](../../../../packages/engine/src/preprocessors/latex.ts) owns normalization and its incremental implementation; [`remend.ts`](../../../../packages/engine/src/preprocessors/remend.ts) fixes the repair options. The LaTeX entry-equivalence and soft-atom differential suites test the built-in implementations against their reference paths. They do not validate arbitrary caller functions.

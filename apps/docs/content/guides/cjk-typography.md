@@ -1,6 +1,6 @@
 # CJK Typography
 
-Parsing and Pangu behavior come from engine and apply to both adapters. Typography variants and tokens below are React-specific; Vue uses its base stylesheet and application CSS, and exports `pangu` from its root. See the [Vue guide](../packages/vue/README.md#minimal-component) and [package setup](./getting-started.md).
+Parsing and Pangu behavior come from engine and apply to both adapters. Typography variants and tokens below are React-specific; Vue uses its base stylesheet and application CSS, and exports `pangu` from its root. See the [Vue guide](../../../../packages/vue/README.md#minimal-component) and [package setup](getting-started.md).
 
 CJK rendering combines three separate concerns: recognizing Markdown delimiters beside Chinese, Japanese, or Korean punctuation; adding optional spaces at mixed-script boundaries; and laying out the result with an appropriate font and line height. The library supplies parser extensions and default typography, while your application chooses language, fonts, and editorial spacing policy.
 
@@ -92,7 +92,7 @@ For monospace inside code blocks, the existing `--aim-font-family-monospace` tok
 }
 ```
 
-See [Design tokens](./design-tokens.md) for the full token surface.
+See [Design tokens](design-tokens.md) for the full token surface.
 
 ---
 
@@ -230,4 +230,4 @@ Use `lang="zh-Hans"`, `lang="zh-Hant"`, `lang="ja"`, or `lang="ko"` on an applic
 
 For verification, include source with Chinese punctuation next to emphasis, Japanese brackets, Korean/Latin identifiers, currency next to math, inline code, table cells, and ruby annotations. Check both a completed string and prefixes that stop inside a delimiter. A final snapshot alone does not show how intermediate source is interpreted.
 
-The implementation reference is [`pluginChain.ts`](../packages/engine/src/components/pluginChain.ts); default CSS lives in [`default.scss`](../packages/react/src/components/typography/variants/default.scss). These files separate parser configuration from typography rules.
+The implementation reference is [`pluginChain.ts`](../../../../packages/engine/src/components/pluginChain.ts); default CSS lives in [`default.scss`](../../../../packages/react/src/components/typography/variants/default.scss). These files separate parser configuration from typography rules.

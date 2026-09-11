@@ -68,7 +68,7 @@ body:
     id: expected
     attributes:
       label: What should happen
-      placeholder: "Backlink should resolve to chunk D's `[^1]: …` definition (per docs/cross-chunk-coordination.md)."
+      placeholder: "Backlink should resolve to chunk D's `[^1]: …` definition (per apps/docs/content/guides/cross-chunk-coordination.md)."
     validations:
       required: true
 
