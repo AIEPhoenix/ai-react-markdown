@@ -85,6 +85,10 @@ Three forms of reference are coordinated through two namespaces. Footnotes have 
 
 The footnote section is rendered **once** at the end of the document's last chunk, aggregating definitions from all chunks. There's no per-chunk footnote footer — the wrapper's `AggregateFootnotesIfLast` component detects when its chunk is the last one and emits the full footnote list. If chunk order changes (chunks unmount/remount during streaming), the footer follows the new "last" chunk automatically.
 
+Definitions are document-wide wherever they are written. A link definition or footnote definition placed inside a footnote body (`[^a]: see [x]` followed by an indented `[x]: /url`) is claimed and contributed like a top-level one, so a sibling chunk's `[x]` resolves against it. Footnote bodies are harvested from the chunk's rendered output and keyed by the same encoded id fragment the footer's `<li id>` carries, so labels with non-ASCII characters or percent-escapes (`[^中文]`, `[^a%41]`) keep their bodies in the aggregate footer. Only the synthesized footer is harvested: a raw `<section data-footnotes>` an author writes in Markdown is content and never supplies a body.
+
+A footnote referenced only from inside another footnote's body follows standalone numbering: it is numbered after every flow reference, in the order the footer renders the bodies that mention it, and listed in the aggregate footer at that position. Such a nested occurrence is not an inline mark, so it is not counted by `getRefsForLabel` and receives no per-occurrence backref; the footer emits the single bare backref for the label.
+
 ---
 
 ## `<AIMarkdownDocuments>` props
@@ -153,20 +157,20 @@ function BacklinkPanel({ documentId, label }: { documentId: string; label: strin
 
 ### `Registry` surface (read-only)
 
-| Field/Method                                        | Returns                                        | Purpose                                                                                                                        |
-| --------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `chunkOrder`                                        | `readonly symbol[]`                            | Chunk identifiers in documentIndex order, with mount order as fallback/tie-breaker                                             |
-| `chunkData`                                         | `ReadonlyMap<symbol, ChunkData>`               | Per-chunk refs/defs/linkDefs                                                                                                   |
-| `labelSet`                                          | `{ footnoteLabels, linkLabels }` (ReadonlySet) | Union of own-def labels across chunks                                                                                          |
-| `version`                                           | `number`                                       | Monotonic counter; bumped on every mutation                                                                                    |
-| `subscribe(cb)`                                     | unsubscribe function                           | Wake-up on registry mutations                                                                                                  |
-| `subscribeLabel(kind, label, cb)`                   | unsubscribe function                           | Observe one normalized `link` or `footnote` label's indexed selectors; links and images share the link channel                 |
-| `canonicalFootnoteFor(label)`                       | `symbol \| null`                               | Which chunk owns the canonical def for this footnote                                                                           |
-| `canonicalLinkFor(label)`                           | `symbol \| null`                               | Same, for link defs                                                                                                            |
-| `globalNumber(label)`                               | `number \| null`                               | Document-wide footnote number for a label                                                                                      |
-| `resolveLinkDef(label)`                             | `LinkDef \| null`                              | Cross-chunk link definition lookup                                                                                             |
-| `getRefsForLabel(label)`                            | `number`                                       | Count of **footnote** refs pointing at this label. Link/image refs aren't counted — there's no equivalent counter API for them |
-| `globalOccurrenceForRef(chunkSym, label, localIdx)` | `number \| null`                               | Map a chunk-local ref occurrence to its document-wide index                                                                    |
+| Field/Method                                        | Returns                                        | Purpose                                                                                                                                                                                                                                            |
+| --------------------------------------------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `chunkOrder`                                        | `readonly symbol[]`                            | Chunk identifiers in documentIndex order, with mount order as fallback/tie-breaker                                                                                                                                                                 |
+| `chunkData`                                         | `ReadonlyMap<symbol, ChunkData>`               | Per-chunk refs/defs/linkDefs                                                                                                                                                                                                                       |
+| `labelSet`                                          | `{ footnoteLabels, linkLabels }` (ReadonlySet) | Union of own-def labels across chunks                                                                                                                                                                                                              |
+| `version`                                           | `number`                                       | Monotonic counter; bumped on every mutation                                                                                                                                                                                                        |
+| `subscribe(cb)`                                     | unsubscribe function                           | Wake-up on registry mutations                                                                                                                                                                                                                      |
+| `subscribeLabel(kind, label, cb)`                   | unsubscribe function                           | Observe one normalized `link` or `footnote` label's indexed selectors; links and images share the link channel                                                                                                                                     |
+| `canonicalFootnoteFor(label)`                       | `symbol \| null`                               | Which chunk owns the canonical def for this footnote                                                                                                                                                                                               |
+| `canonicalLinkFor(label)`                           | `symbol \| null`                               | Same, for link defs                                                                                                                                                                                                                                |
+| `globalNumber(label)`                               | `number \| null`                               | Document-wide footnote number for a label                                                                                                                                                                                                          |
+| `resolveLinkDef(label)`                             | `LinkDef \| null`                              | Cross-chunk link definition lookup                                                                                                                                                                                                                 |
+| `getRefsForLabel(label)`                            | `number`                                       | Count of **footnote** marks pointing at this label in flow text. A reference inside another footnote's body (`RefRecord.nestedIn`) is numbered but not counted; link/image refs aren't counted either — there's no equivalent counter API for them |
+| `globalOccurrenceForRef(chunkSym, label, localIdx)` | `number \| null`                               | Map a chunk-local ref occurrence to its document-wide index                                                                                                                                                                                        |
 
 Mutator methods (`registerChunk`, `allocateSymbol`, etc.) are intentionally **not** on the public `Registry` type. The renderer drives those internally; exposing them would let consumer code corrupt refcounts, version bumps, or numbering invariants.
 
@@ -268,7 +272,7 @@ function FootnoteBadge({ documentId, label }: { documentId: string; label: strin
 
 ### Recipe: counting refs per label
 
-`getRefsForLabel(label)` returns the **footnote** ref count across the document. Useful for a "this footnote is cited N times" indicator.
+`getRefsForLabel(label)` returns the **footnote** mark count across the document's flow text (references written inside another footnote's body are excluded). Useful for a "this footnote is cited N times" indicator.
 
 ```tsx
 function FootnoteUsage({ documentId, label }: { documentId: string; label: string }) {

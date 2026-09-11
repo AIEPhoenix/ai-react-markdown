@@ -21,14 +21,14 @@ This example deliberately handles a narrow LF-delimited frontmatter format. It k
 
 ## Execution order
 
-The outer React component removes a document-leading byte order mark (U+FEFF), applies the built-in LaTeX stage, then calls your preprocessors in array order. Each function receives the preceding function's output:
+The outer React component removes every document-leading byte order mark (U+FEFF), applies the built-in LaTeX stage, then calls your preprocessors in array order. Each function receives the preceding function's output:
 
 ```ts
 // With contentPreprocessors={[a, b, c]}:
 const result = c(b(a(latexNormalizedContent)));
 ```
 
-The BOM strip runs before every other stage and removes only the first character of the content. The Markdown parser ignores a leading BOM but reports node positions as if it were not there, while the incremental parser, the block planner and the definition scanner pair those positions with the source string; stripping the character first keeps both coordinate systems identical. A U+FEFF anywhere else is ordinary text and passes through unchanged. Your preprocessors never see the leading BOM.
+The BOM strip runs before every other stage and removes the whole run of U+FEFF characters at the start of the content, however many there are. The Markdown parser ignores one leading BOM but reports node positions as if it were not there, while the incremental parser, the block planner and the definition scanner pair those positions with the source string; stripping the characters first keeps both coordinate systems identical. Removing the whole run is a deliberate preprocessing contract rather than raw-parser equivalence: a raw parse of `\uFEFF\uFEFF# Heading` keeps the second BOM as text and yields a paragraph, whereas the pipeline treats a run of leading BOMs as an encoding artifact and renders the heading, and the result no longer depends on how many BOMs a re-encoded file or a re-prefixed stream frame carried. A U+FEFF anywhere else is ordinary text and passes through unchanged. Your preprocessors never see the leading BOMs.
 
 The built-in stage recognizes supported math delimiters and currency, protects code regions, normalizes bracket-delimited math, and escapes math pipes so they do not become GFM table separators. Inline `$x$` and `\(x\)` normalize to the inline `$$x$$` representation consumed by the configured `remark-math` instance (`singleDollarTextMath: false`). Display math uses line-oriented delimiters. Do not assume the caller slot receives the original dollar spelling.
 

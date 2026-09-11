@@ -18,6 +18,7 @@
 
 import { describe, expect, test } from 'vitest';
 
+import preprocessAIMDContent from '../../preprocessors';
 import { advanceIncrementalParse, type IncrementalParseState } from './advanceIncrementalParse';
 import { computeFreezeBoundary } from './computeFreezeBoundary';
 import { assertStreamEquivalence } from './spliceArbiterHarness';
@@ -74,6 +75,44 @@ describe('leading BOM reaching advanceIncrementalParse directly', () => {
     const bare = advanceIncrementalParse(null, DOC.slice(1, 12), options);
     expect(advanceIncrementalParse(bare.nextState, DOC.slice(1), options).usedIncremental).toBe(true);
   });
+
+  test.each([1, 2, 3])(
+    'after Stage A, a %i-BOM char-granular stream splices, matches a full parse and keeps offsets equal to string indices',
+    (bomCount) => {
+      // Production order: Stage A strips every leading BOM, then the engine
+      // sees the frame. The stripped stream is append-only, so the engine
+      // splices it like any other, and every node offset is a string index
+      // into the frame the engine received.
+      const raw = `${BOM.repeat(bomCount)}# Title\n\nSome paragraph text here.\n\n[x]: /url\n\nAnother [x] paragraph.\n`;
+      const frames = charSnapshots(raw).map((frame) => preprocessAIMDContent(frame));
+      for (const config of [DEFAULTS_ALL_ON, BASELINE]) {
+        const stats = assertStreamEquivalence(`bom-${bomCount}-staged`, frames, config, { minIncrementalFrames: 1 });
+        expect(stats.frames).toBe(frames.length);
+      }
+      const options = buildAdvanceOptions(DEFAULTS_ALL_ON);
+      let state: IncrementalParseState | null = null;
+      for (const frame of frames) {
+        const result = advanceIncrementalParse(state, frame, options);
+        state = result.nextState;
+        // With no BOM left in the frame the first block starts at index 0 —
+        // under the old one-BOM strip a second BOM shifted every offset by
+        // one relative to the string the block planner slices.
+        const first = result.mdast.children[0];
+        if (first) expect(first.position!.start.offset, JSON.stringify(frame)).toBe(0);
+        for (const node of result.mdast.children) {
+          expect(frame.charCodeAt(node.position!.start.offset!), JSON.stringify(frame)).not.toBe(0xfeff);
+        }
+      }
+      const finalFrame = frames[frames.length - 1];
+      const last = advanceIncrementalParse(null, finalFrame, options).mdast;
+      expect(last.children[0]!.type).toBe('heading');
+      expect(finalFrame.slice(last.children[0]!.position!.start.offset, last.children[0]!.position!.end.offset)).toBe(
+        '# Title'
+      );
+      const def = last.children.find((c) => c.type === 'definition')!;
+      expect(finalFrame.slice(def.position!.start.offset, def.position!.end.offset)).toBe('[x]: /url');
+    }
+  );
 
   test('equal BOM content still short-circuits to the previous trees', () => {
     const options = buildAdvanceOptions(BASELINE);

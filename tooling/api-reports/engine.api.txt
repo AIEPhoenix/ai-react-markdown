@@ -123,6 +123,7 @@ type Contribution = {
     refKind: 'footnote' | 'link' | 'image';
     label: string;
     referenceType?: 'full' | 'collapsed' | 'shortcut';
+    nestedIn?: string;
 } | {
     kind: 'fnDef';
     label: string;
@@ -154,6 +155,7 @@ interface RefRecord {
     label: string;
     kind: RefKind;
     referenceType?: 'full' | 'collapsed' | 'shortcut';
+    nestedIn?: string;
 }
 interface ChunkData {
     refs: RefRecord[];

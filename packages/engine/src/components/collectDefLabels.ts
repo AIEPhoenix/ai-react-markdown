@@ -193,15 +193,33 @@ export function createDefLabelScanner(parse: (source: string) => DefLabels = col
 
   return {
     scan(source: string): DefLabels {
+      if (source === prevSource && prevLabels !== null) return prevLabels;
       // A document-leading BOM is invisible to micromark (dropped before
       // tokenizing) but not to DEF_LINE_START_RE, whose line-start probe
-      // saw U+FEFF where the `[` of a line-1 definition sits and never
-      // matched it. Drop it here so every regex and slice below works on
-      // exactly the text the parser reads; the parse result is unchanged.
-      // Stage A strips it before the engine anyway — this keeps the
-      // scanner's contract intact when it is driven directly.
-      if (source.charCodeAt(0) === 0xfeff) source = source.slice(1);
-      if (source === prevSource && prevLabels !== null) return prevLabels;
+      // sees U+FEFF where the `[` of a line-1 definition sits, nor to the
+      // freeze scan, which grants no boundary. Stage A strips every leading
+      // BOM before the engine sees the text, so this path is for the
+      // scanner driven directly with raw input. Do not strip here and hand
+      // the rest to the parser: with two BOMs the scanner and its parser
+      // would each drop one and report a line-1 definition the full
+      // collector (one BOM dropped, one left in the text) does not. Take
+      // the conservative path instead — a full parse of the raw source,
+      // exactly `collectDefLabels(source)` — and keep the frozen prefix
+      // empty so a later frame never resumes from state built on it.
+      if (source.charCodeAt(0) === 0xfeff) {
+        resetFrozen();
+        const next = parse(source);
+        prevSource = source;
+        if (
+          prevLabels !== null &&
+          setsEqual(next.footnoteLabels, prevLabels.footnoteLabels) &&
+          setsEqual(next.linkLabels, prevLabels.linkLabels)
+        ) {
+          return prevLabels;
+        }
+        prevLabels = next;
+        return next;
+      }
       const previousRegionStart = regionStart;
       const appended = prevSource !== null && source.startsWith(prevSource);
       regionStart = scanBlankLines(source, appended ? prevSource!.length : 0);

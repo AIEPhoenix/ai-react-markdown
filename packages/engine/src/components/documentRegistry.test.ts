@@ -1,5 +1,5 @@
 import { describe, test, expect, vi } from 'vitest';
-import { createRegistry, type Registry } from './documentRegistry';
+import { createRegistry, type FootnoteDef, type Registry } from './documentRegistry';
 
 // Compile-time guards that the exported `Registry` interface forbids direct
 // mutation of its structural fields AND forbids access to the internal
@@ -353,6 +353,77 @@ describe('Registry — contribute + selectors', () => {
     expect(reg.globalNumber('Y')).toBe(2);
     expect(reg.globalNumber('Z')).toBe(3);
     expect(reg.globalNumber('NOPE')).toBe(null);
+  });
+
+  test('nested refs (inside a definition body) are numbered after every flow ref, in footer order, and never counted', () => {
+    // Mirrors mdast-util-to-hast: the footer converts numbered bodies in
+    // number order and appends each newly met reference, so for
+    //   x [^a]  y [^b]  [^a]: see [^c]  [^b]: see [^d] and [^c]  [^c]: see [^e]
+    // standalone numbers a=1 b=2 c=3 d=4 e=5 (measured). A nested-only
+    // label is never an occurrence: no backref may point at a mark id that
+    // no inline sup rendered.
+    const reg = createRegistry();
+    const chunk = reg.allocateSymbol('A');
+    const def = (id: string): [string, FootnoteDef] => [id, { identifier: id, contentSource: id, bodyHast: [] }];
+    reg.contributeChunkData(chunk, {
+      refs: [
+        { label: 'A', kind: 'footnote' },
+        // Source order puts A's body (and its nested ref to C) before the
+        // flow ref to B; C must still be numbered after B.
+        { label: 'C', kind: 'footnote', nestedIn: 'A' },
+        { label: 'B', kind: 'footnote' },
+        { label: 'D', kind: 'footnote', nestedIn: 'B' },
+        { label: 'C', kind: 'footnote', nestedIn: 'B' },
+        { label: 'E', kind: 'footnote', nestedIn: 'C' },
+      ],
+      defs: new Map([def('A'), def('B'), def('C'), def('D'), def('E')]),
+      linkDefs: new Map(),
+      ownFootnoteLabels: new Set(['A', 'B', 'C', 'D', 'E']),
+      ownLinkLabels: new Set(),
+    });
+    expect(['A', 'B', 'C', 'D', 'E'].map((l) => reg.globalNumber(l))).toEqual([1, 2, 3, 4, 5]);
+    expect(['A', 'B', 'C', 'D', 'E'].map((l) => reg.getRefsForLabel(l))).toEqual([1, 1, 0, 0, 0]);
+    // A nested ref has no occurrence range: the mark inside the harvested
+    // body renders without a suffixed id.
+    expect(reg.globalOccurrenceForRef(chunk, 'C', 1)).toBe(null);
+    expect(reg.globalOccurrenceForRef(chunk, 'A', 1)).toBe(1);
+  });
+
+  test('a nested ref counts only through the canonical definition, and never a self-reference', () => {
+    const reg = createRegistry();
+    const a = reg.allocateSymbol('A');
+    const b = reg.allocateSymbol('B');
+    // Chunk A: flow ref to X, X's body references itself and Y.
+    reg.contributeChunkData(a, {
+      refs: [
+        { label: 'X', kind: 'footnote' },
+        { label: 'X', kind: 'footnote', nestedIn: 'X' },
+        { label: 'Y', kind: 'footnote', nestedIn: 'X' },
+      ],
+      defs: new Map([
+        ['X', { identifier: 'X', contentSource: 'x', bodyHast: [] }],
+        ['Y', { identifier: 'Y', contentSource: 'y', bodyHast: [] }],
+      ]),
+      linkDefs: new Map(),
+      ownFootnoteLabels: new Set(['X', 'Y']),
+      ownLinkLabels: new Set(),
+    });
+    // Chunk B: a duplicate definition of X whose body references Z. Only
+    // the canonical (chunk A) body renders, so Z is not numbered.
+    reg.contributeChunkData(b, {
+      refs: [{ label: 'Z', kind: 'footnote', nestedIn: 'X' }],
+      defs: new Map([
+        ['X', { identifier: 'X', contentSource: 'dup', bodyHast: [] }],
+        ['Z', { identifier: 'Z', contentSource: 'z', bodyHast: [] }],
+      ]),
+      linkDefs: new Map(),
+      ownFootnoteLabels: new Set(['X', 'Z']),
+      ownLinkLabels: new Set(),
+    });
+    expect(reg.globalNumber('X')).toBe(1);
+    expect(reg.getRefsForLabel('X')).toBe(1);
+    expect(reg.globalNumber('Y')).toBe(2);
+    expect(reg.globalNumber('Z')).toBe(null);
   });
 
   test('canonicalFootnoteFor picks first chunk with the def', () => {

@@ -13,7 +13,7 @@
  * rehype chain has run on top, and the per-`<li>` body is exactly what the
  * standalone path would render. Lift those `<li>` children (minus the
  * auto-emitted backref `<a>`s, which the aggregate emits itself per
- * occurrence) and key by normalized label.
+ * occurrence) and key by the encoded id fragment (`footnoteSafeId`).
  *
  * Chunks whose only refs are phantom-injected (cross-chunk) won't have a
  * synthetic `<section>` at all — those chunks contribute no defs, and the
@@ -25,8 +25,7 @@
 import { SKIP, visit } from 'unist-util-visit';
 import type { Element as HastElement, Root as HastRoot, ElementContent } from 'hast';
 import { normalizeUri } from 'micromark-util-sanitize-uri';
-import { normalizeId } from './normalizeId';
-import { isWhitespaceText, lastMeaningfulIdx } from './hastPredicates';
+import { isFootnoteSection, isWhitespaceText, lastMeaningfulIdx } from './hastPredicates';
 
 // Fallback for callers that do not know the exact clobberPrefix. The main
 // renderer passes the prefix explicitly so labels containing regex metacharacters
@@ -48,51 +47,56 @@ export function footnoteSafeId(identifier: string): string {
 }
 
 /**
- * Extract the SOURCE identifier from a footnote `<li>` id, covering both id
- * shapes in the codebase — standalone (mdast-util-to-hast `fn-` +
- * `normalizeUri`, then the sanitize clobber + rehypeRebaseHashLinks linkage)
- * and aggregate (`${clobberPrefix}fn-${sourceIdentifier}`, raw). Exported as
- * the single source of truth for li-id parsing: the streaming cursor's
- * anchor targeting (`detectAnchor`) reuses it so a clobber-linkage change
- * can never drift the two consumers apart.
+ * The encoded fragment after `fn-` in a footnote `<li>` id, or null when the
+ * id is not a footnote id. Covers both id shapes in the codebase — standalone
+ * (mdast-util-to-hast `fn-` + `normalizeUri`, then the sanitize clobber +
+ * rehypeRebaseHashLinks linkage) and aggregate
+ * (`${clobberPrefix}fn-${footnoteSafeId(sourceIdentifier)}`). The fragment is
+ * returned exactly as minted, so for the definition it belongs to it equals
+ * `footnoteSafeId(sourceIdentifier)`.
  */
-export function sourceIdFromFootnoteLiId(idProp: string, clobberPrefix?: string): string | null {
-  let raw: string | null = null;
+export function footnoteLiIdFragment(idProp: string, clobberPrefix?: string): string | null {
   if (clobberPrefix !== undefined) {
     const exactPrefix = `${clobberPrefix}fn-`;
-    if (idProp.startsWith(exactPrefix)) raw = idProp.slice(exactPrefix.length);
+    if (idProp.startsWith(exactPrefix)) return idProp.slice(exactPrefix.length);
   }
-  if (raw === null) {
-    const m = idProp.match(FN_LI_ID_RE);
-    raw = m ? m[1] : null;
-  }
+  const m = idProp.match(FN_LI_ID_RE);
+  return m ? m[1] : null;
+}
+
+/**
+ * Extract the SOURCE identifier from a footnote `<li>` id by decoding the
+ * fragment `footnoteLiIdFragment` returns. Exported as the single source of
+ * truth for li-id parsing on the DOM side: the streaming cursor's anchor
+ * targeting (`detectAnchor`) uses it so a clobber-linkage change can never
+ * drift the two consumers apart.
+ *
+ * Decoding is lossy for a label that itself contains a valid percent-escape:
+ * `[^a%41]` is minted as `fn-a%41` (normalizeUri keeps a well-formed escape)
+ * and decodes to `aA`. The body harvest therefore does NOT go through this
+ * function — it keys by the encoded fragment, which both the harvest and the
+ * registry side derive exactly (see `extractDefBodiesFromHast`).
+ */
+export function sourceIdFromFootnoteLiId(idProp: string, clobberPrefix?: string): string | null {
+  const raw = footnoteLiIdFragment(idProp, clobberPrefix);
   if (raw === null) return null;
   // mdast-util-to-hast's footer emits `<li id="${prefix}fn-${normalizeUri(id)}">`
   // which percent-encodes whitespace, non-ASCII characters (`中文` → `%E4%B8%AD…`),
-  // and most URL-unsafe punctuation. The registry's def key (set by
-  // extractContributions via `normalizeId(node.identifier)`) is the DECODED
-  // form — uppercase + whitespace-collapsed but otherwise the source bytes.
-  // Without decoding here, every label that triggers normalizeUri encoding
-  // (CJK, accented Latin, spaces, `&`/`?` punctuation) would key-mismatch
-  // between harvested body and registry def, leaving the aggregate footer's
-  // `<li>` empty for those labels.
+  // and most URL-unsafe punctuation; decode so the caller can compare against
+  // the source label through `normalizeId`.
   try {
     return decodeURIComponent(raw);
   } catch {
     // Malformed percent-encoding (extremely rare — would require user-
     // supplied raw HTML in the def's id). Fall back to the raw form rather
-    // than crashing the harvest. The raw form will key-mismatch the registry
-    // def, so the aggregate footer's `<li>` renders empty for this label —
-    // surface that in development instead of failing silently.
+    // than crashing the caller — surface that in development instead of
+    // failing silently.
     // Bare env access on purpose — the dual dev/prod build resolves it at
     // build time, so dist never evaluates it. The previous `typeof process`
     // guard was dead in bundler browser dev (Vite substitutes only the bare
     // text, `typeof process` stays 'undefined'); do not reintroduce it.
     if (process.env.NODE_ENV !== 'production') {
-      console.warn(
-        `[ai-react-markdown] Malformed percent-encoding in footnote id "${raw}"; ` +
-          'its body may be missing from the aggregated footnote footer.'
-      );
+      console.warn(`[ai-react-markdown] Malformed percent-encoding in footnote id "${raw}".`);
     }
     return raw;
   }
@@ -210,13 +214,6 @@ function stripBackrefs(liChildren: ElementContent[]): ElementContent[] {
 }
 
 /**
- * Walk `hast` and return a map from normalized footnote label to the
- * cleaned-up body hast of that label's `<li>`. The body has had any
- * `<a data-footnote-backref>` anchors removed at any nesting depth so the
- * aggregate footer can emit its own per-occurrence backrefs without
- * duplicating the locally-injected one.
- */
-/**
  * Walk a body and clear `localOccurrence` props on any `<footnote-sup>`
  * placeholders we find. NESTED footnote refs inside a def body (`[^x]: see
  * [^y]`) emit placeholders whose `localOccurrence` is keyed to the parsing
@@ -263,36 +260,64 @@ function stripLocalOccurrenceFromFootnoteSups(children: ElementContent[]): Eleme
   return changed ? out : children;
 }
 
+/**
+ * Walk `hast` and return a map from footnote id fragment to the cleaned-up
+ * body hast of that label's `<li>`. The key is the encoded fragment after
+ * `fn-` in the `<li id>`, exactly as mdast-util-to-hast minted it — i.e.
+ * `footnoteSafeId(def.sourceIdentifier)` for the matching `fnDef`
+ * contribution. Keying by the encoded form (rather than decoding it back to
+ * a source label) is what keeps the two sides in lockstep for every label:
+ * a label containing a valid percent-escape (`[^a%41]`) is minted verbatim
+ * as `fn-a%41`, and decoding it would yield `aA`, a key no registry def has.
+ *
+ * The body has had the auto-emitted `<a data-footnote-backref>` anchors
+ * removed so the aggregate footer can emit its own per-occurrence backrefs
+ * without duplicating the locally-injected one.
+ */
 export function extractDefBodiesFromHast(hast: HastRoot, clobberPrefix?: string): Map<string, ElementContent[]> {
   const out = new Map<string, ElementContent[]>();
   visit(hast, 'element', (sectionNode) => {
     const sec = sectionNode as HastElement;
-    if (sec.tagName !== 'section') return;
-    if (!(sec.properties && 'dataFootnotes' in sec.properties)) return;
-    visit(sec, 'element', (liNode) => {
-      const li = liNode as HastElement;
-      if (li.tagName !== 'li') return;
-      const idProp = li.properties?.id;
-      if (typeof idProp !== 'string') return;
-      const sourceId = sourceIdFromFootnoteLiId(idProp, clobberPrefix);
-      if (sourceId === null) return;
-      const normalized = normalizeId(sourceId);
-      const stripped = stripBackrefs(li.children as ElementContent[]);
-      // Defuse any nested `<footnote-sup>` placeholders whose local
-      // occurrence indices belong to a different chunk than where the
-      // body will eventually be rendered. See the function's JSDoc.
-      out.set(normalized, stripLocalOccurrenceFromFootnoteSups(stripped));
-    });
-    // SKIP descent into this section's children so a NESTED
-    // `<section data-footnotes>` (rare — produced only via user-supplied
-    // raw HTML inside a def body that survives rehype-raw + sanitize)
-    // isn't double-processed by both the outer visit's recursion and the
-    // inner visit's enumeration of its parent. Without the SKIP, an
-    // `<li>` inside the nested section is harvested twice; `out.set` is
-    // last-write-wins so a nested mutation can stomp a correctly-
-    // extracted outer body. SKIP scopes harvest to the outer section
-    // and leaves nested footnote sections for whatever tool authored
-    // them to handle.
+    // The shared predicate: tag, `data-footnotes` AND no source position.
+    // A raw `<section data-footnotes>` an author writes survives sanitize
+    // and comes out of rehype-raw with a position; it is content, not the
+    // synthesized footer, and its `<li id>`s must not be harvested as
+    // definition bodies (the same rule the footer adorner, the block
+    // planner and the coordinated-mode footer swap apply).
+    if (!isFootnoteSection(sec)) return;
+    // Only the footer's own list items: `section > ol > li`, the shape
+    // mdast-util-to-hast's footer emits (the adorner adds siblings to the
+    // `<ol>`, never wraps it). A deep visit would also harvest an `<li>` an
+    // author wrote inside a definition body and that survived rehype-raw +
+    // sanitize inside a nested list or section.
+    //
+    // First write wins. HTML parsing hoists a raw `<li>` written in a
+    // definition body out of the footer's `<li>` and makes it the next
+    // sibling in the `<ol>`, and sanitize clobbers its id with the same
+    // prefix as the generated one, so `[^a]: <li id="fn-a">` yields two
+    // `section > ol > li` with the id of `a`. The generated item always
+    // precedes anything hoisted out of its own body, so a body can never
+    // replace itself; only a raw `<li>` aimed at a LATER label in the same
+    // document can still supply that label's body (the author's own
+    // content, and the standalone footer shows the same extra item).
+    for (const child of sec.children) {
+      if (child.type !== 'element' || child.tagName !== 'ol') continue;
+      for (const item of child.children) {
+        if (item.type !== 'element' || item.tagName !== 'li') continue;
+        const idProp = item.properties?.id;
+        if (typeof idProp !== 'string') continue;
+        const fragment = footnoteLiIdFragment(idProp, clobberPrefix);
+        if (fragment === null || out.has(fragment)) continue;
+        const stripped = stripBackrefs(item.children as ElementContent[]);
+        // Defuse any nested `<footnote-sup>` placeholders whose local
+        // occurrence indices belong to a different chunk than where the
+        // body will eventually be rendered. See the function's JSDoc.
+        out.set(fragment, stripLocalOccurrenceFromFootnoteSups(stripped));
+      }
+    }
+    // The footer is synthesized once per tree; nothing below it is another
+    // footer (an authored nested section carries a position and is skipped
+    // by the predicate anyway).
     return SKIP;
   });
   return out;
