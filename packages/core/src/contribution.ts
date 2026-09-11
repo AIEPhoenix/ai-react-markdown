@@ -1,6 +1,6 @@
 import type { Root as MdastRoot } from 'mdast';
 import type { Root as HastRoot, ElementContent as HastElementContent } from 'hast';
-import { extractContributions, extractDefBodiesFromHast, type ChunkData } from '@ai-markdown/engine';
+import { extractContributions, extractDefBodiesFromHast, footnoteSafeId, type ChunkData } from '@ai-markdown/engine';
 
 /** Minimal write capability; registration and cleanup remain with the adapter. */
 export interface ContributionRegistry {
@@ -103,7 +103,13 @@ export function createContributionSession(): ContributionSession {
       // and publish. Missing entries are defensive: after allocation,
       // preserveForBodyHarvest keeps real local defs in the synthetic footer
       // even when visible orphan rendering is disabled.
-      const bodiesByLabel = extractDefBodiesFromHast(pipeline.hast, clobberPrefix);
+      // Harvested bodies are keyed by the encoded `<li id>` fragment, which
+      // is `footnoteSafeId(sourceIdentifier)` for the matching definition.
+      // Both sides derive the key from the same identifier through the same
+      // encoder, so a label that contains a valid percent-escape (`[^a%41]`,
+      // minted verbatim as `fn-a%41`) matches too; decoding the id instead
+      // would turn it into `aA` and leave the aggregate `<li>` empty.
+      const bodiesBySafeId = extractDefBodiesFromHast(pipeline.hast, clobberPrefix);
       const defs = new Map<
         string,
         { identifier: string; sourceIdentifier: string; contentSource: string; bodyHast: HastElementContent[] }
@@ -113,7 +119,7 @@ export function createContributionSession(): ContributionSession {
           identifier: meta.identifier,
           sourceIdentifier: meta.sourceIdentifier,
           contentSource: meta.contentSource,
-          bodyHast: (bodiesByLabel.get(label) ?? []) as HastElementContent[],
+          bodyHast: (bodiesBySafeId.get(footnoteSafeId(meta.sourceIdentifier)) ?? []) as HastElementContent[],
         });
       }
       lastContribution = { registry, symbol: sym, fp, chain };

@@ -178,6 +178,42 @@ describe('framework-neutral pipeline consumer', () => {
     expect(deriveTailSignal(pipeline.mdast, content.length)).toEqual({ kind: 'footnote-def', identifier: 'a' });
   });
 
+  test('a label containing a valid percent-escape keeps its harvested body', () => {
+    // `[^a%41]` is minted as `<li id="…fn-a%41">` (normalizeUri keeps a
+    // well-formed escape). Decoding that id gave `aA`, which never matched
+    // the registry key `A%41`, so the aggregate `<li>` rendered empty. Both
+    // sides now key by the encoded fragment.
+    const registry = createRegistry();
+    const content =
+      'Escaped[^a%41] and literal[^a%b] and cjk[^中文].\n\n[^a%41]: body 41\n\n[^a%b]: body b\n\n[^中文]: body cjk';
+    const ownLabels = collectDefLabels(content);
+    const sym = registry.registerChunk('chunk', ownLabels.footnoteLabels, ownLabels.linkLabels);
+    createContributionSession().commit({
+      pipeline: full(content),
+      ownLabels,
+      registry,
+      targetPhantoms: options.targetPhantoms,
+      sym,
+      clobberPrefix: prefix,
+      chain: [],
+    });
+    const defs = registry.chunkData.get(sym)!.defs;
+    expect([...defs.keys()]).toEqual(['A%41', 'A%B', '中文']);
+    for (const [label, text] of [
+      ['A%41', 'body 41'],
+      ['A%B', 'body b'],
+      ['中文', 'body cjk'],
+    ] as const) {
+      expect(JSON.stringify(defs.get(label)!.bodyHast), label).toContain(text);
+    }
+    const encoded = JSON.stringify(buildAggregateTree(registry, prefix));
+    expect(encoded).toContain(`${prefix}fn-a%41`);
+    expect(encoded).toContain('body 41');
+    expect(encoded).toContain(`${prefix}fn-a%25b`);
+    expect(encoded).toContain('body b');
+    expect(encoded).toContain('body cjk');
+  });
+
   test('aggregating footnotes preserves registry bodies and gives every occurrence a backref', () => {
     const registry = createRegistry();
     const content = 'First[^a] and again[^a].\n\n[^a]: Shared **body**';

@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { extractDefBodiesFromHast } from './extractDefBodiesFromHast';
+import { extractDefBodiesFromHast, footnoteSafeId, sourceIdFromFootnoteLiId } from './extractDefBodiesFromHast';
 import type { Element as HastElement, Root as HastRoot } from 'hast';
 
 function root(...children: HastRoot['children']): HastRoot {
@@ -51,7 +51,7 @@ function makeFooter(items: Array<{ id: string; bodyText: string; withBackref?: b
 }
 
 describe('extractDefBodiesFromHast', () => {
-  test('extracts bodies keyed by normalized label', () => {
+  test('extracts bodies keyed by the encoded id fragment', () => {
     const tree = root(
       makeFooter([
         { id: 'user-content-fn-x', bodyText: 'def x' },
@@ -60,9 +60,9 @@ describe('extractDefBodiesFromHast', () => {
     );
     const bodies = extractDefBodiesFromHast(tree);
     expect(bodies.size).toBe(2);
-    expect(bodies.has('X')).toBe(true);
-    expect(bodies.has('Y')).toBe(true);
-    const xBody = bodies.get('X')!;
+    expect(bodies.has('x')).toBe(true);
+    expect(bodies.has('y')).toBe(true);
+    const xBody = bodies.get('x')!;
     expect(xBody.length).toBe(1);
     expect((xBody[0] as HastElement).tagName).toBe('p');
   });
@@ -70,7 +70,7 @@ describe('extractDefBodiesFromHast', () => {
   test('strips auto-emitted backref anchors appended inside the last <p>', () => {
     const tree = root(makeFooter([{ id: 'user-content-fn-x', bodyText: 'body', withBackref: true }]));
     const bodies = extractDefBodiesFromHast(tree);
-    const p = bodies.get('X')![0] as HastElement;
+    const p = bodies.get('x')![0] as HastElement;
     const anchors = p.children.filter((c) => c.type === 'element' && (c as HastElement).tagName === 'a');
     expect(anchors.length).toBe(0);
   });
@@ -118,7 +118,7 @@ describe('extractDefBodiesFromHast', () => {
       ],
     };
     const bodies = extractDefBodiesFromHast(tree);
-    const p = bodies.get('X')![0] as HastElement;
+    const p = bodies.get('x')![0] as HastElement;
     const anchors = p.children.filter((c) => c.type === 'element' && (c as HastElement).tagName === 'a');
     expect(anchors.length).toBe(1); // user content survives
   });
@@ -170,7 +170,7 @@ describe('extractDefBodiesFromHast', () => {
       ],
     };
     const bodies = extractDefBodiesFromHast(tree);
-    const p = bodies.get('X')![0] as HastElement;
+    const p = bodies.get('x')![0] as HastElement;
     expect(p.children.length).toBe(1);
     expect((p.children[0] as { value: string }).value).toBe('hello');
   });
@@ -211,7 +211,7 @@ describe('extractDefBodiesFromHast', () => {
       ],
     };
     const bodies = extractDefBodiesFromHast(tree);
-    const p = bodies.get('X')![0] as HastElement;
+    const p = bodies.get('x')![0] as HastElement;
     expect((p.children[0] as { value: string }).value).toBe('hello ');
   });
 
@@ -273,7 +273,7 @@ describe('extractDefBodiesFromHast', () => {
       ],
     };
     const bodies = extractDefBodiesFromHast(tree);
-    const liBody = bodies.get('X')!;
+    const liBody = bodies.get('x')!;
     // The trailing \n text nodes around the <p> stay (semantically part of
     // mdast-util-to-hast's emitted shape) but the backref inside <p> is gone.
     const p = liBody.find((c) => c.type === 'element' && (c as HastElement).tagName === 'p') as HastElement;
@@ -325,7 +325,7 @@ describe('extractDefBodiesFromHast', () => {
       ],
     };
     const bodies = extractDefBodiesFromHast(tree);
-    const liBody = bodies.get('X')!;
+    const liBody = bodies.get('x')!;
     const anchors = liBody.filter((c) => c.type === 'element' && (c as HastElement).tagName === 'a');
     expect(anchors.length).toBe(0);
   });
@@ -383,45 +383,73 @@ describe('extractDefBodiesFromHast', () => {
       ],
     };
     const bodies = extractDefBodiesFromHast(tree);
-    const p = bodies.get('X')![0] as HastElement;
+    const p = bodies.get('x')![0] as HastElement;
     expect(p.children.length).toBe(1);
     expect((p.children[0] as { value: string }).value).toBe('body');
   });
 
-  test('decodes percent-encoded labels (CJK / non-ASCII)', () => {
+  test('keys percent-encoded labels (CJK / non-ASCII) by the encoded fragment, matching footnoteSafeId', () => {
     // mdast-util-to-hast's footer percent-encodes <li id> via normalizeUri,
     // so a `[^中文]` label arrives as `<li id="user-content-fn-%E4%B8%AD%E6%96%87">`.
-    // The registry's def key is the DECODED form (`中文` → normalizeId →
-    // `中文`). Without decodeURIComponent here, the harvested key
-    // `%E4%B8%AD%E6%96%87` would never match the registry's `中文`, leaving
-    // the aggregate footer with an empty <li> for every non-ASCII label.
+    // The harvest keeps that encoded fragment as the key; the registry side
+    // looks bodies up with `footnoteSafeId(def.sourceIdentifier)`, which is
+    // the same encoder, so the two agree without a decode step.
     const tree = root(makeFooter([{ id: 'user-content-fn-%E4%B8%AD%E6%96%87', bodyText: '中文 body' }]));
     const bodies = extractDefBodiesFromHast(tree);
-    expect(bodies.has('中文')).toBe(true);
-    const body = bodies.get('中文')!;
-    const p = body[0] as HastElement;
+    const key = footnoteSafeId('中文');
+    expect(key).toBe('%E4%B8%AD%E6%96%87');
+    expect(bodies.has(key)).toBe(true);
+    const p = bodies.get(key)![0] as HastElement;
     expect((p.children[0] as { value: string }).value).toBe('中文 body');
   });
 
-  test('decodes percent-encoded labels with the exact-clobberPrefix path', () => {
+  test('keys percent-encoded labels with the exact-clobberPrefix path', () => {
     const clobberPrefix = 'doc-';
     const tree = root(makeFooter([{ id: `${clobberPrefix}fn-%E4%B8%AD%E6%96%87`, bodyText: 'cjk' }]));
     const bodies = extractDefBodiesFromHast(tree, clobberPrefix);
-    expect(bodies.has('中文')).toBe(true);
+    expect(bodies.has(footnoteSafeId('中文'))).toBe(true);
+  });
+
+  test('a label containing a valid percent-escape keeps its body (`[^a%41]`)', () => {
+    // normalizeUri leaves a well-formed escape alone, so `[^a%41]` is minted
+    // as `fn-a%41`. Decoding that fragment gives `aA`, a key no registry def
+    // ever has (the def's identifier is `a%41`); comparing encoded forms
+    // keeps the body attached. `[^a%b]` (a malformed escape) is encoded to
+    // `a%25b` on both sides and keeps working the same way.
+    const tree = root(
+      makeFooter([
+        { id: 'user-content-fn-a%41', bodyText: 'escaped' },
+        { id: 'user-content-fn-a%25b', bodyText: 'percent' },
+      ])
+    );
+    const bodies = extractDefBodiesFromHast(tree, 'user-content-');
+    expect(footnoteSafeId('a%41')).toBe('a%41');
+    expect(footnoteSafeId('a%b')).toBe('a%25b');
+    expect((bodies.get(footnoteSafeId('a%41'))![0] as HastElement).children[0]).toMatchObject({ value: 'escaped' });
+    expect((bodies.get(footnoteSafeId('a%b'))![0] as HastElement).children[0]).toMatchObject({ value: 'percent' });
+    expect(bodies.has('aA')).toBe(false);
+    expect(bodies.has('AA')).toBe(false);
   });
 
   test('handles clobber-prefixed ids', () => {
     const tree = root(makeFooter([{ id: 'msg-1-user-content-fn-x', bodyText: 'def x' }]));
     const bodies = extractDefBodiesFromHast(tree);
-    expect(bodies.has('X')).toBe(true);
+    expect(bodies.has('x')).toBe(true);
   });
 
   test('uses exact clobberPrefix before regex fallback', () => {
     const clobberPrefix = 'doc-user-content-fn-decoy-user-content-';
     const tree = root(makeFooter([{ id: `${clobberPrefix}fn-a.b(1)`, bodyText: 'def x' }]));
     const bodies = extractDefBodiesFromHast(tree, clobberPrefix);
-    expect(bodies.has('A.B(1)')).toBe(true);
-    expect(bodies.has('DECOY-USER-CONTENT-FN-A.B(1)')).toBe(false);
+    expect(bodies.has('a.b(1)')).toBe(true);
+    expect(bodies.has('decoy-user-content-fn-a.b(1)')).toBe(false);
+  });
+
+  test('sourceIdFromFootnoteLiId still decodes for DOM-side label matching', () => {
+    expect(sourceIdFromFootnoteLiId('user-content-fn-%E4%B8%AD%E6%96%87')).toBe('中文');
+    expect(sourceIdFromFootnoteLiId('doc-fn-a%25b', 'doc-')).toBe('a%b');
+    expect(sourceIdFromFootnoteLiId('user-content-fn-a%41')).toBe('aA');
+    expect(sourceIdFromFootnoteLiId('plain-id')).toBeNull();
   });
 
   test('strips localOccurrence from harvested <footnote-sup> placeholders (nested-refs case)', () => {
@@ -474,7 +502,7 @@ describe('extractDefBodiesFromHast', () => {
       ],
     };
     const bodies = extractDefBodiesFromHast(tree);
-    const liBody = bodies.get('X')!;
+    const liBody = bodies.get('x')!;
     const p = liBody[0] as HastElement;
     const sup = p.children.find(
       (c) => c.type === 'element' && (c as HastElement).tagName === 'footnote-sup'
@@ -549,12 +577,12 @@ describe('extractDefBodiesFromHast', () => {
     const bodies = extractDefBodiesFromHast(tree);
     // Both the outer X and OUTER labels resolve to their respective bodies.
     expect(bodies.size).toBe(2);
-    expect(bodies.has('X')).toBe(true);
-    expect(bodies.has('OUTER')).toBe(true);
+    expect(bodies.has('x')).toBe(true);
+    expect(bodies.has('outer')).toBe(true);
     // Critical: the inner X body is the inner section's content, harvested
     // exactly once. A double-write would surface as a non-deterministic
     // (last-set-wins) shape depending on visit ordering.
-    const xBody = bodies.get('X')!;
+    const xBody = bodies.get('x')!;
     const xP = xBody.find((c) => c.type === 'element' && (c as HastElement).tagName === 'p') as HastElement;
     expect(xP).toBeTruthy();
     expect((xP.children[0] as { value: string }).value).toBe('inner-body');
