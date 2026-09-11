@@ -129,6 +129,34 @@ describe('phantomSuffixCloser (core-render-01: suffix swallowed by an open fence
     expect(phantomSuffixCloser('intro\n\n```js\nconst a = 1;\n')).toBe('```');
   });
 
+  test('a document-leading BOM is skipped exactly as micromark skips it', () => {
+    // Release-soak counterexample (seed 202709110, cross-chunk family): the
+    // fence on line 1 opens behind the BOM and closes on line 3, so nothing
+    // is pending and the trailing backtick is an ordinary code span. With
+    // the BOM scanned as text, line 3 read as an OPENER and the emitted
+    // "closer" opened a fence around the suffix.
+    const closedAtEnd = '\uFEFF```\nconst x = "[a]<div>";\n```\n\n`';
+    expect(phantomSuffixCloser(closedAtEnd)).toBe('');
+    // A fence still open behind the BOM is closed the same way as without it.
+    expect(phantomSuffixCloser('\uFEFFintro\n\n```js\nconst a = 1;')).toBe('\n```');
+    expectClosedAndNeutral('\uFEFFintro\n\n```js\nconst a = 1;');
+    // Only ONE leading BOM is transparent (micromark drops one); a second is
+    // text, so the backtick run on line 1 is prose and nothing is pending.
+    expect(phantomSuffixCloser('\uFEFF\uFEFF```\ntext')).toBe('');
+    expect(phantomSuffixCloser('\uFEFF\uFEFF\uFEFF```\ntext')).toBe('');
+    // Same three counts around an open / closed flow-math block: one BOM is
+    // transparent, so the block opens on line 1 (closed by line 3, or still
+    // pending); two or three BOMs make line 1 prose and `$$` on line 3 the
+    // opener, which is then pending at the end.
+    expect(phantomSuffixCloser('\uFEFF$$\ne = mc^2')).toBe('\n$$');
+    expectClosedAndNeutral('\uFEFF$$\ne = mc^2');
+    expect(phantomSuffixCloser('\uFEFF$$\ne = mc^2\n$$\n\ntext')).toBe('');
+    expect(phantomSuffixCloser('\uFEFF\uFEFF$$\ne = mc^2\n$$\n\ntext')).toBe('\n$$');
+    expectClosedAndNeutral('\uFEFF\uFEFF$$\ne = mc^2\n$$\n\ntext');
+    expect(phantomSuffixCloser('\uFEFF\uFEFF\uFEFF```\ncode\n```\n\ntext')).toBe('\n```');
+    expectClosedAndNeutral('\uFEFF\uFEFF\uFEFF```\ncode\n```\n\ntext');
+  });
+
   test('longer / tilde fences close with a matching run', () => {
     expectClosedAndNeutral('x\n\n`````md\n```js\ninner\n```\n');
     expect(phantomSuffixCloser('x\n\n`````md\n```js\ninner\n```\n')).toBe('`````');

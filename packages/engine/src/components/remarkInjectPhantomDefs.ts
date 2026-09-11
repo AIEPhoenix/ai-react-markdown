@@ -74,11 +74,21 @@ export function buildPhantomSuffix(phantoms: PhantomLabels): string {
  * container, see computeFreezeBoundary blocker 7) no closer is emitted
  * either: a wrong closer would OPEN a block around the suffix.
  *
+ * A document-leading U+FEFF is skipped before the scan, exactly as
+ * micromark skips it before tokenizing: with the BOM left in, the scanner
+ * reads the first line as text, misses a fence that opens there, and then
+ * reports the fence's CLOSER as an opener still pending at the end of the
+ * content, so the emitted "closer" would open a new fence around the
+ * suffix. Stage A strips every leading BOM in production; the skip keeps
+ * the raw-input contract of this function equal to the parser's (found by
+ * the release soak's cross-chunk fuzz on a raw BOM-led document).
+ *
  * Returns '' when nothing needs closing. Cost: one line scan of `content`
  * (regex per line; no reference tracking) — only paid by chunks that have a
  * non-empty phantom suffix.
  */
 export function phantomSuffixCloser(content: string): string {
+  if (content.charCodeAt(0) === 0xfeff) content = content.slice(1);
   if (content === '') return '';
   const endsWithNewline = content.endsWith('\n');
   // Confirm the trailing partial line: the suffix's own leading newline
