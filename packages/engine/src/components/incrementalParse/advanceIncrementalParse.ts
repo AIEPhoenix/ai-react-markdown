@@ -56,6 +56,7 @@ import type { Root as MdastRoot } from 'mdast';
 
 import { parseStage, transformStage, type PipelineOptions as MarkdownOptions } from '../markdown';
 import { computeFreezeBoundary, type FreezeScanCheckpoint } from './computeFreezeBoundary';
+import type { FreezeScanCheckpointInternal } from './freezeScanState';
 import {
   buildInjectionPrefix,
   collectPrefixInjection,
@@ -63,6 +64,58 @@ import {
   tailMentionsTerminator,
   type CachedInjectionPlan,
 } from './spliceParse';
+
+/** The phantom label sets ride on the merged remark-rehype options (the
+ *  cross-chunk handlers read them there); the engine only ever reads them
+ *  for the dev invariant below. */
+interface PhantomLabelOptions {
+  phantomFootnoteLabels?: ReadonlySet<string>;
+  phantomLinkLabels?: ReadonlySet<string>;
+}
+
+/**
+ * Dev-only invariant (bare `process.env.NODE_ENV` gate — CONTRIBUTING,
+ * "Dev-only gates"): no phantom label may also be DEFINED in the chunk's
+ * own text.
+ *
+ * The phantom label sets are deliberately absent from `depsKey` (suffix
+ * churn must never invalidate the frozen prefix). That is sound because a
+ * phantom's definition is never in `content`, so the reference taint keeps
+ * every phantom-resolved reference in the tail. The frozen `footnote-sup`
+ * hast shape and the footnoteDefinition handler both branch on
+ * `phantomFootnoteLabels.has(id)`, though: a label that is BOTH phantom
+ * and locally defined would let the prefix freeze one handler verdict and
+ * the next frame's suffix change it without a deps-key miss.
+ * `coordinationPreparation` subtracts the chunk's own labels from the
+ * phantom sets today; this reports the day it stops.
+ *
+ * Cost: the scan checkpoint already holds the confirmed block-level
+ * definitions of `content`, keyed by micromark's normalized identifier —
+ * the same rule the label sets use — so this is a set intersection, no
+ * extra parse. Scope: a definition on the still-unconfirmed last line
+ * registers on the next frame; definitions nested in containers
+ * (`> [a]: /u`) are not registered by the scanner and are not checked.
+ */
+function reportPhantomDefinedLocally(checkpoint: FreezeScanCheckpoint, options: AdvanceOptions): void {
+  const labels = options.remarkRehypeOptions as PhantomLabelOptions | null | undefined;
+  if (!labels) return;
+  const { defs, footnoteDefs } = checkpoint as FreezeScanCheckpointInternal;
+  const collisions: string[] = [];
+  if (labels.phantomLinkLabels) {
+    for (const label of labels.phantomLinkLabels) if (defs.has(label)) collisions.push(`[${label}]`);
+  }
+  if (labels.phantomFootnoteLabels) {
+    for (const label of labels.phantomFootnoteLabels) if (footnoteDefs.has(label)) collisions.push(`[^${label}]`);
+  }
+  if (collisions.length > 0) {
+    console.error(
+      `[ai-react-markdown] incremental parse: phantom label(s) ${collisions.join(', ')} are also defined in the ` +
+        'chunk itself. Phantom label sets are excluded from the engine deps key on the premise that a phantom is ' +
+        'never locally defined; a frozen prefix may now carry a handler verdict the suffix can change. This is a ' +
+        'coordination defect (the own-label subtraction in coordinationPreparation) — please report it.'
+    );
+  }
+}
 
 export interface IncrementalParseState {
   /** The CHUNK's own text — excludes the phantom suffix. */
@@ -179,6 +232,9 @@ export function advanceIncrementalParse(
     computeFreezeBoundary(content, { defListEnabled: options.defListEnabled }, appendOnly ? prev!.scanCheckpoint : null)
   );
   const freshBoundary = scan.boundary;
+  if (process.env.NODE_ENV !== 'production' && phantomSuffix !== '') {
+    reportPhantomDefinedLocally(scan.checkpoint, options);
+  }
 
   // Carried across full-path append frames; refreshed on splice frames
   // (where the plan walk actually runs). Non-append lineages start over.

@@ -212,6 +212,11 @@ export function createPipelineSession(): PipelineSession {
             // credential change must never reuse trees stamped under the
             // old one.
             provenance,
+            // The boundary scanner's grammar profile. The scan checkpoint
+            // already refuses to resume under a different profile, but the
+            // retained TREES were still spliced against — a prefix frozen
+            // under one profile must not survive into frames under the other.
+            defListEnabled,
           ],
           defListEnabled,
           phantomSuffix,

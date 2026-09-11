@@ -99,6 +99,28 @@ describe('framework-neutral pipeline consumer', () => {
     expect(d).toEqual(full(content + 'Tail.\n\n'));
   });
 
+  test('toggling defListEnabled re-parses instead of reusing the retained trees', () => {
+    // The flag selects the boundary scanner's grammar profile. The scan
+    // checkpoint already refuses to resume under a different profile, but
+    // the retained TREES were still spliced against — a frozen prefix
+    // parsed under one profile survived into frames under the other. The
+    // engine deps key must miss on the flip.
+    const content = 'First.\n\nSecond.\n\n';
+    for (const [before, after] of [
+      [false, true],
+      [true, false],
+    ]) {
+      const session = createPipelineSession();
+      const a = session.parse({ ...options, content, defListEnabled: before });
+      const b = session.parse({ ...options, content: content + 'Tail.\n\n', defListEnabled: after });
+      expect(b.mdast.children[0], `${before} -> ${after}`).not.toBe(a.mdast.children[0]);
+      expect(b).toEqual(full(content + 'Tail.\n\n'));
+      // Control: an unchanged flag keeps reusing the prefix.
+      const c = session.parse({ ...options, content: content + 'Tail.\n\nMore.\n\n', defListEnabled: after });
+      expect(c.mdast.children[0], `${after} steady`).toBe(b.mdast.children[0]);
+    }
+  });
+
   test('a failed incremental frame falls back and the following frame starts clean', () => {
     const session = createPipelineSession();
     const content = 'First.\n\nSecond.\n\n';
