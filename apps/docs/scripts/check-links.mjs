@@ -17,7 +17,7 @@ async function files(dir) {
     await Promise.all(
       entries.map((entry) =>
         entry.isDirectory()
-          ? entry.name === 'storybook'
+          ? dir === dist && entry.name === 'storybook'
             ? []
             : files(resolve(dir, entry.name))
           : resolve(dir, entry.name)
@@ -33,6 +33,9 @@ for (const file of html) {
   const links = [];
   visit(tree, 'element', (node) => {
     if (node.properties.id) ids.add(node.properties.id);
+    // Astro gives the generated 404 a virtual /404/ canonical, not a routable page.
+    if (file === resolve(dist, '404.html') && node.tagName === 'link' && node.properties.rel?.includes('canonical'))
+      return;
     for (const key of ['href', 'src']) if (typeof node.properties[key] === 'string') links.push(node.properties[key]);
   });
   documents.set(file, { ids, links, tree });
