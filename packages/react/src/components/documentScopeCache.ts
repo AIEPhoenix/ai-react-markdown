@@ -2,6 +2,54 @@
  * Mounted consumers and pending renders keep their scopes alive. The cache
  * only observes them; otherwise a render that never commits cannot run the
  * registration cleanup needed to release a strongly cached scope.
+ *
+ * Eviction and in-flight renders (2026-09-11 review). `onEmpty` fires from
+ * the registry's deferred `releaseSymbol` cleanup — a microtask — so a
+ * render can resolve a scope that is evicted before that render's effects
+ * run: chunk A's passive cleanup releases the last symbol, the SAME
+ * scheduler task then renders chunk B (React 19 flushes pending passive
+ * effects at the start of `performWorkOnRootViaSchedulerTask` and renders
+ * the pending lanes right after), B's render gets the still-cached scope,
+ * and the microtask evicts it before B's registration effect. What keeps
+ * this from splitting a document — B registered in the evicted scope, a
+ * later chunk C in a fresh one — is not this cache but the pair of
+ * guarantees a consumer relies on:
+ *
+ *   - The registry bumps `version` in the same microtask, BEFORE calling
+ *     `onEmpty` (documentRegistry.ts, the ordering note in `releaseSymbol`).
+ *   - Every chunk reads that version through `useSyncExternalStore`. React
+ *     re-renders synchronously whenever a store changed under a render:
+ *     if the bump lands while the concurrent render is in progress, the
+ *     tearing check at the end of the render phase
+ *     (`isRenderConsistentWithExternalStores`) discards the render and
+ *     re-renders synchronously; if it lands after the commit but before
+ *     the passive effects, the subscribe effect re-reads the snapshot
+ *     (`subscribeToStore` → `checkIfSnapshotChanged` → `forceStoreRerender`)
+ *     and that sync re-render is flushed at the end of the same passive
+ *     flush. In both cases the chunk re-resolves `get(id)` — a miss now —
+ *     and registers into the fresh scope before another task can mount a
+ *     sibling; a registration that did land in the evicted scope is undone
+ *     by the allocation effect's cleanup on the same re-render.
+ *
+ * So the invariant for the registry scope is: a scope handed out by
+ * `get()` is either still the cached one when the consumer's effects run,
+ * or its version has changed and the consumer is already scheduled to
+ * re-render before those effects can be observed.
+ * `documentScopeCache.interleave.test.tsx` drives the exact interleaving
+ * above against the real scheduler and records the trace (`release R1`,
+ * `resolve R1`, `onEmpty R1`, `resolve R2`, `register R2`).
+ *
+ * The smooth-coordinator scope has the first half of that pair (its release
+ * cleanup calls `_notify` before `onEmpty`) but not the second:
+ * `useDocumentSmoothStream` subscribes from an effect, not through
+ * `useSyncExternalStore`, so the same interleaving can leave a chunk
+ * registered in an evicted coordinator until its next render. The
+ * consequence is bounded: that chunk is alone at the head of its own
+ * queue and the next chunk is alone at the head of a fresh one, so nothing
+ * is gated and no queue can wedge; the chunk's next render (its own
+ * streaming content) re-resolves the scope and re-registers. A new scope
+ * type needs one of the two protections — a version bump before `onEmpty`
+ * read through `useSyncExternalStore`, or a re-resolve at effect time.
  */
 export function createDocumentScopeCache<T extends object>(create: (onEmpty: () => void) => T) {
   const entries = new Map<string, WeakRef<T>>();
