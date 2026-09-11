@@ -2,7 +2,7 @@
 const { siteTitleHref } = Astro.locals.starlightRoute;
 const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 ---
-<a href={siteTitleHref} class="brand-title" translate="no">
+<a href={siteTitleHref} class="brand-title" aria-label="ai-markdown" translate="no">
   <img src={`${base}brand/organization-mark.png`} width="36" height="36" alt="" />
   <span>ai-markdown</span>
 </a>

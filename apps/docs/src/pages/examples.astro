@@ -1,0 +1,50 @@
+---
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
+const catalog = (import.meta.env.DOCS_STORYBOOK_URL || `${base}storybook/`).replace(/\/?$/, '/');
+const entries = [
+  { label: 'All examples', url: `${catalog}?path=/story/react_playground--default` },
+  { label: 'React', url: `${catalog}react/?path=/story/playground--default` },
+  { label: 'Vue', url: `${catalog}vue/?path=/story/playground--interactive` },
+  { label: 'Mantine', url: `${catalog}react/?path=/docs/integrations-mantine-playground--docs` },
+];
+---
+<StarlightPage frontmatter={{ title: 'Examples', description: 'Explore live React, Vue and Mantine examples without leaving AI Markdown.', template: 'splash', editUrl: false, lastUpdated: false, pagination: false, pagefind: false }}>
+  <div class="examples-workspace">
+    <div class="examples-intro">
+      <p>Try Markdown, explore streaming, and adjust component options in the live catalog.</p>
+      <a id="open-catalog" href={entries[0].url} target="_blank" rel="noopener">Open in new tab ↗</a>
+    </div>
+    <nav class="catalog-tabs" aria-label="Example framework">
+      {entries.map((entry, index) => <a href={entry.url} data-catalog-url aria-current={index === 0 ? 'true' : undefined}>{entry.label}</a>)}
+    </nav>
+    <iframe id="examples-catalog" src={entries[0].url} title="Interactive AI Markdown Storybook examples" allow="clipboard-write; fullscreen"></iframe>
+  </div>
+</StarlightPage>
+<script>
+  const frame = document.querySelector<HTMLIFrameElement>('#examples-catalog');
+  const external = document.querySelector<HTMLAnchorElement>('#open-catalog');
+  document.querySelectorAll<HTMLAnchorElement>('[data-catalog-url]').forEach((link) => {
+    link.addEventListener('click', (event) => {
+      if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || !frame || !external) return;
+      event.preventDefault();
+      frame.src = link.href;
+      external.href = link.href;
+      document.querySelectorAll('[data-catalog-url]').forEach((item) => item.removeAttribute('aria-current'));
+      link.setAttribute('aria-current', 'true');
+    });
+  });
+</script>
+<style>
+  .examples-workspace { width: 100%; }
+  .examples-intro { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.5rem; }
+  .examples-intro p { margin: 0; }
+  .examples-intro a { flex-shrink: 0; }
+  .catalog-tabs { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  .catalog-tabs a { padding: 0.5rem 1rem; border: 1px solid var(--sl-color-hairline); border-radius: 0.5rem; text-decoration: none; color: var(--sl-color-text); }
+  .catalog-tabs a[aria-current] { color: var(--sl-color-text-accent); background: var(--sl-color-accent-low); border-color: var(--sl-color-text-accent); }
+  iframe { display: block; width: 100%; height: calc(100dvh - var(--sl-nav-height) - 15rem); min-height: 36rem; border: 1px solid var(--sl-color-hairline); border-radius: 0.75rem; background: white; }
+  :global(body:has(.examples-workspace)) { --sl-content-width: 100%; }
+  :global(body:has(.examples-workspace) .main-pane) { width: 100%; }
+  @media (max-width: 50rem) { .examples-intro { align-items: start; flex-direction: column; } iframe { min-height: 38rem; } }
+</style>

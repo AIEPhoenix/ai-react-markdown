@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_call:
   workflow_dispatch:
 
 permissions:
@@ -19,6 +20,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          repository: ai-markdown/ai-markdown
+          ref: ${{ github.repository == 'ai-markdown/ai-markdown' && github.ref || 'main' }}
       - uses: pnpm/setup@v2
         with:
           runtime: node@22.23.2
@@ -45,6 +49,9 @@ jobs:
       - run: pnpm assemble:pages
       - name: Check assembled documentation and example links
         run: DOCS_DIST=_site pnpm test:docs
+      - name: Record published source
+        run: |
+          git rev-parse HEAD > _site/source-commit.txt
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

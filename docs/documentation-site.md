@@ -81,3 +81,9 @@ DOCS_DIST=_site pnpm test:docs
 ```
 
 `_site/` is ignored and contains the docs build at its root and the entire Storybook build in `storybook/`. The link check validates documentation links against this assembled directory, including same-origin links into the React and Vue catalogs. Pages receives one artifact only after both builds and their checks pass. Never deploy the docs and Storybook separately to the same Pages site: each deployment replaces the site's artifact.
+
+## Organization root website
+
+The public homepage is **`https://ai-markdown.github.io/`**. Its publishing repository is `ai-markdown/ai-markdown.github.io`, as required for GitHub organization sites. That repository calls this repository's reusable Pages workflow and checks out application source from `ai-markdown/ai-markdown`. It checks for source changes approximately every 15 minutes (scheduled runs may be delayed); manual dispatch publishes immediately. No cross-repository write credential is stored.
+
+The organization deployment uses `/` as its base: `/docs/` contains documentation, `/examples/` embeds the full Storybook UI with framework switches, and `/storybook/` remains available for direct links and standalone use. The existing project deployment under `/ai-markdown/` remains a working mirror. Both deployments derive their base from their own Pages settings.
