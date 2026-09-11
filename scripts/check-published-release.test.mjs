@@ -2,7 +2,11 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { test } from 'node:test';
-import { channel, verifyStatement } from './check-published-release.mjs';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { channel, verifyStatement, verifyPackageSources } from './check-published-release.mjs';
 
 const bytes = Buffer.from('actual downloaded tarball');
 const statement = () => ({
@@ -79,3 +83,36 @@ for (const [name, mutate] of [
 test('reject tarball bytes differing from provenance subject', () => {
   assert.throws(() => verifyStatement(statement(), Buffer.from('different tarball')));
 });
+
+for (const [directory, file, allowed] of [
+  ['remark-mark-highlight', 'README.md', true],
+  ['remark-mark-highlight', 'src/index.ts', false],
+  ['remark-mark-highlight', 'package.json', false],
+  ['remark-mark-highlight', 'LICENSE', false],
+  ['remark-mark-highlight', 'src/README.md', false],
+  ['engine', 'README.md', false],
+]) {
+  test(`source equivalence: ${directory}/${file} is ${allowed ? 'allowed' : 'rejected'}`, (t) => {
+    const cwd = mkdtempSync(join(tmpdir(), 'published-source-test-'));
+    t.after(() => rmSync(cwd, { recursive: true, force: true }));
+    const run = (...args) =>
+      execFileSync('git', ['-c', 'user.name=Release test', '-c', 'user.email=test@example.com', ...args], {
+        cwd,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+    run('init');
+    const packageRoot = join(cwd, 'packages', directory);
+    mkdirSync(join(packageRoot, 'src'), { recursive: true });
+    const target = join(packageRoot, file);
+    writeFileSync(target, 'original package file\n');
+    run('add', '.');
+    run('commit', '-m', 'Original published package');
+    const source = run('rev-parse', 'HEAD').toString().trim();
+    writeFileSync(target, 'changed package file\n');
+    run('add', '.');
+    run('commit', '-m', 'Later candidate');
+    const verify = () => verifyPackageSources(directory, source, 'HEAD', cwd);
+    if (allowed) assert.doesNotThrow(verify);
+    else assert.throws(verify);
+  });
+}

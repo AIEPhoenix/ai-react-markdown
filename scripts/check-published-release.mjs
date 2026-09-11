@@ -43,6 +43,19 @@ export function verifyStatement(statement, bytes) {
 const root = resolve(import.meta.dirname, '..');
 const git = (args) =>
   execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+// An independently versioned package can keep its published version when only
+// its README links change. Its existing tarball and README are still checked
+// against the original provenance; all other package files must stay identical.
+export function verifyPackageSources(directory, source, target, cwd = root) {
+  const paths =
+    directory === 'remark-mark-highlight'
+      ? ['packages/remark-mark-highlight', ':(exclude)packages/remark-mark-highlight/README.md']
+      : ['packages', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json'];
+  execFileSync('git', ['diff', '--exit-code', source, target, '--', ...paths], {
+    cwd,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+}
 async function get(url, binary = false) {
   assert.equal(new URL(url).protocol, 'https:');
   const response = await fetch(url, { signal: AbortSignal.timeout(30000) });
@@ -125,13 +138,9 @@ async function audit(tag, reportDirectory) {
             'Source tag does not match provenance'
           );
           git(['merge-base', '--is-ancestor', source.commit, target]);
-          // Reused independent versions and workflow retries retain their original
-          // provenance. Require identical package sources, never the current run ID.
-          const paths =
-            directory === 'remark-mark-highlight'
-              ? [`packages/${directory}`]
-              : ['packages', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json'];
-          git(['diff', '--exit-code', source.commit, target, '--', ...paths]);
+          // Reused independent versions and retries retain their original provenance.
+          // Compare package inputs, never the current workflow invocation ID.
+          verifyPackageSources(directory, source.commit, target);
           record = {
             name: expected.name,
             version: expected.version,
