@@ -2,6 +2,8 @@
  * The host decides whether a next frame is expected (false for SSR), owns
  * this session, and resets it when render policy invalidates retained trees.
  * Parsing does not register chunks or publish document contributions.
+ * Fallback order: incremental → full pipeline → plain-text frame (see
+ * plainTextTrees); a pipeline-stage throw never escapes `parse`.
  */
 import {
   advanceIncrementalParse,
@@ -45,6 +47,50 @@ export interface PipelineFrameOptions {
   measure?: AdvanceOptions['measure'];
 }
 const unmeasured: NonNullable<AdvanceOptions['measure']> = (_stage, fn) => fn();
+
+/** Line/column/offset of the end of `text`, in the parser's convention
+ *  (1-based line and column, 0-based offset). Counts what micromark counts:
+ *  `\n`, `\r\n` and a lone `\r` are one line ending each. */
+function endPoint(text: string): { line: number; column: number; offset: number } {
+  let line = 1;
+  let lineStart = 0;
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    if (code === 10 /* \n */ || (code === 13 /* \r */ && text.charCodeAt(i + 1) !== 10)) {
+      line += 1;
+      lineStart = i + 1;
+    }
+  }
+  return { line, column: text.length - lineStart + 1, offset: text.length };
+}
+
+/**
+ * Last-resort trees for a frame whose FULL parse threw: the whole source as
+ * one plain-text paragraph, positions covering the entire content so the
+ * planner, cache keys and custom components see well-formed nodes. The
+ * text is a hast text node — it renders escaped, never as markup.
+ *
+ * Why this exists: the incremental path already falls back to the full
+ * pipeline, but the full pipeline itself can throw — a few thousand nested
+ * raw `<div>` tags overflow the recursive hast-util-from-parse5 walk with
+ * `RangeError: Maximum call stack size exceeded` — and nothing above the
+ * session caught it, so one hostile message took the adapter subtree down.
+ * The durable fix is a depth cap or an iterative walk in the
+ * hast-util-from-parse5 fork; this keeps the surface alive until then.
+ * The next frame is parsed normally again (retained state is cleared).
+ */
+function plainTextTrees(content: string): PipelineTrees {
+  const position = { start: { line: 1, column: 1, offset: 0 }, end: endPoint(content) };
+  const text = { type: 'text' as const, value: content, position };
+  return {
+    mdast: { type: 'root', children: [{ type: 'paragraph', children: [text], position }], position },
+    hast: {
+      type: 'root',
+      children: [{ type: 'element', tagName: 'p', properties: {}, children: [text], position }],
+      position,
+    },
+  };
+}
 
 export function createPipelineSession(): PipelineSession {
   let state: IncrementalParseState | null = null;
@@ -114,21 +160,34 @@ export function createPipelineSession(): PipelineSession {
       // has no next frame — routing through the engine would pay a dead
       // O(document) line-lex per request. Hydration is unaffected (the
       // client's first frame rebuilds from null either way).
+      // The ordinary full pipeline, with the plain-text last resort around
+      // it (see plainTextTrees). Dev-only stage telemetry
+      // (`ai-markdown:stage:*` performance measures; no-op in production)
+      // wraps only the stage calls — the surrounding option assembly is
+      // trivial.
+      const fullPipeline = (): PipelineTrees => {
+        try {
+          const parsed = measureHere('parse', () =>
+            parseStage({
+              children: augmented,
+              remarkPlugins,
+              rehypePlugins,
+              remarkRehypeOptions: mergedRemarkRehypeOptions,
+            })
+          );
+          const hastRoot = measureHere('transform', () => transformStage(parsed));
+          return { mdast: parsed.mdast, hast: hastRoot };
+        } catch (error) {
+          if (process.env.NODE_ENV !== 'production') {
+            console.error('[ai-react-markdown] full parse failed — rendering this frame as plain text:', error);
+          }
+          return plainTextTrees(content ?? '');
+        }
+      };
+
       if (!incrementalParse) {
         state = null;
-        // Dev-only stage telemetry (`ai-markdown:stage:*` performance
-        // measures; no-op in production). Wraps only the stage calls — the
-        // surrounding option assembly is trivial.
-        const parsed = measureHere('parse', () =>
-          parseStage({
-            children: augmented,
-            remarkPlugins,
-            rehypePlugins,
-            remarkRehypeOptions: mergedRemarkRehypeOptions,
-          })
-        );
-        const hastRoot = measureHere('transform', () => transformStage(parsed));
-        return { mdast: parsed.mdast, hast: hastRoot };
+        return fullPipeline();
       }
 
       try {
@@ -172,16 +231,7 @@ export function createPipelineSession(): PipelineSession {
         if (process.env.NODE_ENV !== 'production') {
           console.error('[ai-react-markdown] incremental parse failed — full parse fallback for this frame:', error);
         }
-        const parsed = measureHere('parse', () =>
-          parseStage({
-            children: augmented,
-            remarkPlugins,
-            rehypePlugins,
-            remarkRehypeOptions: mergedRemarkRehypeOptions,
-          })
-        );
-        const hastRoot = measureHere('transform', () => transformStage(parsed));
-        return { mdast: parsed.mdast, hast: hastRoot };
+        return fullPipeline();
       }
     },
   };
