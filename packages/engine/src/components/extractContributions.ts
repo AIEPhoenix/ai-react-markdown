@@ -23,6 +23,9 @@ export type Contribution =
       refKind: 'footnote' | 'link' | 'image';
       label: string;
       referenceType?: 'full' | 'collapsed' | 'shortcut';
+      /** Normalized label of the footnote definition whose body holds this
+       *  reference. Emitted for footnote references only; see the walk. */
+      nestedIn?: string;
     }
   | { kind: 'fnDef'; label: string; sourceIdentifier: string; content: string }
   | { kind: 'linkDef'; label: string; url: string; title?: string };
@@ -55,22 +58,29 @@ export function* extractContributions(
   // scanner (`collectDefLabels`) walks the whole tree for the same reason;
   // this extractor has to claim exactly the same label set, or a sibling
   // chunk phantom-injects a label it can never resolve. Hence the walk
-  // descends into footnote definition bodies; `inBody` tracks whether the
-  // current node sits inside one.
-  const walk = (n: MdastNode, inBody: boolean): void => {
+  // descends into footnote definition bodies; `inBody` is the normalized
+  // label of the innermost definition whose body holds the current node,
+  // or null at flow level.
+  const walk = (n: MdastNode, inBody: string | null): void => {
     if (n.type === 'footnoteReference') {
-      // Refs inside a def body are NOT flow refs. A def whose body contains
-      // `[^x]: see [^a].` must not record an extra ref to `a`: it would
-      // inflate `getRefsForLabel('a')` so the aggregate emits a backref
-      // anchor to `#fnref-a-2` that points at an id no inline `<sup>` ever
-      // rendered.
-      if (!inBody) {
-        out.push({ kind: 'ref', refKind: 'footnote', label: normalizeId(n.identifier) });
-      }
+      // A footnote ref inside a def body is emitted with `nestedIn` set, and
+      // is NOT a flow ref. It takes part in numbering — standalone numbers a
+      // footnote that only a body references, after the flow refs — but it
+      // must not be counted as an occurrence: `[^x]: see [^a].` would
+      // otherwise inflate `getRefsForLabel('a')` so the aggregate emits a
+      // backref anchor to `#fnref-a-2` that no inline `<sup>` ever rendered.
+      out.push({
+        kind: 'ref',
+        refKind: 'footnote',
+        label: normalizeId(n.identifier),
+        ...(inBody !== null ? { nestedIn: inBody } : {}),
+      });
       return;
     }
     if (n.type === 'linkReference' || n.type === 'imageReference') {
-      if (!inBody) {
+      // Link and image refs inside a body are not recorded: the registry
+      // has no consumer for them (no numbering, no counts).
+      if (inBody === null) {
         out.push({
           kind: 'ref',
           refKind: n.type === 'linkReference' ? 'link' : 'image',
@@ -98,7 +108,7 @@ export function* extractContributions(
       // bodyHast is NOT computed here — see extractDefBodiesFromHast for
       // why we source it from the post-pipeline hast instead.
       out.push({ kind: 'fnDef', label, sourceIdentifier: n.identifier, content });
-      for (const child of n.children) walk(child, true);
+      for (const child of n.children) walk(child, label);
       return;
     } else if (n.type === 'definition') {
       const d = n as { identifier: string; url: string; title?: string };
@@ -113,6 +123,6 @@ export function* extractContributions(
     }
     if ('children' in n) for (const child of n.children) walk(child, inBody);
   };
-  walk(mdast, false);
+  walk(mdast, null);
   for (const c of out) yield c;
 }

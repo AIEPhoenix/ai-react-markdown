@@ -38,11 +38,7 @@ export function createContributionSession(): ContributionSession {
   return {
     commit({ pipeline, ownLabels, registry, targetPhantoms, sym, clobberPrefix, chain }: ContributionOptions): void {
       if (!registry || !sym) return;
-      const refs: {
-        label: string;
-        kind: 'footnote' | 'link' | 'image';
-        referenceType?: 'full' | 'collapsed' | 'shortcut';
-      }[] = [];
+      const refs: ChunkData['refs'] = [];
       // Collect def metadata first so the fingerprint compares only cheap
       // fields. bodyHast is sourced from the post-pipeline hast (not from a
       // bare mdast→hast walk) so def bodies inside the cross-chunk aggregate
@@ -59,7 +55,14 @@ export function createContributionSession(): ContributionSession {
         phantomFootnoteLabels: targetPhantoms.missingFootnotes,
       })) {
         if (node.kind === 'ref') {
-          refs.push({ label: node.label, kind: node.refKind, referenceType: node.referenceType });
+          // `nestedIn` marks a footnote ref inside a definition body: it is
+          // numbered after the flow refs but never counted as an occurrence.
+          refs.push({
+            label: node.label,
+            kind: node.refKind,
+            referenceType: node.referenceType,
+            ...(node.nestedIn !== undefined ? { nestedIn: node.nestedIn } : {}),
+          });
         } else if (node.kind === 'fnDef') {
           defMeta.set(node.label, {
             identifier: node.label,

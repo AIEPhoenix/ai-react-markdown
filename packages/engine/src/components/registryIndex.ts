@@ -21,6 +21,9 @@ export function buildRegistryIndex(registry: Pick<Registry, 'chunkOrder' | 'chun
     occurrences: new Map(),
     labelOccurrences: new Map(),
   };
+  // Nested footnote refs (inside a definition body) per chunk, in body
+  // order, grouped by the label of the definition that contains them.
+  const nestedByChunk = new Map<symbol, Map<string, string[]>>();
   for (const sym of registry.chunkOrder) {
     const data = registry.chunkData.get(sym);
     if (!data) continue;
@@ -31,6 +34,17 @@ export function buildRegistryIndex(registry: Pick<Registry, 'chunkOrder' | 'chun
     for (const ref of data.refs) {
       if (ref.kind !== 'footnote') continue;
       const label = ref.label;
+      if (ref.nestedIn !== undefined) {
+        // Numbered below, once every flow reference has its number. Never
+        // counted: the aggregate footer emits one backref per counted
+        // occurrence, and a nested occurrence has no inline mark id.
+        let byParent = nestedByChunk.get(sym);
+        if (!byParent) nestedByChunk.set(sym, (byParent = new Map()));
+        const siblings = byParent.get(ref.nestedIn);
+        if (siblings) siblings.push(label);
+        else byParent.set(ref.nestedIn, [label]);
+        continue;
+      }
       if (!index.numbers.has(label)) index.numbers.set(label, index.numbers.size + 1);
       const total = (index.counts.get(label) ?? 0) + 1;
       index.counts.set(label, total);
@@ -42,6 +56,27 @@ export function buildRegistryIndex(registry: Pick<Registry, 'chunkOrder' | 'chun
         let byChunk = index.labelOccurrences.get(label);
         if (!byChunk) index.labelOccurrences.set(label, (byChunk = new Map()));
         byChunk.set(sym, range);
+      }
+    }
+  }
+  // Nested references are numbered the way mdast-util-to-hast's footer
+  // numbers them: it converts the bodies of numbered definitions in number
+  // order and appends each newly met reference to the end of the order, so
+  // the order is a queue that grows while it is walked. Only the canonical
+  // definition's body renders, so only its nested references count;
+  // a duplicate definition in a later chunk contributes none.
+  if (nestedByChunk.size > 0) {
+    const queue = [...index.numbers.keys()];
+    for (let i = 0; i < queue.length; i++) {
+      const parent = queue[i];
+      const owner = index.footnotes.get(parent);
+      if (owner === undefined) continue;
+      const nested = nestedByChunk.get(owner)?.get(parent);
+      if (!nested) continue;
+      for (const label of nested) {
+        if (index.numbers.has(label)) continue;
+        index.numbers.set(label, index.numbers.size + 1);
+        queue.push(label);
       }
     }
   }

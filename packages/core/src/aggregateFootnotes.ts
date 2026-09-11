@@ -55,12 +55,17 @@ export function buildAggregateTree(
   clobberPrefix: string,
   preserveOrphanReferences = false
 ): HastElement | null {
-  // Walk chunkOrder; collect first occurrence per FOOTNOTE label in source
-  // order. Mirrors `registry.globalNumber`'s numbering semantics so the n
-  // values match the inline `<sup>` numbers. Link/image refs share the
-  // `refs` array but belong to a disjoint namespace — they must be skipped
-  // here, otherwise a link-ref to a label sharing text with a footnote-def
-  // would cause a duplicate `<li>` in the aggregate footer.
+  // Walk chunkOrder; collect every FOOTNOTE label that is referenced
+  // somewhere — in flow text, or inside another footnote's body (a nested
+  // ref, `nestedIn` set) — and order the entries by `registry.globalNumber`,
+  // the same selector the inline `<sup>` marks read. The registry numbers
+  // nested-only footnotes after every flow reference, in the order the
+  // bodies render, which is where a standalone footer lists them; walking
+  // refs in source order alone would put such a footnote at the position of
+  // the body that mentions it. Link/image refs share the `refs` array but
+  // belong to a disjoint namespace — they must be skipped here, otherwise a
+  // link-ref to a label sharing text with a footnote-def would cause a
+  // duplicate `<li>` in the aggregate footer.
   const seen = new Set<string>();
   const ordered: OrderedDef[] = [];
   for (const sym of registry.chunkOrder) {
@@ -88,6 +93,7 @@ export function buildAggregateTree(
       });
     }
   }
+  ordered.sort((a, b) => (a.n ?? 0) - (b.n ?? 0));
 
   if (preserveOrphanReferences) {
     for (const sym of registry.chunkOrder) {
@@ -112,8 +118,8 @@ export function buildAggregateTree(
 
   const liElements: HastElement[] = ordered.map(({ normalizedLabel, sourceIdentifier, bodyHast, n, withBackref }) => {
     // Same id encoding as mdast-util-to-hast's footer / the marks (percent-
-    // encoded non-ASCII etc.); `sourceIdFromFootnoteLiId` decodes it on the
-    // way back, so the harvest and the cursor anchor keep working.
+    // encoded non-ASCII etc.); the body harvest keys by this same fragment
+    // and the cursor anchor decodes it through `sourceIdFromFootnoteLiId`.
     const safeId = footnoteSafeId(sourceIdentifier);
     // Assembly-time clone: the backref logic below pushes anchors into these
     // children, which must never mutate the registry-held `bodyHast`.

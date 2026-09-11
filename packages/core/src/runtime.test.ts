@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test, vi } from 'vitest';
+import { visit } from 'unist-util-visit';
 import {
   buildCoreRemarkPlugins,
   buildCoreRehypePlugins,
@@ -201,6 +202,67 @@ describe('framework-neutral pipeline consumer', () => {
     expect(registry.resolveLinkDef('x')).toEqual({ identifier: 'X', url: '/url', title: 'T' });
     // The `[x]` inside the body is not a flow ref of the chunk.
     expect(registry.chunkData.get(sym)!.refs).toEqual([{ label: 'A', kind: 'footnote', referenceType: undefined }]);
+  });
+
+  test('a footnote referenced only from another footnote body reaches the aggregate with standalone numbering', () => {
+    // Standalone renders B (referenced only inside A's body) as footnote 2.
+    // Contributions used to skip definition bodies, so B had no global
+    // number and the coordinated footer dropped it.
+    const registry = createRegistry();
+    const content = 'flow [^a]\n\n[^a]: see [^b]\n\n[^b]: B body\n';
+    const ownLabels = collectDefLabels(content);
+    const sym = registry.registerChunk('chunk', ownLabels.footnoteLabels, ownLabels.linkLabels);
+    const pipeline = full(content);
+    createContributionSession().commit({
+      pipeline,
+      ownLabels,
+      registry,
+      targetPhantoms: options.targetPhantoms,
+      sym,
+      clobberPrefix: prefix,
+      chain: [],
+    });
+    expect(registry.chunkData.get(sym)!.refs).toEqual([
+      { label: 'A', kind: 'footnote', referenceType: undefined },
+      { label: 'B', kind: 'footnote', referenceType: undefined, nestedIn: 'A' },
+    ]);
+    expect([registry.globalNumber('A'), registry.globalNumber('B')]).toEqual([1, 2]);
+    expect([registry.getRefsForLabel('A'), registry.getRefsForLabel('B')]).toEqual([1, 0]);
+
+    const tree = buildAggregateTree(registry, prefix)!;
+    const items: [string, string, string[]][] = [];
+    const markIds = new Set<string>();
+    visit(tree, 'element', (node) => {
+      if (typeof node.properties.id === 'string' && node.tagName === 'a') markIds.add(node.properties.id);
+      if (node.tagName !== 'li') return;
+      const backrefs: string[] = [];
+      visit(node, 'element', (inner) => {
+        if (inner.properties.dataFootnoteBackref !== undefined) backrefs.push(String(inner.properties.href));
+      });
+      items.push([String(node.properties.id), String(node.properties.value), backrefs]);
+    });
+    // Same entries, in the same order, as the standalone footer.
+    const standalone: [string, string[]][] = [];
+    visit(pipeline.hast, 'element', (node) => {
+      if (node.tagName !== 'li') return;
+      const backrefs: string[] = [];
+      visit(node, 'element', (inner) => {
+        if (inner.properties.dataFootnoteBackref !== undefined) backrefs.push(String(inner.properties.href));
+      });
+      standalone.push([String(node.properties.id), backrefs]);
+    });
+    expect(standalone).toEqual([
+      [`${prefix}fn-a`, [`#${prefix}fnref-a`]],
+      [`${prefix}fn-b`, [`#${prefix}fnref-b`]],
+    ]);
+    expect(items).toEqual([
+      [`${prefix}fn-a`, '1', [`#${prefix}fnref-a`]],
+      [`${prefix}fn-b`, '2', [`#${prefix}fnref-b`]],
+    ]);
+    // Every backref in the aggregate points at a mark that exists: A's in
+    // flow text (outside the tree), B's inside A's harvested body.
+    expect(markIds.has(`${prefix}fnref-b`)).toBe(true);
+    expect(JSON.stringify(tree)).not.toContain('fnref-b-2');
   });
 
   test('a label containing a valid percent-escape keeps its harvested body', () => {

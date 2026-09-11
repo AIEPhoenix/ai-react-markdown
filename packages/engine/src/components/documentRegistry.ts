@@ -48,6 +48,14 @@ export interface RefRecord {
    *  must be filtered separately when computing footnote numbers / refcounts. */
   kind: RefKind;
   referenceType?: 'full' | 'collapsed' | 'shortcut';
+  /** Normalized label of the footnote definition whose body contains this
+   *  reference; absent for a flow reference. Only footnote references are
+   *  recorded this way. A nested reference takes part in document-wide
+   *  numbering (after every flow reference, in the order the footer renders
+   *  the bodies) but not in `getRefsForLabel` / `globalOccurrenceForRef`,
+   *  so the aggregate footer never emits a backref for an occurrence that
+   *  has no inline mark id. */
+  nestedIn?: string;
 }
 
 export interface ChunkData {

@@ -26,21 +26,34 @@ describe('extractContributions', () => {
     expect(defs[0]).toMatchObject({ kind: 'fnDef', label: 'A', sourceIdentifier: 'a' });
   });
 
-  test('does NOT count nested footnoteReferences inside footnoteDefinition bodies', () => {
-    // Round-14 regression: visit() previously descended into def bodies,
-    // counting `[^b]` inside `[^a]:` body as a flow ref → inflated
-    // globalNumber('B') so B appeared in the aggregate footer even when
-    // no flow text references it, AND inflated getRefsForLabel('A') for
-    // any nested `[^a]` self-ref → dead backref pointing at fnref-A-2.
+  test('footnote refs inside a definition body are emitted with nestedIn, not as flow refs', () => {
+    // Round-14 regression: visit() once descended into def bodies and counted
+    // `[^b]` inside `[^a]:` body as a flow ref, inflating getRefsForLabel so
+    // the aggregate emitted a backref to a mark id no inline sup rendered.
+    // The other extreme (skipping the body) dropped a footnote that only
+    // another footnote references from the coordinated footer, while the
+    // standalone footer numbers it after the flow refs. The ref is now
+    // emitted flagged with the containing definition's label; the registry
+    // numbers it but never counts it as an occurrence.
     const mdast = parseMdast(`See [^a].\n\n[^a]: body with [^b] nested.\n\n[^b]: never flow-referenced.\n`);
     const out = collect(mdast);
     const refs = out.filter((c) => c.kind === 'ref');
-    // Only the flow [^a] counts — the nested [^b] inside [^a]:'s body is skipped.
-    expect(refs.length).toBe(1);
-    expect(refs[0]).toMatchObject({ refKind: 'footnote', label: 'A' });
-    // Both defs are still yielded (defs are at the top level).
+    expect(refs).toEqual([
+      { kind: 'ref', refKind: 'footnote', label: 'A' },
+      { kind: 'ref', refKind: 'footnote', label: 'B', nestedIn: 'A' },
+    ]);
     const defs = out.filter((c) => c.kind === 'fnDef');
     expect(defs.map((d) => (d as { label: string }).label).sort()).toEqual(['A', 'B']);
+  });
+
+  test('a ref inside a nested definition is attributed to the innermost definition', () => {
+    const mdast = parseMdast(`[^a]: outer [^x]\n\n    [^b]: inner [^y]\n\nflow [^a]\n\n[^x]: x\n\n[^y]: y\n`);
+    const refs = collect(mdast).filter((c) => c.kind === 'ref');
+    expect(refs).toEqual([
+      { kind: 'ref', refKind: 'footnote', label: 'X', nestedIn: 'A' },
+      { kind: 'ref', refKind: 'footnote', label: 'Y', nestedIn: 'B' },
+      { kind: 'ref', refKind: 'footnote', label: 'A' },
+    ]);
   });
 
   test('link definitions nested inside a footnote body are contributed (they are document-wide)', () => {
@@ -52,8 +65,9 @@ describe('extractContributions', () => {
     const out = collect(mdast);
     const linkDefs = out.filter((c) => c.kind === 'linkDef');
     expect(linkDefs).toEqual([{ kind: 'linkDef', label: 'X', url: '/url', title: 'T' }]);
-    // The `[x]` inside the body is still not a flow ref.
-    expect(out.filter((c) => c.kind === 'ref').map((c) => (c as { label: string }).label)).toEqual(['A']);
+    // The `[x]` inside the body is not recorded: link refs have no registry
+    // consumer, so only footnote refs are emitted from a body.
+    expect(out.filter((c) => c.kind === 'ref')).toEqual([{ kind: 'ref', refKind: 'footnote', label: 'A' }]);
   });
 
   test('a footnote definition nested inside another footnote body is contributed', () => {
@@ -117,15 +131,16 @@ describe('extractContributions', () => {
     ]);
   });
 
-  test('does NOT count a self-recursive nested ref inside its own def body', () => {
-    // [^a]: see [^a]. The nested [^a] inside [^a]:'s body is a "self-
-    // reference" — counting it would yield 2 refs to A, making the
-    // aggregate emit a second backref anchor (fnref-A-2) that no inline
+  test('a self-recursive nested ref is flagged with its own label, so it is never counted as a flow ref', () => {
+    // [^a]: see [^a]. Counting the nested [^a] as an occurrence would make
+    // the aggregate emit a second backref anchor (fnref-A-2) that no inline
     // sup points at.
     const mdast = parseMdast(`See [^a].\n\n[^a]: recursive: see [^a].\n`);
-    const out = collect(mdast);
-    const refs = out.filter((c) => c.kind === 'ref' && c.refKind === 'footnote');
-    expect(refs.length).toBe(1); // only the flow ref
+    const refs = collect(mdast).filter((c) => c.kind === 'ref' && c.refKind === 'footnote');
+    expect(refs).toEqual([
+      { kind: 'ref', refKind: 'footnote', label: 'A' },
+      { kind: 'ref', refKind: 'footnote', label: 'A', nestedIn: 'A' },
+    ]);
   });
 
   test('phantom-injected fnDef is skipped (no leak into registry)', () => {

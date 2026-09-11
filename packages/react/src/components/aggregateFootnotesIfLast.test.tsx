@@ -227,6 +227,46 @@ describe('AggregateFootnotesIfLast', () => {
     expect(html).toMatch(/value="2"[^>]*doc-fn-x|doc-fn-x[^>]*value="2"/);
   });
 
+  test('a footnote referenced only inside another footnote body is listed after the flow refs with one backref', () => {
+    const reg = createRegistry();
+    const a = reg.allocateSymbol('A');
+    const b = reg.allocateSymbol('B');
+    // chunk A: flow ref to X; X's body (a def in chunk B) references Y, and
+    // that nested ref is contributed flagged with `nestedIn`. Standalone
+    // renders X as 1 and Y as 2 with one backref each; the footer used to
+    // drop Y because nested refs were not contributed at all.
+    reg.contributeChunkData(a, {
+      refs: [{ label: 'X', kind: 'footnote' }],
+      defs: new Map(),
+      linkDefs: new Map(),
+      ownFootnoteLabels: new Set(),
+      ownLinkLabels: new Set(),
+    });
+    reg.contributeChunkData(b, {
+      refs: [{ label: 'Y', kind: 'footnote', nestedIn: 'X' }],
+      defs: new Map([
+        ['X', { identifier: 'X', sourceIdentifier: 'x', contentSource: 'see y', bodyHast: [pHast('see y')] }],
+        ['Y', { identifier: 'Y', sourceIdentifier: 'y', contentSource: 'y body', bodyHast: [pHast('y body')] }],
+      ]),
+      linkDefs: new Map(),
+      ownFootnoteLabels: new Set(['X', 'Y']),
+      ownLinkLabels: new Set(),
+    });
+    const html = renderToStaticMarkup(
+      <AggregateFootnotesIfLast registry={reg} thisChunkSym={b} clobberPrefix="doc-" postOptions={baseOptions} />
+    );
+    expect(html).toMatch(/value="1"[^>]*doc-fn-x|doc-fn-x[^>]*value="1"/);
+    expect(html).toMatch(/value="2"[^>]*doc-fn-y|doc-fn-y[^>]*value="2"/);
+    expect(html.indexOf('doc-fn-x')).toBeLessThan(html.indexOf('doc-fn-y'));
+    expect(html).toContain('y body');
+    // One backref each, both bare: the nested occurrence is never counted,
+    // so no `fnref-y-2` (or `fnref-x-2`) that no inline mark carries.
+    expect(html.match(/<a [^>]*href="#doc-fnref-x[^"]*"/g)).toHaveLength(1);
+    expect(html.match(/<a [^>]*href="#doc-fnref-y[^"]*"/g)).toHaveLength(1);
+    expect(html).toContain('href="#doc-fnref-y"');
+    expect(html).not.toContain('fnref-y-2');
+  });
+
   test('uses def.sourceIdentifier (mdast case-folded) for <li id> and backref href', () => {
     // mdast normalizes footnote identifiers to lowercase, so a `[^Foo]` ref
     // ends up with sourceIdentifier='foo'. The aggregate footer's <li id>
