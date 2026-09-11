@@ -19,6 +19,15 @@ Six engine-side corrections, all in the built-in LaTeX preprocessor and the shar
 - `removeComments` strips comment spans instead of dropping the whole html node: `<details>` blocks with a comment inside, and `<!-- note --> visible text`, render their content. A comment-only block still disappears. The engine no longer depends on `remark-remove-comments`.
 - pangu runs before SmartyPants, so `中文"引号"中文` gets an opening and a closing quote (`中文 “引号” 中文`) instead of two closers.
 
+### Cross-chunk coordination fixes (not yet released)
+
+Four corrections to how a chunk publishes its footnote and link definitions to the shared registry and how the aggregate footer is assembled. They affect only documents rendered under `<AIMarkdownDocuments>`; standalone output is unchanged.
+
+- A footnote label containing a valid percent-escape (`[^a%41]`) keeps its body in the aggregate footer. The harvest decoded the footer's `<li id>` fragment (`a%41` to `aA`) while the registry keyed the definition by the source identifier, so the two never met and the footer rendered an empty item. Both sides now use the encoded fragment, `footnoteSafeId(sourceIdentifier)`. `sourceIdFromFootnoteLiId` still decodes for the streaming cursor's DOM lookup.
+- A link definition or footnote definition written inside a footnote body is contributed to the registry. The label scanner already claimed it, so sibling chunks phantom-injected a label that no chunk ever resolved. A differential test now requires the scanner, the full collector and the contribution extractor to report the same label set at every streamed prefix.
+- A footnote referenced only from another footnote's body appears in the aggregate footer with standalone numbering (after every flow reference, in footer order). Nested references are contributed with the new optional `RefRecord.nestedIn` field; they take part in `globalNumber` but not in `getRefsForLabel` or occurrence ranges, so no backref points at a mark id that no inline sup carries. `buildAggregateTree` orders entries by global number. The engine API snapshot gains the additive field.
+- Footnote bodies are harvested only from the synthesized footer, recognized by the shared `isFootnoteSection` predicate (tag, attribute and no source position) and read as `section > ol > li`, first item per id. A raw `<section data-footnotes>` an author writes, or a raw `<li id="fn-…">` inside a definition body that HTML parsing hoists next to the real item, no longer replaces a definition body.
+
 ## 3.0.0 — Stable release and final candidate
 
 ### 3.0.0
