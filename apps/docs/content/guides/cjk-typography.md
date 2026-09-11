@@ -69,9 +69,9 @@ The `smartypants` plugin is two transformers. SmartyPants decides whether a stra
 | `English "quote" 中文` | `English “quote” 中文`   |
 | `it's`, `'90s`         | `it’s`, `’90s`           |
 
-The pairing rules, in order: a quote at the start of a text run, after whitespace or after an opening bracket opens; a quote at the end of a run, before whitespace or before closing punctuation (`）」，。！？；：`) closes; a quote directly after a non-CJK letter or digit closes; a quote between two other characters opens when no quote of that kind is open and closes otherwise. Pairing is per text run, so emphasis or a link inside the quoted span starts a new run: `"引号**强调**"` opens both quotes. An unclosed quote (`中文"引号`) stays an opening quote until the closer arrives, which is the normal state of a streaming frame.
+The pairing rules, in order: an apostrophe before a decade (`'90s`) closes; a quote at the start of a block, after whitespace or after an opening bracket opens; a quote at the end of a block, before whitespace or before closing punctuation (`）」，。！？；：`) closes; a quote directly after a non-CJK letter or digit closes; a quote between two other characters opens when no quote of that kind is open and closes otherwise. The open/close state runs per block (paragraph, heading, table cell) across its text in document order, through emphasis, strong, strikethrough and links, so `中文'*引号*'中文` and `"引号**强调**"中文` pair, and so does a quote closed after a soft line break in the same paragraph. An unclosed quote (`中文"引号`) stays an opening quote until the closer arrives, which is the normal state of a streaming frame.
 
-Code spans, fenced code, raw HTML and math keep their straight quotes; the pass only touches text nodes and never moves a position, so incremental parsing can reuse a settled prefix.
+Code spans, fenced code, raw HTML, math and images keep their straight quotes and count as neither whitespace nor CJK to a quote beside them (`中文"` + a code span + `"中文` pairs around the code). The pass only rewrites text nodes, never moves text between nodes and never moves a position, so incremental parsing can reuse a settled prefix.
 
 ---
 

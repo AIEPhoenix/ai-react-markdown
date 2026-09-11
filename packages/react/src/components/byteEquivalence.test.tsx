@@ -49,7 +49,7 @@ import remarkMath from 'remark-math';
 import { remarkMark as remarkMarkHighlight } from '@ai-markdown/remark-mark-highlight';
 import { remarkDefinitionList, defListHastHandlers } from 'remark-definition-list';
 import remarkSmartypants from 'remark-smartypants';
-import type { Html as MdastHtml, Root as MdastRoot, Text as MdastText } from 'mdast';
+import type { Html as MdastHtml, Parent as MdastParent, Root as MdastRoot, Text as MdastText } from 'mdast';
 import { SKIP, visit } from 'unist-util-visit';
 import remarkPangu from 'remark-pangu';
 import rehypeRaw from '@ai-markdown/rehype-raw';
@@ -83,20 +83,30 @@ const ALL_DISPLAY: DisplayOptimizeName[] = ['removeComments', 'smartypants', 'pa
 /**
  * Hand-kept mirror of the engine's `remarkCjkQuotes` (the first half of the
  * `smartypants` plugin). A straight quote with a CJK character directly
- * before or after it is curled here, by pairing per text node, so that
- * remark-smartypants (which reads a CJK character as a word and would close
- * both quotes of `中文"引号"中文`) only sees the Latin ones. The rules, in
- * order: start/whitespace/opening bracket before → opening; end/whitespace/
- * closing punctuation after → closing; a non-CJK letter or digit before →
- * closing; otherwise the pair state for that quote kind decides. A quote
- * without a CJK neighbour is skipped but, where the first three rules fix
- * its direction, still updates the pair state. Same independence rule as
- * the comment stripper below: drift shows up as a byte difference.
+ * before or after it is curled here, by pairing, so that remark-smartypants
+ * (which reads a CJK character as a word and would close both quotes of
+ * `中文"引号"中文`) only sees the Latin ones. The rules, in order: an
+ * apostrophe before a decade (`'90s`) → closing; start of block/whitespace/
+ * opening bracket before → opening; end of block/whitespace/closing
+ * punctuation after → closing; a non-CJK letter or digit before → closing;
+ * otherwise the pair state for that quote kind decides. A quote without a
+ * CJK neighbour is skipped but, where those rules fix its direction, still
+ * updates the pair state. The state runs per phrasing block (paragraph,
+ * heading, table cell) over its text nodes in document order, through the
+ * inline parents; a `break` is whitespace and any other childless node
+ * (inline code, html, math, image, footnote reference) is opaque ink to
+ * the quote beside it. Same independence rule as the comment stripper
+ * below: drift shows up as a byte difference.
  */
 const CJK_RE = /[\p{sc=Han}\p{sc=Hiragana}\p{sc=Katakana}\p{sc=Hangul}\u3000-\u303f\uff00-\uffef]/u;
 const OPENING_RE = /[\p{Ps}\p{Pi}]/u;
 const CLOSING_RE = /[\p{Pe}\p{Pf}，。、！？；：]/u;
 const WORD_RE = /[\p{L}\p{N}]/u;
+const DECADE_RE = /\d\ds(?![\p{L}\p{N}])/uy;
+const INK = '\u0000';
+const PHRASING_BLOCKS = new Set(['paragraph', 'heading', 'tableCell']);
+
+type LegacyLeaf = { text: MdastText; index: number; parent: MdastParent } | 'space' | 'ink';
 
 function legacyCjkQuotes() {
   const isCjk = (char: string | undefined): boolean => char !== undefined && CJK_RE.test(char);
@@ -108,32 +118,61 @@ function legacyCjkQuotes() {
   };
   const at = (value: string, i: number): string | undefined =>
     i >= value.length ? undefined : String.fromCodePoint(value.codePointAt(i)!);
-  return (tree: MdastRoot): void => {
-    visit(tree, 'text', (node: MdastText, index, parent) => {
-      if (parent === undefined || index === undefined) return;
-      const value = node.value;
-      if (!value.includes('"') && !value.includes("'")) return;
-      const out = value.split('');
-      const open = { '"': false, "'": false };
-      let changed = false;
-      for (let i = 0; i < value.length; i++) {
-        const char = value[i];
-        if (char !== '"' && char !== "'") continue;
-        const prev = before(value, i);
-        const next = at(value, i + 1);
-        let opening: boolean | undefined;
-        if (prev === undefined || /\s/u.test(prev) || OPENING_RE.test(prev)) opening = true;
-        else if (next === undefined || /\s/u.test(next) || CLOSING_RE.test(next)) opening = false;
-        else if (!isCjk(prev) && WORD_RE.test(prev)) opening = false;
-        const cjk = isCjk(prev) || isCjk(next);
-        if (cjk) opening ??= !open[char];
-        if (opening !== undefined) open[char] = opening;
-        if (!cjk) continue;
-        out[i] = char === '"' ? (opening ? '“' : '”') : opening ? '‘' : '’';
-        changed = true;
-      }
-      if (changed) parent.children[index] = { ...node, value: out.join('') };
+  const collect = (parent: MdastParent, out: LegacyLeaf[]): void => {
+    parent.children.forEach((child, index) => {
+      if (child.type === 'text') {
+        if (child.value.length > 0) out.push({ text: child, index, parent });
+      } else if (child.type === 'break') out.push('space');
+      else if ('children' in child) collect(child, out);
+      else out.push('ink');
     });
+  };
+  /** The character a quote at the edge of a text leaf sees in `leaf`. */
+  const edge = (leaf: LegacyLeaf | undefined, side: 'start' | 'end'): string | undefined => {
+    if (leaf === undefined) return undefined;
+    if (leaf === 'space') return ' ';
+    if (leaf === 'ink') return INK;
+    return side === 'end' ? before(leaf.text.value, leaf.text.value.length) : at(leaf.text.value, 0);
+  };
+  return (tree: MdastRoot): void => {
+    visit(
+      tree,
+      (node) => PHRASING_BLOCKS.has(node.type),
+      (node) => {
+        const leaves: LegacyLeaf[] = [];
+        collect(node as MdastParent, leaves);
+        const open = { '"': false, "'": false };
+        leaves.forEach((leaf, position) => {
+          if (leaf === 'space' || leaf === 'ink') return;
+          const value = leaf.text.value;
+          if (!value.includes('"') && !value.includes("'")) return;
+          const blockBefore = edge(leaves[position - 1], 'end');
+          const blockAfter = edge(leaves[position + 1], 'start');
+          const out = value.split('');
+          let changed = false;
+          for (let i = 0; i < value.length; i++) {
+            const char = value[i];
+            if (char !== '"' && char !== "'") continue;
+            const prev = i === 0 ? blockBefore : before(value, i);
+            const next = i + 1 >= value.length ? blockAfter : at(value, i + 1);
+            let opening: boolean | undefined;
+            DECADE_RE.lastIndex = i + 1;
+            if (char === "'" && DECADE_RE.test(value)) opening = false;
+            else if (prev === undefined || /\s/u.test(prev) || OPENING_RE.test(prev)) opening = true;
+            else if (next === undefined || /\s/u.test(next) || CLOSING_RE.test(next)) opening = false;
+            else if (!isCjk(prev) && WORD_RE.test(prev)) opening = false;
+            const cjk = isCjk(prev) || isCjk(next);
+            if (cjk) opening ??= !open[char];
+            if (opening !== undefined) open[char] = opening;
+            if (!cjk) continue;
+            out[i] = char === '"' ? (opening ? '“' : '”') : opening ? '‘' : '’';
+            changed = true;
+          }
+          if (changed) leaf.parent.children[leaf.index] = { ...leaf.text, value: out.join('') };
+        });
+        return SKIP;
+      }
+    );
   };
 }
 
@@ -338,8 +377,16 @@ const cjkQuoteCases: Array<[string, string]> = [
   ['中文"引号', '中文 “引号'],
   ['引号"中文', '引号 “中文'],
   ['他说："你好。"', '他说：“你好。”'],
+  // Pairing across inline markup, a soft line break, nesting, inline code.
+  ["中文'*引号*'中文", '中文‘<em>引号</em>’中文'],
+  ['中文"*引号*"中文', '中文 “<em>引号</em>” 中文'],
+  ['"引号**强调**"中文', '“引号<strong>强调</strong>” 中文'],
+  ['中文"引号\n引号"中文', '中文 “引号<br/>\n引号” 中文'],
+  ["“他说：'引号'”", '“他说：‘引号’”'],
+  ['中文"`code`"中文', '中文 “<code>code</code>” 中文'],
   ["it's", 'it’s'],
   ["'90s", '’90s'],
+  ["don't and '90s and 中文'引号'中文", 'don’t and ’90s and 中文‘引号’中文'],
   ['a"b"c', 'a”b”c'],
   ['"quoted" text', '“quoted” text'],
 ];

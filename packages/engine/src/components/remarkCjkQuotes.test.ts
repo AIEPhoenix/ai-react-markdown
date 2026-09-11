@@ -72,9 +72,23 @@ describe('the display chain — quotes beside CJK text', () => {
     ['中文 "English quote"中文', '中文 “English quote” 中文'],
     ['日本語"引用"です', '日本語 “引用” です'],
     ['한국어"인용"입니다', '한국어“인용”입니다'],
-    // Latin prose: SmartyPants' output, unchanged by the pass.
+    // Pairing across inline markup inside one block (emphasis, strong,
+    // link), across a soft line break (a `break` node after remark-breaks),
+    // nested inside curly quotes, and beside inline code (opaque ink).
+    ["中文'*引号*'中文", '中文‘引号’中文'],
+    ['中文"*引号*"中文', '中文 “引号” 中文'],
+    ['中文"[链接](http://x)"中文', '中文 “链接” 中文'],
+    ['中文"引号\n引号"中文', '中文 “引号\n引号” 中文'],
+    ["中文'引号\n引号'中文", '中文‘引号\n引号’中文'],
+    ["“他说：'引号'”", '“他说：‘引号’”'],
+    ['中文"`code`"中文', '中文 “code” 中文'],
+    ["中文'`code`'中文", '中文‘code’中文'],
+    // Latin prose: SmartyPants' output, unchanged by the pass — and the
+    // apostrophes do not disturb the pair state of a CJK pair after them.
     ["it's", 'it’s'],
     ["'90s", '’90s'],
+    ["don't and '90s and 中文'引号'中文", 'don’t and ’90s and 中文‘引号’中文'],
+    ["中文'引号'中文 don't", '中文‘引号’中文 don’t'],
     ['a"b"c', 'a”b”c'],
     ['"quoted" text', '“quoted” text'],
     ['He said "hello" -- and "quoted" text...', 'He said “hello” — and “quoted” text…'],
@@ -144,12 +158,23 @@ describe('remarkCjkQuotes — scope', () => {
     ]);
   });
 
-  test('pairing is per text node: bold inside a quote splits the run (pinned limitation)', () => {
-    // `"引号**强调**"中文` is three text nodes; the third starts with the
-    // closing quote, and a quote at the start of a node opens. SmartyPants
-    // pairs across nodes for Latin prose; this pass does not.
-    expect(renderText('"引号**强调**"中文')).toBe('“引号强调“中文');
+  test('pairing spans inline markup within the block: text is never moved between nodes', () => {
+    // `"引号**强调**"中文` is three text nodes; the third's quote closes
+    // because the state carries across the block's text nodes.
+    expect(renderText('"引号**强调**"中文')).toBe('“引号强调” 中文');
     expect(renderText('**强调**"引号"')).toBe('强调“引号”');
+    const tree = mdastOf("中文'*引号*'中文", [remarkCjkQuotes]);
+    const paragraph = tree.children[0] as { children: Array<{ type: string; value?: string; children?: unknown[] }> };
+    expect(paragraph.children.map((c) => c.type)).toEqual(['text', 'emphasis', 'text']);
+    expect(paragraph.children[0].value).toBe('中文‘');
+    expect(paragraph.children[2].value).toBe('’中文');
+    expect((paragraph.children[1].children as Array<{ value: string }>)[0].value).toBe('引号');
+  });
+
+  test('the pair state is per block: a heading, a paragraph and a table cell each start closed', () => {
+    expect(renderText('# 标题"引号"中文')).toBe('标题 “引号” 中文');
+    expect(renderText('中文"引号\n\n引号"中文')).toBe('中文 “引号\n引号 “中文');
+    expect(renderText('| 中文"引号" | b |\n| --- | --- |\n| c | d |')).toContain('中文 “引号”');
   });
 
   test('positions are preserved and the original node is not mutated', () => {
