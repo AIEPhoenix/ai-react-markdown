@@ -4,10 +4,11 @@
  * map to via react-markdown's `components` prop.
  *
  * Each subscribes to its document's Registry via useSyncExternalStore.
- * On selector miss (registry not present, label not resolved):
- *   - FootnoteSupNumber renders null
- *   - CrossChunkLink falls back to literal source text by referenceType
- *   - CrossChunkImage falls back to literal source text by referenceType
+ * On selector miss (registry not present, label not resolved, or a
+ * hydration render — see isHydratingServerHtml):
+ *   - FootnoteSupNumber renders the chunk-local mark, or null for a phantom
+ *   - CrossChunkLink falls back to the chunk's own def, else literal source text by referenceType
+ *   - CrossChunkImage falls back to the chunk's own def, else literal source text by referenceType
  *
  * @module components/crossChunkPlaceholders
  */
@@ -36,9 +37,46 @@ import { footnoteSafeId } from '@ai-markdown/engine';
 
 type RefType = 'full' | 'collapsed' | 'shortcut' | undefined;
 
-/** Module-level SSR snapshot constant. Hoisted out of components so its
- *  identity is stable across renders. */
-const SSR_LABEL_SNAPSHOT = () => '';
+/** Server snapshot of the per-label stores below. Every client `getSnapshot`
+ *  returns a JSON string, never the empty string, so a placeholder that
+ *  receives this value is rendering on the server or hydrating server HTML
+ *  (React hands out the server snapshot for the whole hydration render).
+ *  Hoisted to module level so the getter's identity is stable across
+ *  renders. */
+const SERVER_LABEL_SNAPSHOT = '';
+const getServerLabelSnapshot = () => SERVER_LABEL_SNAPSHOT;
+
+/**
+ * Whether this render is hydrating server HTML, given that a
+ * useSyncExternalStore call handed back its server snapshot. React uses the
+ * server snapshot in exactly two places: the server render, and the
+ * hydration render on the client. In a browser environment it therefore
+ * means hydration.
+ *
+ * The distinction matters for the registry. On the server, effects never
+ * run, so the registry a render reads is empty and the output is the
+ * chunk's standalone output. On the client, each chunk sits in its own
+ * Suspense boundary when the consumer wraps it in one, and a boundary can
+ * hydrate after its siblings have committed and their effects have
+ * registered labels and contributed definitions. A hydration render that
+ * read the live registry would then emit phantom placeholders and resolve
+ * `[^a]` / `[link][x]` where the server emitted literal text, and React
+ * would throw the boundary away with a recoverable hydration error. So a
+ * hydrating render treats the registry as absent, matching the server
+ * byte for byte; once hydration completes React sees that the live
+ * snapshot differs from the server one and re-renders, at which point the
+ * registry wins as it always did. `MarkdownContent` applies the same rule
+ * to its registry-version store, and the placeholders below to their
+ * per-label stores, so the phantom targets and the resolved marks agree.
+ */
+export function isHydratingServerHtml(observedServerSnapshot: boolean): boolean {
+  return observedServerSnapshot && typeof window !== 'undefined';
+}
+
+/** The registry a placeholder may read in this render: null while hydrating. */
+function readableRegistry<R>(registry: R | null, snapshot: string): R | null {
+  return isHydratingServerHtml(snapshot === SERVER_LABEL_SNAPSHOT) ? null : registry;
+}
 
 interface FootnoteSupProps {
   label: string;
@@ -105,8 +143,9 @@ export function FootnoteSupNumber({
       ]),
     [registry, label, chunkSym, localOccurrence]
   );
-  useSyncExternalStore(subscribe, getSnapshot, SSR_LABEL_SNAPSHOT);
-  const num = registry?.globalNumber(label) ?? null;
+  const snapshot = useSyncExternalStore(subscribe, getSnapshot, getServerLabelSnapshot);
+  const readable = readableRegistry(registry, snapshot);
+  const num = readable?.globalNumber(label) ?? null;
   // Same id encoding as mdast-util-to-hast's marks and footer (and the
   // aggregate footer): a raw label in the id broke `[^注]` / `[^a%b]`
   // anchors — mark and <li> disagreed (v2.4.0 review).
@@ -114,14 +153,14 @@ export function FootnoteSupNumber({
   // Global occurrence of THIS mark (`-N` for the 2nd+ ref of the label
   // across the document). Null while this chunk has not contributed yet.
   const globalOcc =
-    registry && chunkSym && localOccurrence !== null && num !== null
-      ? registry.globalOccurrenceForRef(chunkSym, label, localOccurrence)
+    readable && chunkSym && localOccurrence !== null && num !== null
+      ? readable.globalOccurrenceForRef(chunkSym, label, localOccurrence)
       : null;
   // (`chunkSym === null` with a numbered label falls through to the id-less
   //  mark below — see the note there.)
   if (num === null) {
-    // No global number yet — server render, or the client's first frame
-    // before the contribute effect. Render the STANDALONE mark (local
+    // No global number yet — server render, hydration, or the client's
+    // first frame before the contribute effect. Render the STANDALONE mark (local
     // number, `-N` by local occurrence) so it lines up with the local
     // synthetic footer that renders in exactly this state; the global
     // numbering takes over once the registry knows the label. Rendering
@@ -282,8 +321,8 @@ export function CrossChunkLink({
     const def = registry?.resolveLinkDef(identifier ?? label);
     return JSON.stringify(def ? [def.url, def.title ?? null] : null);
   }, [registry, identifier, label]);
-  useSyncExternalStore(subscribe, getSnapshot, SSR_LABEL_SNAPSHOT);
-  const def = resolveDef(registry, identifier ?? label, localUrl, localTitle);
+  const snapshot = useSyncExternalStore(subscribe, getSnapshot, getServerLabelSnapshot);
+  const def = resolveDef(readableRegistry(registry, snapshot), identifier ?? label, localUrl, localTitle);
   if (!def) {
     return literalLink(referenceType, label, children);
   }
@@ -342,8 +381,8 @@ export function CrossChunkImage({
     const def = registry?.resolveLinkDef(identifier ?? label);
     return JSON.stringify(def ? [def.url, def.title ?? null] : null);
   }, [registry, identifier, label]);
-  useSyncExternalStore(subscribe, getSnapshot, SSR_LABEL_SNAPSHOT);
-  const def = resolveDef(registry, identifier ?? label, localUrl, localTitle);
+  const snapshot = useSyncExternalStore(subscribe, getSnapshot, getServerLabelSnapshot);
+  const def = resolveDef(readableRegistry(registry, snapshot), identifier ?? label, localUrl, localTitle);
   if (!def) {
     return literalImage(referenceType, label, alt);
   }
