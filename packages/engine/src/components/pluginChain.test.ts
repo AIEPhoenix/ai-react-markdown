@@ -58,12 +58,12 @@ function renderText(markdown: string, enginePlugins: readonly AIMarkdownEnginePl
   ).trim();
 }
 
-describe('buildCoreRemarkPlugins — pangu runs before SmartyPants', () => {
+describe('buildCoreRemarkPlugins — the smartypants entry and pangu', () => {
   // SmartyPants decides whether a straight quote opens or closes by the
-  // character before it. Run first, it sees `文"引` — no space before the
-  // quote — and calls both quotes closers; pangu then pads the CJK/Latin
-  // boundaries around the curly quotes, which lands as `中文” 引号” 中文`.
-  // With pangu first the quotes sit between spaces SmartyPants can read.
+  // token before it, and a CJK character is a word to it: alone it called
+  // both quotes of `中文"引号"中文` closers. The `smartypants` entry now
+  // runs `remarkCjkQuotes` first (see remarkCjkQuotes.test.ts for the
+  // pairing rules); pangu runs after both and pads the curly double quotes.
 
   test('CJK prose quoting a word gets one opening and one closing quote', () => {
     const out = renderText('中文"引号"中文', [pangu, smartypants]);
@@ -71,6 +71,7 @@ describe('buildCoreRemarkPlugins — pangu runs before SmartyPants', () => {
     expect(out).not.toContain('” 引号”');
     // pangu pads the quotes on both sides; that spacing is its own rule.
     expect(out).toBe('中文 “引号” 中文');
+    expect(renderText("中文'引号'中文", [pangu, smartypants])).toBe('中文‘引号’中文');
   });
 
   test('Latin prose is unchanged by the order', () => {
@@ -79,7 +80,7 @@ describe('buildCoreRemarkPlugins — pangu runs before SmartyPants', () => {
     expect(renderText(md, [smartypants])).toBe('He said “hello” — and “quoted” text…');
   });
 
-  test('the canonical chain places pangu before smartypants whatever the caller order', () => {
+  test('the canonical chain places smartypants before pangu whatever the caller order', () => {
     for (const selection of [
       [smartypants, pangu],
       [pangu, smartypants],
@@ -89,7 +90,7 @@ describe('buildCoreRemarkPlugins — pangu runs before SmartyPants', () => {
       const iSmarty = shape.indexOf(remarkSmartypants as never);
       expect(iPangu).toBeGreaterThan(-1);
       expect(iSmarty).toBeGreaterThan(-1);
-      expect(iPangu).toBeLessThan(iSmarty);
+      expect(iSmarty).toBeLessThan(iPangu);
     }
   });
 });

@@ -8,13 +8,13 @@ This guide distinguishes those responsibilities so that a punctuation problem is
 
 ## What works out of the box
 
-| Feature                                                             | Plugin                                   | Default                      |
-| ------------------------------------------------------------------- | ---------------------------------------- | ---------------------------- |
-| Emphasis delimiter recognition beside CJK punctuation               | `remark-cjk-friendly`                    | ✅ Always on                 |
-| GFM strikethrough delimiter recognition beside CJK punctuation      | `remark-cjk-friendly-gfm-strikethrough`  | ✅ Always on                 |
-| Auto-insert spaces between CJK and half-width characters (pangu)    | `remark-pangu`                           | ✅ On by default; toggleable |
-| Smart punctuation (SmartyPants) — curly quotes, em-dashes, ellipses | `remark-smartypants`                     | ✅ On by default; toggleable |
-| HTML comment removal                                                | built into the engine (`removeComments`) | ✅ On by default; toggleable |
+| Feature                                                             | Plugin                                       | Default                      |
+| ------------------------------------------------------------------- | -------------------------------------------- | ---------------------------- |
+| Emphasis delimiter recognition beside CJK punctuation               | `remark-cjk-friendly`                        | ✅ Always on                 |
+| GFM strikethrough delimiter recognition beside CJK punctuation      | `remark-cjk-friendly-gfm-strikethrough`      | ✅ Always on                 |
+| Auto-insert spaces between CJK and half-width characters (pangu)    | `remark-pangu`                               | ✅ On by default; toggleable |
+| Smart punctuation (SmartyPants) — curly quotes, em-dashes, ellipses | `remark-smartypants`, after a CJK quote pass | ✅ On by default; toggleable |
+| HTML comment removal                                                | built into the engine (`removeComments`)     | ✅ On by default; toggleable |
 
 The parser extensions are installed through their `parseOnly` entry points. They affect how Markdown is recognized and do not themselves remove soft line breaks. The selected transforms run when the relevant source is parsed or transformed; incremental parsing can reuse the settled prefix, so this is not necessarily a full-document plugin run on every React render.
 
@@ -51,6 +51,27 @@ const PLUGINS = defaultEnginePlugins.filter((p) => p !== pangu);
 - Tests that need to assert exact byte-for-byte content match without pangu's added whitespace.
 
 Keep the default when its output matches your editorial rules. Japanese and Korean applications may choose a different spacing convention; compare representative sentences and punctuation before deciding.
+
+---
+
+## Quotes beside CJK text
+
+The `smartypants` plugin is two transformers. SmartyPants decides whether a straight quote opens or closes from the token before it, and a Han, kana or hangul character is a word to it, so on its own it made both quotes of `中文"引号"中文` closers. A CJK-aware pass therefore runs first: a straight `"` or `'` with a CJK character (Han, hiragana, katakana, hangul, CJK punctuation or a fullwidth form) directly before or after it is curled by pairing within its text run, and SmartyPants only sees the quotes that have no CJK neighbour. Pangu runs after both and pads curly double quotes by its own rule; it leaves curly single quotes alone.
+
+| Source                 | Rendered text            |
+| ---------------------- | ------------------------ |
+| `中文"引号"中文`       | `中文 “引号” 中文`       |
+| `中文'引号'中文`       | `中文‘引号’中文`         |
+| `中文 '引号' 中文`     | `中文 ‘引号’ 中文`       |
+| `中文"English"中文`    | `中文 “English” 中文`    |
+| `中文"多"个"引号"了`   | `中文 “多” 个 “引号” 了` |
+| `他说："你好。"`       | `他说：“你好。”`         |
+| `English "quote" 中文` | `English “quote” 中文`   |
+| `it's`, `'90s`         | `it’s`, `’90s`           |
+
+The pairing rules, in order: an apostrophe before a decade (`'90s`) closes; a quote at the start of a block, after whitespace or after an opening bracket opens; a quote at the end of a block, before whitespace or before closing punctuation (`）」，。！？；：`) closes; a quote directly after a non-CJK letter or digit closes; a quote between two other characters opens when no quote of that kind is open and closes otherwise. The open/close state runs per block (paragraph, heading, table cell) across its text in document order, through emphasis, strong, strikethrough and links, so `中文'*引号*'中文` and `"引号**强调**"中文` pair, and so does a quote closed after a soft line break in the same paragraph. An unclosed quote (`中文"引号`) stays an opening quote until the closer arrives, which is the normal state of a streaming frame.
+
+Code spans, fenced code, raw HTML, math and images keep their straight quotes and count as neither whitespace nor CJK to a quote beside them (`中文"` + a code span + `"中文` pairs around the code). The pass only rewrites text nodes, never moves text between nodes and never moves a position, so incremental parsing can reuse a settled prefix.
 
 ---
 
@@ -173,7 +194,7 @@ function Article({ content }: { content: string }) {
 }
 ```
 
-That's the whole setup. The parser extensions, `remark-breaks`, pangu spacing, and SmartyPants remain active. Pangu runs before SmartyPants, so a quoted word in CJK prose (`中文"引号"中文`) gets an opening and a closing quote rather than two closers. Font loading and the page's `lang` attribute are application responsibilities.
+That's the whole setup. The parser extensions, `remark-breaks`, SmartyPants (with its CJK quote pass), and pangu spacing remain active, so a quoted word in CJK prose (`中文"引号"中文`, `中文'引号'中文`) gets an opening and a closing quote rather than two closers. Font loading and the page's `lang` attribute are application responsibilities.
 
 ---
 
@@ -222,7 +243,7 @@ Start with the smallest source that reproduces the issue and classify the differ
 
 1. Literal `**` or `~~` beside punctuation indicates delimiter recognition. Compare emphasis and strikethrough separately; `==` has a distinct parser.
 2. Extra spaces between scripts usually come from pangu. Remove only `pangu` from the selection and compare `textContent`.
-3. Curly quotes or changed dashes come from SmartyPants. Put command-line examples in code spans or fenced blocks when they must retain punctuation.
+3. Curly quotes or changed dashes come from the `smartypants` plugin (the CJK quote pass for quotes touching CJK text, SmartyPants for the rest). Put command-line examples in code spans or fenced blocks when they must retain punctuation.
 4. Visible source newlines come from `remark-breaks`; wrapping at the viewport edge comes from CSS.
 5. Missing glyphs or mismatched character heights are font fallback issues. Inspect the font actually used, not just the first family in the CSS declaration.
 

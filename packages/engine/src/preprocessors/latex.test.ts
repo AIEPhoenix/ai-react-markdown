@@ -1,4 +1,8 @@
 import { describe, expect, test } from 'vitest';
+import type { Root as MdastRoot } from 'mdast';
+import remarkMath from 'remark-math';
+import remarkParse from 'remark-parse';
+import { unified } from 'unified';
 import { preprocessLaTeX, splitByProtectedRegions } from './latex';
 
 const hasLineEnding = (text: string): boolean => text.includes('\n') || text.includes('\r');
@@ -629,6 +633,42 @@ y$ which spans lines`;
     expect(t8, `2000 lines: ${t2.toFixed(1)} ms, 8000 lines: ${t8.toFixed(1)} ms`).toBeLessThan(Math.max(60, 8 * t2));
   });
 
+  test('the list item walk behind an indented $$ opener is linear in the document (was quadratic)', () => {
+    // `listContentIndent` reads the lines above an indented opener back to
+    // the first column-0 line. Unbounded, that re-read every earlier line
+    // of the same item for every opener: 2000/4000/8000 `$$ x $$` lines
+    // in one item took 494 / 1972 / 7914 ms, and 1000/2000/4000 repeats
+    // of an indented top-level block (no column-0 line at all) 190 / 707 /
+    // 2832 ms. Each walk now records its verdicts under its opener's line
+    // start and a later walk stops at the first recorded line it reaches.
+    // The pair pass's closure check keeps a cursor for the same reason
+    // (2000/4000/8000 items ending a block at a dedent: 10 / 34 / 132 ms).
+    const shapes: Array<[string, (n: number) => string]> = [
+      ['items, each with an indented pair', (n) => '- Item\n\n  $$ x $$\n\n'.repeat(n)],
+      [
+        'one long indented paragraph, then an opener',
+        (n) => '- Item\n' + '  a line of text\n'.repeat(n) + '\n  $$\n  x\n\nAfter',
+      ],
+      ['one item holding many openers', (n) => '- Item\n\n' + '  $$ x $$\n  text\n'.repeat(n)],
+      ['items whose blocks end at a dedent', (n) => '- Item\n\n  $$\n  x\n\nAfter | a | b\n\n'.repeat(n)],
+      ['repeated indented top-level blocks', (n) => '  $$\n  x\n  $$\n\n'.repeat(n)],
+    ];
+    const time = (doc: string): number => {
+      const t = performance.now();
+      preprocessLaTeX(doc);
+      return performance.now() - t;
+    };
+    for (const [name, make] of shapes) {
+      time(make(1000));
+      const [t1, t2, t4] = [1000, 2000, 4000].map((n) => time(make(n)));
+      const readout = `${name}: 1000: ${t1.toFixed(1)} ms, 2000: ${t2.toFixed(1)} ms, 4000: ${t4.toFixed(1)} ms`;
+      // Linear is 2x per doubling, quadratic 4x. The floor absorbs timer
+      // noise where a run is a few milliseconds.
+      expect(t2, readout).toBeLessThan(Math.max(30, 3 * t1));
+      expect(t4, readout).toBeLessThan(Math.max(30, 3 * t2));
+    }
+  });
+
   // --- Paired literal-content HTML containers (issue: $ inside <code> etc.) ---
 
   test('does not rewrite $ inside <code>...</code>', () => {
@@ -1068,6 +1108,195 @@ y$ which spans lines`;
     const content = '$\\text{a_1} + \\text{b {c}_2} = \\text{d_3}$';
     const expected = '$$\\text{a\\_1} + \\text{b {c}\\_2} = \\text{d\\_3}$$';
     expect(preprocessLaTeX(content)).toBe(expected);
+  });
+});
+
+/** The block shape remark-math gives `markdown` (with `singleDollarTextMath`
+ *  off, as the production chain sets it): one line per node, nested by
+ *  indent, `math`/`inlineMath` with their value. */
+function mathShape(markdown: string): string[] {
+  const processor = unified().use(remarkParse).use(remarkMath, { singleDollarTextMath: false });
+  const tree = processor.runSync(processor.parse(markdown)) as MdastRoot;
+  const lines: string[] = [];
+  const walk = (node: { type: string; value?: string; children?: unknown[] }, depth: number): void => {
+    const value = node.type === 'math' || node.type === 'inlineMath' ? ` ${JSON.stringify(node.value)}` : '';
+    lines.push(`${'  '.repeat(depth)}${node.type}${value}`);
+    for (const child of node.children ?? []) walk(child as never, depth + 1);
+  };
+  for (const child of tree.children) walk(child as never, 0);
+  return lines;
+}
+
+describe('preprocessLaTeX — the kind-aware scanner keeps valid multiline math', () => {
+  // The scan that decides "unclosed" is kind-aware (flow / inline `$$` /
+  // single `$`). These pin that the shapes remark-math accepts across line
+  // endings still reach it whole, and that the streaming tail is still cut.
+
+  test('a flow block with a blank line inside survives and is one display block', () => {
+    const content = '$$\nA\n\nB\n$$\n\nafter';
+    expect(preprocessLaTeX(content)).toBe(content);
+    expect(mathShape(preprocessLaTeX(content))).toEqual(['math "A\\n\\nB"', 'paragraph', '  text']);
+  });
+
+  test('inline $$ spanning a single newline inside a paragraph survives as inline math', () => {
+    const content = 'text $$a\nb$$ text';
+    expect(preprocessLaTeX(content)).toBe(content);
+    expect(mathShape(preprocessLaTeX(content))).toEqual(['paragraph', '  text', '  inlineMath "a\\nb"', '  text']);
+  });
+
+  test('a $$ fenced block with $ inside is neither closed early nor truncated', () => {
+    // A bare `$` is content inside a flow block. A `$x$` pair inside it is
+    // rewritten to `$$x$$` by convertSingleToDoubleDollar (as it always
+    // was) — the point here is that the scan pairs those per line and the
+    // block's real closer still closes it, so nothing after it is lost.
+    const bare = '$$\na $ b\n$$\n\nafter';
+    expect(preprocessLaTeX(bare)).toBe(bare);
+    expect(mathShape(preprocessLaTeX(bare))).toEqual(['math "a $ b"', 'paragraph', '  text']);
+    const pair = '$$\n$x$ + $y$\n$$\n\nafter';
+    expect(preprocessLaTeX(pair)).toBe('$$\n$$x$$ + $$y$$\n$$\n\nafter');
+    expect(mathShape(preprocessLaTeX(pair))).toEqual(['math "$$x$$ + $$y$$"', 'paragraph', '  text']);
+  });
+
+  test('the streaming tail `text\\n\\n$$\\nE =` is still truncated', () => {
+    expect(preprocessLaTeX('text\n\n$$\nE =')).toBe('text');
+    expect(mathShape(preprocessLaTeX('text\n\n$$\nE ='))).toEqual(['paragraph', '  text']);
+  });
+});
+
+describe('preprocessLaTeX — an indented $$ opener is bounded by its container', () => {
+  // remark-math scopes a `$$` fence inside a list item to the item: the
+  // first line indented less than the item's content ends the item, and
+  // the fence with it. The truncation used to cut from the opener to the
+  // end of input, which dropped the paragraph after the list from a
+  // finished document (`- Item` was all that was left).
+
+  test('a dedented paragraph after a blank line ends the block; nothing is truncated', () => {
+    const content = '- Item\n\n  $$\n  x\n\nAfter the list.';
+    expect(preprocessLaTeX(content)).toBe(content);
+    expect(mathShape(content)).toEqual([
+      'list',
+      '  listItem',
+      '    paragraph',
+      '      text',
+      '    math "x"',
+      'paragraph',
+      '  text',
+    ]);
+  });
+
+  test('a dedented line without a blank line before it ends the block too (remark-math agrees)', () => {
+    const content = '- Item\n\n  $$\n  x\nAfter the list.';
+    expect(preprocessLaTeX(content)).toBe(content);
+    expect(mathShape(content).slice(-2)).toEqual(['paragraph', '  text']);
+    const next = '- Item\n\n  $$\n  x\n- Next';
+    expect(preprocessLaTeX(next)).toBe(next);
+  });
+
+  test('a truly unclosed tail inside the item is still truncated (streaming)', () => {
+    expect(preprocessLaTeX('- Item\n\n  $$\n  x')).toBe('- Item');
+    // A trailing blank line, or a partial next line of spaces, is no verdict.
+    expect(preprocessLaTeX('- Item\n\n  $$\n  x\n\n')).toBe('- Item');
+    expect(preprocessLaTeX('- Item\n\n  $$\n  x\n\n  ')).toBe('- Item');
+  });
+
+  test('a line indented at least as much as the opener stays in the block', () => {
+    expect(preprocessLaTeX('- Item\n\n  $$\n  x\n\n  still\n\n  more')).toBe('- Item');
+    // A tab is four columns: never a dedent.
+    expect(preprocessLaTeX('- Item\n\n  $$\n  x\n\n\tAfter')).toBe('- Item');
+  });
+
+  test('the block ended by its container does not pair with a later top-level block', () => {
+    const content = '- Item\n\n  $$\n  a | b\n\nAfter | text\n\n$$\n| c |\n$$';
+    const expected = '- Item\n\n  $$\n  a | b\n\nAfter | text\n\n$$\n\\vert{} c \\vert{}\n$$';
+    expect(preprocessLaTeX(content)).toBe(expected);
+    expect(mathShape(expected)).toEqual([
+      'list',
+      '  listItem',
+      '    paragraph',
+      '      text',
+      '    math "a | b"',
+      'paragraph',
+      '  text',
+      'math "\\\\vert{} c \\\\vert{}"',
+    ]);
+  });
+
+  test('a column-0 $$ after the item opens a new top-level block, which is truncated', () => {
+    // The dedented `$$` ends the item (remark-math: the item's math is `x`)
+    // and opens an unclosed top-level flow — the streaming tail, cut as ever.
+    expect(preprocessLaTeX('- Item\n\n  $$\n  x\n$$')).toBe('- Item\n\n  $$\n  x');
+  });
+
+  test('a blockquote opener is not a flow opener; nothing after it is truncated (pinned)', () => {
+    for (const content of ['> $$\nx\n\nAfter', '> $$\n> x\n\nAfter']) {
+      expect(preprocessLaTeX(content)).toBe(content);
+      expect(mathShape(content).slice(-2)).toEqual(['paragraph', '  text']);
+    }
+  });
+
+  test('a same-line opener `- $$ x` is mid-line for the scan; nothing is truncated (pinned)', () => {
+    expect(preprocessLaTeX('- $$ x')).toBe('- $$ x');
+    const content = '- $$ x\n\nAfter';
+    expect(preprocessLaTeX(content)).toBe(content);
+    expect(mathShape(content)).toEqual(['list', '  listItem', '    math ""', 'paragraph', '  text']);
+  });
+
+  test('a top-level opener indented 1-3 spaces with an unindented body and closer keeps the prose after it', () => {
+    // remark-math allows up to three spaces of optional indent on a
+    // top-level fence. An indent-only container rule ended the block at
+    // the column-0 body, read the real closer as a new unclosed opener and
+    // truncated `After` (reviewer repro). The container comes from the
+    // lines above the opener now, and there is no list item here.
+    for (const indent of [' ', '  ', '   ']) {
+      const content = `${indent}$$\nx+y\n$$\n\nAfter`;
+      expect(preprocessLaTeX(content)).toBe(content);
+      expect(mathShape(content)).toEqual(['math "x+y"', 'paragraph', '  text']);
+      const noBlank = `${indent}$$\nx+y\n$$\nAfter`;
+      expect(preprocessLaTeX(noBlank)).toBe(noBlank);
+      const second = `${indent}$$\nx+y\n$$\n\nAfter\n\n$$\nE\n$$\n\nMore`;
+      expect(preprocessLaTeX(second)).toBe(second);
+      // The streaming tail after such a block is still truncated.
+      expect(preprocessLaTeX(`${indent}$$\nx+y\n$$\n\nAfter\n\n$$\nE =`)).toBe(`${indent}$$\nx+y\n$$\n\nAfter`);
+    }
+    // Four spaces is an indented code block: no math, nothing truncated.
+    const code = '    $$\nx+y\n$$\n\nAfter';
+    expect(preprocessLaTeX(code)).toBe(code);
+    expect(mathShape(code)[0]).toBe('code');
+  });
+
+  test('a top-level indented opener with no closer is the streaming tail, as it always was', () => {
+    // No list item above it, so nothing bounds the block: remark-math
+    // would swallow `After` into the open block, and the truncation hides
+    // the block until its closer arrives.
+    expect(preprocessLaTeX('  $$\n  x\n\nAfter')).toBe('');
+    expect(preprocessLaTeX('  $$\n  x')).toBe('');
+    expect(preprocessLaTeX('before\n\n   $$\n\\frac{a}{b}\n\n## Swallowed')).toBe('before');
+  });
+
+  test('the container is read from the lines above the opener, not from its indent', () => {
+    // Ordered list: content indent 3.
+    const ordered = '1. Item\n\n   $$\n   x\n\nAfter';
+    expect(preprocessLaTeX(ordered)).toBe(ordered);
+    expect(preprocessLaTeX('1. Item\n\n   $$\n   x')).toBe('1. Item');
+    // Opener deeper than the item's content: a line at the content indent
+    // is still inside the item, so the block is still open there.
+    expect(preprocessLaTeX('- Item\n\n   $$\n   x\n\n  After')).toBe('- Item');
+    expect(preprocessLaTeX('- Item\n\n   $$\n   x\n\nAfter')).toBe('- Item\n\n   $$\n   x\n\nAfter');
+    // The walk passes item continuation lines to reach the marker, and a
+    // nested item's marker whose content is deeper than the opener.
+    const continuation = '- Item\n  more text\n\n  $$\n  x\n\nAfter';
+    expect(preprocessLaTeX(continuation)).toBe(continuation);
+    const nested = '- a\n  - b\n\n  $$\n  x\n\nAfter';
+    expect(preprocessLaTeX(nested)).toBe(nested);
+    // A top-level paragraph's continuation line above the opener is not a
+    // list item: the block runs on, and the streaming tail is truncated.
+    expect(preprocessLaTeX('para\n  cont\n\n  $$\n  x\n\nAfter')).toBe('para\n  cont');
+    // `-x` and `---` are not list markers.
+    expect(preprocessLaTeX('-x\n\n  $$\n  x\n\nAfter')).toBe('-x');
+    expect(preprocessLaTeX('---\n\n  $$\n  x\n\nAfter')).toBe('---');
+    // The reviewer's case, and its blank-line-free form, still hold.
+    const reviewer = '- Item\n\n  $$\n  x\n\nAfter the list.';
+    expect(preprocessLaTeX(reviewer)).toBe(reviewer);
   });
 });
 

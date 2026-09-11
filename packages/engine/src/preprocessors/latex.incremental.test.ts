@@ -458,3 +458,130 @@ describe('seam flag tracks actual truncation', () => {
     replay(['\n ', '\t', '$', '$ E = mc^2\n\n']);
   });
 });
+
+describe('an indented $$ opener bounded by its container: both entry points agree', () => {
+  // The scan ends an indented flow opener's block at the first line
+  // indented less than the opener (`dedentEnds`), so a list item's open
+  // math no longer swallows the paragraph after the list. The verdict is
+  // append-stable — a non-blank line's indent is fixed once its first ink
+  // character is in, and a partial line of spaces is no verdict — which is
+  // what lets the wrapper freeze on it. These replay the shapes 1-char at
+  // a time (every straddle of the opener, the blank line and the dedent)
+  // and in chunks, and pin the settled output.
+
+  const REVIEWER = '- Item\n\n  $$\n  x\n\nAfter the list.';
+
+  test('the reviewer case: byte-equal per frame, and the last frame keeps the paragraph', () => {
+    replaySized(REVIEWER, 1);
+    replay(['- Item\n\n', '  $$\n', '  x\n', '\n', 'After the list.']);
+    expect(preprocessLaTeX(REVIEWER)).toBe(REVIEWER);
+    // Prefixes are truncated as streaming tails until the dedent lands.
+    expect(preprocessLaTeX('- Item\n\n  $$\n  x\n\n')).toBe('- Item');
+    expect(preprocessLaTeX('- Item\n\n  $$\n  x\n\nA')).toBe('- Item\n\n  $$\n  x\n\nA');
+  });
+
+  test('a truly unclosed tail inside the item: byte-equal, still truncated at the end', () => {
+    const doc = '- Item\n\n  $$\n  x';
+    replaySized(doc, 1);
+    expect(preprocessLaTeX(doc)).toBe('- Item');
+  });
+
+  test('a dedent without a blank line, and a following list item', () => {
+    for (const doc of ['- Item\n\n  $$\n  x\nAfter the list.', '- Item\n\n  $$\n  x\n- Next\n\nAfter']) {
+      replaySized(doc, 1);
+      expect(preprocessLaTeX(doc)).toBe(doc);
+    }
+  });
+
+  test('the item block does not pair with a later top-level block, and the stream freezes past it', () => {
+    const chunks = ['- Item\n\n  $$\n  a | b\n\n', 'After | text\n\n', '$$\n| c |\n', '$$\n\n', 'tail $z$\n'];
+    replay(chunks);
+    replaySized(chunks.join(''), 1);
+    // Backoff off so an attempt runs on every frame: the candidate holding
+    // the item's block is quiescent once the dedent has landed (the block
+    // is settled), so the wrapper freezes past it instead of re-scanning
+    // the whole document on every later frame.
+    let frozen = 0;
+    const incremental = createIncrementalLatexPreprocessor({
+      freezeThreshold: 0,
+      backoff: false,
+      onAttempt: ({ frozenBytes }) => {
+        frozen += frozenBytes;
+      },
+    });
+    let acc = '';
+    for (const chunk of chunks) {
+      acc += chunk;
+      expect(incremental(acc)).toBe(preprocessLaTeX(acc));
+    }
+    expect(frozen).toBeGreaterThanOrEqual(chunks[0].length + chunks[1].length);
+    expect(preprocessLaTeX(chunks.join(''))).toBe(
+      '- Item\n\n  $$\n  a | b\n\nAfter | text\n\n$$\n\\vert{} c \\vert{}\n$$\n\ntail $$z$$\n'
+    );
+  });
+
+  test('blockquote and same-line openers: byte-equal, nothing truncated (pinned)', () => {
+    for (const doc of ['> $$\nx\n\nAfter', '> $$\n> x\n\nAfter', '- $$ x\n\nAfter']) {
+      replaySized(doc, 1);
+      expect(preprocessLaTeX(doc)).toBe(doc);
+    }
+  });
+
+  test('entry-floor evidence counterexample: a mid-line $$ inside the block must not pair past the dedent', () => {
+    // Found by latexEntryFloor.evidence.ts once the scan ended the block at
+    // the dedent. The regex pair pass is lazy: inside `   $$ x^2` the
+    // `$$\int$$` on the next line pairs the block's opener with its own
+    // first token, so its second token was later paired with the `$$`
+    // after the dedent and the table pipes between them were escaped —
+    // stateless only, because the incremental path had already frozen the
+    // settled block and saw that `$$` as a lone opener. The pair pass now
+    // ends the block where the scan does. (The harness's shape had no list
+    // above the opener; with the container read from the lines above, it
+    // only reproduces inside an item, so the opener sits under `- p`.)
+    const doc =
+      '- p\n   $$ x^2\n    $$\\int_0^1 x\\,dx$$\n    price in US$ today\n $4.2M revenue\n\t | --- | --- |\n$$\n';
+    replaySized(doc, 1);
+    replay([
+      '- p\n   $$ x^2\n    $$\\int_0^1 x\\,dx$$\n    price in US$ today\n $4.2M revenue\n',
+      '\t | --- | --- |\n$$\n',
+    ]);
+    expect(preprocessLaTeX(doc)).toBe(
+      '- p\n   $$ x^2\n    $$\\int_0^1 x\\,dx$$\n    price in US$ today\n \\$4.2M revenue\n\t | --- | --- |'
+    );
+  });
+
+  test('top-level openers indented 1-3 spaces with unindented bodies and closers: byte-equal, prose kept', () => {
+    // Reviewer repro: an indent-only container rule ended `  $$` at `x+y`
+    // and truncated `After` from the real closer on. The wrapper passes the
+    // frozen prefix so the tail run reads the same (absent) list marker.
+    for (const indent of [' ', '  ', '   ']) {
+      const doc = `${indent}$$\nx+y\n$$\n\nAfter\n\n$$\nE\n$$\n\nMore`;
+      replaySized(doc, 1);
+      replay([`${indent}$$\nx+y\n`, '$$\n\nAfter\n\n', '$$\nE\n$$\n\nMore']);
+      expect(preprocessLaTeX(doc)).toBe(doc);
+      replaySized(`prose $x$\n\n${indent}$$\nx+y\n$$\nAfter`, 1);
+    }
+    // Four spaces: an indented code block, no math and nothing truncated.
+    const code = 'prose $x$\n\n    $$\nx+y\n$$\n\nAfter';
+    replaySized(code, 1);
+    expect(preprocessLaTeX(code)).toBe('prose $$x$$\n\n    $$\nx+y\n$$\n\nAfter');
+  });
+
+  test('the item context survives a freeze cut inside the item', () => {
+    // A cut can land between `- Item` and the opener; the tail run then
+    // begins at the indented `$$` and must still see the marker line in
+    // the frozen prefix. Backoff off so every frame attempts a freeze.
+    const doc = '- Item\n\nfirst $x$ paragraph\n\n- Item two\n  more text\n\n  $$\n  x\n\nAfter the list.\n';
+    replaySized(doc, 1);
+    replaySized(doc, 7);
+    expect(preprocessLaTeX(doc)).toBe(
+      '- Item\n\nfirst $$x$$ paragraph\n\n- Item two\n  more text\n\n  $$\n  x\n\nAfter the list.\n'
+    );
+  });
+
+  test('CRLF and a partial next line of spaces', () => {
+    replaySized('- Item\r\n\r\n  $$\r\n  x\r\n\r\nAfter the list.', 1);
+    replaySized('- Item\n\n  $$\n  x\n\n  \n  \nAfter', 1);
+    replaySized('- Item\n\n  $$\n  x\n\n\tAfter', 1);
+  });
+});

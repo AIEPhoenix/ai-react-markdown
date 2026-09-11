@@ -37,6 +37,7 @@ import remarkSqueezeParagraphs from 'remark-squeeze-paragraphs';
 import remarkSmartypants from 'remark-smartypants';
 import remarkPangu from 'remark-pangu';
 import remarkStripComments from './remarkStripComments';
+import remarkCjkQuotes from './remarkCjkQuotes';
 
 import type { PipelineOptions as MarkdownOptions } from './markdown';
 import rehypeRebaseHashLinks from './rehypeRebaseHashLinks';
@@ -59,16 +60,22 @@ const EXTRA_SYNTAX_CHAIN: ReadonlyArray<readonly [AIMarkdownEnginePluginName, Re
   ['highlight', remarkMarkHighlight as RemarkPlugins[number]],
   ['definitionList', remarkDefinitionList as RemarkPlugins[number]],
 ];
-// pangu BEFORE SmartyPants: SmartyPants decides whether a straight quote
-// opens or closes by the character before it, and in `中文"引号"中文` there
-// is no space before either quote, so it made both of them closers; pangu
-// then padded the boundaries around the curly quotes (`中文” 引号” 中文`).
-// With the CJK/Latin spacing in place first, SmartyPants reads the quotes
-// as it would in Latin prose. Latin-only text is order-independent.
+// The `smartypants` plugin is two transformers. SmartyPants decides whether
+// a straight quote opens or closes by the token before it, and a CJK
+// character is a word to it, so in `中文"引号"中文` both quotes closed.
+// Running pangu first cured the double quote (its spacing put a space
+// before each one) but pangu pads every straight `'` on its own, so the
+// single-quote form came out as `中文 ’ 引号 ’ 中文`. `remarkCjkQuotes` curls
+// the quotes that touch a CJK character by pairing, before SmartyPants, and
+// SmartyPants then only sees the Latin ones; pangu runs last, on curly
+// quotes, which it pads (`“`/`”`) or leaves alone (`‘`/`’`) as its own
+// rules say. A name may appear more than once here: the filter below keeps
+// every row whose name is selected, in table order.
 const DISPLAY_OPTIMIZE_CHAIN: ReadonlyArray<readonly [AIMarkdownEnginePluginName, RemarkPlugins[number]]> = [
   ['removeComments', remarkStripComments as RemarkPlugins[number]],
-  ['pangu', remarkPangu as RemarkPlugins[number]],
+  ['smartypants', remarkCjkQuotes as RemarkPlugins[number]],
   ['smartypants', remarkSmartypants as RemarkPlugins[number]],
+  ['pangu', remarkPangu as RemarkPlugins[number]],
 ];
 
 /** The always-on remark chain with plugin-gated extras spliced at their
