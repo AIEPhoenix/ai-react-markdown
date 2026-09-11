@@ -99,3 +99,14 @@ test('published README guide links follow the current deployment base', () => {
     '/preview/docs/guides/guide/#setup'
   );
 });
+
+test('README website and examples links follow the current deployment base', () => {
+  assert.equal(
+    rewriteUrl('https://ai-markdown.github.io/', 'packages/vue/README.md', entries, '/preview/'),
+    '/preview/'
+  );
+  assert.equal(
+    rewriteUrl('https://ai-markdown.github.io/examples/', 'packages/vue/README.md', entries, '/preview/'),
+    '/preview/examples/'
+  );
+});
