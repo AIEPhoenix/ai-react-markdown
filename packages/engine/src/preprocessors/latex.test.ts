@@ -1,4 +1,8 @@
 import { describe, expect, test } from 'vitest';
+import type { Root as MdastRoot } from 'mdast';
+import remarkMath from 'remark-math';
+import remarkParse from 'remark-parse';
+import { unified } from 'unified';
 import { preprocessLaTeX, splitByProtectedRegions } from './latex';
 
 const hasLineEnding = (text: string): boolean => text.includes('\n') || text.includes('\r');
@@ -1068,6 +1072,58 @@ y$ which spans lines`;
     const content = '$\\text{a_1} + \\text{b {c}_2} = \\text{d_3}$';
     const expected = '$$\\text{a\\_1} + \\text{b {c}\\_2} = \\text{d\\_3}$$';
     expect(preprocessLaTeX(content)).toBe(expected);
+  });
+});
+
+/** The block shape remark-math gives `markdown` (with `singleDollarTextMath`
+ *  off, as the production chain sets it): one line per node, nested by
+ *  indent, `math`/`inlineMath` with their value. */
+function mathShape(markdown: string): string[] {
+  const processor = unified().use(remarkParse).use(remarkMath, { singleDollarTextMath: false });
+  const tree = processor.runSync(processor.parse(markdown)) as MdastRoot;
+  const lines: string[] = [];
+  const walk = (node: { type: string; value?: string; children?: unknown[] }, depth: number): void => {
+    const value = node.type === 'math' || node.type === 'inlineMath' ? ` ${JSON.stringify(node.value)}` : '';
+    lines.push(`${'  '.repeat(depth)}${node.type}${value}`);
+    for (const child of node.children ?? []) walk(child as never, depth + 1);
+  };
+  for (const child of tree.children) walk(child as never, 0);
+  return lines;
+}
+
+describe('preprocessLaTeX — the kind-aware scanner keeps valid multiline math', () => {
+  // The scan that decides "unclosed" is kind-aware (flow / inline `$$` /
+  // single `$`). These pin that the shapes remark-math accepts across line
+  // endings still reach it whole, and that the streaming tail is still cut.
+
+  test('a flow block with a blank line inside survives and is one display block', () => {
+    const content = '$$\nA\n\nB\n$$\n\nafter';
+    expect(preprocessLaTeX(content)).toBe(content);
+    expect(mathShape(preprocessLaTeX(content))).toEqual(['math "A\\n\\nB"', 'paragraph', '  text']);
+  });
+
+  test('inline $$ spanning a single newline inside a paragraph survives as inline math', () => {
+    const content = 'text $$a\nb$$ text';
+    expect(preprocessLaTeX(content)).toBe(content);
+    expect(mathShape(preprocessLaTeX(content))).toEqual(['paragraph', '  text', '  inlineMath "a\\nb"', '  text']);
+  });
+
+  test('a $$ fenced block with $ inside is neither closed early nor truncated', () => {
+    // A bare `$` is content inside a flow block. A `$x$` pair inside it is
+    // rewritten to `$$x$$` by convertSingleToDoubleDollar (as it always
+    // was) — the point here is that the scan pairs those per line and the
+    // block's real closer still closes it, so nothing after it is lost.
+    const bare = '$$\na $ b\n$$\n\nafter';
+    expect(preprocessLaTeX(bare)).toBe(bare);
+    expect(mathShape(preprocessLaTeX(bare))).toEqual(['math "a $ b"', 'paragraph', '  text']);
+    const pair = '$$\n$x$ + $y$\n$$\n\nafter';
+    expect(preprocessLaTeX(pair)).toBe('$$\n$$x$$ + $$y$$\n$$\n\nafter');
+    expect(mathShape(preprocessLaTeX(pair))).toEqual(['math "$$x$$ + $$y$$"', 'paragraph', '  text']);
+  });
+
+  test('the streaming tail `text\\n\\n$$\\nE =` is still truncated', () => {
+    expect(preprocessLaTeX('text\n\n$$\nE =')).toBe('text');
+    expect(mathShape(preprocessLaTeX('text\n\n$$\nE ='))).toEqual(['paragraph', '  text']);
   });
 });
 
