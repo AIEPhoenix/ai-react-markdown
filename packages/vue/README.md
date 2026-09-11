@@ -11,7 +11,7 @@
 
 Vue 3 Markdown rendering built on the framework-independent `@ai-markdown/core` and `@ai-markdown/engine`. This package supplies real Vue VNodes, server rendering and hydration, scoped document references, component/slot customization, smooth streaming and a measured streaming cursor. It replaces the earlier private lifecycle prototype.
 
-**Stable in `3.0.0`.** Vue ships on the same release train and uses the same shared engine and core as React. Its first prerelease was `3.0.0-beta.2`; beta.1 did not include Vue.
+**Stable since `3.0.0`.** Vue ships on the same release train and uses the same shared engine and core as React. Its first prerelease was `3.0.0-beta.2`; beta.1 did not include Vue.
 
 ## Requirements and dependencies
 

@@ -7,7 +7,7 @@
 [![TypeScript declarations included](https://img.shields.io/badge/TypeScript-included-3178c6?logo=typescript&logoColor=white)](https://github.com/ai-markdown/ai-markdown/tree/main/packages/core)
 [![MIT license](https://img.shields.io/badge/license-MIT-blue)](https://github.com/ai-markdown/ai-markdown/blob/main/LICENSE)
 
-Framework-independent orchestration for ai-markdown adapters, on the **3.0.0** train alongside the React and Vue adapters. It supplies pipeline sessions, block planning, cross-chunk contributions, aggregate footnote trees and streaming coordination. Applications install `@ai-markdown/react` or `@ai-markdown/vue`; adapter authors can install `@ai-markdown/core` and `@ai-markdown/engine` directly.
+Framework-independent orchestration for ai-markdown adapters, on the **3.0.1** train alongside the React and Vue adapters. It supplies pipeline sessions, block planning, cross-chunk contributions, aggregate footnote trees and streaming coordination. Applications install `@ai-markdown/react` or `@ai-markdown/vue`; adapter authors can install `@ai-markdown/core` and `@ai-markdown/engine` directly.
 
 This package was the private runtime in the legacy v2.14.1 release. It is now a real external dependency of both framework adapters, with an explicit public export list. The old `@ai-react-markdown/core` React package maps to `@ai-markdown/react`, not this package. See the [migration guide](https://ai-markdown.github.io/docs/guides/framework-transition/). Public contracts follow semantic versioning from 3.0.0; keep the shared packages at the same exact train version.
 

@@ -1,6 +1,6 @@
 # Getting started
 
-ai-markdown renders accumulated Markdown in React 19 or Vue 3.5. Both adapters use the same parsing engine and shared orchestration; their components, customization and lifecycle APIs follow their host framework. This guide targets stable `3.0.0`. Install without a dist-tag to select `latest`, or pin `3.0.0` for reproducible integrations.
+ai-markdown renders accumulated Markdown in React 19 or Vue 3.5. Both adapters use the same parsing engine and shared orchestration; their components, customization and lifecycle APIs follow their host framework. This guide targets stable `3.0.1`. Install without a dist-tag to select `latest`, or pin `3.0.1` for reproducible integrations.
 
 ## Choose a package
 
@@ -15,7 +15,7 @@ ai-markdown renders accumulated Markdown in React 19 or Vue 3.5. Both adapters u
 
 Every package also exposes `/package.json`. Import only public entries; `src/` and internal `dist/` paths are not supported application imports. `@ai-markdown/react/plugins` is a subpath of the React package, not a separate package to install. Vue exports its sealed plugins from its root.
 
-React and Vue each depend on matching exact versions of core and engine. Core depends on engine. Mantine declares the stable React adapter peer `^3.0.0`; upgrade those two together. Applications normally install only their adapter and its peers. The highlight plugin is an engine dependency on an independent `1.0.2` release and is versioned separately from the framework train.
+React and Vue each depend on matching exact versions of core and engine. Core depends on engine. Mantine declares the stable React adapter peer `^3.0.1`; upgrade those two together. Applications normally install only their adapter and its peers. The highlight plugin is an engine dependency on an independent `1.0.2` release and is versioned separately from the framework train.
 
 The legacy `@ai-react-markdown/core` was a React renderer; its replacement is `@ai-markdown/react`. The new `@ai-markdown/core` has no React components or Vue components. See the [migration guide](framework-transition.md) before renaming existing imports.
 

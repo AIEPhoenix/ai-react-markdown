@@ -6,7 +6,7 @@ For the independent Starlight site, see [Documentation site](documentation-site.
 
 For repository development, start with the [development command reference](development-commands.md).
 
-Start with [Getting started](getting-started.md) for React 19, Vue 3.5 and Mantine 9 installation, stylesheets and package boundaries. The five main packages share the stable `3.0.0` train; the highlight plugin versions independently. Advanced adapter authors can use the [core/engine API contracts](api/core-engine-contracts.md).
+Start with [Getting started](getting-started.md) for React 19, Vue 3.5 and Mantine 9 installation, stylesheets and package boundaries. The five main packages share the stable `3.0.1` train; the highlight plugin versions independently. Advanced adapter authors can use the [core/engine API contracts](api/core-engine-contracts.md).
 
 For the final legacy release and the subsequent multi-framework package migration, read [From ai-react-markdown to ai-markdown](framework-transition.md). The [shared core README](../../../../packages/core/README.md) documents the extracted shared layer.
 

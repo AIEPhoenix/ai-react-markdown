@@ -12,7 +12,7 @@ Render streaming Markdown in React and Vue, with shared parsing and document coo
 [![Vue ^3.5](https://img.shields.io/badge/Vue-%5E3.5-42b883?logo=vuedotjs&logoColor=white)](./packages/vue#readme)
 [![Mantine 9](https://img.shields.io/badge/Mantine-9-339af0?logo=mantine&logoColor=white)](./packages/react-mantine#readme)
 
-> **3.0.0:** React and Vue adapters share the public `@ai-markdown/core` and `@ai-markdown/engine` packages. See the [migration guide](https://ai-markdown.github.io/docs/guides/framework-transition/).
+> **Since 3.0.0:** React and Vue adapters share the public `@ai-markdown/core` and `@ai-markdown/engine` packages. See the [migration guide](https://ai-markdown.github.io/docs/guides/framework-transition/).
 
 > React and Vue Markdown rendering for AI responses: GFM, KaTeX math, CJK-aware parsing, incremental streaming, and shared references across logical document sections. Use either framework adapter with your own UI, or the React Mantine integration for highlighted code, JSON presentation, and Mermaid diagrams.
 
@@ -75,7 +75,7 @@ The five framework/shared packages track `latest`; the independent highlight plu
 
 ## Vue adapter
 
-The Vue 3.5+ adapter is part of the stable 3.0.0 release train. See the [Vue README](./packages/vue/README.md) for components, SSR/hydration, cross-chunk references, slots and smooth streaming. Shared core/engine contracts and prerelease migration notes are documented in the [API contracts](https://ai-markdown.github.io/docs/guides/api/core-engine-contracts/).
+The Vue 3.5+ adapter is part of the stable 3.0.1 release train. See the [Vue README](./packages/vue/README.md) for components, SSR/hydration, cross-chunk references, slots and smooth streaming. Shared core/engine contracts and prerelease migration notes are documented in the [API contracts](https://ai-markdown.github.io/docs/guides/api/core-engine-contracts/).
 
 ## Installation
 

@@ -1,6 +1,6 @@
 # Extending via a Sub-package
 
-These examples target the 3.0.0 package train. Match the React peer version when distributing an integration; see [Getting started](getting-started.md) for installation and package boundaries.
+These examples target the 3.0.1 package train. Match the React peer version when distributing an integration; see [Getting started](getting-started.md) for installation and package boundaries.
 
 Here, the base renderer, its props, providers and hooks belong to `@ai-markdown/react`. The separate `@ai-markdown/core` supplies framework-independent orchestration and has no React context or UI API. UI integrations keep the React adapter as a peer; framework adapters depend on shared core and engine.
 
@@ -507,7 +507,7 @@ Don't fork `MarkdownContent` or the remark/rehype plugin chain. The the React ad
 
 ### Choosing the peer version of `@ai-markdown/react`
 
-For stable v3, use `^3.0.0` for the React adapter peer when your integration uses APIs available in 3.0.0, as the Mantine integration does. Raise the minimum when using APIs introduced later, and validate the supported range in consumer tests. If explicitly testing a prerelease, match that candidate exactly. A legacy `^2.13.2` range cannot resolve the new package train.
+For stable v3, use `^3.0.0` for the React adapter peer when your integration uses APIs available in 3.0.0. The current Mantine package declares `^3.0.1`; match that minimum when following its package configuration. Raise the minimum when using APIs introduced later, and validate the supported range in consumer tests. If explicitly testing a prerelease, match that candidate exactly. A legacy `^2.13.2` range cannot resolve the new package train.
 
 ### Re-exporting internal React adapter types
 

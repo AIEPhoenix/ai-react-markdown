@@ -10,7 +10,7 @@
 [![React 19](https://img.shields.io/badge/React-19-149eca?logo=react&logoColor=white)](#compatibility)
 [![Mantine 9](https://img.shields.io/badge/Mantine-9-339af0?logo=mantine&logoColor=white)](#compatibility)
 
-> **3.0.0:** React and Vue adapters share the public `@ai-markdown/core` and `@ai-markdown/engine` packages. See the [migration guide](https://ai-markdown.github.io/docs/guides/framework-transition/).
+> **Since 3.0.0:** React and Vue adapters share the public `@ai-markdown/core` and `@ai-markdown/engine` packages. See the [migration guide](https://ai-markdown.github.io/docs/guides/framework-transition/).
 
 `@ai-markdown/react-mantine` adds Mantine presentation to the React renderer: theme-aware typography, expandable highlighted code, source-preserving JSON formatting, and Mermaid diagrams. Its `MantineAIMarkdown` wrapper accepts the React adapter's props and adds one `codeBlock` behavior group.
 
@@ -49,7 +49,7 @@ All React adapter features (GFM, LaTeX math, CJK support, streaming, metadata co
 | React          | ^19.0.0                                                                                                |
 | Node           | `^20.19.0 \|\| >=22.12.0` (`engines.node`)                                                             |
 | Module formats | ESM and CJS with types; the compiled stylesheet is exported as `@ai-markdown/react-mantine/styles.css` |
-| React adapter  | `@ai-markdown/react` peer `^3.0.0`; upgrade both packages together                                     |
+| React adapter  | `@ai-markdown/react` peer `^3.0.1`; upgrade both packages together                                     |
 
 ## Installation
 

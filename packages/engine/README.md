@@ -7,7 +7,7 @@
 [![TypeScript declarations included](https://img.shields.io/badge/TypeScript-included-3178c6?logo=typescript&logoColor=white)](https://github.com/ai-markdown/ai-markdown/tree/main/packages/engine)
 [![MIT license](https://img.shields.io/badge/license-MIT-blue)](https://github.com/ai-markdown/ai-markdown/blob/main/LICENSE)
 
-> **3.0.0:** React and Vue adapters share the public `@ai-markdown/core` and `@ai-markdown/engine` packages. See the [migration guide](https://ai-markdown.github.io/docs/guides/framework-transition/).
+> **Since 3.0.0:** React and Vue adapters share the public `@ai-markdown/core` and `@ai-markdown/engine` packages. See the [migration guide](https://ai-markdown.github.io/docs/guides/framework-transition/).
 
 `@ai-markdown/engine` contains the string and syntax-tree processing used by ai-markdown: LaTeX preprocessing, the unified plugin chain, incremental parsing, and shared reference bookkeeping. It has no React dependency. A framework adapter supplies component lifecycle, DOM rendering, context subscriptions, and any presentation such as syntax highlighting.
 
