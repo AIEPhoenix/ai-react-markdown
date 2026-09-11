@@ -25,7 +25,7 @@ Core does not re-export the entire engine API or accept ReactNode, VNode, DOM el
 | Block digest/fingerprint helpers                                           | Retain as advanced APIs                                        | React's cache uses them; validity still depends on tree and reference policy               |
 | `computeFreezeBoundary` and stage timing                                   | Retain as advanced diagnostics                                 | Development tools use them; no promise of fixed performance values or log bytes            |
 
-These removals narrow the entry surface between beta versions. Existing advanced beta consumers should use supported entries, not private dist paths. React component, hook, plugin, and CSS public paths retain their existing shape. The existing brand string inside plugin objects remains unchanged so an organization rename alone does not change the semantics of deployed configurations.
+These changes were made during the prerelease series and are part of the stable 3.0.0 API. When upgrading from beta.1, use the documented public entries rather than private dist paths. React component, hook, plugin, and CSS public paths retain their existing shape. The existing brand string inside plugin objects remains unchanged so an organization rename alone does not change the semantics of deployed configurations.
 
 ## Core factories and lifecycles
 

@@ -1,6 +1,6 @@
 # ai-markdown — Usage & Customization
 
-For release-candidate acceptance, see [Releasing 3.0](./releasing-3.0.md).
+For the completed 3.0.0 release and subsequent release verification, see [Releasing 3.0](./releasing-3.0.md).
 
 For repository development, start with the [development command reference](./development-commands.md).
 
@@ -10,7 +10,7 @@ For the final legacy release and the subsequent multi-framework package migratio
 
 These guides explain how to integrate, customize, and maintain ai-markdown against the code in this repository. Start with the [project README](../README.md) for package selection and installation, or a package's README for its full public API. This directory goes deeper into rendering contracts, lifecycle behavior, implementation boundaries, and verification.
 
-The examples target the current `@ai-markdown` 3.0 beta package structure. React retains the flat-prop API introduced in 2.x; Vue uses its own component props and setup composables. React hooks, `customComponents`, typography variants and behavior providers are not Vue APIs. Each usage guide identifies its framework scope and links to the corresponding Vue entry when applicable. The [migration guide](./migrating-to-v2.md) includes removed 1.x APIs for comparison; [release highlights](./release-highlights.md) and benchmark records preserve the behavior and measurements of the versions they describe.
+The examples target the current `@ai-markdown` 3.0 stable package structure. React retains the flat-prop API introduced in 2.x; Vue uses its own component props and setup composables. React hooks, `customComponents`, typography variants and behavior providers are not Vue APIs. Each usage guide identifies its framework scope and links to the corresponding Vue entry when applicable. The [migration guide](./migrating-to-v2.md) includes removed 1.x APIs for comparison; [release highlights](./release-highlights.md) and benchmark records preserve the behavior and measurements of the versions they describe.
 
 For an ordinary chat message, accumulate transport deltas into one Markdown string and update one renderer. Add custom components for application behavior, tokens for visual adjustments, and `<AIMarkdownDocuments>` only when one logical document is deliberately split into multiple Markdown units. This distinction matters because reference coordination cannot join syntax split across component boundaries.
 

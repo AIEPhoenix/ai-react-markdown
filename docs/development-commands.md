@@ -101,6 +101,6 @@ Existing commands remain supported. New documentation and CI use these canonical
 
 `typecheck` now covers both workspaces and Storybook. Use `typecheck:storybook` for the old narrower scope. No ambiguous root `test` alias is provided: choose unit, Storybook, adapter or full preflight explicitly.
 
-## Release-candidate compatibility
+## Stable v3 compatibility
 
 `pnpm test:vue-browser:compat` runs the Vue hydration, reference, customization, smooth-stream, cursor and unmount contracts in Firefox and WebKit. Install them with `pnpm exec playwright install firefox webkit --with-deps`. The Chromium command retains its additional forced-GC stress checks. Both CI and Release also run packed consumers on Node 20.19.0, 22.12.0 and 24.20.0; the first two are the declared runtime lower bounds. These jobs use actual tarballs outside the workspace.

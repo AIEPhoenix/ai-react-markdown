@@ -89,7 +89,7 @@ An incremental failure clears the retained state before retrying the full pipeli
 
 These functions do not register, subscribe, publish or mutate their supplied snapshots. Treat label sets and returned objects as immutable; pass a previous result only from the same logical consumer. React retains the previous snapshots in refs and uses memoization; Vue uses local variables behind computed values. The engine and planner still own correctness when a source is replaced or a retained render is discarded.
 
-The published [Vue adapter](../vue/README.md) uses these decisions in its component lifecycle while keeping AST/registry objects out of deep reactive proxies. It has SSR, hydration, slots, base styles and cursor support, with separate adapter and Chromium lifecycle tests. The earlier private prototype is archived under `prototypes/` and is not the application entry point.
+The published [Vue adapter](../vue/README.md) uses these decisions in its component lifecycle while keeping AST/registry objects out of deep reactive proxies. It has SSR, hydration, slots, base styles and cursor support, with functional adapter checks in Chromium, Firefox and WebKit, and forced-GC lifecycle checks in Chromium. The earlier private prototype is archived under `prototypes/` and is not the application entry point.
 
 ## Preparation and commit have different effects
 
@@ -128,11 +128,11 @@ The dedicated `test:core-contracts` gate builds core and its workspace dependenc
 
 `assert-boundary.mjs` checks public-package identity, allowed production dependencies, source import direction and folded environment gates. The React distribution guard requires external core and engine imports. Core's declarations must not expose `RegistryInternal`, `SmoothCoordinatorInternal` or private refcount/subscriber containers.
 
-The release train is engine/core/react/react-mantine/vue at the same version. Vue now consumes the same shared contracts; see the [API contracts](../../docs/api/core-engine-contracts.md) for the beta.1-to-beta.2 signature changes. Core depends on engine through `workspace:*`, which becomes the exact train version in the published manifest. Both ESM and CJS have production and development entries; every build folds environment gates separately. Core has no `use client` directive and does not inline a second engine implementation.
+The release train is engine/core/react/react-mantine/vue at the same version. Vue now consumes the same shared contracts; see the [API contracts](../../docs/api/core-engine-contracts.md) for stable signatures and migration from beta.1. Core depends on engine through `workspace:*`, which becomes the exact train version in the published manifest. Both ESM and CJS have production and development entries; every build folds environment gates separately. Core has no `use client` directive and does not inline a second engine implementation.
 
 ## Public API and write capabilities
 
-The root entry explicitly lists supported beta exports. Session creation, parsing, planning, pure coordination preparation, contribution commit, aggregate construction, structural cloning and source-tail classification are adapter contracts. The existing block digest and fingerprint functions remain available because React consumes them; their source/ownership assumptions above still apply.
+The root entry explicitly lists supported stable exports. Session creation, parsing, planning, pure coordination preparation, contribution commit, aggregate construction, structural cloning and source-tail classification are adapter contracts. The existing block digest and fingerprint functions remain available because React consumes them; their source/ownership assumptions above still apply.
 
 `createSmoothCoordinator` returns the read-only state and documented methods of `SmoothCoordinator`, excluding internal refcounts and notification containers. `ContributionOptions.registry` accepts only a `ContributionRegistry` write capability with `contributeChunkData`; it does not require an implementation registry. Create a registry through engine's `createRegistry`, whose `RegistryController` adds registration and publication to the read-only `Registry` contract. Pair every registration with release in the owning adapter.
 

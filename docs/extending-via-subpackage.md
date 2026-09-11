@@ -8,7 +8,7 @@ Build a React integration by wrapping `@ai-markdown/react` and defining the desi
 
 This guide follows that same construction in nine steps, from a behavior-group interface to the package's public barrel and peer dependencies. The `Your…` components and `your-design-system` imports are template names to implement in your package; they are not installed modules. Examples show the contracts you need to preserve, with the source of defaults and the ownership of each prop made explicit.
 
-Use the React adapter's public props, slots, additive providers, stable-value helpers, and factories. A React design-system integration does not need direct engine imports. Engine and shared core are public adapter-author packages whose advanced exports may change between betas before 3.0.0. A non-React adapter is a different project: it consumes syntax trees directly, depends on matching exact core and engine versions, and takes responsibility for its own rendering lifecycle. The [Vue adapter](../packages/vue/README.md) is the existing second-framework implementation; use its public components for a Vue UI integration.
+Use the React adapter's public props, slots, additive providers, stable-value helpers, and factories. A React design-system integration does not need direct engine imports. Engine and shared core are public adapter-author packages whose documented exports follow semantic versioning from 3.0.0. A non-React adapter is a different project: it consumes syntax trees directly, depends on matching exact core and engine versions, and takes responsibility for its own rendering lifecycle. The [Vue adapter](../packages/vue/README.md) is the existing second-framework implementation; use its public components for a Vue UI integration.
 
 ## The extension points, at a glance
 
@@ -417,7 +417,7 @@ Match the shape of `@ai-markdown/react-mantine`'s barrel for consistency. Re-exp
 // packages/your-integration/package.json
 {
   "peerDependencies": {
-    "@ai-markdown/react": "3.0.0",
+    "@ai-markdown/react": "^3.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "your-design-system": "^1.0.0",
@@ -507,7 +507,7 @@ Don't fork `MarkdownContent` or the remark/rehype plugin chain. The the React ad
 
 ### Choosing the peer version of `@ai-markdown/react`
 
-For the initial beta, match the verified adapter exactly: `3.0.0-beta.2`, as the Mantine integration does. Beta contracts can change before stable 3.0.0. After a stable release, use a caret range whose minimum includes every API your integration consumes, and validate that supported range in consumer tests. A legacy `^2.13.2` range cannot resolve the new package train.
+For stable v3, use `^3.0.0` for the React adapter peer when your integration uses APIs available in 3.0.0, as the Mantine integration does. Raise the minimum when using APIs introduced later, and validate the supported range in consumer tests. If explicitly testing a prerelease, match that candidate exactly. A legacy `^2.13.2` range cannot resolve the new package train.
 
 ### Re-exporting internal React adapter types
 
@@ -542,7 +542,7 @@ Publishing a `@yourorg/ai-markdown-…` package is the natural unit of distribut
 When you publish, consider:
 
 - A README following the structure of `@ai-markdown/react-mantine`.
-- A peer-dep statement that's permissive enough (`^19.0.0` for React and React DOM, and exactly `3.0.0-beta.2` for the current adapter beta).
+- A peer-dep statement that's permissive enough (`^19.0.0` for React and React DOM, and `^3.0.0` for an integration using the stable 3.0.0 adapter APIs).
 - npm keywords: `react`, `markdown`, `ai`, `llm`, `<your-design-system>`, `ai-markdown-integration`.
 - Bundle size disclosure (bundlephobia badges).
 

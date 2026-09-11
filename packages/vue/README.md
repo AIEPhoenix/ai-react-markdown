@@ -9,7 +9,7 @@
 
 Vue 3 Markdown rendering built on the framework-independent `@ai-markdown/core` and `@ai-markdown/engine`. This package supplies real Vue VNodes, server rendering and hydration, scoped document references, component/slot customization, smooth streaming and a measured streaming cursor. It replaces the earlier private lifecycle prototype.
 
-**Available starting with `3.0.0-beta.2`.** The earlier `3.0.0-beta.1` release did not include Vue. Vue joins the stable 3.0.0 train with the same shared engine and core as React.
+**Stable in `3.0.0`.** Vue ships on the same release train and uses the same shared engine and core as React. Its first prerelease was `3.0.0-beta.2`; beta.1 did not include Vue.
 
 ## Requirements and dependencies
 
@@ -182,7 +182,7 @@ pnpm check:public-api
 pnpm test:packed-consumers
 ```
 
-Unit tests exercise SSR, sanitization, custom rendering and lifecycle publication/release. Browser tests cover the three planned acceptance paths: standalone hydration; cross-chunk references and document switching; customization, smooth waiting/drain and cursor layout. Packed consumers load ESM/CJS in both export conditions, compile installed declarations and resolve CSS outside the workspace.
+Unit tests exercise SSR, sanitization, custom rendering and lifecycle publication/release. Browser tests cover three adapter integration paths: standalone hydration; cross-chunk references and document switching; customization, smooth waiting/drain and cursor layout. Packed consumers load ESM/CJS in both export conditions, compile installed declarations and resolve CSS outside the workspace.
 
 This implementation does not claim React/Mantine UI parity: Mantine remains React-only, and Vue has no built-in Mermaid/code-toolbar integration. Nuxt-specific packaging and KeepAlive/Suspense combinations require their own integration coverage before being advertised. Parsing correctness continues to use the repository's shared oracle and release soak gates.
 

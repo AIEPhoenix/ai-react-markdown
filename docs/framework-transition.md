@@ -1,8 +1,8 @@
 # From ai-react-markdown to ai-markdown
 
-**v2.14.1 is the final planned legacy release; 3.0.0-beta.1 starts the new `@ai-markdown` package train.** The GitHub repository has moved to `ai-markdown/ai-markdown`. Package names, directory ownership and shared-core distribution change together. React components, hooks, configuration names and stylesheet behavior retain their existing shape.
+**Upgrade from legacy v2.14.1 to stable 3.0.0 under `@ai-markdown`.** The GitHub repository has moved to `ai-markdown/ai-markdown`. Package names, directory ownership and shared-core distribution change together. React components, hooks, configuration names and stylesheet behavior retain their existing shape.
 
-The first beta established the new package boundaries. Beta.2 added the Vue adapter and narrowed the advanced engine/core APIs. This migration guide now targets stable 3.0.0; install without a prerelease tag. Existing legacy versions and Git tags remain available.
+The first beta established the new package boundaries. Beta.2 added the Vue adapter and narrowed the advanced engine/core APIs. This migration guide now targets stable 3.0.0; install without a prerelease tag. All published versions of the four legacy `@ai-react-markdown` packages now carry package-specific migration notices. Existing versions and Git tags remain available; their dist-tags and tarballs are unchanged. The legacy line receives no new features; critical fixes are considered as needed.
 
 ## Package and import mapping
 
@@ -64,7 +64,7 @@ Core owns pipeline sessions, phantom preparation, block planning, contribution f
 
 Keep the existing logical `documentId`, stable chunk identity and document ordering when changing imports. `AIMarkdownDocuments` still scopes coordination. Registration and contribution publication occur in committed lifecycle work; parsing and planning must not publish. A discarded concurrent render cannot retain a permanently owned document scope.
 
-SSR does not run the registration effects and retains local footnote behavior. The host chooses one-shot parsing for server output; a later client frame must establish its own session and registration. Do not serialize a mutable registry or planner from one request into another. The beta keeps the existing React SSR behavior; Vue independently validates server rendering and initial hydration before mounted coordination becomes active.
+SSR does not run the registration effects and retains local footnote behavior. The host chooses one-shot parsing for server output; a later client frame must establish its own session and registration. Do not serialize a mutable registry or planner from one request into another. Stable v3 retains the React SSR behavior; Vue also supports server rendering and initial hydration before mounted coordination becomes active.
 
 ## Public API and release policy
 
@@ -72,18 +72,18 @@ Engine, core, react and react-mantine started one version train at `3.0.0-beta.1
 
 Documented engine/core contracts follow semantic versioning from 3.0.0. Test fixtures and implementation containers are excluded from the public root. Framework apps should avoid importing source paths or undocumented helpers. Release verification includes signature review, supported consumer checks and the complete release gate. See the [shared API contracts](./api/core-engine-contracts.md) and [architecture guide](./architecture.md).
 
-The repository transfer and first publication of all five train packages are complete. npm registry metadata checked on 2026-09-10 reports `beta → 3.0.0-beta.2` for [engine](https://registry.npmjs.org/@ai-markdown%2Fengine), [core](https://registry.npmjs.org/@ai-markdown%2Fcore), [React](https://registry.npmjs.org/@ai-markdown%2Freact), [Vue](https://registry.npmjs.org/@ai-markdown%2Fvue) and [Mantine](https://registry.npmjs.org/@ai-markdown%2Freact-mantine). Publishing additional packages still requires package-specific credentials and trusted-publisher setup; repository ownership alone does not configure it.
+The repository transfer and first publication of all five train packages are complete. npm registry metadata checked on 2026-09-11 reports `latest → 3.0.0` for [engine](https://registry.npmjs.org/@ai-markdown%2Fengine), [core](https://registry.npmjs.org/@ai-markdown%2Fcore), [React](https://registry.npmjs.org/@ai-markdown%2Freact), [Vue](https://registry.npmjs.org/@ai-markdown%2Fvue) and [Mantine](https://registry.npmjs.org/@ai-markdown%2Freact-mantine). Publishing additional packages still requires package-specific credentials and trusted-publisher setup; repository ownership alone does not configure it.
 
 ## Validation and second-framework limits
 
 Shared-core tests load production/development ESM and CJS in fresh Node processes, reject framework resolution and execute parsing/planning without browser globals. Session tests compare incremental output with a full engine pipeline and cover reset, fallback and explicit contribution timing. React tests cover node identity, SSR, Strict Mode, coordination and browser interaction. Published artifacts must additionally resolve outside the workspace, including declarations, plugin entries and CSS paths.
 
-The [Vue adapter](../packages/vue/README.md) now consumes the same preparation contracts and supplies VNode conversion, scoped references, SSR hydration, component/slot extension and streaming UI. It requires Vue `^3.5.0`; it is available on npm starting with beta.2. The former prototype is archived. See the [API contracts](./api/core-engine-contracts.md) for the beta.1-to-candidate advanced API changes.
+The [Vue adapter](../packages/vue/README.md) now consumes the same preparation contracts and supplies VNode conversion, scoped references, SSR hydration, component/slot extension and streaming UI. It requires Vue `^3.5.0`; it is available as stable 3.0.0 on npm. The former prototype is archived. See the [API contracts](./api/core-engine-contracts.md) for stable contracts and the advanced API changes since beta.1.
 
-Vue joins the published release train with browser acceptance coverage. Stable-version approval remains a separate step. A framework-independent Node consumer alone does not establish browser readiness.
+Vue is part of the published stable release train. Functional integration checks cover Chromium, Firefox and WebKit; forced-GC lifecycle checks remain Chromium-specific. Nuxt-specific integration and KeepAlive/Suspense combinations still require their own coverage before being advertised.
 
 ## Documentation site
 
-The dedicated site follows this package migration. It should provide shared concepts, framework-specific installation and examples, API reference, streaming and customization guides, security policy, architecture/contributor pages and a versioned legacy path. No public site or domain is claimed by this beta.
+The dedicated documentation site is not yet published. Use the repository guides and package READMEs for stable v3 integration, and [Storybook](./storybook.md) for interactive examples.
 
 Package READMEs continue to include complete installation, minimal examples, environment requirements and important limitations. Legacy 1.x-to-2.x guidance remains historical material; new users should start with the current framework README and this migration guide.

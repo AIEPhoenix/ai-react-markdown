@@ -6,13 +6,13 @@ Read this guide when tracing a rendering defect, changing an optimization, or bu
 
 ## Shared core and framework adapters
 
-The legacy v2.14.1 release completed the private-runtime split. In 3.0.0-beta.1, that implementation is the public `@ai-markdown/core`, while the React implementation is `@ai-markdown/react`. Core depends on engine; adapters declare both core and engine as exact-version external dependencies. Mantine is a peer-based integration over React. [The migration guide](./framework-transition.md) lists consumer import and stylesheet changes.
+The legacy v2.14.1 release completed the private-runtime split. In stable 3.0.0, that implementation is the public `@ai-markdown/core`, while the React implementation is `@ai-markdown/react`. Core depends on engine; adapters declare both core and engine as exact-version external dependencies. Mantine is a peer-based integration over React. [The migration guide](./framework-transition.md) lists consumer import and stylesheet changes.
 
 Shared core owns computation sessions, not React lifecycle. `MarkdownContent` keeps one pipeline session and planner per instance, resets retained state on render-policy invalidation, and delegates parsing without moving registration into render. `useRegistryContribution` invokes the shared publisher only after commit. React still owns cached nodes, context subscriptions, SSR/hydration behavior and cursor DOM measurement. The [shared core module map](../packages/core/README.md#responsibility-and-dependency-direction) is the source guide for this layer.
 
 ## Vue adapter
 
-The Vue adapter, published since 3.0.0-beta.2, uses the same sessions, planner and contribution preparation as React. It keeps AST and registry identities outside deep reactive proxies, selects stable plugin/schema inputs through computed refs, and publishes only after mount. VNode conversion clones HAST before final URL policy; resolved cross-chunk links/images use the shared resolver. SSR and initial hydration do not allocate registries. Vue 3.5 useId supplies stable automatic IDs, and DOM observers belong to the Vue cursor component. See the [Vue README](../packages/vue/README.md) and [shared API contracts](./api/core-engine-contracts.md).
+The stable `@ai-markdown/vue@3.0.0` adapter uses the same sessions, planner and contribution preparation as React. It keeps AST and registry identities outside deep reactive proxies, selects stable plugin/schema inputs through computed refs, and publishes only after mount. VNode conversion clones HAST before final URL policy; resolved cross-chunk links/images use the shared resolver. SSR and initial hydration do not allocate registries. Vue 3.5 useId supplies stable automatic IDs, and DOM observers belong to the Vue cursor component. See the [Vue README](../packages/vue/README.md) and [shared API contracts](./api/core-engine-contracts.md).
 
 ## The React component tree
 
@@ -351,7 +351,7 @@ Storybook apps live in `apps/storybook-{hub,react,vue}`, with shared helpers in 
 
 ## Package boundary and verification ownership
 
-The engine's public npm visibility serves package distribution; its exports remain an internal supplier API before 3.0. Core pins the engine to its exact release-train version. A React design-system wrapper should import the React adapter's stable props, hooks and helper re-exports. A non-React adapter that imports engine primitives owns the assembly and validation of its pipeline.
+Engine and core expose documented public adapter contracts that follow semantic versioning from 3.0.0. Core pins the engine to its exact release-train version. A React design-system wrapper should import the React adapter's stable props, hooks and helper re-exports. A non-React adapter that imports engine primitives owns the assembly and validation of its pipeline.
 
 The principal verification layers answer different questions:
 

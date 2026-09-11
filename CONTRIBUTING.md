@@ -205,7 +205,7 @@ By participating in this project you agree to abide by the [Contributor Covenant
 
 ## Releasing (maintainer-only)
 
-Releases publish from CI via [npm trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC — no token secret anywhere) with provenance attached automatically. Each new npm package must first have its publisher configured for `ai-markdown/ai-markdown` and `release.yml`; the scope registration does not configure it. Pushing a `v*` tag triggers `.github/workflows/release.yml`, which re-runs the full quality gate (lint, format, typecheck, tests, build), verifies the tag matches `package.json`, and publishes missing versions in dependency order: independent highlight plugin, engine, core, react, react-mantine. The registry is checked between steps. Packages on an independent semver track — `remark-mark-highlight` — either ride the train tag when their version was bumped, or get released alone via a `<pkg>-vX.Y.Z` tag:
+Releases publish from CI via [npm trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC for all existing packages) with provenance attached automatically. Each new npm package must first have its publisher configured for `ai-markdown/ai-markdown` and `release.yml`; the scope registration does not configure it. Pushing a `v*` tag triggers `.github/workflows/release.yml`, which re-runs the full quality gate (lint, format, typecheck, tests, build), verifies the tag matches `package.json`, and publishes missing versions in dependency order: independent highlight plugin, engine, core, react, react-mantine, vue. The registry is checked between steps. Packages on an independent semver track — `remark-mark-highlight` — either ride the train tag when their version was bumped, or get released alone via a `<pkg>-vX.Y.Z` tag:
 
 ```bash
 # Sync versions across the monorepo (also rewrites README version refs)
@@ -216,7 +216,7 @@ git tag vX.Y.Z
 git push origin main vX.Y.Z
 ```
 
-For the new train, `3.0.0-beta.1` uses the npm `beta` tag and a GitHub prerelease. The independent highlight plugin stays on its own stable 1.x tag.
+The five main packages are published as stable 3.0.0 on npm `latest`. Future stable versions use `latest` and a non-prerelease GitHub release; beta/RC versions use their corresponding npm channel and a GitHub prerelease. The independent highlight plugin stays on its own stable 1.x line.
 
 Run `pnpm preflight` before tagging to catch gate failures locally — it is the same check suite the workflow runs, minus the publish. There is deliberately no local publish path: a local `npm publish` cannot attach provenance, so publishing happens only via the tag flow.
 
@@ -231,11 +231,11 @@ The workflow also creates the GitHub release, with notes taken from the version'
 
 ### Vue adapter and public API review
 
-Vue requires 3.5+ within the Vue 3 major line. Its production implementation and lifecycle tests live in `packages/vue`; the earlier prototype directory is an archive pointer. Run `pnpm test:vue-browser` after building to verify hydration, references, customization, smooth turn-taking and cursor layout. CI and release workflows include this gate.
+Vue requires 3.5+ within the Vue 3 major line. Its production implementation and lifecycle tests live in `packages/vue`; the earlier prototype directory is an archive pointer. Run `pnpm test:vue-browser` after building for Chromium hydration, references, customization, smooth turn-taking, cursor layout and forced-GC lifecycle checks. `pnpm test:vue-browser:compat` runs the functional paths in Firefox and WebKit. CI and release workflows include both gates.
 
-The engine/core/Vue public declarations are checked with `pnpm check:public-api`. Review contract changes against `docs/api/core-engine-contracts.md`, then intentionally regenerate snapshots with `node scripts/check-public-api.mjs --update`. Updating the snapshot alone does not establish behavioral compatibility.
+The engine/core/React/React-plugins/Mantine/Vue public declarations are checked with `pnpm check:public-api`. Review contract changes against `docs/api/core-engine-contracts.md`, then intentionally regenerate snapshots with `node scripts/check-public-api.mjs --update`. Updating the snapshot alone does not establish behavioral compatibility.
 
-The next workspace candidate is 3.0.0-beta.2 and includes Vue. Do not publish it under the existing beta.1 tag. For Vue first publication, dispatch the matching release tag with `bootstrap_vue=true`; only the Vue npm subprocess receives FIRST_PUBLISH_NPM_TOKEN. Existing packages use their configured trusted publishers. Once Vue trusted publishing is configured, revoke the temporary token. This option does not bypass source/tag equivalence or release verification.
+Vue and the other existing packages have completed publication through their configured trusted publishers. Leave `bootstrap_vue` disabled for subsequent releases. The maintainer retains the bootstrap secret for future first publications; it is not needed for the current packages. Recovery must use the intended release tag and preserve source/tag equivalence and all release gates.
 
 ## Documentation language and scope
 

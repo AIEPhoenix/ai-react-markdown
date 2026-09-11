@@ -71,7 +71,7 @@ The five framework/shared packages track `latest`; the independent highlight plu
 
 ## Vue adapter
 
-The Vue 3.5+ adapter is published starting with `3.0.0-beta.2`. See the [Vue README](./packages/vue/README.md) for components, SSR/hydration, cross-chunk references, slots and smooth streaming. Shared core/engine contracts and beta API changes are documented in the [API contracts](./docs/api/core-engine-contracts.md).
+The Vue 3.5+ adapter is part of the stable 3.0.0 release train. See the [Vue README](./packages/vue/README.md) for components, SSR/hydration, cross-chunk references, slots and smooth streaming. Shared core/engine contracts and prerelease migration notes are documented in the [API contracts](./docs/api/core-engine-contracts.md).
 
 ## Installation
 

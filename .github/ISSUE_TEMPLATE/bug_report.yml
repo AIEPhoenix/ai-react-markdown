@@ -14,8 +14,8 @@ body:
     id: version
     attributes:
       label: Package + version
-      description: Run `pnpm list @ai-markdown/react @ai-markdown/react-mantine` and paste the relevant lines. `@ai-markdown/engine` installs transitively at the same version as core — no need to report it separately unless it somehow differs.
-      placeholder: '@ai-markdown/react@2.3.0 / @ai-markdown/react-mantine@2.3.0'
+      description: Run `pnpm list @ai-markdown/react @ai-markdown/vue @ai-markdown/react-mantine @ai-markdown/core @ai-markdown/engine @ai-markdown/remark-mark-highlight` and paste the relevant lines. Core and engine install transitively with the React/Vue adapter at the same train version; mention any mismatch.
+      placeholder: '@ai-markdown/react@3.0.0 / @ai-markdown/vue@3.0.0'
     validations:
       required: true
 
@@ -27,7 +27,10 @@ body:
       options:
         - '@ai-markdown/react'
         - '@ai-markdown/react-mantine'
+        - '@ai-markdown/vue'
+        - '@ai-markdown/core'
         - '@ai-markdown/engine'
+        - '@ai-markdown/remark-mark-highlight'
         - 'Not sure'
     validations:
       required: true
@@ -48,7 +51,7 @@ body:
     id: props
     attributes:
       label: Relevant `<AIMarkdown>` / `<MantineAIMarkdown>` props
-      description: Paste only the props that matter (config, customComponents, urlTransform, sanitizeSchema, streaming flag, …). Module-scoped or inline?
+      description: Identify React or Vue and paste the relevant props, components or slots (customComponents, urlTransform, sanitizeSchema, streaming, …). Are function-valued props module-scoped or inline?
       render: tsx
     validations:
       required: false
@@ -73,8 +76,8 @@ body:
     id: env
     attributes:
       label: Environment
-      description: React version, framework (Next.js App Router / Vite / …), Node version, package manager.
-      placeholder: 'React 19.0.0 / Next.js 15 App Router / Node 22 / pnpm 10'
+      description: React or Vue version, application framework/build tool, browser, Node version and package manager.
+      placeholder: 'React 19 / Vue 3.5 / Vite / Chromium / Node 22.23.2 / pnpm 11'
 
   - type: textarea
     id: notes
