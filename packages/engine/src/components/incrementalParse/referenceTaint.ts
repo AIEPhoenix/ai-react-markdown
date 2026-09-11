@@ -287,6 +287,42 @@ export function collectRefLine(
       } else {
         // Shortcut reference candidate. Plain prose brackets ("[sic]") land
         // here too — a future definition COULD retarget them, so they count.
+        //
+        // GFM task-list checkboxes land here as well (2026-09-11 review):
+        // `- [x] text` pushes `x` as a candidate that no definition ever
+        // settles, so a document with a task list stays at the boundary
+        // before the list for the rest of the stream (`TASK_LIST_DOC` pins
+        // at 22, `GFM_BASICS` at 203 in boundaryBaseline.json). This is a
+        // KNOWN over-block, kept deliberately. micromark's `tasklistCheck`
+        // construct does consume the box before reference resolution when
+        // whitespace and content follow it on the item's first line
+        // (probed: `- [x] two` plus a later `[x]: /url` is
+        // `listItem{checked}`, no `linkReference`), but a line-local skip
+        // is NOT safe, and the shapes that break it need container state
+        // this module does not have:
+        //   - a setext underline inside the item turns the paragraph into
+        //     a heading where the box IS a reference again: `- [x] a` /
+        //     `  ===` (also `  ---`, also across a lazy line `b`, also
+        //     `-\t[x] a` / `    ===`) — retroactive, one or more lines
+        //     later, decided by the underline's indent against the item's
+        //     content column;
+        //   - an ordered marker other than `1` is a lazy continuation line
+        //     when a paragraph is open, so its box is a reference:
+        //     `para` / `2. [x] b`, `- a` / `  2. [x] b` (indent inside the
+        //     item), but a sibling `1. [x] a` / `2. [x] b` is a task —
+        //     which one holds depends on the open container stack;
+        //   - any marker at ≥4 indent after a paragraph is lazy text
+        //     (`para` / `    - [x] b` is a reference);
+        //   - bare `- [x]`, `- [x] ` (whitespace only) and `- [x]　text`
+        //     (U+3000 / U+00A0 are not `markdownSpace`) fail the construct
+        //     and are references; `- [x]text` too.
+        // A conservative candidate over-blocks; a skipped candidate that a
+        // later definition retargets changes frozen output — the unsafe
+        // direction. Lifting this needs the item's content column and the
+        // paragraph-open state carried in the checkpoint (a pending entry
+        // dropped at the next confirmed blank, converted by an underline at
+        // or past that column); it is recorded in GRAMMAR-COVERAGE.md
+        // ("GFM task-list checkboxes") and not attempted here.
         label = normalizeLabel(inner);
       }
       if (label) cp.unresolvedRefs.push({ offset, label, footnote });
