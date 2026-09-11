@@ -67,17 +67,22 @@ import { collectDefLabels, createDefLabelScanner, type DefLabelScanner } from '@
 import { useDocumentRegistry, usePreserveOrphanReferences } from './AIMarkdownDocuments';
 import type { RegistryController } from '@ai-markdown/engine';
 import type { SanitizeSchema } from '@ai-markdown/engine';
-import { crossChunkComponents } from './crossChunkPlaceholders';
+import { crossChunkComponents, isHydratingServerHtml } from './crossChunkPlaceholders';
 import { CrossChunkUrlContext, type CrossChunkUrlPolicy } from './crossChunkUrlContext';
 import { AggregateFootnotesIfLast } from './aggregateFootnotesIfLast';
 import { ChunkSymbolContext } from './chunkSymbolContext';
 import { useRegistryContribution } from './useRegistryContribution';
 
-/** Module-level SSR snapshot constant for useSyncExternalStore. Hoisted out
- *  of the component so its identity is stable across renders (a fresh `() => 0`
- *  every render would defeat the snapshot-stability guarantees the hook
- *  relies on). */
-const REGISTRY_SSR_SNAPSHOT = () => 0;
+/** Server snapshot of the registry-version store. A live registry's
+ *  `version` counts up from 0, so this value is observed only without a
+ *  registry (standalone mode, where the client snapshot returns it too so
+ *  hydration needs no extra re-render), on the server, and during the
+ *  hydration render of server HTML. The hydration case is the reason the
+ *  value is inspected rather than ignored: see `isHydratingServerHtml` in
+ *  crossChunkPlaceholders.tsx. Hoisted to module level so the getter's
+ *  identity is stable across renders. */
+const REGISTRY_SERVER_VERSION = -1;
+const getRegistryServerVersion = () => REGISTRY_SERVER_VERSION;
 
 /** Stable empty object to avoid unnecessary re-renders when no custom components are given. */
 const DefaultCustomComponents: AIMarkdownCustomComponents = {};
@@ -221,7 +226,7 @@ const BlockMemoizedRenderer = memo(
     const sym = allocation && allocation.registry === registry ? allocation.sym : null;
 
     // Subscribe to registry version changes. Without this, useMemo deps that
-    // include `registry?.version` would never re-evaluate — useMemo only re-
+    // include the registry version would never re-evaluate — useMemo only re-
     // runs when its component re-renders, and a version bump from another
     // chunk's contribute step doesn't trigger our re-render on its own.
     // useSyncExternalStore's subscribe handle does the wake-up: when any
@@ -238,8 +243,17 @@ const BlockMemoizedRenderer = memo(
       (cb: () => void) => (registry ? registry.subscribe(cb) : () => {}),
       [registry]
     );
-    const getRegistryVersion = useCallback(() => registry?.version ?? 0, [registry]);
-    useSyncExternalStore(subscribeRegistry, getRegistryVersion, REGISTRY_SSR_SNAPSHOT);
+    const getRegistryVersion = useCallback(() => (registry ? registry.version : REGISTRY_SERVER_VERSION), [registry]);
+    // The returned snapshot, not `registry.version`, is what this render may
+    // act on: during hydration it is the server value even though the live
+    // counter has moved on (see REGISTRY_SERVER_VERSION).
+    const registryVersion = useSyncExternalStore(subscribeRegistry, getRegistryVersion, getRegistryServerVersion);
+    // Registry state readable in this render: null while hydrating server
+    // HTML, so a late-hydrating boundary parses with the same (absent)
+    // phantom targets the server had. `registry` itself stays the
+    // coordination switch (handlers, registration, contribution) so the
+    // hydration render still emits the same placeholder tags as the server.
+    const readableRegistry = isHydratingServerHtml(registryVersion === REGISTRY_SERVER_VERSION) ? null : registry;
 
     // PASS 0: def-label scan, then publish to registry.labelSet.
     //
@@ -380,27 +394,32 @@ const BlockMemoizedRenderer = memo(
     // whitespace labels accepted as v1 limit.
     //
     // Stable reference: every `registry._notify` (3× per chunk on mount: alloc,
-    // contributeLabels, contributeChunkData) bumps `registry.version`, which is
-    // a useMemo dep here. Without ref-stability, every bump produces fresh Set
-    // instances → `pipeline` useMemo invalidates → full re-parse runs. With N
-    // chunks coordinating, that's O(N²) parses at mount and a visible white
-    // screen for 30+ chunks. We compare the freshly-computed Sets to the
-    // previous result via a ref and return the previous reference when the
-    // contents are identical — collapsing the cascade to one parse per chunk.
+    // contributeLabels, contributeChunkData) bumps `registry.version`, which
+    // reaches this memo as the `registryVersion` snapshot dep. Without ref-
+    // stability, every bump produces fresh Set instances → `pipeline` useMemo
+    // invalidates → full re-parse runs. With N chunks coordinating, that's
+    // O(N²) parses at mount and a visible white screen for 30+ chunks. We
+    // compare the freshly-computed Sets to the previous result via a ref and
+    // return the previous reference when the contents are identical —
+    // collapsing the cascade to one parse per chunk.
+    //
+    // `labels` comes from `readableRegistry`: null while hydrating, so that
+    // render parses with no phantoms exactly like the server did, whatever
+    // the live registry already holds.
     const targetPhantomsRef = useRef<{ missingFootnotes: Set<string>; missingLinks: Set<string> }>({
       missingFootnotes: new Set<string>(),
       missingLinks: new Set<string>(),
     });
     const targetPhantoms = useMemo(() => {
       const next = derivePhantomTargets(
-        { content: content ?? '', ownLabels, labels: registry?.labelSet ?? null },
+        { content: content ?? '', ownLabels, labels: readableRegistry?.labelSet ?? null },
         targetPhantomsRef.current
       );
       targetPhantomsRef.current = next;
       return next;
-      // version is the freshness anchor (subscribe in placeholder components handles re-render)
+      // registryVersion is the freshness anchor (subscribe in placeholder components handles re-render)
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [registry, registry?.version, content, ownLabels]);
+    }, [readableRegistry, registryVersion, content, ownLabels]);
 
     const effectivePreserveOrphan = usePreserveOrphanReferences(preserveOrphanReferences);
     // In coordinated client renders, def-only chunks may be referenced by
@@ -519,7 +538,7 @@ const BlockMemoizedRenderer = memo(
       }),
       // `sym` is now real state (setSym after allocateSymbol), so it's a
       // proper dep and postOptions refreshes when allocation completes.
-      // `registry?.version` stays in deps so the per-block fingerprint cache
+      // `registryVersion` stays in deps so the per-block fingerprint cache
       // path sees the latest registry version on every coordinated update.
       // eslint-disable-next-line react-hooks/exhaustive-deps
       [
@@ -531,7 +550,7 @@ const BlockMemoizedRenderer = memo(
         skipHtml,
         unwrapDisallowed,
         registry,
-        registry?.version,
+        registryVersion,
         sym,
         clobberPrefix,
       ]
