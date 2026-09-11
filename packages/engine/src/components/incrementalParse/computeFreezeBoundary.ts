@@ -229,8 +229,16 @@ export function computeFreezeBoundary(
   // candidate for this frame (see tailCarriesRetroactive). Checked here and
   // not in the scan so nothing about the partial line is ever baked in.
   const tailRetroactive = tailLine !== null && tailCarriesRetroactive(tailLine.text);
+  // A document-leading byte order mark poisons every candidate. micromark
+  // drops the character before tokenizing, so the parsed trees' offsets are
+  // string indices minus one, while the boundary reported here is a string
+  // index; no caller can pair the two. The scan itself still ran (the
+  // checkpoint keeps its fence/math state for phantomSuffixCloser), but
+  // nothing is granted. Callers that want a boundary for such a document
+  // strip the BOM first — Stage A does, so production never gets here.
+  const leadingBom = text.charCodeAt(0) === 0xfeff;
   let boundary = 0;
-  for (let i = cp.candidates.length - 1; i >= 0 && !tailRetroactive; i--) {
+  for (let i = cp.candidates.length - 1; i >= 0 && !tailRetroactive && !leadingBom; i--) {
     const c = cp.candidates[i];
     if (!c.htmlBalanced || c.hazard || c.seamRisk) continue;
     // Fence/math phase untrusted past a suppressed open (phasePoisonedAt

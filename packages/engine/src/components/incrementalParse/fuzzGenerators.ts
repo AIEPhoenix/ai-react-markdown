@@ -1046,17 +1046,35 @@ const sizesArb = fc.array(
   { minLength: 8, maxLength: 24 }
 );
 
+/**
+ * Document-leading byte order mark. micromark drops it before tokenizing,
+ * so every parsed position is the string index minus one — the one input
+ * class where the scanner's string-index boundaries and the trees' offsets
+ * disagree. Stage A strips it in production; the engine must still refuse
+ * to splice such a document when it arrives directly (the scanner grants no
+ * boundary, the append gate treats the frame as a non-append), and the
+ * arbiter proves every frame stays deep-equal to the full parse. Weighted
+ * low: a BOM document never engages the splice path, so each one dilutes
+ * the benign family's engagement ratio (floor 0.2 against a mean of about
+ * 0.3 — one in twelve costs under three points of the mean).
+ */
+const leadingBomArb = fc.oneof(
+  { weight: 11, arbitrary: fc.constant('') },
+  { weight: 1, arbitrary: fc.constant('\uFEFF') }
+);
+
 function docFamily(blockArb: fc.Arbitrary<string>, minBlocks: number, maxBlocks: number): fc.Arbitrary<FuzzDoc> {
   return fc
     .tuple(
+      leadingBomArb,
       fc.array(blockArb, { minLength: minBlocks, maxLength: maxBlocks }),
       fc.array(sepArb, { minLength: maxBlocks, maxLength: maxBlocks }),
       fc.array(fc.integer({ min: 0, max: 9 }), { minLength: maxBlocks, maxLength: maxBlocks }),
       sizesArb,
       fc.nat()
     )
-    .map(([blocks, seps, closeRoll, sizes, configIndex]) => ({
-      doc: assembleDoc(blocks, seps, closeRoll),
+    .map(([bom, blocks, seps, closeRoll, sizes, configIndex]) => ({
+      doc: bom + assembleDoc(blocks, seps, closeRoll),
       sizes,
       configIndex,
     }));
@@ -1144,4 +1162,5 @@ export const COVERAGE_MARKERS: Record<string, RegExp> = {
   rawTextRunOn: /<\/(?:textareax|scripty)>|<\/textarea>\r\r|<\/script>\r\r|<\?i\r/,
   containerHeldRemnant:
     /> (?:floating |tail )?remnant|\n {2}remnant\n|> prose line|> <!-- c -->|- second item|(?:> text|item text|> p) <(?:div|iframe)>/,
+  leadingBom: /^\uFEFF/,
 };

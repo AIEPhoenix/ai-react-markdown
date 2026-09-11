@@ -146,6 +146,23 @@ describe('buildBlocks', () => {
     expect(built.blocks[0].hasReference).toBe(true);
   });
 
+  test('an authored <section data-footnotes> is an ordinary block, not the synthetic section', () => {
+    // Raw HTML the author wrote comes out of rehype-raw with a source
+    // position; only the engine's footer has none. The authored element used
+    // to take the `__footnote_section__` slot (and, coordinated, was dropped
+    // for the aggregate) while the real footer collided with it.
+    const md = '<section data-footnotes>\n\nmine\n\n</section>\n\nSee[^x].\n\n[^x]: hello';
+    const { mdast, hast } = runPipeline(md);
+    const built = buildBlocks(mdast, hast, md);
+    expect(built.synthetic).toBeDefined();
+    expect(built.synthetic?.position).toBeUndefined();
+    const kinds = built.plan.filter((item) => item.kind !== 'inline').map((item) => item.kind);
+    expect(kinds).toEqual(['block', 'block', 'synthetic']);
+    expect(built.blocks[0].startOffset).toBe(0);
+    expect(built.blockHasts[0].tagName).toBe('section');
+    expect(built.blockHasts[0].position).toBeDefined();
+  });
+
   test('globalCtx records footnoteRef order', () => {
     const md1 = 'A[^x] B[^y].\n\n[^x]: x\n\n[^y]: y';
     const md2 = 'A[^y] B[^x].\n\n[^x]: x\n\n[^y]: y';

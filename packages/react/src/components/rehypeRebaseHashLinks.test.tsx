@@ -64,6 +64,15 @@ describe('rehypeRebaseHashLinks (integration with full AIMarkdown pipeline)', ()
     expect(html).not.toContain('user-content-');
   });
 
+  test('an empty fragment `[top](#)` stays `#`; a named fragment is still rebased', () => {
+    // `#` is "scroll to top" — there is no id to rebase, and `#tst-user-content-`
+    // points at nothing.
+    const html = render('[top](#)\n\n[x](#sec)');
+    expect(html).toContain('href="#"');
+    expect(html).not.toContain(`href="#${TEST_DOCUMENT}-user-content-"`);
+    expect(html).toContain(`href="#${TEST_DOCUMENT}-user-content-sec"`);
+  });
+
   test('two documents with different documentIds do not share id prefixes', () => {
     const htmlA = render('See[^x].\n\n[^x]: a', 'doc-a');
     const htmlB = render('See[^x].\n\n[^x]: b', 'doc-b');
@@ -158,6 +167,12 @@ describe('rehypeRebaseHashLinks (unit, plugin in isolation)', () => {
 
   test('skips hrefs already prefixed', () => {
     expect(runPlugin(makeAnchor({ href: '#user-content-foo' }))).toBe('#user-content-foo');
+  });
+
+  test('leaves the empty fragment `#` alone', () => {
+    expect(runPlugin(makeAnchor({ href: '#' }))).toBe('#');
+    expect(runPlugin(makeAnchor({ href: '#' }), 'safe-')).toBe('#');
+    expect(runPlugin(makeAnchor({ href: '#sec' }))).toBe('#user-content-sec');
   });
 
   test('leaves non-hash hrefs alone', () => {

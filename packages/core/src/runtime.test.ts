@@ -97,6 +97,53 @@ describe('framework-neutral pipeline consumer', () => {
     }
   });
 
+  test('a full parse that throws renders the content as one plain-text paragraph instead of crashing', () => {
+    // Thousands of nested raw `<div>` tags overflow the recursive
+    // hast-util-from-parse5 walk (RangeError: Maximum call stack size
+    // exceeded) inside rehype-raw. The incremental path's fallback IS the
+    // full parse, so nothing above it caught the throw and the adapter
+    // subtree crashed. The session now degrades one hostile message to
+    // plain text and keeps the surface alive.
+    const content = '<div>'.repeat(3000) + 'x';
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      expect(() => full(content)).toThrow(RangeError);
+      for (const incremental of [true, false]) {
+        const session = createPipelineSession();
+        const trees = session.parse({ ...options, content, incrementalParse: incremental });
+        expect(trees.mdast.type).toBe('root');
+        expect(trees.hast.type).toBe('root');
+        expect(trees.hast.children).toHaveLength(1);
+        const p = trees.hast.children[0];
+        expect(p.type === 'element' && p.tagName).toBe('p');
+        expect(p.type === 'element' && p.children).toEqual([
+          { type: 'text', value: content, position: expect.anything() },
+        ]);
+        expect(p.position).toEqual({
+          start: { line: 1, column: 1, offset: 0 },
+          end: { line: 1, column: content.length + 1, offset: content.length },
+        });
+        expect(trees.mdast.children).toEqual([
+          {
+            type: 'paragraph',
+            children: [{ type: 'text', value: content, position: p.position }],
+            position: p.position,
+          },
+        ]);
+        // The plan can be built from the fallback trees too.
+        const items = createBlockPlanner()(trees.mdast, trees.hast, content).plan;
+        expect(items.map((item) => item.key)).toEqual(['block-0']);
+        // The next healthy frame parses normally again.
+        expect(session.parse({ ...options, content: 'Recovered.', incrementalParse: incremental })).toEqual(
+          full('Recovered.')
+        );
+      }
+      expect(error).toHaveBeenCalled();
+    } finally {
+      error.mockRestore();
+    }
+  });
+
   test('contributions publish at explicit commit and invalidate on policy or registration changes', () => {
     const registry = createRegistry();
     const content = 'Claim[^a].\n\n[^a]: Shared **body**';
