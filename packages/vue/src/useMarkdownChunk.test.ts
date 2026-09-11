@@ -12,6 +12,8 @@ import { AIMarkdownDocuments } from './documents';
  * and block-plan runs in total. The wrappers are transparent; they only
  * count calls. */
 const parseCounts: number[] = [];
+/** `incrementalParse` of every parse call, in call order. */
+const parseModes: boolean[] = [];
 let planCount = 0;
 vi.mock('@ai-markdown/core', async (importOriginal) => {
   const core = await importOriginal<typeof import('@ai-markdown/core')>();
@@ -31,6 +33,7 @@ vi.mock('@ai-markdown/core', async (importOriginal) => {
         reset: () => session.reset(),
         parse: (options: Parameters<typeof session.parse>[0]) => {
           parseCounts[index] += 1;
+          parseModes.push(options.incrementalParse);
           return session.parse(options);
         },
       };
@@ -412,4 +415,44 @@ describe('registry notifications do not re-run unaffected chunk pipelines', () =
       }
     });
   }
+});
+
+describe('a standalone AIMarkdown parses its first frame once', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+  const reset = () => {
+    parseCounts.length = 0;
+    parseModes.length = 0;
+  };
+
+  test('a client mount parses once, through the incremental path', async () => {
+    // The node test environment has no `window`; a browser does. The
+    // adapter decides at setup whether a next frame can follow, so a client
+    // mount must not parse fully first and again incrementally after mount.
+    vi.stubGlobal('window', {});
+    reset();
+    const app = host.createApp({ render: () => h(AIMarkdown, { content: 'Claim[^n].\n\n[^n]: body' }) });
+    try {
+      app.mount(node());
+      await settle();
+      expect(parseCounts).toEqual([1]);
+      expect(parseModes).toEqual([true]);
+    } finally {
+      app.unmount();
+    }
+  });
+
+  test('a server render parses once, fully, and retains no incremental state', async () => {
+    expect(typeof window).toBe('undefined');
+    reset();
+    const html = await renderToString(
+      createSSRApp({ render: () => h(AIMarkdown, { content: 'Claim[^n].\n\n[^n]: body' }) })
+    );
+    expect(html).toContain('body');
+    expect(parseCounts).toEqual([1]);
+    // A one-shot server render has no next frame; the full pipeline keeps
+    // the session's retained state empty instead of seeding a checkpoint.
+    expect(parseModes).toEqual([false]);
+  });
 });

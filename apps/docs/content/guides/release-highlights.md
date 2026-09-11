@@ -21,7 +21,7 @@ Six engine-side corrections, all in the built-in LaTeX preprocessor and the shar
 
 ### Vue adapter (not yet released)
 
-- A registry notification no longer re-parses every chunk in an `AIMarkdownDocuments` tree. One append to one of N chunks parses that chunk once; other chunks parse only when a label they wait on appears, and re-render only when a footnote number or link destination they show changes (measured: an append to the last of 5 chunks ran 6 parses, now 1). The Vue chunk also no longer runs the block planner on every frame; nothing in the adapter read its plan.
+- A registry notification no longer re-parses every chunk in an `AIMarkdownDocuments` tree. One append to one of N chunks parses that chunk once; other chunks parse only when a label they wait on appears, and re-render only when a footnote number or link destination they show changes (measured: an append to the last of 5 chunks ran 6 parses, now 1). The Vue chunk also no longer runs the block planner on every frame; nothing in the adapter read its plan. A standalone client mount parses its first frame once instead of twice: the incremental path is chosen by environment at setup, as in React, rather than after mount.
 
 ## 3.0.0 — Stable release and final candidate
 

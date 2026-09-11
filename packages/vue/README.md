@@ -58,7 +58,7 @@ Pass the **complete accumulated Markdown string**. Append decoded network data t
 | `documentId`               | Vue `useId()`            | Explicit IDs coordinate only inside `AIMarkdownDocuments`; generated IDs stay standalone            |
 | `documentIndex`            | Mount order              | Optional ordering hint for the reference registry; supply it for reordered/remounted logical chunks |
 | `streaming`                | `false`                  | Passed to custom components and element slots, controls cursor and `aria-busy`                      |
-| `incrementalParse`         | `true` after mount       | Uses verified retained-prefix parsing; server and hydration's first render use the full pipeline    |
+| `incrementalParse`         | `true`                   | Uses verified retained-prefix parsing in the browser; a server render uses the full pipeline        |
 | `preserveOrphanReferences` | `false`                  | Preserve unreferenced footnote definitions in rendered output                                       |
 | `enginePlugins`            | All five shipped plugins | Sealed catalog selection; membership changes, canonical ordering does not                           |
 | `contentPreprocessors`     | `[]`                     | Synchronous string transforms after built-in LaTeX normalization                                    |
