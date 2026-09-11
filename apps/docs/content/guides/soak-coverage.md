@@ -51,6 +51,10 @@ The six soak legs start Vitest in `packages/engine` and use that package's confi
 
 Workspace declarations are compared by effective inclusion of engine verification workspaces, using the historical lockfile's local dependency closure. Adding private app or tooling globs is harmless when those inputs stay included and installation settings are unchanged. Excluding engine inputs, changing overrides or install options, or failing to resolve the configuration requires soak. `corpus/documents` files are executable inputs read by engine differential verification, so changing them is not treated as a documentation-only edit. Changes to the impact classifier and evidence gate themselves remain mechanism changes; a fix to the classifier is not exempt from its own rule.
 
+Every non-Markdown file under `scripts/soak/` counts as mechanism, the `node:test` suites included. A control test can carry a mechanism change on its own, for example an assertion rewritten to accept a looser gate, so the rule fails closed rather than trying to tell a fixture rename from a relaxed threshold. The cost is that editing `impact.test.mjs` or `soak-control.test.mjs` requires a soak campaign for that range even when the scripts themselves did not change.
+
+The CI and release workflows are compared by the Node pin of each job (`with.runtime` steps and `strategy.matrix.node` entries). A job present in both versions must keep its pins; swapping the pins of two jobs is a runtime change even though the set of pins is not. A job that appears or disappears is judged by its pins alone: a new job on a pin the base already runs, or a removed job whose pin another job still runs, leaves the verified runtime unchanged, while a pin that is new or gone entirely requires soak.
+
 Full campaigns run on developer equipment. After committing a clean candidate, run `SOAK_PROFILE=release scripts/soak/soak.sh <fresh-seed-base> <label>` with a fresh seed. The default six legs and 14 logical shards define 84 tasks; `WORKERS` changes concurrency without reducing the logical budget. Validate the resulting evidence against the release candidate with:
 
 ```sh
