@@ -518,13 +518,13 @@ const PLUGINS = [highlight, pangu]; // module scope — stable reference
 <AIMarkdown content={content} enginePlugins={PLUGINS} />;
 ```
 
-| Plugin           | Effect                                                                                            |
-| ---------------- | ------------------------------------------------------------------------------------------------- |
-| `highlight`      | `==highlighted text==` syntax                                                                     |
-| `definitionList` | Definition lists ([PHP Markdown Extra](https://michelf.ca/projects/php-markdown/extra/#def-list)) |
-| `removeComments` | Strip HTML comments (only the comment; the HTML block around it still renders)                    |
-| `smartypants`    | Typographic substitutions: curly quotes, em-dashes (`--`), ellipses (`...`)                       |
-| `pangu`          | Auto-insert spaces between CJK and half-width characters                                          |
+| Plugin           | Effect                                                                                                          |
+| ---------------- | --------------------------------------------------------------------------------------------------------------- |
+| `highlight`      | `==highlighted text==` syntax                                                                                   |
+| `definitionList` | Definition lists ([PHP Markdown Extra](https://michelf.ca/projects/php-markdown/extra/#def-list))               |
+| `removeComments` | Strip HTML comments (only the comment; the HTML block around it still renders)                                  |
+| `smartypants`    | Typographic substitutions: curly quotes (CJK-aware pairing beside CJK text), em-dashes (`--`), ellipses (`...`) |
+| `pangu`          | Auto-insert spaces between CJK and half-width characters                                                        |
 
 Omitting the prop means `defaultEnginePlugins` (all five). Passing an array **replaces the selection wholesale** — there is no merging. The recommended "turn one off" idiom:
 

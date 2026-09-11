@@ -10,8 +10,9 @@
  *   MUST be preserved by the `inline` items in the render plan.
  * - All extra-syntax and display-optimize plugins enabled by
  *   the default engine plugin set (mark highlight, definition list,
- *   remove-comments, pangu, smartypants — in that chain order) MUST run on
- *   the same content as the legacy bare `<Markdown>` reference.
+ *   remove-comments, smartypants, pangu — in that chain order, where
+ *   `smartypants` is the CJK quote pass followed by remark-smartypants) MUST
+ *   run on the same content as the legacy bare `<Markdown>` reference.
  *
  * Scope of "byte-equivalence" in this suite:
  *
@@ -48,7 +49,7 @@ import remarkMath from 'remark-math';
 import { remarkMark as remarkMarkHighlight } from '@ai-markdown/remark-mark-highlight';
 import { remarkDefinitionList, defListHastHandlers } from 'remark-definition-list';
 import remarkSmartypants from 'remark-smartypants';
-import type { Html as MdastHtml, Root as MdastRoot } from 'mdast';
+import type { Html as MdastHtml, Root as MdastRoot, Text as MdastText } from 'mdast';
 import { SKIP, visit } from 'unist-util-visit';
 import remarkPangu from 'remark-pangu';
 import rehypeRaw from '@ai-markdown/rehype-raw';
@@ -74,9 +75,67 @@ interface PluginConfig {
 const SEALED_BY_NAME = { highlight, definitionList, removeComments, smartypants, pangu } as const;
 
 const ALL_EXTRAS: ExtraSyntaxName[] = ['highlight', 'definitionList'];
-// Chain order: pangu runs BEFORE SmartyPants (the legacy mirror below
-// follows this array's order, so it is load-bearing here too).
-const ALL_DISPLAY: DisplayOptimizeName[] = ['removeComments', 'pangu', 'smartypants'];
+// Chain order: SmartyPants (CJK quote pass, then remark-smartypants) runs
+// BEFORE pangu (the legacy mirror below follows this array's order, so it
+// is load-bearing here too).
+const ALL_DISPLAY: DisplayOptimizeName[] = ['removeComments', 'smartypants', 'pangu'];
+
+/**
+ * Hand-kept mirror of the engine's `remarkCjkQuotes` (the first half of the
+ * `smartypants` plugin). A straight quote with a CJK character directly
+ * before or after it is curled here, by pairing per text node, so that
+ * remark-smartypants (which reads a CJK character as a word and would close
+ * both quotes of `中文"引号"中文`) only sees the Latin ones. The rules, in
+ * order: start/whitespace/opening bracket before → opening; end/whitespace/
+ * closing punctuation after → closing; a non-CJK letter or digit before →
+ * closing; otherwise the pair state for that quote kind decides. A quote
+ * without a CJK neighbour is skipped but, where the first three rules fix
+ * its direction, still updates the pair state. Same independence rule as
+ * the comment stripper below: drift shows up as a byte difference.
+ */
+const CJK_RE = /[\p{sc=Han}\p{sc=Hiragana}\p{sc=Katakana}\p{sc=Hangul}\u3000-\u303f\uff00-\uffef]/u;
+const OPENING_RE = /[\p{Ps}\p{Pi}]/u;
+const CLOSING_RE = /[\p{Pe}\p{Pf}，。、！？；：]/u;
+const WORD_RE = /[\p{L}\p{N}]/u;
+
+function legacyCjkQuotes() {
+  const isCjk = (char: string | undefined): boolean => char !== undefined && CJK_RE.test(char);
+  const before = (value: string, i: number): string | undefined => {
+    if (i === 0) return undefined;
+    const unit = value.charCodeAt(i - 1);
+    if (unit >= 0xdc00 && unit <= 0xdfff && i >= 2) return String.fromCodePoint(value.codePointAt(i - 2)!);
+    return value[i - 1];
+  };
+  const at = (value: string, i: number): string | undefined =>
+    i >= value.length ? undefined : String.fromCodePoint(value.codePointAt(i)!);
+  return (tree: MdastRoot): void => {
+    visit(tree, 'text', (node: MdastText, index, parent) => {
+      if (parent === undefined || index === undefined) return;
+      const value = node.value;
+      if (!value.includes('"') && !value.includes("'")) return;
+      const out = value.split('');
+      const open = { '"': false, "'": false };
+      let changed = false;
+      for (let i = 0; i < value.length; i++) {
+        const char = value[i];
+        if (char !== '"' && char !== "'") continue;
+        const prev = before(value, i);
+        const next = at(value, i + 1);
+        let opening: boolean | undefined;
+        if (prev === undefined || /\s/u.test(prev) || OPENING_RE.test(prev)) opening = true;
+        else if (next === undefined || /\s/u.test(next) || CLOSING_RE.test(next)) opening = false;
+        else if (!isCjk(prev) && WORD_RE.test(prev)) opening = false;
+        const cjk = isCjk(prev) || isCjk(next);
+        if (cjk) opening ??= !open[char];
+        if (opening !== undefined) open[char] = opening;
+        if (!cjk) continue;
+        out[i] = char === '"' ? (opening ? '“' : '”') : opening ? '‘' : '’';
+        changed = true;
+      }
+      if (changed) parent.children[index] = { ...node, value: out.join('') };
+    });
+  };
+}
 
 /**
  * Hand-kept mirror of the engine's `remarkStripComments` (the transformer
@@ -122,14 +181,15 @@ function legacyPlugins(config: PluginConfig) {
         return remarkDefinitionList;
     }
   });
-  const displayPlugins = config.display.map((ability) => {
+  const displayPlugins = config.display.flatMap((ability) => {
     switch (ability) {
       case 'removeComments':
-        return legacyStripComments;
+        return [legacyStripComments];
       case 'smartypants':
-        return remarkSmartypants;
+        // One engine plugin, two transformers: the CJK quote pass first.
+        return [legacyCjkQuotes, remarkSmartypants];
       case 'pangu':
-        return remarkPangu;
+        return [remarkPangu];
     }
   });
   return {
@@ -252,10 +312,36 @@ const displayOptimizeCases: Array<[string, PluginConfig, string]> = [
     'He said "hello" -- and then walked away...',
   ],
   ['pangu CJK-Latin spacing — PANGU plugin', { extras: [], display: ['pangu'] }, '中文mixedwith English在一段里面。'],
-  // Order-sensitive: SmartyPants first makes both quotes closers
-  // (`中文” 引号” 中文`). The mirror follows the array order, so this case
-  // fails the moment either side runs the two in the other order.
-  ['CJK quotes — PANGU before SMARTYPANTS', { extras: [], display: ['pangu', 'smartypants'] }, '中文"引号"中文'],
+  // Order-sensitive: pangu first pads each straight `'` on its own
+  // (`中文 ’ 引号 ’ 中文`), and remark-smartypants without the CJK pass makes
+  // both double quotes closers. The mirror follows the array order and
+  // carries its own copy of the pass, so this fails the moment either side
+  // drifts.
+  ['CJK quotes — SMARTYPANTS before PANGU', { extras: [], display: ['smartypants', 'pangu'] }, '中文"引号"中文'],
+  ['CJK single quotes — SMARTYPANTS before PANGU', { extras: [], display: ['smartypants', 'pangu'] }, "中文'引号'中文"],
+];
+
+// ── CJK quote cases: the visible text is pinned as well as the bytes ──────
+//
+// Byte-equivalence alone would pass with any mirror that matches the
+// engine, so the reader-facing text of each case is pinned too. `it's`,
+// `'90s`, `a"b"c` and `"quoted" text` are remark-smartypants' own output:
+// the CJK pass leaves quotes without a CJK neighbour alone.
+
+const cjkQuoteCases: Array<[string, string]> = [
+  ['中文"引号"中文', '中文 “引号” 中文'],
+  ["中文'引号'中文", '中文‘引号’中文'],
+  ["中文 '引号' 中文", '中文 ‘引号’ 中文'],
+  ['中文"English"中文', '中文 “English” 中文'],
+  ['中文"多"个"引号"了', '中文 “多” 个 “引号” 了'],
+  ['English "quote" 中文', 'English “quote” 中文'],
+  ['中文"引号', '中文 “引号'],
+  ['引号"中文', '引号 “中文'],
+  ['他说："你好。"', '他说：“你好。”'],
+  ["it's", 'it’s'],
+  ["'90s", '’90s'],
+  ['a"b"c', 'a”b”c'],
+  ['"quoted" text', '“quoted” text'],
 ];
 
 // ── Default config (everything enabled, as <AIMarkdown> ships) ────────────
@@ -301,6 +387,16 @@ describe('byte-equivalence (default config — everything enabled)', () => {
   for (const [label, md] of defaultCases) {
     test(label, () => {
       expect(renderNew(md, defaultConfig)).toBe(renderLegacy(md, defaultConfig));
+    });
+  }
+});
+
+describe('byte-equivalence (default config — CJK quotes, text pinned)', () => {
+  for (const [md, text] of cjkQuoteCases) {
+    test(md, () => {
+      const html = renderNew(md, defaultConfig);
+      expect(html).toBe(renderLegacy(md, defaultConfig));
+      expect(html).toContain(`<p>${text}</p>`);
     });
   }
 });

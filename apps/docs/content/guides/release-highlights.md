@@ -17,7 +17,7 @@ Six engine-side corrections, all in the built-in LaTeX preprocessor and the shar
 - The lexer's HTML-tag match requires CommonMark attribute syntax and never crosses a blank line. `a<b` in prose no longer shields the math after it, and a document with many unclosed `<b` is scanned in linear time (8000 lines: 315 ms to 4 ms). Quoted attribute values may not contain `>`, as before.
 - Currency escaping on a very long line is linear again (a 240 KB line with 32k `$`: 2.7 s to 11 ms), byte-identical.
 - `removeComments` strips comment spans instead of dropping the whole html node: `<details>` blocks with a comment inside, and `<!-- note --> visible text`, render their content. A comment-only block still disappears. The engine no longer depends on `remark-remove-comments`.
-- pangu runs before SmartyPants, so `中文"引号"中文` gets an opening and a closing quote (`中文 “引号” 中文`) instead of two closers.
+- The `smartypants` plugin curls quotes beside CJK text by pairing before SmartyPants runs, so `中文"引号"中文` renders `中文 “引号” 中文` and `中文'引号'中文` renders `中文‘引号’中文` instead of two closers. Quotes with no CJK neighbour are still SmartyPants' (`it's`, `"quoted" text` are unchanged). The chain order stays `removeComments`, `smartypants`, `pangu`; an earlier attempt that moved pangu first fixed the double-quote case but padded each straight `'` on its own (`中文 ’ 引号 ’ 中文`).
 
 ## 3.0.0 — Stable release and final candidate
 
