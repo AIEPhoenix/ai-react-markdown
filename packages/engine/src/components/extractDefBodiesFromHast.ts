@@ -25,7 +25,7 @@
 import { SKIP, visit } from 'unist-util-visit';
 import type { Element as HastElement, Root as HastRoot, ElementContent } from 'hast';
 import { normalizeUri } from 'micromark-util-sanitize-uri';
-import { isWhitespaceText, lastMeaningfulIdx } from './hastPredicates';
+import { isFootnoteSection, isWhitespaceText, lastMeaningfulIdx } from './hastPredicates';
 
 // Fallback for callers that do not know the exact clobberPrefix. The main
 // renderer passes the prefix explicitly so labels containing regex metacharacters
@@ -278,31 +278,46 @@ export function extractDefBodiesFromHast(hast: HastRoot, clobberPrefix?: string)
   const out = new Map<string, ElementContent[]>();
   visit(hast, 'element', (sectionNode) => {
     const sec = sectionNode as HastElement;
-    if (sec.tagName !== 'section') return;
-    if (!(sec.properties && 'dataFootnotes' in sec.properties)) return;
-    visit(sec, 'element', (liNode) => {
-      const li = liNode as HastElement;
-      if (li.tagName !== 'li') return;
-      const idProp = li.properties?.id;
-      if (typeof idProp !== 'string') return;
-      const fragment = footnoteLiIdFragment(idProp, clobberPrefix);
-      if (fragment === null) return;
-      const stripped = stripBackrefs(li.children as ElementContent[]);
-      // Defuse any nested `<footnote-sup>` placeholders whose local
-      // occurrence indices belong to a different chunk than where the
-      // body will eventually be rendered. See the function's JSDoc.
-      out.set(fragment, stripLocalOccurrenceFromFootnoteSups(stripped));
-    });
-    // SKIP descent into this section's children so a NESTED
-    // `<section data-footnotes>` (rare — produced only via user-supplied
-    // raw HTML inside a def body that survives rehype-raw + sanitize)
-    // isn't double-processed by both the outer visit's recursion and the
-    // inner visit's enumeration of its parent. Without the SKIP, an
-    // `<li>` inside the nested section is harvested twice; `out.set` is
-    // last-write-wins so a nested mutation can stomp a correctly-
-    // extracted outer body. SKIP scopes harvest to the outer section
-    // and leaves nested footnote sections for whatever tool authored
-    // them to handle.
+    // The shared predicate: tag, `data-footnotes` AND no source position.
+    // A raw `<section data-footnotes>` an author writes survives sanitize
+    // and comes out of rehype-raw with a position; it is content, not the
+    // synthesized footer, and its `<li id>`s must not be harvested as
+    // definition bodies (the same rule the footer adorner, the block
+    // planner and the coordinated-mode footer swap apply).
+    if (!isFootnoteSection(sec)) return;
+    // Only the footer's own list items: `section > ol > li`, the shape
+    // mdast-util-to-hast's footer emits (the adorner adds siblings to the
+    // `<ol>`, never wraps it). A deep visit would also harvest an `<li>` an
+    // author wrote inside a definition body and that survived rehype-raw +
+    // sanitize inside a nested list or section.
+    //
+    // First write wins. HTML parsing hoists a raw `<li>` written in a
+    // definition body out of the footer's `<li>` and makes it the next
+    // sibling in the `<ol>`, and sanitize clobbers its id with the same
+    // prefix as the generated one, so `[^a]: <li id="fn-a">` yields two
+    // `section > ol > li` with the id of `a`. The generated item always
+    // precedes anything hoisted out of its own body, so a body can never
+    // replace itself; only a raw `<li>` aimed at a LATER label in the same
+    // document can still supply that label's body (the author's own
+    // content, and the standalone footer shows the same extra item).
+    for (const child of sec.children) {
+      if (child.type !== 'element' || child.tagName !== 'ol') continue;
+      for (const item of child.children) {
+        if (item.type !== 'element' || item.tagName !== 'li') continue;
+        const idProp = item.properties?.id;
+        if (typeof idProp !== 'string') continue;
+        const fragment = footnoteLiIdFragment(idProp, clobberPrefix);
+        if (fragment === null || out.has(fragment)) continue;
+        const stripped = stripBackrefs(item.children as ElementContent[]);
+        // Defuse any nested `<footnote-sup>` placeholders whose local
+        // occurrence indices belong to a different chunk than where the
+        // body will eventually be rendered. See the function's JSDoc.
+        out.set(fragment, stripLocalOccurrenceFromFootnoteSups(stripped));
+      }
+    }
+    // The footer is synthesized once per tree; nothing below it is another
+    // footer (an authored nested section carries a position and is skipped
+    // by the predicate anyway).
     return SKIP;
   });
   return out;

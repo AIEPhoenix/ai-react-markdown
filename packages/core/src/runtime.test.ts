@@ -265,6 +265,47 @@ describe('framework-neutral pipeline consumer', () => {
     expect(JSON.stringify(tree)).not.toContain('fnref-b-2');
   });
 
+  test('an authored raw footnote section or list item is content, not a harvested body', () => {
+    // The synthesized footer has no source position; an author's raw
+    // `<section data-footnotes>` comes out of rehype-raw with one. A raw
+    // `<li id="fn-a">` inside a body is hoisted out of the footer's `<li>` by
+    // HTML parsing (it becomes the next `<ol>` sibling) and sanitize gives it
+    // the same clobbered id as the generated item. Neither may replace the
+    // definition body the aggregate renders.
+    const registry = createRegistry();
+    const content =
+      '<section data-footnotes><ol><li id="fn-a">authored</li></ol></section>\n\n' +
+      'flow [^a]\n\n[^a]: real <li id="fn-a">stomp</li>\n';
+    const ownLabels = collectDefLabels(content);
+    const sym = registry.registerChunk('chunk', ownLabels.footnoteLabels, ownLabels.linkLabels);
+    const pipeline = full(content);
+    // Premise: the authored section item and the hoisted item both carry
+    // the generated id, so only the position rule and the first-wins rule
+    // tell them apart from the real item.
+    const liIds: string[] = [];
+    visit(pipeline.hast, 'element', (node) => {
+      if (node.tagName === 'li') liIds.push(String(node.properties.id));
+    });
+    expect(liIds).toEqual([`${prefix}fn-a`, `${prefix}fn-a`, `${prefix}fn-a`]);
+    createContributionSession().commit({
+      pipeline,
+      ownLabels,
+      registry,
+      targetPhantoms: options.targetPhantoms,
+      sym,
+      clobberPrefix: prefix,
+      chain: [],
+    });
+    const body = JSON.stringify(registry.chunkData.get(sym)!.defs.get('A')!.bodyHast);
+    expect(body).toContain('real');
+    expect(body).not.toContain('stomp');
+    expect(body).not.toContain('authored');
+    const tree = JSON.stringify(buildAggregateTree(registry, prefix));
+    expect(tree).toContain('real');
+    expect(tree).not.toContain('stomp');
+    expect(tree).not.toContain('authored');
+  });
+
   test('a label containing a valid percent-escape keeps its harvested body', () => {
     // `[^a%41]` is minted as `<li id="…fn-a%41">` (normalizeUri keeps a
     // well-formed escape). Decoding that id gave `aA`, which never matched

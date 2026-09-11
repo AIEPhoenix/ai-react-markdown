@@ -525,15 +525,13 @@ describe('extractDefBodiesFromHast', () => {
     expect(bodies.size).toBe(0);
   });
 
-  test('nested <section data-footnotes> processed exactly once (no double-write)', () => {
-    // Pathological shape produced only by raw-HTML user content surviving
-    // rehype-raw + sanitize: a `<section data-footnotes>` nested inside
-    // another. Without `SKIP` in the outer visit, the inner section's
-    // `<li>`s would be enumerated TWICE — once by the outer section's
-    // inner-visit (which descends into the nested section), and again
-    // when the outer visit's own recursion reaches the nested section.
-    // `out.set` is last-write-wins; a stale duplicate would stomp the
-    // correct extracted body. The SKIP keeps each `<li>` harvested once.
+  test("only the footer's own `section > ol > li` items are harvested; a nested section or <li> in a body is content", () => {
+    // `out.set` is last-write-wins. An author can write raw HTML inside a
+    // definition body that survives rehype-raw + sanitize — a whole
+    // `<section data-footnotes>`, or a bare `<li id="fn-x">` whose id
+    // sanitize clobbers with the same prefix as the real footer's. A deep
+    // visit harvested those too and let them stomp the real body of the
+    // same label. Only direct list items of the footer's `<ol>` count.
     const innerLi: HastElement = {
       type: 'element',
       tagName: 'li',
@@ -545,6 +543,12 @@ describe('extractDefBodiesFromHast', () => {
       tagName: 'section',
       properties: { dataFootnotes: true },
       children: [{ type: 'element', tagName: 'ol', properties: {}, children: [innerLi] }],
+    };
+    const bareLi: HastElement = {
+      type: 'element',
+      tagName: 'li',
+      properties: { id: 'user-content-fn-outer' },
+      children: [{ type: 'text', value: 'stomp' }],
     };
     const outerLi: HastElement = {
       type: 'element',
@@ -559,9 +563,16 @@ describe('extractDefBodiesFromHast', () => {
             { type: 'text', value: 'before-nested ' },
             nestedSection,
             { type: 'text', value: ' after-nested' },
+            bareLi,
           ],
         },
       ],
+    };
+    const realX: HastElement = {
+      type: 'element',
+      tagName: 'li',
+      properties: { id: 'user-content-fn-x' },
+      children: [{ type: 'element', tagName: 'p', properties: {}, children: [{ type: 'text', value: 'real x' }] }],
     };
     const tree: HastRoot = {
       type: 'root',
@@ -570,22 +581,57 @@ describe('extractDefBodiesFromHast', () => {
           type: 'element',
           tagName: 'section',
           properties: { dataFootnotes: true },
-          children: [{ type: 'element', tagName: 'ol', properties: {}, children: [outerLi] }],
+          children: [{ type: 'element', tagName: 'ol', properties: {}, children: [outerLi, realX] }],
         },
       ],
     };
     const bodies = extractDefBodiesFromHast(tree);
-    // Both the outer X and OUTER labels resolve to their respective bodies.
-    expect(bodies.size).toBe(2);
-    expect(bodies.has('x')).toBe(true);
-    expect(bodies.has('outer')).toBe(true);
-    // Critical: the inner X body is the inner section's content, harvested
-    // exactly once. A double-write would surface as a non-deterministic
-    // (last-set-wins) shape depending on visit ordering.
-    const xBody = bodies.get('x')!;
-    const xP = xBody.find((c) => c.type === 'element' && (c as HastElement).tagName === 'p') as HastElement;
-    expect(xP).toBeTruthy();
-    expect((xP.children[0] as { value: string }).value).toBe('inner-body');
+    expect([...bodies.keys()]).toEqual(['outer', 'x']);
+    const outerP = bodies.get('outer')![0] as HastElement;
+    expect((outerP.children[0] as { value: string }).value).toBe('before-nested ');
+    // The nested section and the bare <li> stay inside the outer body.
+    expect(outerP.children).toContain(nestedSection);
+    expect(outerP.children).toContain(bareLi);
+    const xP = bodies.get('x')![0] as HastElement;
+    expect((xP.children[0] as { value: string }).value).toBe('real x');
+  });
+
+  test('first item wins when two footer items share an id (a raw <li> hoisted out of a body)', () => {
+    // HTML parsing hoists `[^a]: real <li id="fn-a">stomp</li>` into a
+    // second `<ol>` child with the generated id, right after the real item.
+    const tree = root(
+      makeFooter([
+        { id: 'user-content-fn-a', bodyText: 'real' },
+        { id: 'user-content-fn-a', bodyText: 'stomp' },
+        { id: 'user-content-fn-b', bodyText: 'b' },
+      ])
+    );
+    const bodies = extractDefBodiesFromHast(tree, 'user-content-');
+    expect([...bodies.keys()]).toEqual(['a', 'b']);
+    expect((bodies.get('a')![0] as HastElement).children[0]).toMatchObject({ value: 'real' });
+  });
+
+  test('an authored raw <section data-footnotes> (carries a source position) is not harvested', () => {
+    // rehype-raw gives an author-written section a position; the footer
+    // mdast-util-to-hast synthesizes has none. The shared `isFootnoteSection`
+    // predicate keys on that conjunct, and the harvest applies the same rule
+    // as the footer adorner and the block planner.
+    const position = { start: { line: 1, column: 1, offset: 0 }, end: { line: 1, column: 60, offset: 59 } };
+    const authored: HastElement = {
+      ...makeFooter([{ id: 'user-content-fn-zzz', bodyText: 'authored' }]),
+      position,
+    };
+    const tree = root(authored, makeFooter([{ id: 'user-content-fn-a', bodyText: 'real' }]));
+    const bodies = extractDefBodiesFromHast(tree, 'user-content-');
+    expect([...bodies.keys()]).toEqual(['a']);
+    // An authored section that reuses a real label must not win either.
+    const stomp: HastElement = { ...makeFooter([{ id: 'user-content-fn-a', bodyText: 'stomp' }]), position };
+    const bodies2 = extractDefBodiesFromHast(
+      root(makeFooter([{ id: 'user-content-fn-a', bodyText: 'real' }]), stomp),
+      'user-content-'
+    );
+    expect(JSON.stringify(bodies2.get('a'))).toContain('real');
+    expect(JSON.stringify(bodies2.get('a'))).not.toContain('stomp');
   });
 
   test('ignores <li> outside <section data-footnotes>', () => {

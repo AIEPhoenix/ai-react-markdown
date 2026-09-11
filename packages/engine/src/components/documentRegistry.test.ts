@@ -1,5 +1,5 @@
 import { describe, test, expect, vi } from 'vitest';
-import { createRegistry, type Registry } from './documentRegistry';
+import { createRegistry, type FootnoteDef, type Registry } from './documentRegistry';
 
 // Compile-time guards that the exported `Registry` interface forbids direct
 // mutation of its structural fields AND forbids access to the internal
@@ -364,7 +364,7 @@ describe('Registry — contribute + selectors', () => {
     // no inline sup rendered.
     const reg = createRegistry();
     const chunk = reg.allocateSymbol('A');
-    const def = (id: string) => [id, { identifier: id, contentSource: id, bodyHast: [] }] as const;
+    const def = (id: string): [string, FootnoteDef] => [id, { identifier: id, contentSource: id, bodyHast: [] }];
     reg.contributeChunkData(chunk, {
       refs: [
         { label: 'A', kind: 'footnote' },
