@@ -79,17 +79,18 @@ jobs:
     # finish, which is a worse thing to leave behind than a slow one.
     timeout-minutes: 240
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v6
+      # pnpm/setup (not pnpm/action-setup, which stops at pnpm 10) installs
+      # the pnpm 11 pinned by `packageManager` and the same exact Node as
+      # ci.yml. Not for determinism of the numbers — they are not
+      # deterministic — but so that a baseline recorded here is at least
+      # comparable to the next one.
+      - uses: pnpm/setup@v2
         with:
-          # Same exact pin as ci.yml. Not for determinism of the numbers —
-          # they are not deterministic — but so that a baseline recorded here
-          # is at least comparable to the next one.
-          node-version: 22.23.2
-          cache: pnpm
+          runtime: node@22.23.2
+          cache: true
+          install: false
 
       - run: pnpm install --frozen-lockfile
 
@@ -137,7 +138,7 @@ jobs:
           THROTTLE: ${{ inputs.throttle || '4' }}
         run: pnpm bench:web --repeats "$REPEATS" --throttle "$THROTTLE"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: benchmark-${{ github.sha }}
           path: |
