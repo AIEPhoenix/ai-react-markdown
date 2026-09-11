@@ -6,11 +6,17 @@ Read an entry as a statement about that version. Older configuration names, depe
 
 Verification counts are historical results reported for the corresponding candidate. They are not newly executed checks for this documentation revision. Likewise, a clean fuzz or soak campaign establishes the result for its input families and configuration; later entries explain where expanding those families exposed additional defects.
 
-## Unreleased
+## 3.0.1 — Rendering and streaming correctness
 
-### Engine fixes (not yet released)
+### 3.0.1
 
-Eleven engine-side corrections in the built-in LaTeX preprocessor, the shared remark chain, the raw-HTML step and the incremental-parse identity tuple. They change rendered bytes for the affected inputs and none of them has been through a soak campaign yet; the engine-impacting release gate applies before they ship.
+This patch release aligns the engine, core, React, Mantine and Vue packages at `3.0.1`. The independent highlight plugin remains at `1.0.2`. It corrects streaming math, footnote coordination, delayed React hydration and Vue invalidation while preserving the existing package entry points.
+
+The full release-profile engine soak passed all six legs and **84/84 shards** with fresh seed `202739110`, in 10,338 seconds. The tested source stayed unchanged throughout the campaign. All 2,127 unit tests passed, together with build, type and public API checks; the full preflight also covered packed consumers, Storybook, document lifetime and Vue browser checks in Chromium, Firefox and WebKit. Release evidence is validated against the final versioned candidate before publication.
+
+#### Engine fixes
+
+Corrections in the built-in LaTeX preprocessor, shared remark chain, raw-HTML step and incremental-parse identity tuple change rendered bytes for the affected inputs.
 
 - A stray single `$` (`quoted in US$ per unit`) no longer makes every `|` after it, for the rest of the document, a `\vert{}`. Inline math is line-local, so an unpaired `$` on a finished line is literal. The unclosed-delimiter scan is kind-aware now: a `$x$` inside a `$$` block is content rather than a closer, and a display block that is still streaming with a `$x$` inside it is truncated like any other open block.
 - A mid-line `$$` (`It costs $$100 per month.`) is bounded by its paragraph, as in remark-math. It no longer pairs with the opener of a later display block, so the block and everything after it survive; a genuinely open trailing block is still truncated.
@@ -20,11 +26,14 @@ Eleven engine-side corrections in the built-in LaTeX preprocessor, the shared re
 - The `smartypants` plugin curls quotes beside CJK text by pairing before SmartyPants runs, so `中文"引号"中文` renders `中文 “引号” 中文` and `中文'引号'中文` renders `中文‘引号’中文` instead of two closers. The pair state runs per block across inline markup, so `中文'*引号*'中文` and a quote closed after a soft line break pair too. Quotes with no CJK neighbour are still SmartyPants' (`it's`, `'90s`, `"quoted" text` are unchanged). The chain order stays `removeComments`, `smartypants`, `pangu`; an earlier attempt that moved pangu first fixed the double-quote case but padded each straight `'` on its own (`中文 ’ 引号 ’ 中文`).
 - A `$$` block opened inside a list item no longer swallows the document after the list while it is unclosed: `- Item\n\n  $$\n  x\n\nAfter the list.` used to be truncated to `- Item`. The item is read from the lines above the opener (its marker and content indent), and the item's end ends the block, as it does for remark-math; a top-level fence indented one to three spaces with an unindented body and closer is unaffected. The incremental preprocessor passes its frozen prefix so both entry points read the same lines, and the pipe-escaping pass refuses a pair crossing the item's end.
 - Stage A removes every document-leading byte order mark, not just the first. With one stripped there and a second dropped by micromark, `\uFEFF\uFEFF# Heading` rendered a heading and `\uFEFF\uFEFF[x]: /url` became a definition (a raw parse of either is a paragraph), while three BOMs left one in the text. Normalizing the whole run is an explicit preprocessing contract, not raw-micromark equivalence for multi-BOM input; a U+FEFF anywhere else stays text. The definition-label scanner, when driven directly with raw BOM-led input, now takes a full-parse path that equals `collectDefLabels` exactly instead of stripping one BOM itself and letting its parser strip another.
-- Raw HTML nested past the engine's depth bound no longer takes the adapter subtree down. The engine's raw-HTML step now measures element nesting with an iterative walk as soon as the tree is reparsed and rejects a frame deeper than `RAW_HTML_MAX_DEPTH` (256, set four-fold below the shallowest measured overflow: Vue's mount in Chromium at about 1,000 nested `<div>`, with Firefox and WebKit higher; `scripts/measure-raw-depth.mjs` reproduces the table) before sanitize, KaTeX, the planner or a renderer recurse into it. As a safety net the step's own stack exhaustion, recognised by error name and message in V8, JavaScriptCore and Firefox (`InternalError: too much recursion`), is reported the same way. Both surface as `EngineRawHtmlDepthError`, an intentional public addition to `@ai-markdown/engine`, the only one in this batch; the guard itself stays internal. Ordinary nesting such as 64 levels of lists, blockquotes or divs is unaffected. The shared pipeline session renders that one frame as an escaped plain-text paragraph and parses the next frame normally. Only that error is degraded: a throwing remark or rehype plugin or handler supplied by the host, and any `RangeError` that is not that overflow, propagate out of `parse` as before. The Vue browser suite covers the degraded frame and the recovery in Chromium, Firefox and WebKit.
+- Raw HTML nested past the engine's depth bound no longer takes the adapter subtree down. The engine's raw-HTML step now measures element nesting with an iterative walk as soon as the tree is reparsed and rejects a frame deeper than `RAW_HTML_MAX_DEPTH` (256, set four-fold below the shallowest measured overflow: Vue's mount in Chromium at about 1,000 nested `<div>`, with Firefox and WebKit higher; `scripts/measure-raw-depth.mjs` reproduces the table) before sanitize, KaTeX, the planner or a renderer recurse into it. As a safety net the step's own stack exhaustion, recognised by error name and message in V8, JavaScriptCore and Firefox (`InternalError: too much recursion`), is reported the same way. Both surface as `EngineRawHtmlDepthError`, an intentional public addition to `@ai-markdown/engine` alongside the optional nested-reference metadata described below; the guard itself stays internal. Ordinary nesting such as 64 levels of lists, blockquotes or divs is unaffected. The shared pipeline session renders that one frame as an escaped plain-text paragraph and parses the next frame normally. Only that error is degraded: a throwing remark or rehype plugin or handler supplied by the host, and any `RangeError` that is not that overflow, propagate out of `parse` as before. The Vue browser suite covers the degraded frame and the recovery in Chromium, Firefox and WebKit.
 - Toggling the definition-list plugin between frames re-parses the document instead of splicing the new tail against trees parsed under the other grammar profile: `defListEnabled` is now part of the incremental engine's deps key (the boundary scanner's checkpoint already refused to resume across the flip; the retained trees did not).
 - Development builds report an engine invariant: a cross-chunk phantom label that the chunk also defines itself. The phantom label sets are excluded from the deps key on the premise that a phantom is never locally defined; the check is a set intersection against the boundary scanner's confirmed definitions and costs nothing in production.
 
-### Cross-chunk coordination fixes (not yet released)
+- The raw pending-closer helper recognizes a single document-leading BOM, matching micromark, so a completed fence does not receive an invented trailing closer.
+- Pipe escaping uses the same ordered flow-block spans as the unclosed-delimiter scan. A same-line `$$…$$` inside an open flow block no longer makes a later prose table row get escaped differently by full and incremental preprocessing. Dedent-closed list math follows the same rule.
+
+#### Cross-chunk coordination
 
 Four corrections to how a chunk publishes its footnote and link definitions to the shared registry and how the aggregate footer is assembled. They affect only documents rendered under `<AIMarkdownDocuments>`; standalone output is unchanged.
 
@@ -33,13 +42,29 @@ Four corrections to how a chunk publishes its footnote and link definitions to t
 - A footnote referenced only from another footnote's body appears in the aggregate footer with standalone numbering (after every flow reference, in footer order). Nested references are contributed with the new optional `RefRecord.nestedIn` field; they take part in `globalNumber` but not in `getRefsForLabel` or occurrence ranges, so no backref points at a mark id that no inline sup carries. `buildAggregateTree` orders entries by global number. The engine API snapshot gains the additive field.
 - Footnote bodies are harvested only from the synthesized footer, recognized by the shared `isFootnoteSection` predicate (tag, attribute and no source position) and read as `section > ol > li`, first item per id. A raw `<section data-footnotes>` an author writes, or a raw `<li id="fn-…">` inside a definition body that HTML parsing hoists next to the real item, no longer replaces a definition body.
 
-### React fixes (not yet released)
+#### React
+
+- Multiple images sharing a source line retain every rendered sibling when the planner reuses a Markdown node, avoiding a development invariant failure and incomplete reused output.
+- Empty `#` links remain empty fragments when cross-chunk hash links are rebased.
 
 - Coordinated chunks (`<AIMarkdownDocuments>` with a shared `documentId`) each wrapped in their own `<Suspense>` boundary hydrate without a recoverable "Hydration failed" error when one boundary hydrates after its siblings have registered: the hydration render reads no registry state, so it matches the server's literal `[^a]` / `[link][x]`, and the registry resolves them right after hydration as before.
 
-### Vue adapter (not yet released)
+#### Vue
 
 - A registry notification no longer re-parses every chunk in an `AIMarkdownDocuments` tree. One append to one of N chunks parses that chunk once; other chunks parse only when a label they wait on appears, and re-render only when a footnote number or link destination they show changes (measured: an append to the last of 5 chunks ran 6 parses, now 1). The Vue chunk also no longer runs the block planner on every frame; nothing in the adapter read its plan. A standalone client mount parses its first frame once instead of twice: the incremental path is chosen by environment at setup, as in React, rather than after mount.
+
+- Vue uses collision-free URL/title snapshots when resolving references, works without `crypto.randomUUID` in insecure contexts, and keeps internal coordination and pacing props off the DOM. Cursor-tail markers are emitted only while the cursor is present.
+
+#### Mantine and release tooling
+
+- Grammar-on-demand highlighters work through nested Mantine providers. Mermaid header controls ship inline SVG icons.
+- Release verification uses read-only permissions; publication alone receives write and OIDC permissions. Recovery rejects a workflow ref that cannot produce provenance for the intended release tag.
+- Soak impact compares workflow Node versions per job, and release version updates rewrite only current installation guides rather than historical release records.
+- Bundled React-derived code includes its upstream MIT notice.
+
+#### Known performance limits
+
+Very large GFM tables retain an upstream quadratic parsing cost. Task-list checkboxes can conservatively prevent incremental prefix reuse; rendering stays correct. See [streaming and performance](streaming-and-performance.md) for guidance.
 
 ## 3.0.0 — Stable release and final candidate
 
