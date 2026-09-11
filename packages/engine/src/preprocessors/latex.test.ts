@@ -633,6 +633,42 @@ y$ which spans lines`;
     expect(t8, `2000 lines: ${t2.toFixed(1)} ms, 8000 lines: ${t8.toFixed(1)} ms`).toBeLessThan(Math.max(60, 8 * t2));
   });
 
+  test('the list item walk behind an indented $$ opener is linear in the document (was quadratic)', () => {
+    // `listContentIndent` reads the lines above an indented opener back to
+    // the first column-0 line. Unbounded, that re-read every earlier line
+    // of the same item for every opener: 2000/4000/8000 `$$ x $$` lines
+    // in one item took 494 / 1972 / 7914 ms, and 1000/2000/4000 repeats
+    // of an indented top-level block (no column-0 line at all) 190 / 707 /
+    // 2832 ms. Each walk now records its verdicts under its opener's line
+    // start and a later walk stops at the first recorded line it reaches.
+    // The pair pass's closure check keeps a cursor for the same reason
+    // (2000/4000/8000 items ending a block at a dedent: 10 / 34 / 132 ms).
+    const shapes: Array<[string, (n: number) => string]> = [
+      ['items, each with an indented pair', (n) => '- Item\n\n  $$ x $$\n\n'.repeat(n)],
+      [
+        'one long indented paragraph, then an opener',
+        (n) => '- Item\n' + '  a line of text\n'.repeat(n) + '\n  $$\n  x\n\nAfter',
+      ],
+      ['one item holding many openers', (n) => '- Item\n\n' + '  $$ x $$\n  text\n'.repeat(n)],
+      ['items whose blocks end at a dedent', (n) => '- Item\n\n  $$\n  x\n\nAfter | a | b\n\n'.repeat(n)],
+      ['repeated indented top-level blocks', (n) => '  $$\n  x\n  $$\n\n'.repeat(n)],
+    ];
+    const time = (doc: string): number => {
+      const t = performance.now();
+      preprocessLaTeX(doc);
+      return performance.now() - t;
+    };
+    for (const [name, make] of shapes) {
+      time(make(1000));
+      const [t1, t2, t4] = [1000, 2000, 4000].map((n) => time(make(n)));
+      const readout = `${name}: 1000: ${t1.toFixed(1)} ms, 2000: ${t2.toFixed(1)} ms, 4000: ${t4.toFixed(1)} ms`;
+      // Linear is 2x per doubling, quadratic 4x. The floor absorbs timer
+      // noise where a run is a few milliseconds.
+      expect(t2, readout).toBeLessThan(Math.max(30, 3 * t1));
+      expect(t4, readout).toBeLessThan(Math.max(30, 3 * t2));
+    }
+  });
+
   // --- Paired literal-content HTML containers (issue: $ inside <code> etc.) ---
 
   test('does not rewrite $ inside <code>...</code>', () => {

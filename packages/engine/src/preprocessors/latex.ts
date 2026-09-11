@@ -629,8 +629,15 @@ function escapeLatexPipes(text: string, runStartsAtLineStart: boolean, preceding
   let out = '';
   let last = 0;
   // The line endings at which the scan ends a list item's block, computed
-  // once, on the first display pair (most runs have none).
+  // once, on the first display pair (most runs have none). Ascending, and
+  // so are the pairs, so the check below keeps a cursor instead of
+  // searching the whole list for every pair.
   let closures: number[] | null = null;
+  let closureCursor = 0;
+  const crossesClosure = (at: number[], from: number, to: number): boolean => {
+    while (closureCursor < at.length && at[closureCursor] < from) closureCursor += 1;
+    return closureCursor < at.length && at[closureCursor] < to;
+  };
   LATEX_BLOCK_REGEX.lastIndex = 0;
   let m: RegExpExecArray | null;
   while ((m = LATEX_BLOCK_REGEX.exec(text)) !== null) {
@@ -646,7 +653,7 @@ function escapeLatexPipes(text: string, runStartsAtLineStart: boolean, preceding
       }
       if (
         (flowIndent(text, m.index, runStartsAtLineStart) === -1 && hasBlankLineBetween(text, bodyStart, bodyEnd)) ||
-        closures.some((at) => at >= bodyStart && at < bodyEnd)
+        crossesClosure(closures, bodyStart, bodyEnd)
       ) {
         // Mid-line opener across a blank line, or a pair crossing the end
         // of a list item's block: literal here, and the closer may be the
@@ -779,6 +786,9 @@ function findUnclosedDelimiter(
   let open: UnclosedDelimiter | null = null;
   // Whether the scan has left the open FLOW opener's own line.
   let pastOpenerLine = false;
+  // Container verdicts by opener line start, so the walks of one scan
+  // share their work (see `listContentIndent`).
+  const containers = new Map<number, ContainerVerdicts>();
   let i = 0;
   while (i < text.length) {
     const c = text[i];
@@ -787,7 +797,7 @@ function findUnclosedDelimiter(
         const indent = flowIndent(text, i, runStartsAtLineStart);
         // An indented opener may be list item content; the lines above
         // say whether it is, and at what content indent (0 = it is not).
-        const container = indent > 0 ? listContentIndent(text, i - indent, preceding, indent) : 0;
+        const container = indent > 0 ? listContentIndent(text, i - indent, preceding, indent, containers) : 0;
         open = indent === -1 ? { start: i, kind: 'inline', indent: 0 } : { start: i, kind: 'flow', indent: container };
         pastOpenerLine = false;
         i += 2;
@@ -957,13 +967,50 @@ function lineIndent(line: string): number {
  * marker line whose content indent fits (`<= indent`) means the line is
  * inside that item; anything else at column 0 means it is not. Indented
  * non-marker lines are item content or paragraph continuation and the
- * walk goes on past them; a marker line whose content indent is deeper
- * than `indent` is a sibling or nested item the line is not in, and the
- * walk goes on to the enclosing one. Blank lines are skipped.
+ * walk goes on past them; an indented marker line whose content indent is
+ * deeper than `indent` is a nested item the line is not in, and the walk
+ * goes on to the enclosing one. Blank lines are skipped.
+ *
+ * `cache` bounds the walk within one scan. Each walk settles the verdict
+ * for every opener indent at once (1, 2 and 3 — the only indents that
+ * open a flow) and records the triple under its own line start, and a
+ * later walk that reaches a recorded line start takes over its verdicts:
+ * the lines above it are the same lines. Without this, one list item
+ * holding many `$$` lines made every opener re-read every line above it
+ * (2000/4000/8000 openers in one item: 494 / 1972 / 7914 ms).
  */
-function listContentIndent(text: string, lineStart: number, preceding: readonly string[], indent: number): number {
+function listContentIndent(
+  text: string,
+  lineStart: number,
+  preceding: readonly string[],
+  indent: number,
+  cache: Map<number, ContainerVerdicts>
+): number {
+  const cached = cache.get(lineStart);
+  if (cached !== undefined) return cached[indent - 1];
+  const verdicts = walkToContainer(text, lineStart, preceding, cache);
+  cache.set(lineStart, verdicts);
+  return verdicts[indent - 1];
+}
+
+/** Content indent verdicts for an opener indented 1, 2 and 3 spaces; -1
+ *  while a walk has not settled one yet. */
+type ContainerVerdicts = [number, number, number];
+
+function walkToContainer(
+  text: string,
+  lineStart: number,
+  preceding: readonly string[],
+  cache: Map<number, ContainerVerdicts>
+): ContainerVerdicts {
+  const verdicts: ContainerVerdicts = [-1, -1, -1];
+  const settle = (from: ContainerVerdicts): void => {
+    for (let t = 0; t < 3; t++) if (verdicts[t] === -1) verdicts[t] = from[t];
+  };
+  const settled = (): boolean => verdicts[0] !== -1 && verdicts[1] !== -1 && verdicts[2] !== -1;
   const chunks = preceding.length === 0 ? [text] : [...preceding, text];
-  let ci = chunks.length - 1;
+  const last = chunks.length - 1;
+  let ci = last;
   let pos = lineStart;
   let line = '';
   for (;;) {
@@ -981,21 +1028,30 @@ function listContentIndent(text: string, lineStart: number, preceding: readonly 
       pos = 0;
       continue;
     }
-    const verdict = classifyLine(line, indent);
-    if (verdict !== null) return verdict;
+    const known = ci === last ? cache.get(j + 1) : undefined;
+    if (known !== undefined) {
+      // A line an earlier opener started: its walk covered everything
+      // above, and the line itself is an indented `$$` line, no verdict.
+      settle(known);
+      return verdicts;
+    }
+    if (classifyLine(line, verdicts)) return verdicts;
+    if (settled()) return verdicts;
     line = '';
     pos = chunk[j] === '\n' && j > 0 && chunk[j - 1] === '\r' ? j - 1 : j;
   }
-  const verdict = line === '' ? null : classifyLine(line, indent);
-  return verdict ?? 0;
+  if (line !== '') classifyLine(line, verdicts);
+  settle([0, 0, 0]);
+  return verdicts;
 }
 
-/** `listContentIndent`'s verdict for one line above the opener: a content
- *  indent, 0 for "not in a list item", or `null` to keep walking. */
-function classifyLine(line: string, indent: number): number | null {
-  if (line.trim() === '') return null;
+/** Apply one line above the opener to the pending `verdicts`; `true` when
+ *  the walk is over (a line at column 0 settles everything). */
+function classifyLine(line: string, verdicts: ContainerVerdicts): boolean {
+  if (line.trim() === '') return false;
   const marker = LIST_MARKER_RE.exec(line);
-  if (marker !== null) {
+  if (marker !== null && !(marker[3].length === 0 && marker[0].length < line.length)) {
+    // (`-x` / `1.x` are not markers and fall through to the indent test.)
     const spaces = marker[3].length;
     const afterSpaces = marker[0].length;
     // Content starts after one to four spaces; five or more, or nothing
@@ -1003,15 +1059,16 @@ function classifyLine(line: string, indent: number): number | null {
     // marker (CommonMark 5.2).
     const content =
       spaces >= 1 && spaces <= 4 && afterSpaces < line.length ? afterSpaces : marker[1].length + marker[2].length + 1;
-    if (spaces === 0 && afterSpaces < line.length) {
-      // `-x` / `1.x`: not a marker. Fall through to the indent test.
-    } else if (content <= indent) {
-      return content;
-    } else {
-      return null;
-    }
+    for (let t = 0; t < 3; t++) if (verdicts[t] === -1 && content <= t + 1) verdicts[t] = content;
+    if (marker[1].length > 0) return false;
+    // A column-0 marker is top-level: an opener its content does not
+    // reach is in no list item at all.
+    for (let t = 0; t < 3; t++) if (verdicts[t] === -1) verdicts[t] = 0;
+    return true;
   }
-  return lineIndent(line) === 0 ? 0 : null;
+  if (lineIndent(line) !== 0) return false;
+  for (let t = 0; t < 3; t++) if (verdicts[t] === -1) verdicts[t] = 0;
+  return true;
 }
 
 /**
