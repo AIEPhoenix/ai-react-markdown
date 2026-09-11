@@ -78,13 +78,16 @@ try {
   });
   const errors = [];
   // The deep raw-HTML case degrades a frame on purpose. A development core
-  // entry would report that on console.error; the bundle resolves the
-  // production entry, which is silent, but the report is tolerated either
-  // way while the case runs and never counted as a page error.
+  // entry reports exactly that with the depth diagnostic below (the bundle
+  // resolves the production entry, which is silent); only that one message
+  // is tolerated, and only while the case runs, so any other engine error
+  // during the deep frame still counts as a page error.
+  const depthDiagnostic =
+    '[ai-react-markdown] raw HTML nested past the engine depth bound — rendering this frame as plain text:';
   let expectDegraded = false;
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('console', (msg) => {
-    if (expectDegraded && msg.type() === 'error' && msg.text().startsWith('[ai-react-markdown]')) return;
+    if (expectDegraded && msg.type() === 'error' && msg.text().startsWith(depthDiagnostic)) return;
     if (msg.type() === 'error' || /hydration|recursive updates/i.test(msg.text())) errors.push(msg.text());
   });
   await page.goto(`http://127.0.0.1:${server.address().port}`);
