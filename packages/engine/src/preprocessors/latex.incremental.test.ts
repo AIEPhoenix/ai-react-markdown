@@ -516,7 +516,7 @@ describe('an indented $$ opener bounded by its container: both entry points agre
     }
     expect(frozen).toBeGreaterThanOrEqual(chunks[0].length + chunks[1].length);
     expect(preprocessLaTeX(chunks.join(''))).toBe(
-      '- Item\n\n  $$\n  a | b\n\nAfter | text\n\n$$\n\\vert{} c \\vert{}\n$$\n\ntail $$z$$\n'
+      '- Item\n\n  $$\n  a \\vert{} b\n\nAfter | text\n\n$$\n\\vert{} c \\vert{}\n$$\n\ntail $$z$$\n'
     );
   });
 
@@ -577,6 +577,35 @@ describe('an indented $$ opener bounded by its container: both entry points agre
     expect(preprocessLaTeX(doc)).toBe(
       '- Item\n\nfirst $$x$$ paragraph\n\n- Item two\n  more text\n\n  $$\n  x\n\nAfter the list.\n'
     );
+  });
+
+  test('a block ended by a dedent before any `$$` follows: a later `$$` is a fresh opener, and the frozen block keeps its bytes', () => {
+    // The pipe pass used to enter a block only through a `$$…$$` regex
+    // pair. On the early frame there is no pair yet and the block's pipe
+    // stayed literal; once `$$\nx\n$$` arrived, a pair spanned the dedent
+    // and escaped a block that an earlier frame had already frozen. The
+    // pass now escapes a block from the scan's verdict alone, so the
+    // block is `\vert{}` from the frame its dedent lands, and the later
+    // `$$` opens its own block.
+    const head = '- Item\n\n  $$\n  | a |\n\nAfter\n\n';
+    const tail = '$$\nx\n$$\n';
+    const doc = head + tail;
+    expect(preprocessLaTeX(head)).toBe('- Item\n\n  $$\n  \\vert{} a \\vert{}\n\nAfter\n\n');
+    expect(preprocessLaTeX(doc)).toBe('- Item\n\n  $$\n  \\vert{} a \\vert{}\n\nAfter\n\n$$\nx\n$$\n');
+    replaySized(doc, 1);
+    for (const line of doc.split(/(?<=\n)/)) expect(line).not.toBe('');
+    replay(doc.split(/(?<=\n)/));
+    replay([head, tail]);
+    replay(['- Item\n\n  $$\n  | a |\n\nAfter', '\n\n', '$$\nx\n', '$$\n']);
+    replay(['- Item\n\n  $$\n  | a |\n\nAfter', '\n\n$$', '\nx\n$$\n']);
+    for (const options of [{ freezeThreshold: 0 }, {}] as const) {
+      const incremental = createIncrementalLatexPreprocessor(options);
+      for (const cut of [head.length - 2, head.length, head.length + 2]) {
+        const a = doc.slice(0, cut);
+        expect(incremental(a)).toBe(preprocessLaTeX(a));
+        expect(incremental(doc)).toBe(preprocessLaTeX(doc));
+      }
+    }
   });
 
   test('CRLF and a partial next line of spaces', () => {

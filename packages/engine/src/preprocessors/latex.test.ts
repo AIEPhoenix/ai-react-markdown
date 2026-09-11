@@ -3,7 +3,7 @@ import type { Root as MdastRoot } from 'mdast';
 import remarkMath from 'remark-math';
 import remarkParse from 'remark-parse';
 import { unified } from 'unified';
-import { preprocessLaTeX, splitByProtectedRegions } from './latex';
+import { createIncrementalLatexPreprocessor, preprocessLaTeX, splitByProtectedRegions } from './latex';
 
 const hasLineEnding = (text: string): boolean => text.includes('\n') || text.includes('\r');
 
@@ -1163,6 +1163,64 @@ describe('preprocessLaTeX — the kind-aware scanner keeps valid multiline math'
   });
 });
 
+describe('preprocessLaTeX — the pipe pass takes its flow blocks from the unclosed scan', () => {
+  // Release soak (latex leg, seam family, seed 202719523, sample 4939):
+  // per remark-math, line 2 `$$` opens a flow block, the `$$\int…$$` on
+  // line 3 is content (a closer is a `$$` alone on its line), line 5 `$$`
+  // closes it, `| a | b |` is prose and line 8 `$$` is the unclosed tail.
+  // The lazy pair pass paired the opener with the first token of line 3,
+  // refused the next pair across the blank line and then took line 5 as
+  // an opener, escaping the prose pipes — stateless only, the incremental
+  // path having frozen the settled block. Blocks now come from the scan.
+  const SOAK_DOC =
+    'settled prose with $x^2$ and \\(y\\) inline, nothing open.\n$$\n$$\\int_0^1 x\\,dx$$\n\n$$\n| a | b |\n\n$$\n';
+  const SOAK_OUT =
+    'settled prose with $$x^2$$ and $$y$$ inline, nothing open.\n$$\n$$\\int_0^1 x\\,dx$$\n\n$$\n| a | b |';
+
+  test("the soak sample renders main's bytes, stateless and on every char-granular frame", () => {
+    expect(preprocessLaTeX(SOAK_DOC)).toBe(SOAK_OUT);
+    for (const options of [{ freezeThreshold: 0, backoff: false }, { freezeThreshold: 0 }, {}] as const) {
+      const incremental = createIncrementalLatexPreprocessor(options);
+      for (let i = 1; i <= SOAK_DOC.length; i++) {
+        const frame = SOAK_DOC.slice(0, i);
+        expect(incremental(frame), `${JSON.stringify(options)} len=${i}`).toBe(preprocessLaTeX(frame));
+      }
+    }
+  });
+
+  test('a closed block whose body holds `$$…$$` lines is one block, at 0-3 spaces, after short and long prefixes', () => {
+    const prefixes = ['', 'p $x$\n', 'settled prose with $x^2$ and \\(y\\) inline, nothing open.\n'.repeat(12)];
+    expect(prefixes[2].length).toBeGreaterThan(512);
+    for (const prefix of prefixes) {
+      for (const indent of ['', ' ', '  ', '   ']) {
+        for (const body of ['$$\\int_0^1 x\\,dx$$', '$$a$$ and $$b$$', '$$a | b$$\n$$c$$']) {
+          const doc = `${prefix}${indent}$$\n${body}\n\n$$\n| a | b |\n\n$$\n`;
+          const out = preprocessLaTeX(doc);
+          // The prose pipes stay literal; the block's own pipe is escaped.
+          expect(out.endsWith('$$\n| a | b |'), JSON.stringify(doc)).toBe(true);
+          if (body.includes('|')) expect(out).toContain('$$a \\vert{} b$$');
+          for (const options of [{ freezeThreshold: 0, backoff: false }, { freezeThreshold: 0 }, {}] as const) {
+            const incremental = createIncrementalLatexPreprocessor(options);
+            for (let i = 1; i <= doc.length; i++) {
+              const frame = doc.slice(0, i);
+              expect(incremental(frame), `${JSON.stringify(doc)} ${JSON.stringify(options)} len=${i}`).toBe(
+                preprocessLaTeX(frame)
+              );
+            }
+          }
+        }
+      }
+    }
+  });
+
+  test('a block closed on its opener line, and a closer with trailing text, still close', () => {
+    expect(preprocessLaTeX('$$|a|$$ then | b')).toBe('$$\\vert{}a\\vert{}$$ then | b');
+    expect(preprocessLaTeX('$$\n| a |\nE = mc^2 $$ then | b\n')).toBe(
+      '$$\n\\vert{} a \\vert{}\nE = mc^2 $$ then | b\n'
+    );
+  });
+});
+
 describe('preprocessLaTeX — an indented $$ opener is bounded by its container', () => {
   // remark-math scopes a `$$` fence inside a list item to the item: the
   // first line indented less than the item's content ends the item, and
@@ -1207,14 +1265,17 @@ describe('preprocessLaTeX — an indented $$ opener is bounded by its container'
 
   test('the block ended by its container does not pair with a later top-level block', () => {
     const content = '- Item\n\n  $$\n  a | b\n\nAfter | text\n\n$$\n| c |\n$$';
-    const expected = '- Item\n\n  $$\n  a | b\n\nAfter | text\n\n$$\n\\vert{} c \\vert{}\n$$';
+    const expected = '- Item\n\n  $$\n  a \\vert{} b\n\nAfter | text\n\n$$\n\\vert{} c \\vert{}\n$$';
+    // The item's block is math up to the item's end (remark-math renders it
+    // so), and its pipe is escaped like any other block's; the prose after
+    // the list keeps its pipe.
     expect(preprocessLaTeX(content)).toBe(expected);
     expect(mathShape(expected)).toEqual([
       'list',
       '  listItem',
       '    paragraph',
       '      text',
-      '    math "a | b"',
+      '    math "a \\\\vert{} b"',
       'paragraph',
       '  text',
       'math "\\\\vert{} c \\\\vert{}"',

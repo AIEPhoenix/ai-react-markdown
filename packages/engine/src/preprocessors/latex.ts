@@ -597,26 +597,30 @@ function hasBlankLineBetween(text: string, from: number, to: number): boolean {
  * Escape pipes in LaTeX expressions to prevent them from being interpreted as
  * column separators in markdown tables.
  *
- * A `$$` pair may span line endings, but only a MATH-FLOW opener
- * (`opensMathFlow`: line start, at most three columns in) may span a blank
- * line. remark-math pairs a mid-line `$$` (math text) inside its paragraph
- * alone, and a paragraph ends at a blank line, so a mid-line `$$` whose
+ * MATH-FLOW blocks (`opensMathFlow`: a `$$` at a line start, at most three
+ * columns in) come from the unclosed scan, `findUnclosedDelimiter`, which
+ * is the one walk that knows where a block ends: at a `$$` with no partner
+ * on its line (a `$$…$$` line inside the block is content), at the end of
+ * the list item holding it (`dedentEnds`), or nowhere yet. Everything in a
+ * block is math and is escaped whole. The lazy pair regex used to be the
+ * only entry into a block, and inside one it is out of phase with
+ * remark-math: it paired the opener of `$$\n$$\int$$\n\n$$\n| a | b |` with
+ * the first token of line 2, refused the next pair across the blank line
+ * and took the real closer on line 4 as an opener, escaping the prose
+ * pipes — stateless only, because the incremental path had frozen the
+ * settled block and saw line 4 as a lone opener (release soak, latex leg,
+ * seed 202719523). A dedent-ended block was entered only once some later
+ * `$$` made a pair, so a block frozen on an earlier frame changed bytes
+ * when the pair arrived. Both are gone with the scan as the sole source.
+ *
+ * Between blocks the pairs are lazy (`escapeLatexPairs`): inline `$…$`,
+ * and mid-line `$$…$$`, which remark-math pairs inside its paragraph
+ * alone. A paragraph ends at a blank line, so a mid-line `$$` whose
  * nearest `$$` lies past a blank line is literal text; the scan resumes
  * right after it so that `$$` can open the next pair — which it really is.
  * The price in `It costs $$100 …` used to pair with the opener of the
  * display block below it, and the block's own closer then read as an
  * unclosed opener. Same rule as `findUnclosedDelimiter`'s inline reset.
- *
- * Likewise a pair may not cross the point where the unclosed scan ends a
- * list item's block at the item's end (`dedentEnds`; see `flowIndent`).
- * The pairs here are lazy — inside a block, a `$$x$$` line pairs the
- * block's opener with its own first token — so a mid-line `$$` later in
- * the block would otherwise pair with the first `$$` past the item, which
- * the scan sees as an opener; the incremental wrapper freezes on the
- * scan's verdict, so the two passes must draw that boundary in the same
- * place (entry-floor evidence harness: a seam divergence after
- * `   $$ x^2` in a list). The scan reports those points (`closures`), so
- * this pass and the scan agree by construction.
  *
  * @param text Input string containing LaTeX expressions
  * @param runStartsAtLineStart Virtual predecessor for `opensMathFlow` when
@@ -626,38 +630,50 @@ function hasBlankLineBetween(text: string, from: number, to: number): boolean {
  * @modified from https://github.com/lobehub/lobe-ui/blob/master/src/hooks/useMarkdown/latex.ts
  */
 function escapeLatexPipes(text: string, runStartsAtLineStart: boolean, preceding: readonly string[]): string {
+  // The flow blocks as the unclosed scan sees them, in text order (blocks
+  // neither nest nor overlap, and the scan records each as it ends).
+  // Every block is escaped whole, from the scan's verdict alone — never
+  // from a regex pair, which would only exist once some later `$$` had
+  // arrived and so could change a block frozen on an earlier frame.
+  const blocks: FlowBlockEnd[] = [];
+  if (text.includes('$$')) findUnclosedDelimiter(text, 'double-only', runStartsAtLineStart, preceding, blocks);
   let out = '';
-  let last = 0;
-  // The line endings at which the scan ends a list item's block, computed
-  // once, on the first display pair (most runs have none). Ascending, and
-  // so are the pairs, so the check below keeps a cursor instead of
-  // searching the whole list for every pair.
-  let closures: number[] | null = null;
-  let closureCursor = 0;
-  const crossesClosure = (at: number[], from: number, to: number): boolean => {
-    while (closureCursor < at.length && at[closureCursor] < from) closureCursor += 1;
-    return closureCursor < at.length && at[closureCursor] < to;
-  };
-  LATEX_BLOCK_REGEX.lastIndex = 0;
+  let pos = 0;
+  for (const block of blocks) {
+    out += escapeLatexPairs(text, pos, block.start, runStartsAtLineStart);
+    if (block.by === 'open') {
+      // A still-open block runs to the end of the run and is the tail
+      // pass's (`escapeLatexPipesInUnclosed`).
+      return out + text.slice(block.start);
+    }
+    const body = text.slice(block.start + 2, block.by === 'closer' ? block.end - 2 : block.end);
+    out += `$$${replaceUnescapedPipes(body)}` + (block.by === 'closer' ? '$$' : '');
+    pos = block.end;
+  }
+  return out + escapeLatexPairs(text, pos, text.length, runStartsAtLineStart);
+}
+
+/** The lazy-pair pass over `text[from, to)` — the gap between two flow
+ *  blocks: inline `$…$` pairs and mid-line `$$…$$` pairs. A pair never
+ *  reaches into a block: the scan closes an inline `$$` at the next `$$`
+ *  whatever its column, so a line-start `$$` a pair could reach is not a
+ *  block opener to the scan either. */
+function escapeLatexPairs(text: string, from: number, to: number, runStartsAtLineStart: boolean): string {
+  if (from >= to) return '';
+  let out = '';
+  let last = from;
+  LATEX_BLOCK_REGEX.lastIndex = from;
   let m: RegExpExecArray | null;
-  while ((m = LATEX_BLOCK_REGEX.exec(text)) !== null) {
+  while ((m = LATEX_BLOCK_REGEX.exec(text)) !== null && m.index + m[0].length <= to) {
     const match = m[0];
     const display = m[1];
     const inline = m[2];
     if (display !== undefined) {
       const bodyStart = m.index + 2;
       const bodyEnd = m.index + match.length - 2;
-      if (closures === null) {
-        closures = [];
-        findUnclosedDelimiter(text, 'double-only', runStartsAtLineStart, preceding, closures);
-      }
-      if (
-        (flowIndent(text, m.index, runStartsAtLineStart) === -1 && hasBlankLineBetween(text, bodyStart, bodyEnd)) ||
-        crossesClosure(closures, bodyStart, bodyEnd)
-      ) {
-        // Mid-line opener across a blank line, or a pair crossing the end
-        // of a list item's block: literal here, and the closer may be the
-        // real opener of the next pair.
+      if (flowIndent(text, m.index, runStartsAtLineStart) === -1 && hasBlankLineBetween(text, bodyStart, bodyEnd)) {
+        // Mid-line opener across a blank line: literal here, and the
+        // closer may be the real opener of the next pair.
         LATEX_BLOCK_REGEX.lastIndex = bodyStart;
         continue;
       }
@@ -669,7 +685,7 @@ function escapeLatexPipes(text: string, runStartsAtLineStart: boolean, preceding
     }
     last = m.index + match.length;
   }
-  return out + text.slice(last);
+  return out + text.slice(last, to);
 }
 
 /**
@@ -692,6 +708,18 @@ function isEscapedByBackslashRun(text: string, pos: number): boolean {
  *  reports it: a `$$` that opens a math FLOW (the block the truncation
  *  exists for), a `$$` that is inline math TEXT, or a single `$`. */
 type UnclosedKind = 'flow' | 'inline' | 'single';
+
+/** Where a flow block ends, as `findUnclosedDelimiter` reports it. */
+interface FlowBlockEnd {
+  /** Index of the opener's first `$`. */
+  start: number;
+  /** Index just past the closing `$$`, the line ending at which a list
+   *  item ended the block, or the text length while the block is open. */
+  end: number;
+  /** What ended it: a closing `$$` (the body then stops before it), a
+   *  list item's end (`dedent`), or nothing yet (`open`). */
+  by: 'closer' | 'dedent' | 'open';
+}
 
 interface UnclosedDelimiter {
   /** Index of the opener's first `$`. */
@@ -773,15 +801,18 @@ function nextDoubleDollarOnLine(text: string, from: number): number {
  * @param runStartsAtLineStart  Virtual predecessor for `opensMathFlow` when
  *   an opener sits at offset 0 (see `transformRun`).
  * @param preceding  The text before the run, for `listContentIndent`.
- * @param closures  When given, receives the index of each line ending at
- *   which a list item's block was ended by a dedent.
+ * @param blocks  When given, receives every FLOW block in text order:
+ *   its opener's index, where it ends (just past its closing `$$`, at the line ending
+ *   where a list item ended it, or `text.length` while still open) and
+ *   whether a closing `$$` ended it. `escapeLatexPipes` escapes such a
+ *   block whole, so the two passes agree on the block's extent.
  */
 function findUnclosedDelimiter(
   text: string,
   mode: 'both' | 'double-only',
   runStartsAtLineStart: boolean,
   preceding: readonly string[],
-  closures?: number[]
+  blocks?: FlowBlockEnd[]
 ): UnclosedDelimiter | null {
   let open: UnclosedDelimiter | null = null;
   // Whether the scan has left the open FLOW opener's own line.
@@ -804,12 +835,14 @@ function findUnclosedDelimiter(
       } else if (open.kind === 'flow' && pastOpenerLine) {
         const partner = nextDoubleDollarOnLine(text, i + 2);
         if (partner === -1) {
+          blocks?.push({ start: open.start, end: i + 2, by: 'closer' });
           open = null;
           i += 2;
         } else {
           i = partner + 2;
         }
       } else {
+        if (open.kind === 'flow') blocks?.push({ start: open.start, end: i + 2, by: 'closer' });
         open = null;
         i += 2;
       }
@@ -826,13 +859,14 @@ function findUnclosedDelimiter(
       if ((c === '\n' || c === '\r') && open !== null) {
         if (open.kind === 'single' || (open.kind === 'inline' && isBlankLineAt(text, i))) open = null;
         else if (open.kind === 'flow' && open.indent > 0 && dedentEnds(text, i, open.indent)) {
+          blocks?.push({ start: open.start, end: i, by: 'dedent' });
           open = null;
-          closures?.push(i);
         } else pastOpenerLine = true;
       }
       i += 1;
     }
   }
+  if (open !== null && open.kind === 'flow') blocks?.push({ start: open.start, end: text.length, by: 'open' });
   return open;
 }
 
@@ -1297,7 +1331,7 @@ export type ProcessSliceOptions = (
 ) & {
   /** The source before `slice` — the incremental wrapper's frozen prefix.
    *  Read only backwards, by `listContentIndent`, to tell whether an
-   *  indented `$` opener is list item content; the stateless entry and
+   *  indented `$$` opener is list item content; the stateless entry and
    *  the evidence harnesses pass nothing (the slice IS the document). */
   precedingText?: string;
 };
