@@ -178,6 +178,31 @@ describe('framework-neutral pipeline consumer', () => {
     expect(deriveTailSignal(pipeline.mdast, content.length)).toEqual({ kind: 'footnote-def', identifier: 'a' });
   });
 
+  test('a link definition nested inside a footnote body is published for sibling chunks', () => {
+    // PASS 0 claims the nested label (so a sibling phantom-injects `[x]`);
+    // the publisher must contribute the definition or the sibling's
+    // placeholder never resolves.
+    const registry = createRegistry();
+    const content = '[^a]: see [x]\n\n    [x]: /url "T"\n\nflow [^a]\n';
+    const ownLabels = collectDefLabels(content);
+    expect([...ownLabels.linkLabels]).toEqual(['X']);
+    const sym = registry.registerChunk('owner', ownLabels.footnoteLabels, ownLabels.linkLabels);
+    expect([...registry.labelSet.linkLabels]).toEqual(['X']);
+    createContributionSession().commit({
+      pipeline: full(content),
+      ownLabels,
+      registry,
+      targetPhantoms: options.targetPhantoms,
+      sym,
+      clobberPrefix: prefix,
+      chain: [],
+    });
+    expect(registry.canonicalLinkFor('X')).toBe(sym);
+    expect(registry.resolveLinkDef('x')).toEqual({ identifier: 'X', url: '/url', title: 'T' });
+    // The `[x]` inside the body is not a flow ref of the chunk.
+    expect(registry.chunkData.get(sym)!.refs).toEqual([{ label: 'A', kind: 'footnote', referenceType: undefined }]);
+  });
+
   test('a label containing a valid percent-escape keeps its harvested body', () => {
     // `[^a%41]` is minted as `<li id="…fn-a%41">` (normalizeUri keeps a
     // well-formed escape). Decoding that id gave `aA`, which never matched
