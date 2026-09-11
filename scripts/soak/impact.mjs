@@ -127,12 +127,13 @@ export function jobRuntimes(text) {
   );
 }
 export function workflowRuntimeChanged(before, after) {
-  const pins = (jobs) => new Set([...jobs.values()].flat());
-  const beforePins = pins(before),
-    afterPins = pins(after);
+  const beforePins = new Set([...before.values()].flat());
   for (const [id, was] of before) {
     const now = after.get(id);
-    if (now ? canonical(was) !== canonical(now) : was.some((pin) => !afterPins.has(pin))) return true;
+    // A removed job's identity cannot prove its verification still runs
+    // elsewhere (a rename plus an upgrade keeps every pin present somewhere),
+    // so any removed job that carried a pin is a change, a pure rename too.
+    if (now ? canonical(was) !== canonical(now) : was.length > 0) return true;
   }
   for (const [id, now] of after) if (!before.has(id) && now.some((pin) => !beforePins.has(pin))) return true;
   return false;
@@ -173,10 +174,9 @@ export function classify(paths, before, after) {
     } else if (/^\.github\/workflows\/(release|ci)\.yml$/.test(file)) {
       // Node pins are compared per job. A job present on both sides must keep
       // its pins (swapping two jobs' pins is a runtime change even though the
-      // set of pins is not). A job that appears or disappears is judged by
-      // its pins alone: a new job on a pin the base already ran, or a removed
-      // job whose pin another job still runs, does not change the runtime
-      // the engine is verified under; a pin that is new or gone entirely does.
+      // set of pins is not), and any removed job that carried a pin is a
+      // change. Only a new job on a pin the base already ran, with every
+      // existing job unchanged, leaves the verified runtime as it was.
       if (workflowRuntimeChanged(jobRuntimes(a), jobRuntimes(b))) reasons.push(`${file}: Node runtime changed`);
     } else if (/^packages\/(engine|remark-mark-highlight)\/package.json$/.test(file)) {
       if (!a || !b || manifestInputs(a) !== manifestInputs(b))
