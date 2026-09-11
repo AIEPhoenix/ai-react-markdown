@@ -884,13 +884,11 @@ function escapeLatexPipesInUnclosed(text: string, runStartsAtLineStart: boolean)
  * loses content from a finished document, which is the defect this rule
  * exists to stop. Blockquotes stay out of the model: `> $$` is not a flow
  * opener here, so nothing after it is ever truncated.
+ *
+ * The function is `flowIndent`: the indent (0-3 spaces) of a `$$` at `pos`
+ * that opens a math flow, or -1 when it does not open one. The comments
+ * that call the predicate `opensMathFlow` mean `flowIndent(...) !== -1`.
  */
-function opensMathFlow(text: string, pos: number, runStartsAtLineStart: boolean): boolean {
-  return flowIndent(text, pos, runStartsAtLineStart) !== -1;
-}
-
-/** The indent (0-3 spaces) of a `$$` at `pos` that opens a math flow, or
- *  -1 when it does not open one. */
 function flowIndent(text: string, pos: number, runStartsAtLineStart: boolean): number {
   // Walk back over the current line. A line ending settles it (`\n`, or `\r`
   // — CRLF is met at its `\n`; a lone `\r` is a line ending here exactly as
