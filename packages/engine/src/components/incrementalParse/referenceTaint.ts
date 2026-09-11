@@ -313,9 +313,9 @@ export function collectRefLine(
         //     which one holds depends on the open container stack;
         //   - any marker at ≥4 indent after a paragraph is lazy text
         //     (`para` / `    - [x] b` is a reference);
-        //   - bare `- [x]`, `- [x] ` (whitespace only) and `- [x]　text`
-        //     (U+3000 / U+00A0 are not `markdownSpace`) fail the construct
-        //     and are references; `- [x]text` too.
+        //   - bare `- [x]`, `- [x] ` (whitespace only) and `- [x]` + U+3000
+        //     + `text` (U+3000 / U+00A0 are not `markdownSpace`) fail the
+        //     construct and are references; `- [x]text` too.
         // A conservative candidate over-blocks; a skipped candidate that a
         // later definition retargets changes frozen output — the unsafe
         // direction. Lifting this needs the item's content column and the
