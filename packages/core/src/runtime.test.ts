@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, test, vi } from 'vitest';
 import { visit } from 'unist-util-visit';
 import {
+  EngineRawHtmlDepthError,
   buildCoreRemarkPlugins,
   buildCoreRehypePlugins,
   buildCoreRemarkRehypeOptions,
@@ -125,17 +126,19 @@ describe('framework-neutral pipeline consumer', () => {
     }
   });
 
-  test('a full parse that throws renders the content as one plain-text paragraph instead of crashing', () => {
-    // Thousands of nested raw `<div>` tags overflow the recursive
-    // hast-util-from-parse5 walk (RangeError: Maximum call stack size
-    // exceeded) inside rehype-raw. The incremental path's fallback IS the
-    // full parse, so nothing above it caught the throw and the adapter
-    // subtree crashed. The session now degrades one hostile message to
-    // plain text and keeps the surface alive.
+  test('raw HTML nested past the engine bound renders as one plain-text paragraph instead of crashing', () => {
+    // Thousands of nested raw `<div>` tags would exhaust the call stack of
+    // some recursive walker after the raw-HTML step (the walk itself at
+    // about 1,900 levels under Node 24; Vue's mount in Chromium at about
+    // 1,000). The engine's guarded raw step bounds element depth iteratively
+    // (RAW_HTML_MAX_DEPTH, 256) and reports a deeper frame as
+    // EngineRawHtmlDepthError; ONLY that error degrades the frame to plain
+    // text. The incremental path's fallback is the full parse, so nothing
+    // above the session would catch it and the adapter subtree crashed.
     const content = '<div>'.repeat(3000) + 'x';
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
-      expect(() => full(content)).toThrow(RangeError);
+      expect(() => full(content)).toThrow(EngineRawHtmlDepthError);
       for (const incremental of [true, false]) {
         const session = createPipelineSession();
         const trees = session.parse({ ...options, content, incrementalParse: incremental });
@@ -167,6 +170,64 @@ describe('framework-neutral pipeline consumer', () => {
         );
       }
       expect(error).toHaveBeenCalled();
+    } finally {
+      error.mockRestore();
+    }
+  });
+
+  test('a throwing consumer plugin propagates out of parse on both the incremental and one-shot paths', () => {
+    // The plain-text fallback is reserved for the engine's own raw-depth
+    // signal. A plugin supplied through the public createPipelineSession API
+    // that throws is a bug the host must see, whatever the error type: an
+    // Error, and a RangeError that is not a stack overflow. On the
+    // incremental path the engine's throw clears the retained state and the
+    // frame retries through the full pipeline, which throws the same error
+    // again; that second throw is what reaches the caller.
+    const failures = [new Error('redaction policy failed'), new RangeError('Invalid array length')];
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      for (const failure of failures) {
+        const remarkPlugins = [
+          ...(options.remarkPlugins ?? []),
+          () => () => {
+            throw failure;
+          },
+        ] as PipelineFrameOptions['remarkPlugins'];
+        const rehypePlugins = [
+          ...(options.rehypePlugins ?? []),
+          () => () => {
+            throw failure;
+          },
+        ] as PipelineFrameOptions['rehypePlugins'];
+        for (const incremental of [true, false]) {
+          for (const plugins of [{ remarkPlugins }, { rehypePlugins }]) {
+            const session = createPipelineSession();
+            let caught: unknown;
+            try {
+              session.parse({ ...options, ...plugins, content: 'Some **text**.', incrementalParse: incremental });
+            } catch (thrown) {
+              caught = thrown;
+            }
+            expect(caught, `${failure.message} / incremental=${incremental}`).toBe(failure);
+            // The session is still usable with healthy inputs afterwards.
+            expect(session.parse({ ...options, content: 'Recovered.', incrementalParse: incremental })).toEqual(
+              full('Recovered.')
+            );
+          }
+        }
+      }
+      // The reviewer's shape: the bare public API with one throwing remark plugin.
+      expect(() =>
+        createPipelineSession().parse({
+          ...options,
+          remarkPlugins: [
+            () => () => {
+              throw new Error('redaction policy failed');
+            },
+          ] as PipelineFrameOptions['remarkPlugins'],
+          content: 'x',
+        })
+      ).toThrow('redaction policy failed');
     } finally {
       error.mockRestore();
     }

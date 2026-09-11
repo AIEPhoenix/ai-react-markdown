@@ -160,28 +160,22 @@ test('Git evidence ranges allow adapter follow-ups but invalidate engine changes
   }
 });
 
-test('adding a job on the existing Node pin is not a runtime change', () => {
-  const pinned = 'jobs: {ci: {steps: [{with: {runtime: node@22.23.2}}]}}';
-  assert.equal(
-    check(
-      '.github/workflows/ci.yml',
-      pinned,
-      'jobs: {docs: {steps: [{with: {runtime: node@22.23.2}}]}, ci: {steps: [{with: {runtime: node@22.23.2}}]}}'
-    ),
-    false
-  );
-  assert.equal(
-    check('.github/workflows/ci.yml', pinned, 'jobs: {renamed: {steps: [{with: {runtime: node@22.23.2}}]}}'),
-    false
-  );
-  assert.equal(
-    check(
-      '.github/workflows/ci.yml',
-      pinned,
-      'jobs: {docs: {steps: [{with: {runtime: node@24.20.0}}]}, ci: {steps: [{with: {runtime: node@22.23.2}}]}}'
-    ),
-    true
-  );
+// Workflow Node pins are compared PER JOB for jobs present in both versions.
+// Any removed job that carried pins is a runtime change: a removed job's
+// identity cannot prove the engine verification it ran is still running
+// elsewhere (a rename plus an upgrade keeps every pin present somewhere).
+// A new job is exempt only when its pins are already present and every
+// existing job is unchanged. Comparing the bare set of pins loses the
+// mapping: swapping two jobs' pins keeps the set identical.
+const workflowJobs = (jobs) =>
+  `jobs: {${Object.entries(jobs)
+    .map(([id, pin]) => `${id}: {steps: [{with: {runtime: ${pin}}}]}`)
+    .join(', ')}}`;
+const workflowChanged = (before, after) => check('.github/workflows/ci.yml', workflowJobs(before), workflowJobs(after));
+
+test('a new job on a Node pin the base already runs is not a runtime change', () => {
+  // The PR that added the `docs` CI job on the existing 22.23.2 pin.
+  assert.equal(workflowChanged({ ci: 'node@22.23.2' }, { docs: 'node@22.23.2', ci: 'node@22.23.2' }), false);
   assert.equal(
     check(
       '.github/workflows/release.yml',
@@ -192,11 +186,71 @@ test('adding a job on the existing Node pin is not a runtime change', () => {
   );
 });
 
-test('soak control tests are not part of the soak mechanism', () => {
-  for (const file of ['scripts/soak/impact.test.mjs', 'scripts/soak/soak-control.test.mjs'])
-    assert.equal(check(file, 'const a=1;', 'const a=2;'), false, file);
-  for (const file of ['scripts/soak/soak-runner.mjs', 'scripts/soak/impact.mjs', 'scripts/soak/soak.sh'])
+test('a new job on a Node pin the base never ran is a runtime change', () => {
+  assert.equal(workflowChanged({ ci: 'node@22.23.2' }, { docs: 'node@24.20.0', ci: 'node@22.23.2' }), true);
+});
+
+test('a changed pin on an existing job is a runtime change', () => {
+  assert.equal(workflowChanged({ ci: 'node@22.23.2' }, { ci: 'node@24.20.0' }), true);
+  assert.equal(
+    workflowChanged({ verify: 'node@22.23.2', docs: 'node@22.23.2' }, { verify: 'node@24.20.0', docs: 'node@22.23.2' }),
+    true
+  );
+});
+
+test('swapping the pins of two existing jobs is a runtime change even though the pin set is unchanged', () => {
+  // The reviewer's reproduction: verify 22 + docs 24 -> verify 24 + docs 22
+  // kept the set {22, 24} and was reported as no change.
+  assert.equal(
+    workflowChanged({ verify: 'node@22.23.2', docs: 'node@24.20.0' }, { verify: 'node@24.20.0', docs: 'node@22.23.2' }),
+    true
+  );
+});
+
+test('removing any job that carried a pin is a runtime change, whether or not the pin survives elsewhere', () => {
+  assert.equal(workflowChanged({ ci: 'node@22.23.2', legacy: 'node@20.19.0' }, { ci: 'node@22.23.2' }), true);
+  assert.equal(workflowChanged({ ci: 'node@22.23.2', docs: 'node@22.23.2' }, { ci: 'node@22.23.2' }), true);
+  // A removed job without any pin says nothing about the runtime.
+  assert.equal(
+    check(
+      '.github/workflows/ci.yml',
+      'jobs: {ci: {steps: [{with: {runtime: node@22.23.2}}]}, lint: {steps: [{run: pnpm lint}]}}',
+      'jobs: {ci: {steps: [{with: {runtime: node@22.23.2}}]}}'
+    ),
+    false
+  );
+});
+
+test('a pure rename of a pinned job is a runtime change', () => {
+  assert.equal(workflowChanged({ ci: 'node@22.23.2' }, { renamed: 'node@22.23.2' }), true);
+});
+
+test('a renamed and upgraded verification job is a runtime change even when every pin survives elsewhere', () => {
+  // The reviewer's reproduction: verify=22, docs=22, compat=24 ->
+  // verifyNew=24, docs=22, compat=24. Every removed and added pin exists on
+  // the other side, yet the engine is no longer verified on 22 by that job.
+  assert.equal(
+    workflowChanged(
+      { verify: 'node@22.23.2', docs: 'node@22.23.2', compat: 'node@24.20.0' },
+      { verifyNew: 'node@24.20.0', docs: 'node@22.23.2', compat: 'node@24.20.0' }
+    ),
+    true
+  );
+});
+
+test('every file under scripts/soak/ except Markdown is soak mechanism, tests included', () => {
+  // A control test can express a mechanism change on its own (a gate
+  // rewritten to accept looser evidence), so the rule fails closed; the
+  // cost is that a fixture rename in impact.test.mjs also requires soak.
+  for (const file of [
+    'scripts/soak/impact.test.mjs',
+    'scripts/soak/soak-control.test.mjs',
+    'scripts/soak/soak-runner.mjs',
+    'scripts/soak/impact.mjs',
+    'scripts/soak/soak.sh',
+  ])
     assert.equal(check(file, 'const a=1;', 'const a=2;'), true, file);
+  assert.equal(check('scripts/soak/README.md', 'a', 'b'), false);
 });
 
 test('matrix Node upgrades require new verification', () => {

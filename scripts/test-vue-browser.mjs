@@ -77,8 +77,17 @@ try {
     window.__VUE_DEVTOOLS_GLOBAL_HOOK__ = { emit() {}, on() {}, once() {}, off() {} };
   });
   const errors = [];
+  // The deep raw-HTML case degrades a frame on purpose. A development core
+  // entry reports exactly that with the depth diagnostic below (the bundle
+  // resolves the production entry, which is silent); only that one message
+  // is tolerated, and only while the case runs, so any other engine error
+  // during the deep frame still counts as a page error.
+  const depthDiagnostic =
+    '[ai-react-markdown] raw HTML nested past the engine depth bound — rendering this frame as plain text:';
+  let expectDegraded = false;
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('console', (msg) => {
+    if (expectDegraded && msg.type() === 'error' && msg.text().startsWith(depthDiagnostic)) return;
     if (msg.type() === 'error' || /hydration|recursive updates/i.test(msg.text())) errors.push(msg.text());
   });
   await page.goto(`http://127.0.0.1:${server.address().port}`);
@@ -141,6 +150,22 @@ try {
     await page.locator('#cursor-probe .aimd-vue-cursor').evaluate((node) => node.style.visibility),
     'hidden'
   );
+  // Deep raw HTML: thousands of nested <div> tags exceed the engine's
+  // nesting bound at the raw-HTML step (and, unbounded, would exhaust the
+  // call stack in Vue's mount well before the parser gives out in Firefox
+  // or WebKit). The frame must degrade to one escaped plain-text paragraph
+  // instead of crashing the subtree, and the next healthy frame must render
+  // normally.
+  assert.equal(await page.locator('#deep').innerText(), 'shallow start');
+  const deep = '<div>'.repeat(3000) + 'x';
+  expectDegraded = true;
+  await page.evaluate((deep) => window.vueProbe.update({ deep }), deep);
+  await page.waitForFunction((deep) => document.querySelector('#deep p')?.textContent === deep, deep);
+  assert.equal(await page.locator('#deep div').count(), 0, 'the degraded frame renders escaped text, not markup');
+  await page.evaluate(() => window.vueProbe.update({ deep: 'Recovered **frame**' }));
+  await page.waitForFunction(() => document.querySelector('#deep strong')?.textContent === 'frame');
+  assert.equal(await page.locator('#deep').innerText(), 'Recovered frame');
+  expectDegraded = false;
   // Forced-GC ownership assertions use Chromium's collection hook.
   if (browserName === 'chromium') {
     // Keep one provider mounted while repeatedly replacing and releasing documents.
@@ -212,7 +237,7 @@ try {
   assert.equal(await page.locator('#app .aimd-vue').count(), 0);
   assert.deepEqual(errors, []);
   console.log(
-    `Vue ${browserName}: hydration, references, isolation, definition removal, document switch, custom components, smooth drain/turn-taking, cursor layout and unmount PASS`
+    `Vue ${browserName}: hydration, references, isolation, definition removal, document switch, custom components, smooth drain/turn-taking, cursor layout, deep raw HTML degrade/recovery and unmount PASS`
   );
 } finally {
   await browser?.close();

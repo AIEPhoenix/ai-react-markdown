@@ -20,7 +20,7 @@
  */
 
 import rehypeKatex from 'rehype-katex';
-import rehypeRaw from '@ai-markdown/rehype-raw';
+import rehypeRawGuard from './rehypeRawGuard';
 import rehypeUnwrapImages from 'rehype-unwrap-images';
 import { rehypeUnwrapCrossChunkImages } from './rehypeUnwrapCrossChunkImages';
 import rehypeSanitize from 'rehype-sanitize';
@@ -121,8 +121,10 @@ export function buildCoreRehypePlugins(
   options?: CoreRehypePluginsOptions
 ): RehypePlugins {
   return [
-    // Allow raw HTML through so rehype-sanitize can handle it.
-    [rehypeRaw, { passThrough: [] }],
+    // Allow raw HTML through so rehype-sanitize can handle it. The guard
+    // reports the step's own stack overflow on hostile nesting as
+    // EngineRawHtmlDepthError (see rehypeRawGuard); nothing else changes.
+    [rehypeRawGuard, { passThrough: [] }],
     // Unwrap forged engine placeholders BEFORE sanitize admits their tag
     // names. Only when the caller holds a credential (see the option's doc).
     ...(options

@@ -112,6 +112,32 @@ export function workspaceInputs(text, lockText) {
   if (included.some(([, present]) => !present)) throw new Error('Engine verification workspace is excluded');
   return canonical({ options, included });
 }
+/** Job id → sorted Node pins (`node@x.y.z`) from `with.runtime` steps and
+ *  `strategy.matrix.node` entries of a CI or release workflow. */
+export function jobRuntimes(text) {
+  const workflow = parse(text) ?? {};
+  return new Map(
+    Object.entries(workflow.jobs ?? {}).map(([id, job]) => [
+      id,
+      [
+        ...(job.steps ?? []).filter((step) => step.with?.runtime).map((step) => String(step.with.runtime)),
+        ...(job.strategy?.matrix?.node ?? []).map((node) => `node@${node}`),
+      ].sort(),
+    ])
+  );
+}
+export function workflowRuntimeChanged(before, after) {
+  const beforePins = new Set([...before.values()].flat());
+  for (const [id, was] of before) {
+    const now = after.get(id);
+    // A removed job's identity cannot prove its verification still runs
+    // elsewhere (a rename plus an upgrade keeps every pin present somewhere),
+    // so any removed job that carried a pin is a change, a pure rename too.
+    if (now ? canonical(was) !== canonical(now) : was.length > 0) return true;
+  }
+  for (const [id, now] of after) if (!before.has(id) && now.some((pin) => !beforePins.has(pin))) return true;
+  return false;
+}
 export function classify(paths, before, after) {
   const reasons = [];
   for (const file of paths) {
@@ -146,21 +172,12 @@ export function classify(paths, before, after) {
       };
       if (inputs(a) !== inputs(b)) reasons.push(`${file}: package manager or soak entry points changed`);
     } else if (/^\.github\/workflows\/(release|ci)\.yml$/.test(file)) {
-      // Compare the set of Node versions the workflow runs on, not which job
-      // runs them: adding or renaming a job that keeps the existing pin does
-      // not change the runtime the engine is verified under.
-      const runtimes = (text) => {
-        const workflow = parse(text) ?? {};
-        return [
-          ...new Set(
-            Object.values(workflow.jobs ?? {}).flatMap((job) => [
-              ...(job.steps ?? []).filter((step) => step.with?.runtime).map((step) => String(step.with.runtime)),
-              ...(job.strategy?.matrix?.node ?? []).map((node) => `node@${node}`),
-            ])
-          ),
-        ].sort();
-      };
-      if (canonical(runtimes(a)) !== canonical(runtimes(b))) reasons.push(`${file}: Node runtime changed`);
+      // Node pins are compared per job. A job present on both sides must keep
+      // its pins (swapping two jobs' pins is a runtime change even though the
+      // set of pins is not), and any removed job that carried a pin is a
+      // change. Only a new job on a pin the base already ran, with every
+      // existing job unchanged, leaves the verified runtime as it was.
+      if (workflowRuntimeChanged(jobRuntimes(a), jobRuntimes(b))) reasons.push(`${file}: Node runtime changed`);
     } else if (/^packages\/(engine|remark-mark-highlight)\/package.json$/.test(file)) {
       if (!a || !b || manifestInputs(a) !== manifestInputs(b))
         reasons.push(`${file}: runtime or build contract changed`);
@@ -171,9 +188,11 @@ export function classify(paths, before, after) {
     } else if (/^corpus\/documents\//.test(file)) {
       reasons.push(`${file}: engine differential verification input changed`);
     } else if (/^scripts\/soak\/|^tsconfig\.base\.json$|^patches\//.test(file)) {
-      // The node:test suites under scripts/soak/ check the control scripts;
-      // they are not part of the soak mechanism the evidence was produced by.
-      if (!/\.md$|\.test\.mjs$/.test(file)) reasons.push(`${file}: shared toolchain or soak mechanism changed`);
+      // Everything under scripts/soak/ except Markdown is mechanism, the
+      // node:test suites included: a test rewritten to accept a looser gate
+      // is a mechanism change expressed only through its test, so the rule
+      // fails closed and a fixture rename costs a soak.
+      if (!file.endsWith('.md')) reasons.push(`${file}: shared toolchain or soak mechanism changed`);
     }
   }
   // Root vitest.config.ts hosts unit/Storybook projects for normal CI. The

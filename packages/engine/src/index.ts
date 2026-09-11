@@ -62,6 +62,7 @@ export {
   type RehypeRebaseHashLinksOptions,
 } from './components/rehypeRebaseHashLinks';
 export { default as rehypeFooterAdorn } from './components/rehypeFooterAdorn';
+export { EngineRawHtmlDepthError } from './components/rehypeRawGuard';
 export { buildPhantomSuffix, phantomSuffixCloser } from './components/remarkInjectPhantomDefs';
 export type { PhantomLabels } from './components/remarkInjectPhantomDefs';
 export { buildCrossChunkHandlers } from './components/customMdastHandlers';

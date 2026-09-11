@@ -27,7 +27,7 @@
     "test:core-contracts": "node scripts/check-core-contracts.mjs",
     "test:command-control": "node --test scripts/development-commands.test.mjs",
     "test:soak-control": "node --test scripts/soak/soak-control.test.mjs scripts/soak/impact.test.mjs",
-    "test:release-control": "node --test scripts/publish-packages.test.mjs scripts/check-published-release.test.mjs",
+    "test:release-control": "node --test scripts/publish-packages.test.mjs scripts/check-published-release.test.mjs scripts/version-packages.test.mjs",
     "test:document-lifetime": "node scripts/test-document-scope-lifetime.mjs",
     "test:vue-browser": "node scripts/test-vue-browser.mjs",
     "test:published-release": "node scripts/check-published-release.mjs",

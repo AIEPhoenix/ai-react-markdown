@@ -5,7 +5,7 @@
  * construction; this test keeps it holding through future refactors.
  */
 import { describe, expect, test } from 'vitest';
-import rehypeRaw from '@ai-markdown/rehype-raw';
+import rehypeRawGuard from './rehypeRawGuard';
 import rehypeSanitize from 'rehype-sanitize';
 import remarkPangu from 'remark-pangu';
 import remarkSmartypants from 'remark-smartypants';
@@ -99,14 +99,14 @@ describe('buildCoreRehypePlugins — provenance verifier placement and compatibi
     const chain = buildCoreRehypePlugins(sanitizeSchema, '');
     const names = chain.map((entry) => (Array.isArray(entry) ? entry[0] : entry));
     expect(names).not.toContain(rehypeVerifyEngineTags);
-    expect(names.indexOf(rehypeRaw as never)).toBe(0);
+    expect(names.indexOf(rehypeRawGuard as never)).toBe(0);
     expect(names.indexOf(rehypeSanitize as never)).toBe(1);
   });
 
-  test('with a credential the verifier sits after rehypeRaw and before rehypeSanitize', () => {
+  test('with a credential the verifier sits after the guarded rehypeRaw and before rehypeSanitize', () => {
     const chain = buildCoreRehypePlugins(sanitizeSchema, '', { provenance: 'p' });
     const names = chain.map((entry) => (Array.isArray(entry) ? entry[0] : entry));
-    const raw = names.indexOf(rehypeRaw as never);
+    const raw = names.indexOf(rehypeRawGuard as never);
     const verify = names.indexOf(rehypeVerifyEngineTags as never);
     const sanitize = names.indexOf(rehypeSanitize as never);
     expect(raw).toBe(0);
