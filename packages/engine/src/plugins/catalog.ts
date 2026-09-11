@@ -34,6 +34,11 @@ export const removeComments = seal('removeComments', 'displayOptimize');
 /**
  * Typographic enhancements via SmartyPants — curly quotes, em-dashes, etc.
  * (v1.x: `SMARTYPANTS`). @see https://www.npmjs.com/package/smartypants
+ *
+ * Two transformers in the chain: a CJK-aware quote pass (straight quotes
+ * touching Han, kana, hangul or CJK punctuation are paired and curled
+ * first) and then `remark-smartypants` for the rest. Chain order is
+ * `removeComments`, `smartypants`, `pangu`; see `pluginChain.ts`.
  */
 export const smartypants = seal('smartypants', 'displayOptimize');
 
