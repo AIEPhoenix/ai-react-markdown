@@ -28,9 +28,16 @@ import { visit } from 'unist-util-visit';
 
 const DEFAULT_PREFIX = 'user-content-';
 
+/**
+ * Prefix the fragment of an intra-document `href`. Non-hash hrefs, hrefs
+ * already carrying the prefix, and the empty fragment `#` (scroll to top —
+ * there is no id to rebase, and `#<prefix>` would point at nothing) are
+ * returned unchanged.
+ */
 export function rebaseHashHref(href: string, prefix: string): string {
+  if (href.length < 2 || !href.startsWith('#')) return href;
   const hashPrefix = '#' + prefix;
-  return href.startsWith('#') && !href.startsWith(hashPrefix) ? hashPrefix + href.slice(1) : href;
+  return href.startsWith(hashPrefix) ? href : hashPrefix + href.slice(1);
 }
 
 export interface RehypeRebaseHashLinksOptions {
