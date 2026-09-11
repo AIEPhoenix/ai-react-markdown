@@ -46,13 +46,20 @@ export function createBlockPlanner(): BlockPlanner {
     let h = 0;
     let reusedContext = false;
     if (previous && source.startsWith(previous.source) && options.phantomFootnoteLabels === previous.phantoms) {
+      const prevHast = previous.hast.children;
+      const prevPlan = previous.result.plan;
+      /** Identity-retained whitespace text between two block outputs. */
+      const isRetainedGap = (i: number): boolean => {
+        const gap = hast.children[i];
+        return gap === prevHast[i] && gap.type === 'text' && !/\S/.test(gap.value);
+      };
       while (m < mdast.children.length) {
         const node = mdast.children[m];
         const el = hast.children[h];
-        const item = previous.result.plan[h];
+        const item = prevPlan[h];
         if (
           node !== previous.mdast.children[m] ||
-          el !== previous.hast.children[h] ||
+          el !== prevHast[h] ||
           !el ||
           el.type !== 'element' ||
           !item ||
@@ -61,13 +68,54 @@ export function createBlockPlanner(): BlockPlanner {
           !isEligible(node)
         )
           break;
+        // One mdast node can own several top-level hast siblings: an
+        // image-only paragraph with two images on one line is unwrapped to
+        // `img, " ", img`, and every sibling's block info carries the
+        // paragraph's start offset. Consume all of them with the node —
+        // leaving one behind put its offset inside the reused prefix range,
+        // where the tail's mdast slice has no counterpart (the dev build
+        // threw, production planned an uncached inline item and remounted
+        // the image on every frame). A sibling that is not identity-retained
+        // means the node's output was not carried over whole: give the node
+        // back and stop the prefix here.
+        const startOffset = item.info.startOffset;
+        let next = h + 1;
+        let complete = true;
+        for (;;) {
+          let probe = next;
+          while (probe < hast.children.length && isRetainedGap(probe)) probe++;
+          const sibling = prevPlan[probe];
+          if (!sibling || sibling.kind !== 'block' || sibling.info.startOffset !== startOffset) break;
+          if (hast.children[probe] !== prevHast[probe]) {
+            complete = false;
+            break;
+          }
+          next = probe + 1;
+        }
+        if (!complete) break;
         reusedContext ||= item.info.hasReference;
         m++;
-        h++;
-        while (h < hast.children.length) {
-          const gap = hast.children[h];
-          if (gap !== previous.hast.children[h] || gap.type !== 'text' || /\S/.test(gap.value)) break;
-          h++;
+        h = next;
+        while (h < hast.children.length && isRetainedGap(h)) h++;
+      }
+      // The tail is planned against `mdast.children.slice(m)`, so every tail
+      // block must start at or past the reused prefix's end. An output node
+      // that still points inside the prefix (a sibling shape the loop above
+      // does not model) cannot be attributed from the tail slice; plan the
+      // whole document instead, so the dev-only "no mdast counterpart"
+      // invariant keeps firing only for positions synthesized outside the
+      // source.
+      if (m > 0) {
+        const prefixEnd = mdast.children[m - 1].position?.end.offset ?? 0;
+        for (let i = h; i < hast.children.length; i++) {
+          const child = hast.children[i];
+          const at = child.type === 'element' ? child.position?.start.offset : undefined;
+          if (at !== undefined && at < prefixEnd) {
+            m = 0;
+            h = 0;
+            reusedContext = false;
+            break;
+          }
         }
       }
     }
