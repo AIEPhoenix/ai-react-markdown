@@ -8,13 +8,22 @@ import { useMarkdownChunk, type ChunkInput } from './useMarkdownChunk';
 import { AIMarkdown } from './AIMarkdown';
 import { AIMarkdownDocuments } from './documents';
 
-/** Pipeline runs per session, in session creation (= chunk setup) order.
- * The wrapper is transparent; it only counts `parse` calls. */
+/** Pipeline runs per session, in session creation (= chunk setup) order,
+ * and block-plan runs in total. The wrappers are transparent; they only
+ * count calls. */
 const parseCounts: number[] = [];
+let planCount = 0;
 vi.mock('@ai-markdown/core', async (importOriginal) => {
   const core = await importOriginal<typeof import('@ai-markdown/core')>();
   return {
     ...core,
+    createBlockPlanner: () => {
+      const planner = core.createBlockPlanner();
+      return (...args: Parameters<typeof planner>) => {
+        planCount += 1;
+        return planner(...args);
+      };
+    },
     createPipelineSession: () => {
       const session = core.createPipelineSession();
       const index = parseCounts.push(0) - 1;
@@ -302,6 +311,7 @@ describe('registry notifications do not re-run unaffected chunk pipelines', () =
   for (const incrementalParse of [true, false]) {
     test(`incrementalParse=${incrementalParse}: one append runs only the appended chunk`, async () => {
       parseCounts.length = 0;
+      planCount = 0;
       const chunks = shallowRef([
         'Intro with a [site][u] link and a claim[^n].',
         'Second section, plain prose.',
@@ -393,6 +403,10 @@ describe('registry notifications do not re-run unaffected chunk pipelines', () =
         expect(delta(parseCounts, parsesBeforeMove)).toEqual([0, 0, 0, 0, 1]);
         expect(delta(renders, rendersBeforeMove).slice(0, 4)).toEqual([1, 0, 0, 0]);
         expect(anchors(root).map((a) => a.props.href)).toContain('https://example.org');
+        // Vue converts the whole frame to VNodes on every render and keeps
+        // no per-block cache that a plan could key. Nothing reads a plan, so
+        // no frame may pay for one.
+        expect(planCount).toBe(0);
       } finally {
         app.unmount();
       }

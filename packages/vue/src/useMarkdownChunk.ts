@@ -13,7 +13,6 @@ import {
 import {
   createPipelineSession,
   createContributionSession,
-  createBlockPlanner,
   derivePhantomTargets,
   deriveCoordinationPolicy,
   buildContributionChain,
@@ -83,6 +82,11 @@ export function createProvenance(): string {
  * Engine trees/registries stay outside deep reactive proxies. Vue tracks only
  * source inputs, allocation and the monotonic registry notification signal.
  *
+ * There is no block planner here. The plan exists to key a per-block render
+ * cache, and React's block memo is the consumer; Vue converts the whole
+ * frame to VNodes on every render and lets Vue's patcher diff the result,
+ * so a plan would be computed every frame and read by nobody.
+ *
  * The notification signal is fanned out through two identity-stable
  * computeds rather than read by the pipeline directly. Every publish in the
  * document notifies every chunk; if the pipeline computed depended on the
@@ -99,7 +103,6 @@ export function createProvenance(): string {
 export function useMarkdownChunk(input: () => ChunkInput) {
   const pipeline = createPipelineSession();
   const publisher = createContributionSession();
-  const planner = createBlockPlanner();
   const scanner = createDefLabelScanner();
   const provenance = createProvenance();
   // The registry keys allocations by this string and uses it as the Symbol
@@ -171,7 +174,6 @@ export function useMarkdownChunk(input: () => ChunkInput) {
       clobberPrefix: current.clobberPrefix,
       ownLabels: ownLabels.value,
       chain: buildContributionChain({ ...frameOptions, clobberPrefix: current.clobberPrefix }),
-      plan: planner(trees.mdast, trees.hast, current.content, { phantomFootnoteLabels: targets.missingFootnotes }),
     };
   });
   let stopRegistration: (() => void) | undefined;

@@ -170,7 +170,7 @@ The cursor measures the final visible prose text using DOM ranges and follows co
 
 The root exports `AIMarkdown` (also default), `AIMarkdownDocuments`, `AIMarkdownSmoothStream`, `AIMarkdownStreamingCursor`, `useSmoothStream` and `useDocumentSmoothStream`, plus their prop/context/input types. It re-exports the sealed plugin catalog, LaTeX/remend preprocessor factories, schema extension and default URL policy. See the [checked public declaration](../../tooling/api-reports/vue.api.txt) for exact names and signatures.
 
-ESM and CJS each have development and production entries, with matching declaration files. Vue, core and engine remain external. There is no React peer, React context or `use client` directive. The public package exposes only its root, stylesheet and `package.json`; lifecycle helpers and the HAST converter are implementation details.
+ESM and CJS each have development and production entries, with matching declaration files. Vue, core and engine remain external. There is no React peer, React context or `use client` directive. The public package exposes only its root, stylesheet and `package.json`; lifecycle helpers and the HAST converter are implementation details. The adapter shares the core pipeline sessions and contribution preparation with React but not its block planner or per-block render cache: each frame's HAST is converted to VNodes whole and Vue's patcher diffs the result.
 
 ## Verification and scope
 
