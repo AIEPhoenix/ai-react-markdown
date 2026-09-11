@@ -44,6 +44,7 @@ const failures = [];
 for (const [route, sidebar] of [
   ['', false],
   ['docs', true],
+  ['examples', false],
 ]) {
   const document = documents.get(resolve(dist, route, 'index.html'));
   assert(document, `Missing ${route || 'homepage'}`);
@@ -58,6 +59,16 @@ for (const [route, sidebar] of [
   for (const theme of ['auto', 'light', 'dark']) assert(options.some((option) => option.properties.value === theme));
   assert(options.some((option) => option.children.some((child) => child.type === 'text' && child.value === 'English')));
   assert(document.links.includes(`${base}docs/`), 'Docs navigation must enter the documentation area');
+  assert(document.links.includes(`${base}examples/`), 'Examples navigation must enter the embedded workspace');
+  if (route === 'examples') {
+    let embedded = false;
+    visit(document.tree, 'element', (node) => {
+      if (node.tagName === 'iframe' && node.properties.id === 'examples-catalog') {
+        embedded = Boolean(node.properties.src && node.properties.title);
+      }
+    });
+    assert(embedded, 'Examples must include an accessible Storybook iframe');
+  }
 }
 for (const { slug } of pages())
   if (!documents.has(resolve(dist, slug, 'index.html'))) failures.push(`Missing page: ${slug || '/'}`);
@@ -67,6 +78,8 @@ for (const [file, { links }] of documents) {
     .replace(/index\.html$/, '')}`;
   for (const href of links) {
     const url = new URL(href, `${origin}${pathname}`);
+    // Standalone docs CI has no Storybook artifact; the assembled Pages check validates it.
+    if (!env.DOCS_DIST && url.pathname.startsWith(`${base}storybook/`)) continue;
     if (url.origin !== origin) continue;
     if (!url.pathname.startsWith(base)) {
       failures.push(`${pathname}: outside base: ${href}`);

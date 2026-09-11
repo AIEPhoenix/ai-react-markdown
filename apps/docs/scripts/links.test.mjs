@@ -69,3 +69,8 @@ test('Markdown, reference and raw HTML links rewrite without altering code examp
   assert.equal((code.match(/href="\/preview\/docs\/vue\/"/g) || []).length, 3);
   assert.match(code, /\[Vue\]\(\.\.\/packages\/vue\/README\.md\)/);
 });
+
+test('embedded examples keep the deployment base', () => {
+  assert.equal(rewriteUrl('examples:', 'docs/guide.md', entries, '/preview/'), '/preview/examples/');
+  assert.equal(rewriteUrl('examples:', 'docs/guide.md', entries, '/'), '/examples/');
+});

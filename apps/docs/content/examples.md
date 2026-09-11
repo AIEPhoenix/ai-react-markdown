@@ -1,5 +1,7 @@
 # Interactive examples
 
+[Open the embedded examples workspace](examples:).
+
 Explore live rendering behavior in the Storybook catalogs. React and Vue share capability chapter names, while Mantine extends the React catalog.
 
 | Catalog                                                                      | Explore                                                          |
