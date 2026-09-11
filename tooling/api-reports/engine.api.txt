@@ -220,7 +220,7 @@ declare const rehypeRebaseHashLinks: Plugin<[
 declare function rehypeFooterAdorn(): (tree: Root$1) => void;
 declare class EngineRawHtmlDepthError extends Error {
     readonly name = "EngineRawHtmlDepthError";
-    constructor(cause: RangeError);
+    constructor(message: string, cause?: Error);
 }
 interface PhantomLabels {
     missingFootnotes: Set<string>;

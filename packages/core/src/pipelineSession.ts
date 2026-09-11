@@ -75,14 +75,13 @@ function endPoint(text: string): { line: number; column: number; offset: number 
  *
  * Why this exists: the incremental path already falls back to the full
  * pipeline, but the full pipeline itself can throw — a few thousand nested
- * raw `<div>` tags overflow the recursive hast-util-from-parse5 walk inside
- * the raw-HTML step — and nothing above the session caught it, so one
- * hostile message took the adapter subtree down. The engine's guarded raw
- * step reports exactly that overflow as a typed error; nothing else is
- * degraded, because a throwing consumer plugin or handler is a bug the host
- * must see, not a frame to render as text. The durable fix is a depth cap
- * or an iterative walk in the hast-util-from-parse5 fork; this keeps the
- * surface alive until then. The next frame is parsed normally again
+ * raw `<div>` tags exhaust the call stack of a recursive walker after the
+ * raw-HTML step (the walk itself, or an adapter renderer further on) — and
+ * nothing above the session caught it, so one hostile message took the
+ * adapter subtree down. The engine's guarded raw step bounds element depth
+ * and reports a deeper frame as a typed error; nothing else is degraded,
+ * because a throwing consumer plugin or handler is a bug the host must see,
+ * not a frame to render as text. The next frame is parsed normally again
  * (retained state is cleared).
  */
 function plainTextTrees(content: string): PipelineTrees {
@@ -184,15 +183,15 @@ export function createPipelineSession(): PipelineSession {
           const hastRoot = measureHere('transform', () => transformStage(parsed));
           return { mdast: parsed.mdast, hast: hastRoot };
         } catch (error) {
-          // Only the engine's own signal for raw HTML nested past the call
-          // stack is degraded. Everything else — a consumer's remark/rehype
+          // Only the engine's own signal for raw HTML nested past its depth
+          // bound is degraded. Everything else — a consumer's remark/rehype
           // plugin or handler throwing, a RangeError that is not that
-          // overflow — propagates exactly as it did before the fallback
+          // signal — propagates exactly as it did before the fallback
           // existed.
           if (!(error instanceof EngineRawHtmlDepthError)) throw error;
           if (process.env.NODE_ENV !== 'production') {
             console.error(
-              '[ai-react-markdown] raw HTML nested past the call stack — rendering this frame as plain text:',
+              '[ai-react-markdown] raw HTML nested past the engine depth bound — rendering this frame as plain text:',
               error
             );
           }

@@ -98,15 +98,15 @@ describe('framework-neutral pipeline consumer', () => {
     }
   });
 
-  test('raw HTML nested past the call stack renders as one plain-text paragraph instead of crashing', () => {
-    // Thousands of nested raw `<div>` tags overflow the recursive
-    // hast-util-from-parse5 walk inside rehype-raw (about 1,900 to 2,000
-    // levels, roughly 10 KB, under Node 24's default stack; the exact depth
-    // moves with JIT state, so nothing here depends on it). The engine's
-    // guarded raw step reports that overflow as EngineRawHtmlDepthError, and
-    // ONLY that error degrades the frame to plain text: the incremental
-    // path's fallback is the full parse, so nothing above the session would
-    // catch it and the adapter subtree crashed.
+  test('raw HTML nested past the engine bound renders as one plain-text paragraph instead of crashing', () => {
+    // Thousands of nested raw `<div>` tags would exhaust the call stack of
+    // some recursive walker after the raw-HTML step (the walk itself at
+    // about 1,900 levels under Node 24; Vue's mount in Chromium at about
+    // 1,000). The engine's guarded raw step bounds element depth iteratively
+    // (RAW_HTML_MAX_DEPTH, 256) and reports a deeper frame as
+    // EngineRawHtmlDepthError; ONLY that error degrades the frame to plain
+    // text. The incremental path's fallback is the full parse, so nothing
+    // above the session would catch it and the adapter subtree crashed.
     const content = '<div>'.repeat(3000) + 'x';
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
