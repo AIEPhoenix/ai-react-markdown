@@ -17,7 +17,7 @@ Vue 3 Markdown rendering built on the framework-independent `@ai-markdown/core` 
 
 - Vue **3.5 or later within Vue 3** (`^3.5.0`). The adapter uses `useId()` for application-local IDs that match between server rendering and hydration. Earlier Vue 3 minors do not provide this API.
 - Node `^20.19.0 || >=22.12.0` for server/build consumers; verification records identify the actual tested Node version.
-- Modern browsers with `ResizeObserver`, `MutationObserver`, `requestAnimationFrame` and Web Crypto. The browser acceptance suite runs Chromium, Firefox and WebKit; this is not a claim that every browser/version has been exercised.
+- Modern browsers with `ResizeObserver`, `MutationObserver`, `requestAnimationFrame` and Web Crypto `getRandomValues`. A secure context is not required: the adapter does not use `crypto.randomUUID`, so plain `http://` origins render. Without Web Crypto at all the cross-chunk placeholder credential degrades to a unique but non-secret value and development builds log one `console.error` per mounted chunk. The browser acceptance suite runs Chromium, Firefox and WebKit; this is not a claim that every browser/version has been exercised.
 - `@ai-markdown/core` and `@ai-markdown/engine` are ordinary dependencies at the exact release-train version. Applications do not need to install them separately. Vue remains a peer and is external to both ESM and CJS output.
 - KaTeX is an optional peer (`^0.16 || ^0.17`). Declare it directly when importing its stylesheet rather than depending on hoisting.
 

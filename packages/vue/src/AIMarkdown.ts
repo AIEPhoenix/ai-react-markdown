@@ -107,7 +107,15 @@ export const AIMarkdown = defineComponent({
       const children = renderTree(tree, options);
       if (chunk.aggregate.value)
         children.push(...renderTree({ type: 'root', children: [chunk.aggregate.value] }, options));
-      const tail = deriveTailSignal(frame.trees.mdast, content.value.length);
+      const cursor = props.streaming && props.streamingCursor;
+      // Tail marker for the cursor shell: says whether the source tail sits
+      // inside an invisible definition or a footnote definition, and which
+      // footer item the text is streaming into. Only the cursor reads it, so
+      // it exists only while the cursor does; a static document, SSR output
+      // of a finished answer, or a stream with the cursor disabled renders
+      // none. A permanent marker would also break `:last-child` styling of
+      // the real last block.
+      const tail = cursor ? deriveTailSignal(frame.trees.mdast, content.value.length) : null;
       if (tail)
         children.push(
           h('span', {
@@ -117,7 +125,7 @@ export const AIMarkdown = defineComponent({
             style: { display: 'none' },
           })
         );
-      if (props.streaming && props.streamingCursor)
+      if (cursor)
         children.push(
           h(
             AIMarkdownStreamingCursor,
