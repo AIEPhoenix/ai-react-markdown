@@ -160,6 +160,45 @@ test('Git evidence ranges allow adapter follow-ups but invalidate engine changes
   }
 });
 
+test('adding a job on the existing Node pin is not a runtime change', () => {
+  const pinned = 'jobs: {ci: {steps: [{with: {runtime: node@22.23.2}}]}}';
+  assert.equal(
+    check(
+      '.github/workflows/ci.yml',
+      pinned,
+      'jobs: {docs: {steps: [{with: {runtime: node@22.23.2}}]}, ci: {steps: [{with: {runtime: node@22.23.2}}]}}'
+    ),
+    false
+  );
+  assert.equal(
+    check('.github/workflows/ci.yml', pinned, 'jobs: {renamed: {steps: [{with: {runtime: node@22.23.2}}]}}'),
+    false
+  );
+  assert.equal(
+    check(
+      '.github/workflows/ci.yml',
+      pinned,
+      'jobs: {docs: {steps: [{with: {runtime: node@24.20.0}}]}, ci: {steps: [{with: {runtime: node@22.23.2}}]}}'
+    ),
+    true
+  );
+  assert.equal(
+    check(
+      '.github/workflows/release.yml',
+      'jobs: {a: {strategy: {matrix: {node: [22.23.2]}}}}',
+      'jobs: {a: {strategy: {matrix: {node: [22.23.2]}}}, b: {strategy: {matrix: {node: [22.23.2]}}}}'
+    ),
+    false
+  );
+});
+
+test('soak control tests are not part of the soak mechanism', () => {
+  for (const file of ['scripts/soak/impact.test.mjs', 'scripts/soak/soak-control.test.mjs'])
+    assert.equal(check(file, 'const a=1;', 'const a=2;'), false, file);
+  for (const file of ['scripts/soak/soak-runner.mjs', 'scripts/soak/impact.mjs', 'scripts/soak/soak.sh'])
+    assert.equal(check(file, 'const a=1;', 'const a=2;'), true, file);
+});
+
 test('matrix Node upgrades require new verification', () => {
   assert.equal(
     check(

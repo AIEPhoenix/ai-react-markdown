@@ -15,7 +15,7 @@
  * Worst cases are cosmetic (a one-frame offset, a conservative hide) and
  * self-heal on the next observer callback.
  *
- * Update channels (see docs/proposals/streaming-cursor.md):
+ * Update channels (see https://ai-markdown.github.io/docs/guides/streaming-cursor/):
  * - Position (x, y) never enters React state. It changes on every token and
  *   must land in the same frame as the content change, so it is applied
  *   imperatively inside the observer callback — MutationObserver callbacks
