@@ -34,5 +34,5 @@ How can a reviewer verify this works?
 - [ ] Typecheck passes (`pnpm --filter @ai-markdown/react typecheck`)
 - [ ] Lint passes (`pnpm lint`)
 - [ ] Format check passes (`pnpm format:check`)
-- [ ] Docs updated if the public API or behavior changed (`README.md` / `docs/` / JSDoc)
+- [ ] Docs updated if the public API or behavior changed (`README.md` / `apps/docs/content/guides/` / JSDoc)
 - [ ] For breaking changes: migration path documented in the PR description

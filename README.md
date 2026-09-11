@@ -1,6 +1,8 @@
 # ai-markdown
 
-The independent documentation site uses Starlight. Run `pnpm dev:docs` locally; see [site development and deployment](./docs/documentation-site.md).
+[Website](https://ai-markdown.github.io/) · [Documentation](https://ai-markdown.github.io/docs/) · [Interactive examples](https://ai-markdown.github.io/examples/)
+
+Render streaming Markdown in React and Vue, with shared parsing and document coordination. Start with the package README below or follow the [getting started guide](https://ai-markdown.github.io/docs/guides/getting-started/).
 
 [![CI on main](https://img.shields.io/github/actions/workflow/status/ai-markdown/ai-markdown/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/ai-markdown/ai-markdown/actions/workflows/ci.yml)
 [![Latest stable GitHub release](https://img.shields.io/github/v/release/ai-markdown/ai-markdown?sort=semver&label=release)](https://github.com/ai-markdown/ai-markdown/releases)
@@ -10,11 +12,11 @@ The independent documentation site uses Starlight. Run `pnpm dev:docs` locally; 
 [![Vue ^3.5](https://img.shields.io/badge/Vue-%5E3.5-42b883?logo=vuedotjs&logoColor=white)](./packages/vue#readme)
 [![Mantine 9](https://img.shields.io/badge/Mantine-9-339af0?logo=mantine&logoColor=white)](./packages/react-mantine#readme)
 
-> **3.0.0:** React and Vue adapters share the public `@ai-markdown/core` and `@ai-markdown/engine` packages. See the [migration guide](./docs/framework-transition.md).
+> **3.0.0:** React and Vue adapters share the public `@ai-markdown/core` and `@ai-markdown/engine` packages. See the [migration guide](https://ai-markdown.github.io/docs/guides/framework-transition/).
 
 > React and Vue Markdown rendering for AI responses: GFM, KaTeX math, CJK-aware parsing, incremental streaming, and shared references across logical document sections. Use either framework adapter with your own UI, or the React Mantine integration for highlighted code, JSON presentation, and Mermaid diagrams.
 
-> **Upgrading from 1.x?** v2.0.0 removes the 1.x object-based `config` channel (and its integrator default channel) in favor of flat props, a sealed engine-plugin catalog, and five narrow hooks. Every removed symbol has a one-to-one destination with before/after code in the [migration guide](./docs/migrating-to-v2.md).
+> **Upgrading from 1.x?** v2.0.0 removes the 1.x object-based `config` channel (and its integrator default channel) in favor of flat props, a sealed engine-plugin catalog, and five narrow hooks. Every removed symbol has a one-to-one destination with before/after code in the [migration guide](https://ai-markdown.github.io/docs/guides/migrating-to-v2/).
 
 ---
 
@@ -30,11 +32,11 @@ ai-markdown addresses those concerns at distinct layers:
 - **Math and mixed-language text.** Built-in normalization handles common model-produced math delimiters and currency text. The pipeline includes CJK-aware delimiter parsing and optional pangu spacing; typography and source line breaks remain explicit presentation choices.
 - **Controlled output policy.** The sanitizer filters the tree before URL transformation. Schema extensions, custom components, and application URL schemes are supported through typed inputs whose scope and precedence are documented.
 
-Choose `@ai-markdown/react` for React rendering or `@ai-markdown/vue` for Vue 3.5 rendering with your own presentation. Choose Mantine when you also want its providers, typography, highlighted code controls, and diagrams. React and Vue share parsing and coordination algorithms, with framework-specific component APIs. See [Getting started](./docs/getting-started.md) for complete setup and the API differences.
+Choose `@ai-markdown/react` for React rendering or `@ai-markdown/vue` for Vue 3.5 rendering with your own presentation. Choose Mantine when you also want its providers, typography, highlighted code controls, and diagrams. React and Vue share parsing and coordination algorithms, with framework-specific component APIs. See [Getting started](https://ai-markdown.github.io/docs/guides/getting-started/) for complete setup and the API differences.
 
 ## Features
 
-Parsing features are shared by React and Vue. The context hooks, typography slots and React-node cache described below belong to the React adapter; Mantine adds its React UI features. For Vue equivalents and limitations, see the [API comparison](./docs/getting-started.md#react-and-vue-api-differences).
+Parsing features are shared by React and Vue. The context hooks, typography slots and React-node cache described below belong to the React adapter; Mantine adds its React UI features. For Vue equivalents and limitations, see the [API comparison](https://ai-markdown.github.io/docs/guides/getting-started/#react-and-vue-api-differences).
 
 |                              |                                                                                                                                                                                                                                                                                                                                    |
 | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -73,7 +75,7 @@ The five framework/shared packages track `latest`; the independent highlight plu
 
 ## Vue adapter
 
-The Vue 3.5+ adapter is part of the stable 3.0.0 release train. See the [Vue README](./packages/vue/README.md) for components, SSR/hydration, cross-chunk references, slots and smooth streaming. Shared core/engine contracts and prerelease migration notes are documented in the [API contracts](./docs/api/core-engine-contracts.md).
+The Vue 3.5+ adapter is part of the stable 3.0.0 release train. See the [Vue README](./packages/vue/README.md) for components, SSR/hydration, cross-chunk references, slots and smooth streaming. Shared core/engine contracts and prerelease migration notes are documented in the [API contracts](https://ai-markdown.github.io/docs/guides/api/core-engine-contracts/).
 
 ## Installation
 
@@ -216,7 +218,7 @@ import 'katex/dist/katex.min.css';
 </template>
 ```
 
-Install `katex` directly for the math stylesheet above. See [Getting started](./docs/getting-started.md) for complete dependency setup and a React/Vue API comparison.
+Install `katex` directly for the math stylesheet above. See [Getting started](https://ai-markdown.github.io/docs/guides/getting-started/) for complete dependency setup and a React/Vue API comparison.
 
 ### Mantine
 
@@ -246,11 +248,11 @@ export default function App() {
 
 ## Recipes
 
-The recipes, props, hooks and typography reference below use `@ai-markdown/react` and its Mantine integration. Vue uses `components`, scoped slots and setup composables; start with the [Vue README](./packages/vue/README.md) or the [framework comparison](./docs/getting-started.md#react-and-vue-api-differences).
+The recipes, props, hooks and typography reference below use `@ai-markdown/react` and its Mantine integration. Vue uses `components`, scoped slots and setup composables; start with the [Vue README](./packages/vue/README.md) or the [framework comparison](https://ai-markdown.github.io/docs/guides/getting-started/#react-and-vue-api-differences).
 
 ### Stream from an LLM
 
-The `streaming` flag describes the source lifecycle and controls the cursor slot — pass `true` while tokens are still arriving so descendants can adapt (deferred copy buttons, skipped animations, etc.). The renderer itself remains stable across re-renders thanks to block-level memoization. Add `streamingCursor` for a built-in "still generating" indicator that tracks the last streamed character and stays visible through token stalls ([docs](./docs/streaming-cursor.md)):
+The `streaming` flag describes the source lifecycle and controls the cursor slot — pass `true` while tokens are still arriving so descendants can adapt (deferred copy buttons, skipped animations, etc.). The renderer itself remains stable across re-renders thanks to block-level memoization. Add `streamingCursor` for a built-in "still generating" indicator that tracks the last streamed character and stays visible through token stalls ([docs](https://ai-markdown.github.io/docs/guides/streaming-cursor/)):
 
 ```tsx
 import AIMarkdown, { AIMarkdownStreamingCursor } from '@ai-markdown/react';
@@ -267,7 +269,7 @@ function ChatMessage({ message }: { message: { content: string; pending: boolean
 }
 ```
 
-Network chunks land in bursts; if the lurching bothers you, swap in `<AIMarkdownSmoothStream>` — same props, plus typewriter pacing that adapts to the source's cadence (pick a `smoothPacing` preset: `smooth`, `balanced`, or `responsive` — [docs](./docs/smooth-streaming.md)):
+Network chunks land in bursts; if the lurching bothers you, swap in `<AIMarkdownSmoothStream>` — same props, plus typewriter pacing that adapts to the source's cadence (pick a `smoothPacing` preset: `smooth`, `balanced`, or `responsive` — [docs](https://ai-markdown.github.io/docs/guides/smooth-streaming/)):
 
 ```tsx
 import { AIMarkdownSmoothStream, AIMarkdownStreamingCursor } from '@ai-markdown/react';
@@ -279,7 +281,7 @@ import { AIMarkdownSmoothStream, AIMarkdownStreamingCursor } from '@ai-markdown/
 />;
 ```
 
-Empty-mounted smooth chunks that share a `documentId` inside `<AIMarkdownDocuments>` take turns automatically (existing text snaps on mount): chunk N reveals completely before chunk N+1 starts — one typewriter, one cursor, even when the sources stream concurrently ([details](./docs/smooth-streaming.md#multi-chunk-documents-turn-taking)).
+Empty-mounted smooth chunks that share a `documentId` inside `<AIMarkdownDocuments>` take turns automatically (existing text snaps on mount): chunk N reveals completely before chunk N+1 starts — one typewriter, one cursor, even when the sources stream concurrently ([details](https://ai-markdown.github.io/docs/guides/smooth-streaming/#multi-chunk-documents-turn-taking)).
 
 ### Render chunked chat messages with cross-chunk references
 
@@ -417,7 +419,7 @@ function Message({ markdown, metadata }: { markdown: string; metadata: ChatMeta 
 }
 ```
 
-The copy example reads text from the actual code element and keeps the toolbar outside it. `String(children)` cannot recover source from a React element. If a renderer transforms the display, keep the original hast code text for copying instead; see [custom components](./docs/custom-components.md). Keep metadata stable when its values have not changed, and use an external-store subscription when a stable container carries rapidly changing reactive data.
+The copy example reads text from the actual code element and keeps the toolbar outside it. `String(children)` cannot recover source from a React element. If a renderer transforms the display, keep the original hast code text for copying instead; see [custom components](https://ai-markdown.github.io/docs/guides/custom-components/). Keep metadata stable when its values have not changed, and use an external-store subscription when a stable container carries rapidly changing reactive data.
 
 ### Adapt rendering based on streaming state
 
@@ -449,27 +451,27 @@ Preprocessors run after the built-in LaTeX normalizer, in array order.
 
 ## Advanced Customization & Extension
 
-The README covers the 90% case. For deep customization — replacing element renderers, theming, allowing custom URL schemes, coordinating chunked streaming, building your own integration package — see the topic-focused guides under [`docs/`](./docs/):
+The README covers the 90% case. For deep customization — replacing element renderers, theming, allowing custom URL schemes, coordinating chunked streaming, building your own integration package — see the topic-focused guides under [documentation](https://ai-markdown.github.io/docs/guides/):
 
-| Guide                                                             | What it covers                                                                   |
-| ----------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| [Custom components](./docs/custom-components.md)                  | Replace renderers for any HTML element with your own React components            |
-| [Custom typography](./docs/custom-typography.md)                  | Swap the `Typography` slot; integrate with design systems                        |
-| [Design tokens](./docs/design-tokens.md)                          | Complete CSS custom-property surface; retheme without writing JS                 |
-| [Content preprocessors](./docs/content-preprocessors.md)          | Transform the raw markdown string before parsing                                 |
-| [URL sanitization](./docs/url-sanitization.md)                    | Two-gate sanitization model; allow custom schemes safely                         |
-| [Cross-chunk coordination](./docs/cross-chunk-coordination.md)    | Chunked chat messages with references that resolve across chunks                 |
-| [Metadata context](./docs/metadata-context.md)                    | Pass callbacks/ids to nested components without prop drilling                    |
-| [Streaming & performance](./docs/streaming-and-performance.md)    | Block-level memoization, `streaming` flag, cache-flush footguns                  |
-| [Smooth streaming](./docs/smooth-streaming.md)                    | Typewriter pacing for bursty token streams — shell, hook, non-React controller   |
-| [TypeScript generics](./docs/typescript-generics.md)              | Typed `metadata` via the `TMetadata` generic; wrapper extension patterns         |
-| [Migrating to v2](./docs/migrating-to-v2.md)                      | Complete 1.x → 2.0.0 mapping — every removed symbol with before/after code       |
-| [Extending via a sub-package](./docs/extending-via-subpackage.md) | Ship your own `@yourorg/ai-markdown-<integration>`                               |
-| [Architecture overview](./docs/architecture.md)                   | Render pipeline, context layering, registry design                               |
-| [Streaming chat: end-to-end](./docs/streaming-chat-example.md)    | Copy-runnable SSE chat example — backend route, React client, Next.js App Router |
-| [CJK typography](./docs/cjk-typography.md)                        | Chinese / Japanese / Korean text — line breaking, pangu spacing, font stack      |
-| [Release highlights](./docs/release-highlights.md)                | What's notable in each version — distilled from the commit log                   |
-| [Benchmark](./docs/benchmark.md)                                  | Measured numbers for block-memo × incremental parse, and how to reproduce them   |
+| Guide                                                                                              | What it covers                                                                   |
+| -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| [Custom components](https://ai-markdown.github.io/docs/guides/custom-components/)                  | Replace renderers for any HTML element with your own React components            |
+| [Custom typography](https://ai-markdown.github.io/docs/guides/custom-typography/)                  | Swap the `Typography` slot; integrate with design systems                        |
+| [Design tokens](https://ai-markdown.github.io/docs/guides/design-tokens/)                          | Complete CSS custom-property surface; retheme without writing JS                 |
+| [Content preprocessors](https://ai-markdown.github.io/docs/guides/content-preprocessors/)          | Transform the raw markdown string before parsing                                 |
+| [URL sanitization](https://ai-markdown.github.io/docs/guides/url-sanitization/)                    | Two-gate sanitization model; allow custom schemes safely                         |
+| [Cross-chunk coordination](https://ai-markdown.github.io/docs/guides/cross-chunk-coordination/)    | Chunked chat messages with references that resolve across chunks                 |
+| [Metadata context](https://ai-markdown.github.io/docs/guides/metadata-context/)                    | Pass callbacks/ids to nested components without prop drilling                    |
+| [Streaming & performance](https://ai-markdown.github.io/docs/guides/streaming-and-performance/)    | Block-level memoization, `streaming` flag, cache-flush footguns                  |
+| [Smooth streaming](https://ai-markdown.github.io/docs/guides/smooth-streaming/)                    | Typewriter pacing for bursty token streams — shell, hook, non-React controller   |
+| [TypeScript generics](https://ai-markdown.github.io/docs/guides/typescript-generics/)              | Typed `metadata` via the `TMetadata` generic; wrapper extension patterns         |
+| [Migrating to v2](https://ai-markdown.github.io/docs/guides/migrating-to-v2/)                      | Complete 1.x → 2.0.0 mapping — every removed symbol with before/after code       |
+| [Extending via a sub-package](https://ai-markdown.github.io/docs/guides/extending-via-subpackage/) | Ship your own `@yourorg/ai-markdown-<integration>`                               |
+| [Architecture overview](https://ai-markdown.github.io/docs/guides/architecture/)                   | Render pipeline, context layering, registry design                               |
+| [Streaming chat: end-to-end](https://ai-markdown.github.io/docs/guides/streaming-chat-example/)    | Copy-runnable SSE chat example — backend route, React client, Next.js App Router |
+| [CJK typography](https://ai-markdown.github.io/docs/guides/cjk-typography/)                        | Chinese / Japanese / Korean text — line breaking, pangu spacing, font stack      |
+| [Release highlights](https://ai-markdown.github.io/docs/guides/release-highlights/)                | What's notable in each version — distilled from the commit log                   |
+| [Benchmark](https://ai-markdown.github.io/docs/guides/benchmark/)                                  | Measured numbers for block-memo × incremental parse, and how to reproduce them   |
 
 > Below this point: the full prop / config / hook / API reference. Most readers can stop here and dive into the customization guides — come back when you need a specific signature.
 
@@ -477,27 +479,27 @@ The README covers the 90% case. For deep customization — replacing element ren
 
 The full list with all subtleties lives in [`@ai-markdown/react` README](./packages/react/README.md). Quick reference:
 
-| Prop                       | Type                                | Default                           | Purpose                                                                                                                                                                                                                              |
-| -------------------------- | ----------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `content`                  | `string`                            | **required**                      | Raw markdown to render                                                                                                                                                                                                               |
-| `streaming`                | `boolean`                           | `false`                           | Propagated via context for streaming-aware renderers                                                                                                                                                                                 |
-| `streamingCursor`          | `ComponentType`                     | —                                 | "Still generating" indicator slot, mounted after the last streamed character while `streaming` — see [Streaming cursor](./docs/streaming-cursor.md)                                                                                  |
-| `fontSize`                 | `number \| string`                  | `'0.9375rem'`                     | Base font size (numbers → px). Anchors `--aim-font-size-root`                                                                                                                                                                        |
-| `variant`                  | `AIMarkdownVariant`                 | `'default'`                       | Typography variant name                                                                                                                                                                                                              |
-| `colorScheme`              | `AIMarkdownColorScheme`             | `'light'`                         | `'light'`, `'dark'`, or custom                                                                                                                                                                                                       |
-| `metadata`                 | `TMetadata`                         | —                                 | Arbitrary data for custom components (separate context)                                                                                                                                                                              |
-| `contentPreprocessors`     | `AIMDContentPreprocessor[]`         | —                                 | Extra string transforms applied after the LaTeX preprocessor. Ships an optional `createRemendPreprocessor()` factory for streaming tail repair — see [Content Preprocessors](./docs/content-preprocessors.md)                        |
-| `customComponents`         | `AIMarkdownCustomComponents`        | —                                 | `react-markdown` component overrides                                                                                                                                                                                                 |
-| `Typography`               | `AIMarkdownTypographyComponent`     | `DefaultTypography`               | Typography wrapper                                                                                                                                                                                                                   |
-| `ExtraStyles`              | `AIMarkdownExtraStylesComponent`    | —                                 | Optional wrapper between typography and content                                                                                                                                                                                      |
-| `documentId`               | `string`                            | auto via `useId()`                | Stable id namespace for clobberable attributes; share across chunks for cross-chunk coordination                                                                                                                                     |
-| `documentIndex`            | `number`                            | mount order                       | This chunk's position among instances sharing a `documentId` under `<AIMarkdownDocuments>`; pass a stable ordinal when chunks can mount out of order or remount — see [Cross-chunk Coordination](./docs/cross-chunk-coordination.md) |
-| `urlTransform`             | `UrlTransform \| null`              | `defaultUrlTransform`             | Second sanitization gate — per-attribute URL rewriter (runs at render time)                                                                                                                                                          |
-| `sanitizeSchema`           | `SanitizeSchema`                    | library default                   | First gate — `rehype-sanitize` schema, per-protocol allowlist (build with `extendSanitizeSchema`)                                                                                                                                    |
-| `enginePlugins`            | `readonly AIMarkdownEnginePlugin[]` | `defaultEnginePlugins` (all five) | Sealed engine-plugin selection, imported from `@ai-markdown/react/plugins`; passing an array replaces the set wholesale — see [Engine Plugins](#engine-plugins)                                                                      |
-| `blockMemo`                | `boolean`                           | `true`                            | Per-block memoization. Output is byte-identical when disabled; set `blockMemo={false}` only for debugging                                                                                                                            |
-| `incrementalParse`         | `boolean`                           | `true`                            | Prefix-freeze incremental parsing for append-only streaming — see [Behavior props](#behavior-props)                                                                                                                                  |
-| `preserveOrphanReferences` | `boolean`                           | `true`                            | Protect orphan `[^x]: …` defs from being silently dropped during streaming when the reference hasn't arrived yet                                                                                                                     |
+| Prop                       | Type                                | Default                           | Purpose                                                                                                                                                                                                                                                               |
+| -------------------------- | ----------------------------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `content`                  | `string`                            | **required**                      | Raw markdown to render                                                                                                                                                                                                                                                |
+| `streaming`                | `boolean`                           | `false`                           | Propagated via context for streaming-aware renderers                                                                                                                                                                                                                  |
+| `streamingCursor`          | `ComponentType`                     | —                                 | "Still generating" indicator slot, mounted after the last streamed character while `streaming` — see [Streaming cursor](https://ai-markdown.github.io/docs/guides/streaming-cursor/)                                                                                  |
+| `fontSize`                 | `number \| string`                  | `'0.9375rem'`                     | Base font size (numbers → px). Anchors `--aim-font-size-root`                                                                                                                                                                                                         |
+| `variant`                  | `AIMarkdownVariant`                 | `'default'`                       | Typography variant name                                                                                                                                                                                                                                               |
+| `colorScheme`              | `AIMarkdownColorScheme`             | `'light'`                         | `'light'`, `'dark'`, or custom                                                                                                                                                                                                                                        |
+| `metadata`                 | `TMetadata`                         | —                                 | Arbitrary data for custom components (separate context)                                                                                                                                                                                                               |
+| `contentPreprocessors`     | `AIMDContentPreprocessor[]`         | —                                 | Extra string transforms applied after the LaTeX preprocessor. Ships an optional `createRemendPreprocessor()` factory for streaming tail repair — see [Content Preprocessors](https://ai-markdown.github.io/docs/guides/content-preprocessors/)                        |
+| `customComponents`         | `AIMarkdownCustomComponents`        | —                                 | `react-markdown` component overrides                                                                                                                                                                                                                                  |
+| `Typography`               | `AIMarkdownTypographyComponent`     | `DefaultTypography`               | Typography wrapper                                                                                                                                                                                                                                                    |
+| `ExtraStyles`              | `AIMarkdownExtraStylesComponent`    | —                                 | Optional wrapper between typography and content                                                                                                                                                                                                                       |
+| `documentId`               | `string`                            | auto via `useId()`                | Stable id namespace for clobberable attributes; share across chunks for cross-chunk coordination                                                                                                                                                                      |
+| `documentIndex`            | `number`                            | mount order                       | This chunk's position among instances sharing a `documentId` under `<AIMarkdownDocuments>`; pass a stable ordinal when chunks can mount out of order or remount — see [Cross-chunk Coordination](https://ai-markdown.github.io/docs/guides/cross-chunk-coordination/) |
+| `urlTransform`             | `UrlTransform \| null`              | `defaultUrlTransform`             | Second sanitization gate — per-attribute URL rewriter (runs at render time)                                                                                                                                                                                           |
+| `sanitizeSchema`           | `SanitizeSchema`                    | library default                   | First gate — `rehype-sanitize` schema, per-protocol allowlist (build with `extendSanitizeSchema`)                                                                                                                                                                     |
+| `enginePlugins`            | `readonly AIMarkdownEnginePlugin[]` | `defaultEnginePlugins` (all five) | Sealed engine-plugin selection, imported from `@ai-markdown/react/plugins`; passing an array replaces the set wholesale — see [Engine Plugins](#engine-plugins)                                                                                                       |
+| `blockMemo`                | `boolean`                           | `true`                            | Per-block memoization. Output is byte-identical when disabled; set `blockMemo={false}` only for debugging                                                                                                                                                             |
+| `incrementalParse`         | `boolean`                           | `true`                            | Prefix-freeze incremental parsing for append-only streaming — see [Behavior props](#behavior-props)                                                                                                                                                                   |
+| `preserveOrphanReferences` | `boolean`                           | `true`                            | Protect orphan `[^x]: …` defs from being silently dropped during streaming when the reference hasn't arrived yet                                                                                                                                                      |
 
 An explicitly passed prop (`v != null`) overrides the shipped default; an absent prop falls to the shipped default. Passing `null` counts as absent — this guards against serialization boundaries (RSC, persistence) materializing "not passed" as `null` and punching through defaults.
 
@@ -540,11 +542,11 @@ Rules worth knowing:
 
 ## Behavior props
 
-| Prop                       | Type      | Default | Purpose                                                                                                                                                                                                                                                                  |
-| -------------------------- | --------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `blockMemo`                | `boolean` | `true`  | Per-block memoization. Output is byte-identical when disabled; set `false` only for debugging                                                                                                                                                                            |
-| `incrementalParse`         | `boolean` | `true`  | Prefix-freeze incremental parsing: append-only streaming re-parses only the tail (83–94% less pipeline stage time on the benchmark payloads). Output stays deep-equal to a full parse; see [Streaming & Performance](./docs/streaming-and-performance.md). On by default |
-| `preserveOrphanReferences` | `boolean` | `true`  | Protect orphan `[^x]: …` defs from being silently dropped during streaming when the reference hasn't arrived yet                                                                                                                                                         |
+| Prop                       | Type      | Default | Purpose                                                                                                                                                                                                                                                                                                   |
+| -------------------------- | --------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `blockMemo`                | `boolean` | `true`  | Per-block memoization. Output is byte-identical when disabled; set `false` only for debugging                                                                                                                                                                                                             |
+| `incrementalParse`         | `boolean` | `true`  | Prefix-freeze incremental parsing: append-only streaming re-parses only the tail (83–94% less pipeline stage time on the benchmark payloads). Output stays deep-equal to a full parse; see [Streaming & Performance](https://ai-markdown.github.io/docs/guides/streaming-and-performance/). On by default |
+| `preserveOrphanReferences` | `boolean` | `true`  | Protect orphan `[^x]: …` defs from being silently dropped during streaming when the reference hasn't arrived yet                                                                                                                                                                                          |
 
 The Mantine package additionally surfaces a `codeBlock` prop (group value replaces atomically; omitted fields fall to defaults):
 
@@ -640,7 +642,7 @@ interface MyMetadata extends AIMarkdownMetadata {
 <AIMarkdown<MyMetadata> content={markdown} metadata={{ messageId: '123' }} />;
 ```
 
-`useAIMarkdownMetadata<MyMetadata>()` reads it back typed. Sub-packages like `@ai-markdown/react-mantine` extend the flat prop surface directly (`MantineAIMarkdownProps<TMetadata> extends AIMarkdownProps<TMetadata>` adds `codeBlock`), transport their groups through `AIMarkdownBehaviorsProvider`, and apply group defaults inside their own narrow hook — see [Extending via a sub-package](./docs/extending-via-subpackage.md).
+`useAIMarkdownMetadata<MyMetadata>()` reads it back typed. Sub-packages like `@ai-markdown/react-mantine` extend the flat prop surface directly (`MantineAIMarkdownProps<TMetadata> extends AIMarkdownProps<TMetadata>` adds `codeBlock`), transport their groups through `AIMarkdownBehaviorsProvider`, and apply group defaults inside their own narrow hook — see [Extending via a sub-package](https://ai-markdown.github.io/docs/guides/extending-via-subpackage/).
 
 ## Security: Two-Gate URL Sanitization
 
@@ -657,11 +659,11 @@ For a scheme to render, **both must permit it**. This is intentional defense-in-
 
 ## Cross-Chunk Coordination Reference
 
-| Export                                                                    | Shape                                                        | Purpose                                                                                                                                                                                              |
-| ------------------------------------------------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `<AIMarkdownDocuments>`                                                   | `{ children, preserveOrphanReferences?, smoothTurnTaking? }` | Wrap a group of `<AIMarkdown>` chunks that share a `documentId`; `smoothTurnTaking` (default `true`) gates [smooth-stream turn-taking](./docs/smooth-streaming.md#multi-chunk-documents-turn-taking) |
-| `useDocumentRegistry(documentId)`                                         | `Registry \| null`                                           | Read the shared registry inside a custom component                                                                                                                                                   |
-| `Registry`, `ChunkData`, `FootnoteDef`, `LinkDef`, `RefRecord`, `RefKind` | exported types                                               | For typed helpers that operate on the registry directly                                                                                                                                              |
+| Export                                                                    | Shape                                                        | Purpose                                                                                                                                                                                                                               |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<AIMarkdownDocuments>`                                                   | `{ children, preserveOrphanReferences?, smoothTurnTaking? }` | Wrap a group of `<AIMarkdown>` chunks that share a `documentId`; `smoothTurnTaking` (default `true`) gates [smooth-stream turn-taking](https://ai-markdown.github.io/docs/guides/smooth-streaming/#multi-chunk-documents-turn-taking) |
+| `useDocumentRegistry(documentId)`                                         | `Registry \| null`                                           | Read the shared registry inside a custom component                                                                                                                                                                                    |
+| `Registry`, `ChunkData`, `FootnoteDef`, `LinkDef`, `RefRecord`, `RefKind` | exported types                                               | For typed helpers that operate on the registry directly                                                                                                                                                                               |
 
 The `preserveOrphanReferences` prop on `<AIMarkdownDocuments>` unconditionally overrides each chunk's `preserveOrphanReferences` prop — useful when the wrapper-level policy should always win.
 
@@ -772,7 +774,7 @@ import type {
 
 `engine` owns parsing and registry primitives; `core` owns framework-independent sessions, plans and coordination. React and Vue depend on both. Mantine composes the React adapter through an exact-version peer dependency. The standalone highlight plugin is a dependency of engine and has its own version.
 
-The component tree below is React-specific; the [architecture guide](./docs/architecture.md) also covers Vue lifecycle and the workspace layout.
+The component tree below is React-specific; the [architecture guide](https://ai-markdown.github.io/docs/guides/architecture/) also covers Vue lifecycle and the workspace layout.
 
 ```text
 <AIMarkdown>
@@ -799,7 +801,7 @@ The Mantine package wraps `<AIMarkdown>` with:
 
 ## Development
 
-Public packages live in `packages/{engine,core,react,vue,react-mantine,remark-mark-highlight}`. `apps/storybook-*`, `tooling/storybook-kit`, `corpus`, `benchmarks/*` and `prototypes/*` are private workspaces. `packages/react/plugins` is a React export subpath, not another published package. See the [development commands](./docs/development-commands.md) for the full command map.
+Public packages live in `packages/{engine,core,react,vue,react-mantine,remark-mark-highlight}`. `apps/storybook-*`, `tooling/storybook-kit`, `corpus`, `benchmarks/*` and `prototypes/*` are private workspaces. `packages/react/plugins` is a React export subpath, not another published package. See the [development commands](https://ai-markdown.github.io/docs/guides/development-commands/) for the full command map.
 
 ```bash
 # Install dependencies (pnpm required)
@@ -824,7 +826,7 @@ pnpm --filter @ai-markdown/react test
 pnpm --filter @ai-markdown/react typecheck
 ```
 
-See [Interactive examples](docs/storybook.md) for corpus sample selection, independent renderer tests and portable static builds.
+See [Interactive examples](https://ai-markdown.github.io/docs/guides/storybook/) for corpus sample selection, independent renderer tests and portable static builds.
 
 ## Contributing
 
@@ -841,13 +843,13 @@ Reporting a bug helps most when it includes:
 
 Use the workspace's pinned pnpm version and install with `pnpm install --frozen-lockfile` when reproducing a checkout. `pnpm build` generates package artifacts used by package exports, browser benchmarks, and packaging checks. Make changes in source, not in generated dist files.
 
-The repository has several kinds of checks. `pnpm typecheck` checks workspaces and Storybook; `pnpm test:unit` runs package unit suites, while `pnpm test:storybook` runs browser stories. Build public packages before workspace checks. `pnpm preflight` combines static checks, a single package build, typechecks, unit and control tests, package validation, Storybook static/development acceptance and adapter browser regressions. See [development commands](./docs/development-commands.md) for scopes, prerequisites and compatibility aliases. Stateful parser changes additionally need the oracle and release-soak evidence described in [soak coverage](./docs/soak-coverage.md).
+The repository has several kinds of checks. `pnpm typecheck` checks workspaces and Storybook; `pnpm test:unit` runs package unit suites, while `pnpm test:storybook` runs browser stories. Build public packages before workspace checks. `pnpm preflight` combines static checks, a single package build, typechecks, unit and control tests, package validation, Storybook static/development acceptance and adapter browser regressions. See [development commands](https://ai-markdown.github.io/docs/guides/development-commands/) for scopes, prerequisites and compatibility aliases. Stateful parser changes additionally need the oracle and release-soak evidence described in [soak coverage](https://ai-markdown.github.io/docs/guides/soak-coverage/).
 
-Choose performance measurements by question. `pnpm bench:unit` measures the LaTeX preprocessing microbenchmark, Storybook comparison stories attribute pipeline and React work, and `pnpm bench:web` measures production browser scenarios. Historical percentages in [the benchmark study](./docs/benchmark.md) retain their original date and build mode; they are not current device-independent budgets. Read the [browser harness limitations](./benchmarks/README.md) before interpreting a result.
+Choose performance measurements by question. `pnpm bench:unit` measures the LaTeX preprocessing microbenchmark, Storybook comparison stories attribute pipeline and React work, and `pnpm bench:web` measures production browser scenarios. Historical percentages in [the benchmark study](https://ai-markdown.github.io/docs/guides/benchmark/) retain their original date and build mode; they are not current device-independent budgets. Read the [browser harness limitations](./benchmarks/README.md) before interpreting a result.
 
 For a documentation or integration change, check public exports and defaults against the package source, verify complete examples with the current types, and inspect relative links and Markdown fences. A successful build alone cannot establish that a code sample copies the right source, an SSE reader handles split frames, or a lifecycle callback fires in every state. Target those behaviors directly when the recipe depends on them.
 
-The [developer guide index](./docs/README.md) covers customization, architecture, migration, streaming lifecycle, and maintenance. Bug reports are most useful with full accumulated snapshots or an exact delta sequence and completion/replacement events, since the final Markdown alone can hide an intermediate streaming defect.
+The [developer guide index](https://ai-markdown.github.io/docs/guides/) covers customization, architecture, migration, streaming lifecycle, and maintenance. Bug reports are most useful with full accumulated snapshots or an exact delta sequence and completion/replacement events, since the final Markdown alone can hide an intermediate streaming defect.
 
 ## License
 

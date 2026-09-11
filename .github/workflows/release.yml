@@ -236,7 +236,7 @@ jobs:
           path: ${{ runner.temp }}/published-release
           if-no-files-found: ignore
 
-      # Notes come from the version's section in docs/release-highlights.md —
+      # Notes come from the version's section in apps/docs/content/guides/release-highlights.md —
       # the hand-written changelog — falling back to GitHub's auto-generated
       # notes if no section exists for this version.
       - name: Create GitHub release
@@ -263,18 +263,18 @@ jobs:
           # has more than one section, only the first is used — warn so the
           # truncation is visible in the job log rather than discovered on
           # the release page.
-          SECTIONS="$(grep -cE "^### ${VERSION//./\\.}( |$)" docs/release-highlights.md || true)"
+          SECTIONS="$(grep -cE "^### ${VERSION//./\\.}( |$)" apps/docs/content/guides/release-highlights.md || true)"
           awk -v ver="$VERSION" '
             index($0, "### " ver " ") == 1 || $0 == "### " ver { found = 1; next }
             found && /^### / { exit }
             found { print }
-          ' docs/release-highlights.md > /tmp/release-notes.md
+          ' apps/docs/content/guides/release-highlights.md > /tmp/release-notes.md
           if [ "$SECTIONS" -gt 1 ]; then
-            echo "::warning::docs/release-highlights.md has ${SECTIONS} sections for ${VERSION}; only the first is used as release notes"
+            echo "::warning::apps/docs/content/guides/release-highlights.md has ${SECTIONS} sections for ${VERSION}; only the first is used as release notes"
           fi
           if [ -s /tmp/release-notes.md ]; then
             gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --notes-file /tmp/release-notes.md --verify-tag "${RELEASE_ARGS[@]}"
           else
-            echo "::warning::No '### ${VERSION}' section in docs/release-highlights.md — falling back to auto-generated release notes"
+            echo "::warning::No '### ${VERSION}' section in apps/docs/content/guides/release-highlights.md — falling back to auto-generated release notes"
             gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --generate-notes --verify-tag "${RELEASE_ARGS[@]}"
           fi

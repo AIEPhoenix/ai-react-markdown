@@ -16,7 +16,7 @@ Run these commands from the repository root after `pnpm install --frozen-lockfil
 | `pnpm typecheck:storybook`                    | Storybook configuration, stories, shared tooling and root Vitest configuration.                                                      |
 | `pnpm test:unit`                              | Recursive workspace unit suites using each package's own configuration. Build packages first. Does not run Storybook browser suites. |
 
-`test:unit` clears `CORE_SEQUENCE_SEED`, `CORE_SEQUENCE_PATH` and `CORE_SEQUENCE_RUNS` so aggregate gates use the committed core sequence budget. For a targeted replay, use the core package test directly as described in [core testing](./core-testing.md). The root Vitest configuration remains available for focused runs, but CI and preflight use `test:unit` followed by the separate Storybook suites.
+`test:unit` clears `CORE_SEQUENCE_SEED`, `CORE_SEQUENCE_PATH` and `CORE_SEQUENCE_RUNS` so aggregate gates use the committed core sequence budget. For a targeted replay, use the core package test directly as described in [core testing](core-testing.md). The root Vitest configuration remains available for focused runs, but CI and preflight use `test:unit` followed by the separate Storybook suites.
 
 ## Focused validation
 
@@ -46,7 +46,7 @@ Install the browser with `pnpm exec playwright install chromium` before browser 
 | `pnpm build:storybook --skip-build`                     | Reuse packages already built from the current source. Only skips the package build, not the site build. Do not use with stale or missing distributions.                                              |
 | `pnpm test:storybook:site`                              | Verify an existing static export under a nested deployment path, including navigation, Controls and isolated iframes.                                                                                |
 
-For a public documentation export, use `STORYBOOK_DOCS_EXPORT=1 pnpm build:storybook`. See [Storybook](./storybook.md) for catalog structure and deployment details.
+For a public documentation export, use `STORYBOOK_DOCS_EXPORT=1 pnpm build:storybook`. See [Storybook](storybook.md) for catalog structure and deployment details.
 
 ## Full local preflight
 
@@ -72,7 +72,7 @@ Preflight requires installed Chromium, free Storybook ports and an idle checkout
 | `pnpm --filter @ai-markdown/engine soak:aggregate` | Aggregate and validate run results.                                                                                 |
 | `pnpm --filter @ai-markdown/engine fuzz:splice`    | Run the focused splice fuzz test.                                                                                   |
 
-Use [soak coverage](./soak-coverage.md) for profiles and evidence requirements. Engine's `soak:coverage` is a package-local entry for the coverage-map check.
+Use [soak coverage](soak-coverage.md) for profiles and evidence requirements. Engine's `soak:coverage` is a package-local entry for the coverage-map check.
 
 ## Performance and versions
 
@@ -86,7 +86,7 @@ Use [soak coverage](./soak-coverage.md) for profiles and evidence requirements. 
 | `pnpm bench:web:scale:steps`      | Document-size scaling with exactly 100 updates.                                                                                                                                                |
 | `pnpm version-packages <version>` | Rewrite the root and five release-train package versions and related references. Highlight remains independently versioned. Does not publish; follow with lockfile synchronization and review. |
 
-See the [browser benchmark guide](../benchmarks/README.md) before interpreting performance results. Actual npm publication belongs to the release workflow.
+See the [browser benchmark guide](../../../../benchmarks/README.md) before interpreting performance results. Actual npm publication belongs to the release workflow.
 
 ## Compatibility aliases
 

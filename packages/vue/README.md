@@ -1,5 +1,7 @@
 # @ai-markdown/vue
 
+[Documentation](https://ai-markdown.github.io/docs/vue/) · [Examples](https://ai-markdown.github.io/examples/) · [Website](https://ai-markdown.github.io/)
+
 [![@ai-markdown/vue stable](https://img.shields.io/npm/v/@ai-markdown/vue?label=npm&color=blue)](https://www.npmjs.com/package/@ai-markdown/vue?activeTab=versions)
 [![@ai-markdown/vue monthly downloads](https://img.shields.io/npm/dm/@ai-markdown/vue?label=downloads%2Fmonth&color=blue)](https://www.npmjs.com/package/@ai-markdown/vue)
 [![TypeScript declarations included](https://img.shields.io/badge/TypeScript-included-3178c6?logo=typescript&logoColor=white)](https://github.com/ai-markdown/ai-markdown/tree/main/packages/vue)
@@ -25,7 +27,7 @@ Install the stable release:
 pnpm add @ai-markdown/vue vue@^3.5.0 katex
 ```
 
-See [Getting started](../../docs/getting-started.md) for the package map and React/Vue API differences. The Vue package exposes its helpers from the root; it has no `/plugins` entry or React typography variants.
+See [Getting started](https://ai-markdown.github.io/docs/guides/getting-started/) for the package map and React/Vue API differences. The Vue package exposes its helpers from the root; it has no `/plugins` entry or React typography variants.
 
 ## Minimal component
 
@@ -166,7 +168,7 @@ The cursor measures the final visible prose text using DOM ranges and follows co
 
 ## API and distribution
 
-The root exports `AIMarkdown` (also default), `AIMarkdownDocuments`, `AIMarkdownSmoothStream`, `AIMarkdownStreamingCursor`, `useSmoothStream` and `useDocumentSmoothStream`, plus their prop/context/input types. It re-exports the sealed plugin catalog, LaTeX/remend preprocessor factories, schema extension and default URL policy. See the [checked public declaration](../../docs/api/vue.api.txt) for exact names and signatures.
+The root exports `AIMarkdown` (also default), `AIMarkdownDocuments`, `AIMarkdownSmoothStream`, `AIMarkdownStreamingCursor`, `useSmoothStream` and `useDocumentSmoothStream`, plus their prop/context/input types. It re-exports the sealed plugin catalog, LaTeX/remend preprocessor factories, schema extension and default URL policy. See the [checked public declaration](../../tooling/api-reports/vue.api.txt) for exact names and signatures.
 
 ESM and CJS each have development and production entries, with matching declaration files. Vue, core and engine remain external. There is no React peer, React context or `use client` directive. The public package exposes only its root, stylesheet and `package.json`; lifecycle helpers and the HAST converter are implementation details.
 
@@ -194,7 +196,7 @@ The chapter names and order follow the React catalog. Start with **Streaming/Str
 
 React-specific typography tokens, extra-style registries, context factories, Mantine widgets and render profiling remain separate. The Vue Introduction explains those boundaries; the shared catalog guide maps all common chapters and records renamed Vue story URLs.
 
-General examples read corpus excerpts. Cross-chunk and plugin syntax fixtures remain purpose-built to isolate their contracts. See the [catalog guide](../../docs/storybook.md) for comparable React examples and run `pnpm test:storybook:vue` to verify the Vue stories in Chromium.
+General examples read corpus excerpts. Cross-chunk and plugin syntax fixtures remain purpose-built to isolate their contracts. See the [catalog guide](https://ai-markdown.github.io/docs/guides/storybook/) for comparable React examples and run `pnpm test:storybook:vue` to verify the Vue stories in Chromium.
 
 ## Browser stress verification
 

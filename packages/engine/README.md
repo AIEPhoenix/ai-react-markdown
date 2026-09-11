@@ -1,15 +1,17 @@
 # @ai-markdown/engine
 
+[Documentation](https://ai-markdown.github.io/docs/engine/) · [Examples](https://ai-markdown.github.io/examples/) · [Website](https://ai-markdown.github.io/)
+
 [![@ai-markdown/engine stable](https://img.shields.io/npm/v/@ai-markdown/engine?label=npm&color=blue)](https://www.npmjs.com/package/@ai-markdown/engine?activeTab=versions)
 [![@ai-markdown/engine monthly downloads](https://img.shields.io/npm/dm/@ai-markdown/engine?label=downloads%2Fmonth&color=blue)](https://www.npmjs.com/package/@ai-markdown/engine)
 [![TypeScript declarations included](https://img.shields.io/badge/TypeScript-included-3178c6?logo=typescript&logoColor=white)](https://github.com/ai-markdown/ai-markdown/tree/main/packages/engine)
 [![MIT license](https://img.shields.io/badge/license-MIT-blue)](https://github.com/ai-markdown/ai-markdown/blob/main/LICENSE)
 
-> **3.0.0:** React and Vue adapters share the public `@ai-markdown/core` and `@ai-markdown/engine` packages. See the [migration guide](../../docs/framework-transition.md).
+> **3.0.0:** React and Vue adapters share the public `@ai-markdown/core` and `@ai-markdown/engine` packages. See the [migration guide](https://ai-markdown.github.io/docs/guides/framework-transition/).
 
 `@ai-markdown/engine` contains the string and syntax-tree processing used by ai-markdown: LaTeX preprocessing, the unified plugin chain, incremental parsing, and shared reference bookkeeping. It has no React dependency. A framework adapter supplies component lifecycle, DOM rendering, context subscriptions, and any presentation such as syntax highlighting.
 
-**This is the algorithm layer for adapter authors.** Shared core, React and Vue consume it at the exact same train version. The public root exports parsing, preprocessing, registry and policy contracts; fixtures and private registry containers are excluded. Public contracts follow semantic versioning from 3.0.0; breaking changes require a new major version. Applications should install `@ai-markdown/react` or `@ai-markdown/vue`; see [Getting started](../../docs/getting-started.md).
+**This is the algorithm layer for adapter authors.** Shared core, React and Vue consume it at the exact same train version. The public root exports parsing, preprocessing, registry and policy contracts; fixtures and private registry containers are excluded. Public contracts follow semantic versioning from 3.0.0; breaking changes require a new major version. Applications should install `@ai-markdown/react` or `@ai-markdown/vue`; see [Getting started](https://ai-markdown.github.io/docs/guides/getting-started/).
 
 The examples below demonstrate individual entry points. They do not assemble a complete framework adapter: URL transformation, coordinated placeholder rendering, effect timing, and CSS remain the adapter's responsibility.
 
@@ -96,7 +98,7 @@ Node, workers, and embedded JS runtimes (e.g. Hermes/JavaScriptCore).
 
 ## Versioning
 
-Lockstep with `@ai-markdown/react`, which pins this package **exactly** — engine and shared core expose explicit adapter contracts that follow semantic versioning from 3.0.0 (see the status note above). Release notes: [release highlights](https://github.com/ai-markdown/ai-markdown/blob/main/docs/release-highlights.md).
+Lockstep with `@ai-markdown/react`, which pins this package **exactly** — engine and shared core expose explicit adapter contracts that follow semantic versioning from 3.0.0 (see the status note above). Release notes: [release highlights](https://ai-markdown.github.io/docs/guides/release-highlights/).
 
 ## Package family
 
@@ -123,7 +125,7 @@ The hast tree is an intermediate representation, not finished HTML or React outp
 
 Cross-chunk coordination requires more than creating a registry. Core registers chunks and contributes processed data after commit, subscribes to document and label changes, renders placeholders under the consuming chunk's policy, and emits one aggregate footer. Engine-built private placeholder tags also use a provenance boundary in the shipped pipeline. A hand-assembled chain without the matching credential lifecycle is not a drop-in coordinated renderer.
 
-Use the React adapter as a source-level reference when building another host, and give that host its own lifecycle and equivalence tests. The [architecture guide](../../docs/architecture.md) traces the stage order, while [soak coverage](../../docs/soak-coverage.md) distinguishes a successful oracle comparison from evidence that an optimized path was exercised.
+Use the React adapter as a source-level reference when building another host, and give that host its own lifecycle and equivalence tests. The [architecture guide](https://ai-markdown.github.io/docs/guides/architecture/) traces the stage order, while [soak coverage](https://ai-markdown.github.io/docs/guides/soak-coverage/) distinguishes a successful oracle comparison from evidence that an optimized path was exercised.
 
 ## Repository commands
 

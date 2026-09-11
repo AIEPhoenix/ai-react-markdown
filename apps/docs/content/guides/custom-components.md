@@ -1,6 +1,6 @@
 # Custom Components
 
-React uses `customComponents` and React children. Vue uses `components` or named element slots with `MarkdownElementContext`. See the [Vue guide](../packages/vue/README.md#custom-vue-components-and-slots) and [package setup](./getting-started.md).
+React uses `customComponents` and React children. Vue uses `components` or named element slots with `MarkdownElementContext`. See the [Vue guide](../../../../packages/vue/README.md#custom-vue-components-and-slots) and [package setup](getting-started.md).
 
 `customComponents` lets you replace the React renderer for an HTML element produced by the Markdown pipeline. Use it for links, images, tables, headings, task controls, and code blocks that need application behavior. The parser still owns Markdown syntax; your component receives the resulting element's attributes, React children, and an optional hast `node`.
 
@@ -22,7 +22,7 @@ This first example opens every link in a new tab. The external-link recipe below
 
 The type aliases the local, vendored Markdown wrapper's `Components` type. Typical keys include `a`, `img`, `p`, `pre`, `code`, `blockquote`, `h1`–`h6`, lists, and table elements. GFM adds `del` and task-list `input`; optional syntax adds `mark`, `dl`, `dt`, and `dd`. Generated KaTeX markup also passes through element rendering, so a broad `span` override must tolerate math output.
 
-A custom renderer runs after the normal HTML and URL policy. URLs you introduce yourself inside that renderer do not travel back through the pipeline. Keep application-generated destinations under your own policy; see [URL sanitization](./url-sanitization.md).
+A custom renderer runs after the normal HTML and URL policy. URLs you introduce yourself inside that renderer do not travel back through the pipeline. Keep application-generated destinations under your own policy; see [URL sanitization](url-sanitization.md).
 
 ## Recipes
 
@@ -96,7 +96,7 @@ const COMPONENTS = {
 } satisfies AIMarkdownCustomComponents;
 ```
 
-This changes the displayed control only; it does not edit `content`. Persist changes through an application callback carried by [metadata](./metadata-context.md), with a stable task identifier and an accessible name derived from your data. A source offset can locate a task within one parsed revision, but it is not a durable ID across source edits or preprocessing.
+This changes the displayed control only; it does not edit `content`. Persist changes through an application callback carried by [metadata](metadata-context.md), with a stable task identifier and an accessible name derived from your data. A source offset can locate a task within one parsed revision, but it is not a durable ID across source edits or preprocessing.
 
 ### Custom code block with copy button (React, no Mantine)
 
@@ -164,7 +164,7 @@ const components: AIMarkdownCustomComponents = {
 };
 ```
 
-This renderer preserves an existing `id`; it does not create one. The shipped pipeline does not include a heading-slug plugin, so ordinary Markdown headings have no automatic slug. IDs admitted from source HTML are namespaced by `documentId` — see [Architecture](./architecture.md#documentid-and-clobber-prefix) for how multi-document pages avoid id collisions.
+This renderer preserves an existing `id`; it does not create one. The shipped pipeline does not include a heading-slug plugin, so ordinary Markdown headings have no automatic slug. IDs admitted from source HTML are namespaced by `documentId` — see [Architecture](architecture.md#documentid-and-clobber-prefix) for how multi-document pages avoid id collisions.
 
 ---
 
@@ -342,4 +342,4 @@ The slug example demonstrates namespace composition only. Two headings with the 
 
 When checking a replacement, include the constructs whose attributes it may receive: an ordinary link, a hash link, a repeated footnote reference, a fenced block, inline code, and raw `<pre>` HTML. Check that the original text survives, that controls can be operated by keyboard, and that changing metadata updates the callback without requiring a new component function.
 
-Source pointers: [`markdown/Markdown.tsx`](../packages/react/src/components/markdown/Markdown.tsx) owns JSX conversion; [`crossChunkPlaceholders.tsx`](../packages/react/src/components/crossChunkPlaceholders.tsx) adapts coordinated references to the same component map; [`MantineAIMarkdown.tsx`](../packages/react-mantine/src/MantineAIMarkdown.tsx) demonstrates guarded extraction of code blocks.
+Source pointers: [`markdown/Markdown.tsx`](../../../../packages/react/src/components/markdown/Markdown.tsx) owns JSX conversion; [`crossChunkPlaceholders.tsx`](../../../../packages/react/src/components/crossChunkPlaceholders.tsx) adapts coordinated references to the same component map; [`MantineAIMarkdown.tsx`](../../../../packages/react-mantine/src/MantineAIMarkdown.tsx) demonstrates guarded extraction of code blocks.

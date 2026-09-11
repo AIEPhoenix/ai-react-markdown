@@ -1,6 +1,6 @@
 # Streaming & Performance
 
-The `blockMemo` prop, hooks and profiling examples below are React-specific. Vue shares the incremental engine and core planner, but does not expose React’s block cache switch. See the [Vue guide](../packages/vue/README.md#component-props) and [package setup](./getting-started.md).
+The `blockMemo` prop, hooks and profiling examples below are React-specific. Vue shares the incremental engine and core planner, but does not expose React’s block cache switch. See the [Vue guide](../../../../packages/vue/README.md#component-props) and [package setup](getting-started.md).
 
 Streaming repeatedly renders a growing Markdown document. Engine provides append-aware preprocessing and verified incremental parsing; shared core plans blocks; the React adapter caches rendered React nodes. The `streaming` prop describes lifecycle state; it does not enable those optimizations. `blockMemo` and `incrementalParse` are both on by default.
 
@@ -123,19 +123,19 @@ The splice runs the tail through the same plugin chain and re-bases tail positio
 
 Every frame re-checks a gate chain; any failure silently takes the ordinary full-parse path for that frame — output is always identical either way:
 
-| Condition                                                                           | Why                                                                                                                                                                                                          |
-| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Content change is not a pure append                                                 | Includes Stage-A preprocessor rewrites near the stream end (e.g. unclosed-`$$` truncation, or an active tail-repair preprocessor closing `**bold` — see [content preprocessors](./content-preprocessors.md)) |
-| No freeze-safe boundary yet                                                         | e.g. one giant paragraph, an open fence/container since the start, or an unresolved reference pinning the taint                                                                                              |
-| A definition nested in a container (`> [a]: /url`, `> [^x]: …`) spanning the prefix | Its source cannot be re-injected verbatim with column fidelity — the frame full-parses (`uninjectable`)                                                                                                      |
-| The prefix/tail hast layout falls outside the separator-alignment model             | Defensive escape hatch; the arbiter keeps the modeled set honest                                                                                                                                             |
-| Plugin arrays / handlers / `documentId` changed identity                            | The engine's own deps check — wider than the block-memo cache flush                                                                                                                                          |
+| Condition                                                                           | Why                                                                                                                                                                                                        |
+| ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Content change is not a pure append                                                 | Includes Stage-A preprocessor rewrites near the stream end (e.g. unclosed-`$$` truncation, or an active tail-repair preprocessor closing `**bold` — see [content preprocessors](content-preprocessors.md)) |
+| No freeze-safe boundary yet                                                         | e.g. one giant paragraph, an open fence/container since the start, or an unresolved reference pinning the taint                                                                                            |
+| A definition nested in a container (`> [a]: /url`, `> [^x]: …`) spanning the prefix | Its source cannot be re-injected verbatim with column fidelity — the frame full-parses (`uninjectable`)                                                                                                    |
+| The prefix/tail hast layout falls outside the separator-alignment model             | Defensive escape hatch; the arbiter keeps the modeled set honest                                                                                                                                           |
+| Plugin arrays / handlers / `documentId` changed identity                            | The engine's own deps check — wider than the block-memo cache flush                                                                                                                                        |
 
 SSR always takes the full path (per-request state starts empty), so server output is untouched by the flag.
 
 ### Measured effect
 
-On the Storybook benchmark payloads, the freeze boundary covers ~73–87% of realistic LLM streaming content, cutting the parse+transform stages to roughly the tail's share. Measured in a real browser (see [Benchmark](./benchmark.md) for full tables and methodology): **83–94% less pipeline stage time in the historical July 2026 runs** — footnote-bearing payloads included since v2 (84% with the defs tail on, identical to plain payloads) — and with both flags on, 16×-payload p50 commit time drops from 32.4 ms to 7.5 ms. Coordinated documents measure smaller (26% at 1× — short per-chunk documents, cross-references pinned by design) and scale the same way. Use the `IncrementalParseCompare` / `BoostCompare` / `CrossChunkIncrementalCompare` stories to measure your own payloads.
+On the Storybook benchmark payloads, the freeze boundary covers ~73–87% of realistic LLM streaming content, cutting the parse+transform stages to roughly the tail's share. Measured in a real browser (see [Benchmark](benchmark.md) for full tables and methodology): **83–94% less pipeline stage time in the historical July 2026 runs** — footnote-bearing payloads included since v2 (84% with the defs tail on, identical to plain payloads) — and with both flags on, 16×-payload p50 commit time drops from 32.4 ms to 7.5 ms. Coordinated documents measure smaller (26% at 1× — short per-chunk documents, cross-references pinned by design) and scale the same way. Use the `IncrementalParseCompare` / `BoostCompare` / `CrossChunkIncrementalCompare` stories to measure your own payloads.
 
 ### Footguns
 
@@ -159,7 +159,7 @@ Block-memoization treats several props as cache dependencies. A new identity on 
 | `enginePlugins`        | `DEEP_EQUAL` (elements are module singletons)  | Module scope                                          |
 | `metadata`             | `PASS_THROUGH` — deliberately exempted         | Doesn't affect block-memo (lives in separate context) |
 
-(Policies come from the React adapter's `useStableRecord` table — the single stabilization boundary; see [Extending via a Sub-package](./extending-via-subpackage.md) for how wrappers reuse it.)
+(Policies come from the React adapter's `useStableRecord` table — the single stabilization boundary; see [Extending via a Sub-package](extending-via-subpackage.md) for how wrappers reuse it.)
 
 ### The function-valued exception (`urlTransform`, `contentPreprocessors`)
 
@@ -209,7 +209,7 @@ Cost: an `isEqual` on every render. Cheap for small objects; not cheap for arbit
 
 ## Streaming patterns
 
-Two main approaches, named consistently with [Streaming chat: end-to-end](./streaming-chat-example.md):
+Two main approaches, named consistently with [Streaming chat: end-to-end](streaming-chat-example.md):
 
 ### Approach A — single `<AIMarkdown>` with growing content
 
@@ -231,7 +231,7 @@ Simpler and usually faster — one instance, one cache, no wrapper. Use this whe
 </AIMarkdownDocuments>
 ```
 
-Each chunk has its own block-memo cache. Cross-chunk references coordinate via [`<AIMarkdownDocuments>`](./cross-chunk-coordination.md). Use when virtualizing, when the server emits logical chunks, or when each chunk needs its own metadata.
+Each chunk has its own block-memo cache. Cross-chunk references coordinate via [`<AIMarkdownDocuments>`](cross-chunk-coordination.md). Use when virtualizing, when the server emits logical chunks, or when each chunk needs its own metadata.
 
 ### Variant: streaming cursor
 
@@ -245,7 +245,7 @@ function StreamingMessage({ content, done }: { content: string; done: boolean })
 
 The `streamingCursor` slot renders the given component after the content while `streaming === true` and unmounts it when streaming ends. The built-in `AIMarkdownStreamingCursor` positions an indicator right after the **last rendered character**, entirely at the DOM layer — the markdown source, the parse pipeline, and the block-memo cache are untouched, so incremental parsing keeps its append gate and no block is invalidated by the cursor.
 
-**Full documentation: [Streaming cursor](./streaming-cursor.md)** — hide conditions, the custom-indicator contract, stall behavior, RTL/SSR/chunked-mode details, known boundaries, and footguns. What matters for _this_ document is the performance contract: the slot component is compared by identity (define it at module scope, like `Typography`), and the cursor adds zero work to the parse/memoization pipeline.
+**Full documentation: [Streaming cursor](streaming-cursor.md)** — hide conditions, the custom-indicator contract, stall behavior, RTL/SSR/chunked-mode details, known boundaries, and footguns. What matters for _this_ document is the performance contract: the slot component is compared by identity (define it at module scope, like `Typography`), and the cursor adds zero work to the parse/memoization pipeline.
 
 > ⚠️ **Do not append a cursor character to `content`** (the `content + '▍'` pattern previously documented here). It defeats incremental parsing on every frame — `c1 + '▍'` → `c1 + delta + '▍'` is never a pure append, so the engine silently falls back to a full parse — and the character can land inside unclosed math or mermaid fences, corrupting their source.
 
@@ -378,7 +378,7 @@ Block memoization wins by dividing work into many small caches. If your content 
 
 ### Mistaking `streaming` for an in-progress signal that pauses rendering
 
-`streaming === true` does not delay rendering. Content is rendered immediately as it arrives. The flag communicates lifecycle and controls associated UI. For buffered delivery, batch upstream updates with a bounded flush interval and flush on completion; a trailing debounce can postpone output indefinitely under continuous input. For visual typewriter pacing, use [smooth streaming](./smooth-streaming.md), which tracks source completion and reveal completion separately.
+`streaming === true` does not delay rendering. Content is rendered immediately as it arrives. The flag communicates lifecycle and controls associated UI. For buffered delivery, batch upstream updates with a bounded flush interval and flush on completion; a trailing debounce can postpone output indefinitely under continuous input. For visual typewriter pacing, use [smooth streaming](smooth-streaming.md), which tracks source completion and reveal completion separately.
 
 ## Mantine code display cadence
 
@@ -405,7 +405,7 @@ A smooth reveal intentionally adds visual updates between network arrivals. Its 
 5. Use stage timing to attribute parse/transform/plan/conversion cost, then a production browser workload to inspect layout and responsiveness.
 6. Recheck correctness on the same frame sequence. A fast result that omitted content is a failed run.
 
-The [historical benchmark tables](./benchmark.md) record a specific development-build experiment. The [browser harness](../benchmarks/README.md) measures published build entries and has explicit pacing and measurement limits. Neither supplies a universal frame-rate guarantee or proves that all cost is proportional to the newest token.
+The [historical benchmark tables](benchmark.md) record a specific development-build experiment. The [browser harness](../../../../benchmarks/README.md) measures published build entries and has explicit pacing and measurement limits. Neither supplies a universal frame-rate guarantee or proves that all cost is proportional to the newest token.
 
 ## Context and cache boundaries
 

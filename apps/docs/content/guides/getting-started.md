@@ -17,7 +17,7 @@ Every package also exposes `/package.json`. Import only public entries; `src/` a
 
 React and Vue each depend on matching exact versions of core and engine. Core depends on engine. Mantine declares the stable React adapter peer `^3.0.0`; upgrade those two together. Applications normally install only their adapter and its peers. The highlight plugin is an engine dependency on an independent `1.0.2` release and is versioned separately from the framework train.
 
-The legacy `@ai-react-markdown/core` was a React renderer; its replacement is `@ai-markdown/react`. The new `@ai-markdown/core` has no React components or Vue components. See the [migration guide](./framework-transition.md) before renaming existing imports.
+The legacy `@ai-react-markdown/core` was a React renderer; its replacement is `@ai-markdown/react`. The new `@ai-markdown/core` has no React components or Vue components. See the [migration guide](framework-transition.md) before renaming existing imports.
 
 ## React 19
 
@@ -37,7 +37,7 @@ export function Answer() {
 }
 ```
 
-The default typography CSS supplies the React presentation and `--aim-*` tokens. A custom `Typography` can provide its own styles. In a React Server Components application, render the adapter from a client boundary; load global styles in the application's permitted global stylesheet entry. See the [React README](../packages/react/README.md) for props and environment details.
+The default typography CSS supplies the React presentation and `--aim-*` tokens. A custom `Typography` can provide its own styles. In a React Server Components application, render the adapter from a client boundary; load global styles in the application's permitted global stylesheet entry. See the [React README](../../../../packages/react/README.md) for props and environment details.
 
 ## Vue 3.5
 
@@ -62,7 +62,7 @@ const content = ref('# Answer\n\n**Markdown**, $x^2$ and 中文.');
 </template>
 ```
 
-Vue's stylesheet supplies basic code/table layout and cursor animation. Customize the wrapper with `class` and `style`, or replace element renderers with `components` and scoped slots. React typography variants, hooks and `--aim-*` token contracts do not belong to Vue. See the [Vue README](../packages/vue/README.md) for SSR/hydration and complete examples.
+Vue's stylesheet supplies basic code/table layout and cursor animation. Customize the wrapper with `class` and `style`, or replace element renderers with `components` and scoped slots. React typography variants, hooks and `--aim-*` token contracts do not belong to Vue. See the [Vue README](../../../../packages/vue/README.md) for SSR/hydration and complete examples.
 
 ## React with Mantine 9
 
@@ -95,9 +95,9 @@ export function Answer() {
 }
 ````
 
-Keep the stylesheet order above. Mantine supplies its own typography; add the React typography stylesheet only if the application also renders standalone React Markdown. Mermaid arrives as an integration dependency. Vue has no Mantine or built-in code-toolbar/Mermaid integration. See the [Mantine README](../packages/react-mantine/README.md) for `codeBlock` options and slot precedence.
+Keep the stylesheet order above. Mantine supplies its own typography; add the React typography stylesheet only if the application also renders standalone React Markdown. Mermaid arrives as an integration dependency. Vue has no Mantine or built-in code-toolbar/Mermaid integration. See the [Mantine README](../../../../packages/react-mantine/README.md) for `codeBlock` options and slot precedence.
 
-KaTeX is an optional peer of engine and both adapters (`^0.16 || ^0.17`). The setup commands include it for math examples; omit its direct dependency and CSS import if your application does not use math. Declare it directly whenever you import its stylesheet, so installation does not depend on hoisting. The public packages declare Node `^20.19.0 || >=22.12.0` because their CJS output loads ESM dependencies through Node’s `require(ESM)` support. Earlier Node 20/22 releases can fail with `ERR_REQUIRE_ESM`; repository development uses the version in [`.nvmrc`](../.nvmrc) and the pinned pnpm version in [`package.json`](../package.json).
+KaTeX is an optional peer of engine and both adapters (`^0.16 || ^0.17`). The setup commands include it for math examples; omit its direct dependency and CSS import if your application does not use math. Declare it directly whenever you import its stylesheet, so installation does not depend on hoisting. The public packages declare Node `^20.19.0 || >=22.12.0` because their CJS output loads ESM dependencies through Node’s `require(ESM)` support. Earlier Node 20/22 releases can fail with `ERR_REQUIRE_ESM`; repository development uses the version in [`.nvmrc`](../../../../.nvmrc) and the pinned pnpm version in [`package.json`](../../../../package.json).
 
 ## React and Vue API differences
 
@@ -146,7 +146,7 @@ Use one renderer per message unless the application intentionally divides a logi
 
 Server rendering and initial hydration keep local footnote semantics. Cross-chunk definitions become available after mounted contributions commit. Render a complete document through one component when server-only output must resolve all references. Keep mutable sessions and registries local to each consumer/request.
 
-Continue with the [React chat recipe](./streaming-chat-example.md), [Vue streaming and turn-taking](../packages/vue/README.md#smooth-streaming-and-turn-taking), or [Vue multi-chunk example](../packages/vue/README.md#multiple-chunks-in-one-document).
+Continue with the [React chat recipe](streaming-chat-example.md), [Vue streaming and turn-taking](../../../../packages/vue/README.md#smooth-streaming-and-turn-taking), or [Vue multi-chunk example](../../../../packages/vue/README.md#multiple-chunks-in-one-document).
 
 ## Run the examples in this repository
 
@@ -157,4 +157,4 @@ pnpm storybook
 
 The hub runs on port 6006, React on 6007 and Vue on 6008. Development resolves workspace source and styles directly; no preliminary package build is required. `pnpm storybook:react` and `pnpm storybook:vue` start one catalog. Static builds use public package exports and build dependencies first.
 
-Public packages live under `packages/*`. The `apps/storybook-*` apps, `tooling/storybook-kit`, corpus, benchmarks and archived prototypes are private workspaces. See [Interactive examples](./storybook.md) and [Development commands](./development-commands.md) for build and validation commands.
+Public packages live under `packages/*`. The `apps/storybook-*` apps, `tooling/storybook-kit`, corpus, benchmarks and archived prototypes are private workspaces. See [Interactive examples](storybook.md) and [Development commands](development-commands.md) for build and validation commands.

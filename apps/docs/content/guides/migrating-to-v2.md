@@ -1,12 +1,12 @@
 # Migrating from 1.x to 2.0
 
-This is the historical React 1.x → 2.x API migration. To adopt the current stable 3.0 packages, also follow [From ai-react-markdown to ai-markdown](./framework-transition.md); the old React core package is now `@ai-markdown/react`, while `@ai-markdown/core` is framework-independent.
+This is the historical React 1.x → 2.x API migration. To adopt the current stable 3.0 packages, also follow [From ai-react-markdown to ai-markdown](framework-transition.md); the old React core package is now `@ai-markdown/react`, while `@ai-markdown/core` is framework-independent.
 
 The 2.0 migration replaces `config` and `defaultConfig` with flat component props, a sealed engine-plugin selection, and separate contexts for document identity, metadata, state, theme, and behaviors. The old config types and render-state hooks were removed; upgrading requires updating imports and call sites rather than enabling a compatibility flag.
 
 Use the mapping tables below to preserve your selections, then migrate custom renderers and wrapper defaults. The before snippets intentionally use removed 1.x APIs; only the after snippets target 2.x. Template values such as `content`, `MY_SCHEMA`, and application wrapper types stand for code in your project.
 
-The original 2.0 change was designed to preserve the 1.8.x rendering pipeline for equivalent selections. That historical compatibility statement is not a promise that every later 2.x release emits identical HTML: later versions include parser, sanitization, coordination, and rendering fixes. When moving directly to the current release, read the subsequent [release highlights](./release-highlights.md) and verify your custom output semantically.
+The original 2.0 change was designed to preserve the 1.8.x rendering pipeline for equivalent selections. That historical compatibility statement is not a promise that every later 2.x release emits identical HTML: later versions include parser, sanitization, coordination, and rendering fixes. When moving directly to the current release, read the subsequent [release highlights](release-highlights.md) and verify your custom output semantically.
 
 ## Why the break
 
@@ -341,7 +341,7 @@ replacement (nothing on the v2 surface is deep-partial).
   `extendSanitizeSchema` — unchanged from 1.x.
 - **Flat props share one namespace across core and wrappers.** Wrapper
   authors must check the prop-name registry (the props table in the
-  [core README](../packages/react/README.md#props-api-reference)) before
+  [core README](../../../../packages/react/README.md#props-api-reference)) before
   adding fields; collisions are compile errors for TS consumers but
   silent overrides for plain-JS consumers.
 
@@ -356,4 +356,4 @@ replacement (nothing on the v2 surface is deep-partial).
 
 If compilation passes but performance changes, inspect `incrementalParse` first: the omitted-field behavior intentionally changed from a possible 1.x opt-out to the shipped 2.x default. Then check function identities for `urlTransform`, preprocessors, and slots. Factories are optional; stable module constants or correctly memoized dynamic values express the same configuration.
 
-For a newly written wrapper, use the current [subpackage guide](./extending-via-subpackage.md) as the implementation template. This page retains the old-to-new mapping so a migration can be audited without reconstructing the removed API.
+For a newly written wrapper, use the current [subpackage guide](extending-via-subpackage.md) as the implementation template. This page retains the old-to-new mapping so a migration can be audited without reconstructing the removed API.

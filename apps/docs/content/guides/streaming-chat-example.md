@@ -1,6 +1,6 @@
 # Streaming Chat: End-to-End Example
 
-This end-to-end recipe uses React and a Next.js-style route. The transport rules also apply to Vue; feed accumulated text to the Vue component instead of using React state or hooks. See the [Vue guide](../packages/vue/README.md#minimal-component) and [package setup](./getting-started.md).
+This end-to-end recipe uses React and a Next.js-style route. The transport rules also apply to Vue; feed accumulated text to the Vue component instead of using React state or hooks. See the [Vue guide](../../../../packages/vue/README.md#minimal-component) and [package setup](getting-started.md).
 
 A streaming chat integration needs three contracts: how the server frames a response, how the client accumulates and terminates it, and what the Markdown renderer receives. This example makes those contracts explicit. The renderer receives the full accumulated string; the transport owns deltas, cancellation, errors, and completion.
 
@@ -256,7 +256,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 }
 ```
 
-This is an organizational choice for the example, not a claim that all component-level stylesheet imports are forbidden. A Mantine integration also needs its provider/adapter setup and the three Mantine-related stylesheets shown in the [package README](../packages/react-mantine/README.md#css-dependencies).
+This is an organizational choice for the example, not a claim that all component-level stylesheet imports are forbidden. A Mantine integration also needs its provider/adapter setup and the three Mantine-related stylesheets shown in the [package README](../../../../packages/react-mantine/README.md#css-dependencies).
 
 ### Streaming API route
 
@@ -388,7 +388,7 @@ function ChunkedMessage({ id, chunks, pending }: { id: string; chunks: Chunk[]; 
 
 Each active chunk gets a cursor if it has an eligible text tail. The example allows several active chunks; only a sequential server contract guarantees that the last chunk alone is streaming. For one visual typewriter across concurrent section sources, use document smooth turn-taking.
 
-Cross-chunk coordination shares footnote numbering and reference definitions. It does not join paragraphs, continue a list, or close a code fence opened in another instance. Keep `blockMemo` enabled; the non-memoized path renders each chunk with standalone semantics. `documentIndex` orders the mounted registry contributions, but it cannot preserve definitions belonging to unmounted sections. See [cross-chunk coordination](./cross-chunk-coordination.md) before adding virtualization.
+Cross-chunk coordination shares footnote numbering and reference definitions. It does not join paragraphs, continue a list, or close a code fence opened in another instance. Keep `blockMemo` enabled; the non-memoized path renders each chunk with standalone semantics. `documentIndex` orders the mounted registry contributions, but it cannot preserve definitions belonging to unmounted sections. See [cross-chunk coordination](cross-chunk-coordination.md) before adding virtualization.
 
 ## Add smooth reveal without changing the protocol
 
@@ -412,7 +412,7 @@ function SmoothMessage({ content, pending }: { content: string; pending: boolean
 }
 ```
 
-Mount with empty content if new arrivals should animate. Non-empty mounts snap to the supplied text for hydration and scroll-back. In a coordinated queue, mount empty placeholders with `smoothWaiting` while awaiting input; otherwise an empty non-streaming chunk is already complete. See [smooth streaming](./smooth-streaming.md) for drain callbacks, completion, grapheme boundaries, and reduced-motion handling.
+Mount with empty content if new arrivals should animate. Non-empty mounts snap to the supplied text for hydration and scroll-back. In a coordinated queue, mount empty placeholders with `smoothWaiting` while awaiting input; otherwise an empty non-streaming chunk is already complete. See [smooth streaming](smooth-streaming.md) for drain callbacks, completion, grapheme boundaries, and reduced-motion handling.
 
 ## Choosing between A and B
 

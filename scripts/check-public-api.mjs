@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import ts from 'typescript';
 const update = process.argv.includes('--update');
-mkdirSync('docs/api', { recursive: true });
+mkdirSync('tooling/api-reports', { recursive: true });
 const surfaces = [
   { name: 'engine', directory: 'engine', entry: 'src/index.ts', shared: true },
   { name: 'core', directory: 'core', entry: 'src/index.ts', shared: true },
@@ -17,7 +17,7 @@ for (const { name, directory, entry, shared, declaration: declarationPath = 'dis
   const ast = ts.createSourceFile(`${name}.d.ts`, declaration, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const printed = ts.createPrinter({ removeComments: true, newLine: ts.NewLineKind.LineFeed }).printFile(ast);
   const snapshot = `// Generated from the built public declaration. Review changes before updating.\n${printed}`;
-  const file = `docs/api/${name}.api.txt`;
+  const file = `tooling/api-reports/${name}.api.txt`;
   assert(
     !/RegistryInternal|SmoothCoordinatorInternal|_refcounts|_subscribers|node_modules\//.test(snapshot),
     `${name}: implementation storage or local path in public declarations`

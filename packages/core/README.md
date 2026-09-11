@@ -1,5 +1,7 @@
 # @ai-markdown/core
 
+[Documentation](https://ai-markdown.github.io/docs/core/) · [Examples](https://ai-markdown.github.io/examples/) · [Website](https://ai-markdown.github.io/)
+
 [![@ai-markdown/core stable](https://img.shields.io/npm/v/@ai-markdown/core?label=npm&color=blue)](https://www.npmjs.com/package/@ai-markdown/core?activeTab=versions)
 [![@ai-markdown/core monthly downloads](https://img.shields.io/npm/dm/@ai-markdown/core?label=downloads%2Fmonth&color=blue)](https://www.npmjs.com/package/@ai-markdown/core)
 [![TypeScript declarations included](https://img.shields.io/badge/TypeScript-included-3178c6?logo=typescript&logoColor=white)](https://github.com/ai-markdown/ai-markdown/tree/main/packages/core)
@@ -7,7 +9,7 @@
 
 Framework-independent orchestration for ai-markdown adapters, on the **3.0.0** train alongside the React and Vue adapters. It supplies pipeline sessions, block planning, cross-chunk contributions, aggregate footnote trees and streaming coordination. Applications install `@ai-markdown/react` or `@ai-markdown/vue`; adapter authors can install `@ai-markdown/core` and `@ai-markdown/engine` directly.
 
-This package was the private runtime in the legacy v2.14.1 release. It is now a real external dependency of both framework adapters, with an explicit public export list. The old `@ai-react-markdown/core` React package maps to `@ai-markdown/react`, not this package. See the [migration guide](../../docs/framework-transition.md). Public contracts follow semantic versioning from 3.0.0; keep the shared packages at the same exact train version.
+This package was the private runtime in the legacy v2.14.1 release. It is now a real external dependency of both framework adapters, with an explicit public export list. The old `@ai-react-markdown/core` React package maps to `@ai-markdown/react`, not this package. See the [migration guide](https://ai-markdown.github.io/docs/guides/framework-transition/). Public contracts follow semantic versioning from 3.0.0; keep the shared packages at the same exact train version.
 
 ## Responsibility and dependency direction
 
@@ -124,11 +126,11 @@ pnpm preflight
 
 Build before running distribution tests: they load the actual ESM/CJS production and development files in separate Node processes, reject UI framework resolution transitively and parse without browser globals. Other tests compare session output with an independent full engine pipeline, exercise resets/fallback, prove explicit contribution timing and check aggregate body immutability. Existing React tests still exercise the adapter's delegation, memoization, byte equivalence, coordination and browser behavior.
 
-The dedicated `test:core-contracts` gate builds core and its workspace dependencies, typechecks it, and runs all core tests independently of React/Vue. It runs in preflight, a dedicated CI task and the release workflow. Pure planner, coordinator, tail-signal and block-plan tests live with core; React retains renderer/cache integration tests. Fixed-seed sequences compare retained pipeline/planning and contribution state against full reconstruction, and coordinator lifecycles against a separate model. See [core testing](../../docs/core-testing.md) for the module map, fixed budgets, replay commands and limitations.
+The dedicated `test:core-contracts` gate builds core and its workspace dependencies, typechecks it, and runs all core tests independently of React/Vue. It runs in preflight, a dedicated CI task and the release workflow. Pure planner, coordinator, tail-signal and block-plan tests live with core; React retains renderer/cache integration tests. Fixed-seed sequences compare retained pipeline/planning and contribution state against full reconstruction, and coordinator lifecycles against a separate model. See [core testing](https://ai-markdown.github.io/docs/guides/core-testing/) for the module map, fixed budgets, replay commands and limitations.
 
 `assert-boundary.mjs` checks public-package identity, allowed production dependencies, source import direction and folded environment gates. The React distribution guard requires external core and engine imports. Core's declarations must not expose `RegistryInternal`, `SmoothCoordinatorInternal` or private refcount/subscriber containers.
 
-The release train is engine/core/react/react-mantine/vue at the same version. Vue now consumes the same shared contracts; see the [API contracts](../../docs/api/core-engine-contracts.md) for stable signatures and migration from beta.1. Core depends on engine through `workspace:*`, which becomes the exact train version in the published manifest. Both ESM and CJS have production and development entries; every build folds environment gates separately. Core has no `use client` directive and does not inline a second engine implementation.
+The release train is engine/core/react/react-mantine/vue at the same version. Vue now consumes the same shared contracts; see the [API contracts](https://ai-markdown.github.io/docs/guides/api/core-engine-contracts/) for stable signatures and migration from beta.1. Core depends on engine through `workspace:*`, which becomes the exact train version in the published manifest. Both ESM and CJS have production and development entries; every build folds environment gates separately. Core has no `use client` directive and does not inline a second engine implementation.
 
 ## Public API and write capabilities
 
@@ -136,4 +138,4 @@ The root entry explicitly lists supported stable exports. Session creation, pars
 
 `createSmoothCoordinator` returns the read-only state and documented methods of `SmoothCoordinator`, excluding internal refcounts and notification containers. `ContributionOptions.registry` accepts only a `ContributionRegistry` write capability with `contributeChunkData`; it does not require an implementation registry. Create a registry through engine's `createRegistry`, whose `RegistryController` adds registration and publication to the read-only `Registry` contract. Pair every registration with release in the owning adapter.
 
-These are type-level API boundaries, not object freezing or arbitrary deep cloning. Mutating returned sets, tree data or undocumented implementation fields is unsupported. Public contracts and checked signatures are recorded in the [API contract document](../../docs/api/core-engine-contracts.md).
+These are type-level API boundaries, not object freezing or arbitrary deep cloning. Mutating returned sets, tree data or undocumented implementation fields is unsupported. Public contracts and checked signatures are recorded in the [API contract document](https://ai-markdown.github.io/docs/guides/api/core-engine-contracts/).

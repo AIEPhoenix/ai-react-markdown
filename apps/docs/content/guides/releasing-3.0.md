@@ -15,7 +15,7 @@ For subsequent releases, use a new version and tag; the completed 3.0.0 release 
 
 1. Run `pnpm preflight` on the final source. It covers builds, lint, formatting, declarations, unit and control tests, tarballs, consumer integration, Storybook and browser/lifetime checks.
 2. Require CI, including the packed consumer Node matrix and core contract job, to pass.
-3. Commit a clean candidate and run `pnpm check:soak-impact`. Follow [soak coverage and approval](./soak-coverage.md) when engine impact requires a campaign, and validate its evidence with `pnpm check:release-soak --evidence .soak-logs/<run-id>`. The current release profile covers all six legs and 84 logical tasks.
+3. Commit a clean candidate and run `pnpm check:soak-impact`. Follow [soak coverage and approval](soak-coverage.md) when engine impact requires a campaign, and validate its evidence with `pnpm check:release-soak --evidence .soak-logs/<run-id>`. The current release profile covers all six legs and 84 logical tasks.
 4. Tag the verified version. The release workflow must pass automated verification and, when required, human `soak-approval` review. Retain the reviewed evidence.
 5. Use trusted publishing for existing packages. Prereleases use their corresponding `beta` or `rc` channel; stable releases use `latest`. The independent plugin follows its own version and channel. Leave bootstrap authentication disabled for existing packages.
 6. Require post-publication registry and consumer verification. The workflow archives its report before creating the GitHub release; the read-only verification workflow can check an existing release again.

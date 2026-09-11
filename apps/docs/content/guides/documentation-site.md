@@ -19,7 +19,7 @@ No renderer package build is required. The site renders documentation and code e
 
 ## One source per document
 
-- `docs/*.md` and `docs/api/*.md` remain the canonical usage, architecture and maintenance guides.
+- `apps/docs/content/guides/*.md` and `apps/docs/content/guides/api/*.md` are the canonical usage, architecture and maintenance guides.
 - Package READMEs remain the canonical package installation and API references, including the independently versioned highlight plugin.
 - `apps/docs/content/` owns the documentation overview, example directory and optional translations. The standalone English homepage lives in `apps/docs/src/pages/index.astro`.
 - `apps/docs/scripts/content.mjs` maps these sources to routes and generates Starlight frontmatter with an edit link to the original file.
@@ -46,9 +46,11 @@ DOCS_SITE_URL=https://docs.example.com DOCS_BASE=/preview/ pnpm build:docs
 DOCS_BASE=/preview/ pnpm test:docs
 ```
 
+API declaration snapshots live in `tooling/api-reports/` and are verified by `pnpm check:public-api`. Release automation reads `apps/docs/content/guides/release-highlights.md`. The root `docs/` directory is retired.
+
 Upload all of `apps/docs/dist/` together. Its HTML, assets and Pagefind index are one build. Configure the host's not-found page using `404.html`; this is a static multi-page site, so do not rewrite every unknown path to the homepage. The repository CI builds and checks the documentation under a prefix and retains the static artifact.
 
-The optional Sites configuration in `apps/docs/.openai/hosting.json` identifies the private preview. It does not define the project's public documentation domain. Until a public domain is selected, existing Storybook-to-guide links retain working GitHub destinations; do not point public catalogs at an owner-only preview.
+The optional Sites configuration in `apps/docs/.openai/hosting.json` identifies the private preview. It does not define the project's public documentation domain. Storybook-to-guide links use the public organization documentation site.
 
 ## Homepage, themes and languages
 
@@ -58,7 +60,7 @@ The shared header provides Docs navigation, search, a language menu and Starligh
 
 Language configuration lives in `apps/docs/src/i18n/config.mjs`. English is the `root` locale, so English URLs have no `/en/` prefix. Custom navigation translations live in `apps/docs/src/content/i18n/en.json`; Starlight supplies the standard UI translations.
 
-To add another documentation language, add its locale configuration and translated guides under `apps/docs/content/translations/<locale>/`, mirroring the canonical repository paths (for example `fr/docs/getting-started.md` or `fr/packages/vue/README.md`). Keep the leading H1 and the original source-relative links. Generated pages use `/<locale>/docs/...`; missing translations use Starlight's English fallback. The language selector automatically switches to Starlight's multilingual selector once another locale is enabled. Localized homepage content and its route must be added before publishing that locale; the initial homepage is English only.
+To add another documentation language, add its locale configuration and translated guides under `apps/docs/content/translations/<locale>/`, mirroring the canonical repository paths (for example `fr/apps/docs/content/guides/getting-started.md` or `fr/packages/vue/README.md`). Keep the leading H1 and the original source-relative links. Generated pages use `/<locale>/docs/...`; missing translations use Starlight's English fallback. The language selector automatically switches to Starlight's multilingual selector once another locale is enabled. Localized homepage content and its route must be added before publishing that locale; the initial homepage is English only.
 
 ## GitHub Pages
 

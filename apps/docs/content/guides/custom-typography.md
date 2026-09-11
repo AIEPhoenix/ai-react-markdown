@@ -1,8 +1,8 @@
 # Custom Typography
 
-`Typography`, `ExtraStyles` and variant props are React APIs. Vue uses its base stylesheet, wrapper class/style attributes and element slots. See the [Vue guide](../packages/vue/README.md#minimal-component) and [package setup](./getting-started.md).
+`Typography`, `ExtraStyles` and variant props are React APIs. Vue uses its base stylesheet, wrapper class/style attributes and element slots. See the [Vue guide](../../../../packages/vue/README.md#minimal-component) and [package setup](getting-started.md).
 
-The `Typography` slot owns the outer presentation of a Markdown instance: its root element, font size, classes, and any surrounding design-system providers. Replace it when the built-in wrapper cannot express the structure you need. For changes limited to colors, spacing, or heading sizes, start with [design tokens](./design-tokens.md); those keep the existing wrapper and stylesheet.
+The `Typography` slot owns the outer presentation of a Markdown instance: its root element, font size, classes, and any surrounding design-system providers. Replace it when the built-in wrapper cannot express the structure you need. For changes limited to colors, spacing, or heading sizes, start with [design tokens](design-tokens.md); those keep the existing wrapper and stylesheet.
 
 A wrapper is part of the renderer's layout contract. It receives resolved theme values and injected CSS variables, and it must render its children intact. The children can contain Markdown blocks, a hidden tail signal, and an optional streaming cursor. A wrapper that drops styles or assumes a single child can break math sizing or cursor placement even if a short paragraph looks correct.
 
@@ -76,7 +76,7 @@ const ChatContextTypography: AIMarkdownTypographyComponent = ({ children, fontSi
 );
 ```
 
-Any custom component rendered inside `<AIMarkdown>` can read `ChatToolbarContext` — this composes cleanly with [Metadata Context](./metadata-context.md), though `metadata` is the preferred channel for app data that isn't already a Context.
+Any custom component rendered inside `<AIMarkdown>` can read `ChatToolbarContext` — this composes cleanly with [Metadata Context](metadata-context.md), though `metadata` is the preferred channel for app data that isn't already a Context.
 
 ### Add ARIA landmarks for screen readers
 
@@ -285,4 +285,4 @@ const CompatibleTypography: AIMarkdownTypographyComponent = ({ children, fontSiz
 
 A custom variant name selects only CSS that you supply. It does not synthesize a new token scale. Likewise, a custom color-scheme string needs corresponding color rules. Test the wrapper with nested lists, blockquotes containing code, formulas inside headings, and a streaming tail; these expose inheritance and child-layout mistakes that plain prose does not.
 
-Implementation references: [`defs.ts`](../packages/react/src/defs.ts), [`Default.tsx`](../packages/react/src/components/typography/Default.tsx), and the `contentBody` composition in [`index.tsx`](../packages/react/src/index.tsx).
+Implementation references: [`defs.ts`](../../../../packages/react/src/defs.ts), [`Default.tsx`](../../../../packages/react/src/components/typography/Default.tsx), and the `contentBody` composition in [`index.tsx`](../../../../packages/react/src/index.tsx).

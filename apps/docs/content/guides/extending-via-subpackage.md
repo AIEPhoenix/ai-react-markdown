@@ -1,6 +1,6 @@
 # Extending via a Sub-package
 
-These examples target the 3.0.0 package train. Match the React peer version when distributing an integration; see [Getting started](./getting-started.md) for installation and package boundaries.
+These examples target the 3.0.0 package train. Match the React peer version when distributing an integration; see [Getting started](getting-started.md) for installation and package boundaries.
 
 Here, the base renderer, its props, providers and hooks belong to `@ai-markdown/react`. The separate `@ai-markdown/core` supplies framework-independent orchestration and has no React context or UI API. UI integrations keep the React adapter as a peer; framework adapters depend on shared core and engine.
 
@@ -8,7 +8,7 @@ Build a React integration by wrapping `@ai-markdown/react` and defining the desi
 
 This guide follows that same construction in nine steps, from a behavior-group interface to the package's public barrel and peer dependencies. The `Your…` components and `your-design-system` imports are template names to implement in your package; they are not installed modules. Examples show the contracts you need to preserve, with the source of defaults and the ownership of each prop made explicit.
 
-Use the React adapter's public props, slots, additive providers, stable-value helpers, and factories. A React design-system integration does not need direct engine imports. Engine and shared core are public adapter-author packages whose documented exports follow semantic versioning from 3.0.0. A non-React adapter is a different project: it consumes syntax trees directly, depends on matching exact core and engine versions, and takes responsibility for its own rendering lifecycle. The [Vue adapter](../packages/vue/README.md) is the existing second-framework implementation; use its public components for a Vue UI integration.
+Use the React adapter's public props, slots, additive providers, stable-value helpers, and factories. A React design-system integration does not need direct engine imports. Engine and shared core are public adapter-author packages whose documented exports follow semantic versioning from 3.0.0. A non-React adapter is a different project: it consumes syntax trees directly, depends on matching exact core and engine versions, and takes responsibility for its own rendering lifecycle. The [Vue adapter](../../../../packages/vue/README.md) is the existing second-framework implementation; use its public components for a Vue UI integration.
 
 ## The extension points, at a glance
 
@@ -80,7 +80,7 @@ export interface YourAIMarkdownMetadata extends AIMarkdownMetadata {
 }
 ```
 
-Before naming group _prop_ fields, check the prop-name registry — the props table in the [React README](../packages/react/README.md#props-api-reference): flat props share one namespace across the React adapter and all wrapper layers (see [Footguns](#footguns)).
+Before naming group _prop_ fields, check the prop-name registry — the props table in the [React README](../../../../packages/react/README.md#props-api-reference): flat props share one namespace across the React adapter and all wrapper layers (see [Footguns](#footguns)).
 
 ---
 
@@ -295,7 +295,7 @@ const YourTypography: AIMarkdownTypographyComponent = ({ children, fontSize, var
 export default YourTypography;
 ```
 
-See [Custom Typography](./custom-typography.md) for the full Typography contract, including why `style` must be spread.
+See [Custom Typography](custom-typography.md) for the full Typography contract, including why `style` must be spread.
 
 ### Extra-styles wrapper
 
@@ -527,7 +527,7 @@ Group defaults live inside your narrow hook, exactly once. A component that read
 
 ### Prop-name collisions
 
-Flat props share one namespace across the React adapter and all wrapper layers. Check the prop-name registry — the props table in the [React README](../packages/react/README.md#props-api-reference) — before adding a field to your wrapper props. A collision is a compile error at the `extends` site for TS consumers — but a **silent override** for plain-JS consumers. Same discipline for group keys inside the Provider value: check the [group-key registry](../packages/react/README.md#group-key-registry) and register your wrapper's keys there via PR — group keys share one namespace per context and a duplicated key resolves by inner-wins silently. Application-local groups should use app-scoped names (`chatPanel`, not `panel`).
+Flat props share one namespace across the React adapter and all wrapper layers. Check the prop-name registry — the props table in the [React README](../../../../packages/react/README.md#props-api-reference) — before adding a field to your wrapper props. A collision is a compile error at the `extends` site for TS consumers — but a **silent override** for plain-JS consumers. Same discipline for group keys inside the Provider value: check the [group-key registry](../../../../packages/react/README.md#group-key-registry) and register your wrapper's keys there via PR — group keys share one namespace per context and a duplicated key resolves by inner-wins silently. Application-local groups should use app-scoped names (`chatPanel`, not `panel`).
 
 ### Wholesale-replacing `sanitizeSchema`
 

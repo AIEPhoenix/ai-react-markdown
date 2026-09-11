@@ -1,6 +1,6 @@
 # Cross-Chunk Coordination
 
-The examples and registry hook below use React. Vue supplies its own `AIMarkdownDocuments` and `AIMarkdown` with the same explicit document ID model, but no React registry hook or provider-level orphan override. See the [Vue guide](../packages/vue/README.md#multiple-chunks-in-one-document) and [package setup](./getting-started.md).
+The examples and registry hook below use React. Vue supplies its own `AIMarkdownDocuments` and `AIMarkdown` with the same explicit document ID model, but no React registry hook or provider-level orphan override. See the [Vue guide](../../../../packages/vue/README.md#multiple-chunks-in-one-document) and [package setup](getting-started.md).
 
 A logical document can be displayed by several `<AIMarkdown>` instances: for example, independently updated answer sections with references to a shared citation list. Each instance parses its own Markdown. `<AIMarkdownDocuments>` connects their reference definitions and footnote numbering when they share an explicit, non-empty `documentId`.
 
@@ -89,11 +89,11 @@ The footnote section is rendered **once** at the end of the document's last chun
 
 ## `<AIMarkdownDocuments>` props
 
-| Prop                       | Type        | Default | Purpose                                                                                                                                                                                                                                                                                                                                          |
-| -------------------------- | ----------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `preserveOrphanReferences` | `boolean`   | `true`  | **Unconditionally** overrides each chunk's own `preserveOrphanReferences` prop. When `true`, orphan `[^label]: …` definitions (no matching `[^label]`) are protected from being silently dropped by `mdast-util-to-hast`. Crucial for streaming — references may arrive in a later chunk.                                                        |
-| `smoothTurnTaking`         | `boolean`   | `true`  | Wrapper-level switch for smooth-stream turn-taking: `<AIMarkdownSmoothStream>` chunks sharing this `documentId` type one at a time in mount order. `false` disables the gate wholesale (every chunk paces independently). Details and escape hatches: [smooth streaming → turn-taking](./smooth-streaming.md#multi-chunk-documents-turn-taking). |
-| `children`                 | `ReactNode` | —       | The `<AIMarkdown>` instances to coordinate                                                                                                                                                                                                                                                                                                       |
+| Prop                       | Type        | Default | Purpose                                                                                                                                                                                                                                                                                                                                        |
+| -------------------------- | ----------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `preserveOrphanReferences` | `boolean`   | `true`  | **Unconditionally** overrides each chunk's own `preserveOrphanReferences` prop. When `true`, orphan `[^label]: …` definitions (no matching `[^label]`) are protected from being silently dropped by `mdast-util-to-hast`. Crucial for streaming — references may arrive in a later chunk.                                                      |
+| `smoothTurnTaking`         | `boolean`   | `true`  | Wrapper-level switch for smooth-stream turn-taking: `<AIMarkdownSmoothStream>` chunks sharing this `documentId` type one at a time in mount order. `false` disables the gate wholesale (every chunk paces independently). Details and escape hatches: [smooth streaming → turn-taking](smooth-streaming.md#multi-chunk-documents-turn-taking). |
+| `children`                 | `ReactNode` | —       | The `<AIMarkdown>` instances to coordinate                                                                                                                                                                                                                                                                                                     |
 
 ```tsx
 <AIMarkdownDocuments preserveOrphanReferences={true}>{children}</AIMarkdownDocuments>
@@ -285,7 +285,7 @@ Link/image refs have no equivalent counter API — derive that yourself from `re
 
 ## Streaming patterns
 
-The two cross-document patterns are also named in [Streaming chat: end-to-end](./streaming-chat-example.md) and [Streaming & performance](./streaming-and-performance.md) — same `Approach A` / `Approach B`, in the same direction (A = growing, B = chunked). The cross-chunk doc leads with B because that's the pattern that actually needs coordination.
+The two cross-document patterns are also named in [Streaming chat: end-to-end](streaming-chat-example.md) and [Streaming & performance](streaming-and-performance.md) — same `Approach A` / `Approach B`, in the same direction (A = growing, B = chunked). The cross-chunk doc leads with B because that's the pattern that actually needs coordination.
 
 ### Approach B: one `<AIMarkdown>` per logical Markdown chunk (chunked)
 
@@ -337,7 +337,7 @@ The surrounding virtualizer owns its scroll container, total-height spacer, abso
 
 By default, registration order is mount order. A released chunk that later remounts would otherwise be appended to the registry's order, potentially moving its footnotes and footer into the middle of the visual document. Supplying a stable ordinal fixes this ordering problem. Indexed chunks sort ahead of unindexed chunks; equal indices and unindexed chunks use mount order. Supply indices consistently for predictable ordering.
 
-Smooth-stream turn-taking has its own mount-ordered queue. `documentIndex` does not reorder that queue; see [smooth streaming](./smooth-streaming.md#chunks-inserted-out-of-mount-order).
+Smooth-stream turn-taking has its own mount-ordered queue. `documentIndex` does not reorder that queue; see [smooth streaming](smooth-streaming.md#chunks-inserted-out-of-mount-order).
 
 ## Lifecycle: how chunks register with the registry
 
@@ -430,4 +430,4 @@ Verify more than the happy path: add a definition after its reference, edit its 
 
 For a custom registry reader, always subscribe before relying on later contributions. The first `BacklinkPanel` example demonstrates URL selection only; combine it with `useRegistryVersion` for live updates, as in the full sidebar recipe. `defaultUrlTransform` supplies the library's default URL policy for your manually constructed link; it does not reproduce an arbitrary consuming chunk's custom schema or transform.
 
-Implementation references: [document wrapper](../packages/react/src/components/AIMarkdownDocuments.tsx), [registry](../packages/engine/src/components/documentRegistry.ts), and [render lifecycle](../packages/react/src/components/MarkdownContent.tsx).
+Implementation references: [document wrapper](../../../../packages/react/src/components/AIMarkdownDocuments.tsx), [registry](../../../../packages/engine/src/components/documentRegistry.ts), and [render lifecycle](../../../../packages/react/src/components/MarkdownContent.tsx).

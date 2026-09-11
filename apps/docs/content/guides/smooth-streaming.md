@@ -1,6 +1,6 @@
 # Smooth Streaming (Typewriter Pacing)
 
-Examples below use React hooks and component slots; the engine controller is framework-independent. Vue exposes similarly named composables that accept a live getter and return computed refs. See the [Vue guide](../packages/vue/README.md#smooth-streaming-and-turn-taking) and [package setup](./getting-started.md).
+Examples below use React hooks and component slots; the engine controller is framework-independent. Vue exposes similarly named composables that accept a live getter and return computed refs. See the [Vue guide](../../../../packages/vue/README.md#smooth-streaming-and-turn-taking) and [package setup](getting-started.md).
 
 LLM tokens arrive in bursty network chunks — a 40-character clump, a 300 ms
 stall, three clumps back-to-back. Rendering each chunk the moment it lands
@@ -428,4 +428,4 @@ The preset drain bases are 320 ms (`smooth`), 240 ms (`balanced`), and 150 ms (`
 
 If product behavior depends on completion, distinguish the source's done event from the reveal's drained callback. Persisting the answer can follow source completion; scrolling to the final visible text can follow reveal completion. Do not use `onSmoothDrained` as the sole success signal for empty responses, initial static text, replacements, or transport failures.
 
-Source: [controller](../packages/engine/src/components/smoothStream/controller.ts), [React hook](../packages/react/src/components/smoothStream/useSmoothStream.ts), and [document-aware hook](../packages/react/src/components/smoothStream/useDocumentSmoothStream.ts).
+Source: [controller](../../../../packages/engine/src/components/smoothStream/controller.ts), [React hook](../../../../packages/react/src/components/smoothStream/useSmoothStream.ts), and [document-aware hook](../../../../packages/react/src/components/smoothStream/useDocumentSmoothStream.ts).

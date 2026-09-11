@@ -13,7 +13,7 @@ test('adapter, core, documentation, version and type-only changes do not require
   for (const p of [
     'packages/vue/src/render.ts',
     'packages/core/src/contribution.ts',
-    'docs/architecture.md',
+    'apps/docs/content/guides/architecture.md',
     'packages/react/src/index.ts',
   ])
     assert.equal(check(p, 'a', 'b'), false);

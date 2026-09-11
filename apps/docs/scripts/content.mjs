@@ -20,10 +20,12 @@ export function pages() {
   const english = [
     { source: 'apps/docs/content/index.md', slug: 'docs' },
     { source: 'apps/docs/content/examples.md', slug: 'docs/examples' },
-    ...markdownFiles('docs').map((source) => ({
+    ...markdownFiles('apps/docs/content/guides').map((source) => ({
       source,
       slug:
-        source === 'docs/README.md' ? 'docs/guides' : source.replace(/^docs\//, 'docs/guides/').replace(/\.md$/, ''),
+        source === 'apps/docs/content/guides/index.md'
+          ? 'docs/guides'
+          : source.replace(/^apps\/docs\/content\/guides\//, 'docs/guides/').replace(/\.md$/, ''),
     })),
     ...['react', 'vue', 'react-mantine', 'core', 'engine', 'remark-mark-highlight'].map((name) => ({
       source: `packages/${name}/README.md`,
@@ -73,20 +75,14 @@ export function contentIntegration() {
     hooks: {
       'astro:config:setup': () => syncContent(),
       'astro:server:setup': ({ server }) => {
-        const sources = [
-          resolve(root, 'docs'),
-          resolve(root, 'apps/docs/content'),
-          ...pages().map(({ source }) => resolve(root, source)),
-        ];
+        const sources = [resolve(root, 'apps/docs/content'), ...pages().map(({ source }) => resolve(root, source))];
         server.watcher.add(sources);
         server.watcher.on('all', (event, path) => {
           const name = relative(root, path).replaceAll('\\', '/');
           if (
             ['add', 'change', 'unlink'].includes(event) &&
             name.endsWith('.md') &&
-            (name.startsWith('docs/') ||
-              name.startsWith('apps/docs/content/') ||
-              pages().some(({ source }) => source === name))
+            (name.startsWith('apps/docs/content/') || pages().some(({ source }) => source === name))
           )
             syncContent();
         });

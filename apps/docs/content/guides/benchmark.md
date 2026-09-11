@@ -4,9 +4,9 @@ This page preserves the in-browser comparison study for block memoization and in
 
 The tables are a **2026-07-15 snapshot on 1.x development builds**. At that time the switches were `config.blockMemoEnabled` and `config.incrementalParseEnabled`; their current names are `blockMemo` and `incrementalParse`, both enabled by default. The “v2 regimes” label below refers to the second iteration of the incremental engine in that study, not a claim that package 2.0 was benchmarked on that date.
 
-Current releases have changed preprocessing, boundary detection, planning, registry subscriptions, and code presentation. The old measurements remain evidence for the tested implementations, not current latency promises. Read [streaming and performance](./streaming-and-performance.md) for the implementation now in the repository.
+Current releases have changed preprocessing, boundary detection, planning, registry subscriptions, and code presentation. The old measurements remain evidence for the tested implementations, not current latency promises. Read [streaming and performance](streaming-and-performance.md) for the implementation now in the repository.
 
-There are three measurement tools with different scopes: Storybook comparison stories generated the manual tables here; `pnpm bench:unit` runs the Vitest LaTeX microbenchmark; and [`benchmarks/`](../benchmarks/README.md) contains the production browser harness invoked by `pnpm bench:web`. None automatically regenerates another tool's historical tables.
+There are three measurement tools with different scopes: Storybook comparison stories generated the manual tables here; `pnpm bench:unit` runs the Vitest LaTeX microbenchmark; and [`benchmarks/`](../../../../benchmarks/README.md) contains the production browser harness invoked by `pnpm bench:web`. None automatically regenerates another tool's historical tables.
 
 ## Methodology
 

@@ -9,6 +9,8 @@ export function normalizeBase(base = '/') {
 }
 
 export function rewriteUrl(url, source, entries, base = '/', storybook = '') {
+  const publicDocs = 'https://ai-markdown.github.io/docs/';
+  if (url.startsWith(publicDocs)) return `${normalizeBase(base)}docs/${url.slice(publicDocs.length)}`;
   if (url === 'examples:') return `${normalizeBase(base)}examples/`;
   if (url.startsWith('storybook:')) {
     if (!storybook) return `${normalizeBase(base)}docs/guides/storybook/`;
