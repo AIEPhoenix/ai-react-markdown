@@ -21,12 +21,14 @@ This example deliberately handles a narrow LF-delimited frontmatter format. It k
 
 ## Execution order
 
-The outer React component applies the built-in LaTeX stage first, then calls your preprocessors in array order. Each function receives the preceding function's output:
+The outer React component removes a document-leading byte order mark (U+FEFF), applies the built-in LaTeX stage, then calls your preprocessors in array order. Each function receives the preceding function's output:
 
 ```ts
 // With contentPreprocessors={[a, b, c]}:
 const result = c(b(a(latexNormalizedContent)));
 ```
+
+The BOM strip runs before every other stage and removes only the first character of the content. The Markdown parser ignores a leading BOM but reports node positions as if it were not there, while the incremental parser, the block planner and the definition scanner pair those positions with the source string; stripping the character first keeps both coordinate systems identical. A U+FEFF anywhere else is ordinary text and passes through unchanged. Your preprocessors never see the leading BOM.
 
 The built-in stage recognizes supported math delimiters and currency, protects code regions, normalizes bracket-delimited math, and escapes math pipes so they do not become GFM table separators. Inline `$x$` and `\(x\)` normalize to the inline `$$x$$` representation consumed by the configured `remark-math` instance (`singleDollarTextMath: false`). Display math uses line-oriented delimiters. Do not assume the caller slot receives the original dollar spelling.
 

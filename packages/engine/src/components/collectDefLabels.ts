@@ -193,6 +193,14 @@ export function createDefLabelScanner(parse: (source: string) => DefLabels = col
 
   return {
     scan(source: string): DefLabels {
+      // A document-leading BOM is invisible to micromark (dropped before
+      // tokenizing) but not to DEF_LINE_START_RE, whose line-start probe
+      // saw U+FEFF where the `[` of a line-1 definition sits and never
+      // matched it. Drop it here so every regex and slice below works on
+      // exactly the text the parser reads; the parse result is unchanged.
+      // Stage A strips it before the engine anyway — this keeps the
+      // scanner's contract intact when it is driven directly.
+      if (source.charCodeAt(0) === 0xfeff) source = source.slice(1);
       if (source === prevSource && prevLabels !== null) return prevLabels;
       const previousRegionStart = regionStart;
       const appended = prevSource !== null && source.startsWith(prevSource);

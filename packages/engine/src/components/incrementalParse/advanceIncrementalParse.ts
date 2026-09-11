@@ -16,7 +16,14 @@
  *    flips reach the handlers without touching any G3 field).
  *  - G1 append — `content.startsWith(prev.content)`; equal content returns
  *    the previous trees unchanged. Non-append rewrites (including Stage-A
- *    preprocessor rewrites near the stream end) land here.
+ *    preprocessor rewrites near the stream end) land here. A document
+ *    that starts with U+FEFF is never an append: micromark drops a leading
+ *    byte order mark before tokenizing, so every position in the parsed
+ *    trees is the string index minus one, while the scan, the prefix cut,
+ *    the straddle check and the rebase delta all work in string indices.
+ *    Stage A strips that character before the engine sees it; if one
+ *    reaches here anyway, the frame is a full parse (the scanner grants no
+ *    boundary for such a document either — see computeFreezeBoundary).
  *  - G3 boundary — `b = min(computeFreezeBoundary(content), prev.stableBoundary)`
  *    must be > 0. The `min` with the PREVIOUS frame's boundary is
  *    load-bearing, not defensive: the freshly computed boundary proves
@@ -158,7 +165,9 @@ export function advanceIncrementalParse(
       nextState: prev!,
     };
   }
-  const appendOnly = sameDeps && content.startsWith(prev!.content);
+  // A leading BOM shifts parser offsets off the string indices the splice
+  // coordinates use (module docs, G1) — such a frame is never an append.
+  const appendOnly = sameDeps && content.charCodeAt(0) !== 0xfeff && content.startsWith(prev!.content);
 
   // Every remaining frame scans ONCE (fence-aware). Full-path frames
   // consume the scan on the NEXT frame via `prev.stableBoundary`.

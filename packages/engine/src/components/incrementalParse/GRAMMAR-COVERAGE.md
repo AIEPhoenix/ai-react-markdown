@@ -575,6 +575,25 @@ Pool 66 → 68; pinned-seed marker floor re-verified (all ≥ 5, lowest
 attribution: 969 of 2020 samples redrawn, byte-unchanged 1051 samples /
 3153 entries at 0 increases, 0 decreases.
 
+**Document-leading BOM (2026-09-11).** A new document-level draw, not a
+pool member: one in twelve generated documents starts with U+FEFF
+(`leadingBomArb`, marker `leadingBom`). micromark drops that character
+before tokenizing, so every parsed offset is the string index minus one
+while the scanner's boundaries are string indices — the one input class
+where the two coordinate systems disagree. Streamed one character at a
+time, `U+FEFF # Title\n\nSome paragraph…` kept a phantom one-character
+paragraph in the frozen prefix (the prefix cut at a raw index retained a
+node whose parser-space end sat one short of it). Stage A now strips the
+character before the engine sees it; the scanner poisons every candidate
+for such a document and the append gate treats the frame as a non-append,
+so a BOM document arriving directly is a full parse on every frame. The
+family therefore never engages the splice path — it pins that refusal, and
+it would expose any future scanner change that grants a boundary without
+making the splice coordinates BOM-aware. Regen attribution: 1724 of 2000
+fuzz samples redrawn, 276 byte-unchanged samples at 0 increases,
+0 decreases; 148 of the redrawn samples carry the BOM and pin boundary 0
+under the engine and scanner lineages.
+
 **The fingerprint is a regen TRIGGER, not an escape hatch (v-4, hardened
 2026-08-26).** It used to be asserted before the increases check, so any
 generator edit tripped regeneration and the red line was never evaluated —

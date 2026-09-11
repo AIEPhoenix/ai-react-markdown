@@ -112,6 +112,22 @@ describe('createDefLabelScanner', () => {
     replay(['body paragraph one.\n\n', 'body paragraph two.\n\n', '[1]: /a\n', '[2]: /b\n', '[^3]: note\n']);
   });
 
+  test('a definition on line 1 behind a document-leading BOM is reported by scanner and full collector', () => {
+    // micromark drops a leading U+FEFF before tokenizing, so the full
+    // collector sees `[a]: /u` at the line start. The scanner's line-start
+    // probe used to see the BOM instead and never matched line 1, leaving
+    // the definition unreported on the streaming path.
+    const bom = '\uFEFF';
+    expect(asPlain(collectDefLabels(`${bom}[a]: /u\n`))).toEqual({ fn: [], link: ['A'] });
+    expect(asPlain(createDefLabelScanner().scan(`${bom}[a]: /u\n`))).toEqual({ fn: [], link: ['A'] });
+    expect(asPlain(createDefLabelScanner().scan(`${bom}[^n]: note\n`))).toEqual({ fn: ['N'], link: [] });
+    // Streamed one character at a time, then a footer after a blank line.
+    replay([...`${bom}[a]: /u\n`, '\n[^n]: note\n', 'prose\n']);
+    // A BOM anywhere else is an ordinary character: `\uFEFF[b]: /v` is a
+    // paragraph, not a definition, and both sides agree.
+    replay([`${bom}[a]: /u\n\n`, `${bom}[b]: /v\n`]);
+  });
+
   test('region boundary is CRLF-aware', () => {
     expect(lastRegionStart('a\n\nb')).toBe(3);
     expect(lastRegionStart('a\r\n\r\nb')).toBe(5);
