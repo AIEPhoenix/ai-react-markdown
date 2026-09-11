@@ -21,6 +21,10 @@ const state = reactive({
   firstDone: false,
   secondDone: false,
   cursor: 'cursor target',
+  // Deep raw-HTML probe: the runner swaps in thousands of nested <div> tags
+  // (stack exhaustion inside the engine's raw-HTML step) and then a healthy
+  // frame, checking the plain-text degrade and the recovery in every browser.
+  deep: 'shallow start',
 });
 const Code = defineComponent({
   props: ['streaming'],
@@ -64,6 +68,7 @@ const app = createApp({
       }),
       h(AIMarkdown, { content: state.code, streaming: state.streaming, components: { code: Code }, id: 'custom' }),
       h(AIMarkdown, { content: state.cursor, streaming: true, id: 'cursor-probe' }),
+      h(AIMarkdown, { content: state.deep, id: 'deep' }),
       h(AIMarkdownDocuments, null, {
         default: () => [
           h(AIMarkdownSmoothStream, {
