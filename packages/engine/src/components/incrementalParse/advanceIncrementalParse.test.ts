@@ -5,10 +5,11 @@
  * and what `nextState` records on each path.
  */
 
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 
+import { buildPhantomSuffix } from '../remarkInjectPhantomDefs';
 import { advanceIncrementalParse, type IncrementalParseState } from './advanceIncrementalParse';
-import { buildAdvanceOptions, CATALOG } from './testPluginCatalog';
+import { buildAdvanceOptions, buildCrossChunkAdvanceOptions, CATALOG } from './testPluginCatalog';
 
 const BASE = () => buildAdvanceOptions(CATALOG[0]);
 
@@ -162,5 +163,48 @@ describe('rebaseTreeDual — plugin-shaped trees (v2.4.1 review P2)', () => {
     expect(kids[1].position?.end?.offset).toBe(21);
     expect(kids[2].position?.start?.offset).toBe(20);
     expect(kids[2].position?.end?.offset).toBe(21);
+  });
+});
+
+describe('dev assertion — a phantom label must never be defined in the chunk itself', () => {
+  // The phantom label sets are deliberately absent from `depsKey` (suffix
+  // churn never invalidates the prefix). That is sound only while no
+  // phantom label is ALSO defined in `content` — coordinationPreparation
+  // excludes own labels today; the engine reports the day it stops.
+  const suffixFor = (links: string[], footnotes: string[]): string =>
+    buildPhantomSuffix({ missingLinks: new Set(links), missingFootnotes: new Set(footnotes) });
+
+  test('fires for a crafted input whose own definition is also a phantom label', () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const options = buildCrossChunkAdvanceOptions(new Set(['NOTE']), new Set(['X']));
+      const content = '[x]: /own\n\nsee [x] and [^note]\n\n[^note]: own body\n\n';
+      advanceIncrementalParse(null, content, { ...options, phantomSuffix: suffixFor(['X'], ['NOTE']) });
+      expect(errors).toHaveBeenCalledTimes(1);
+      const message = String(errors.mock.calls[0][0]);
+      expect(message).toContain('[ai-react-markdown]');
+      expect(message).toContain('X');
+      expect(message).toContain('NOTE');
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
+  test('is silent for production-shaped inputs (phantoms are exactly the labels the chunk lacks)', () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const options = buildCrossChunkAdvanceOptions(new Set(['OTHER']), new Set(['ELSEWHERE']));
+      const suffix = suffixFor(['ELSEWHERE'], ['OTHER']);
+      const doc = '[own]: /own\n\nsee [own], [elsewhere] and [^other]\n\n[^mine]: local\n\n';
+      let state: IncrementalParseState | null = null;
+      for (let i = 1; i <= doc.length; i++) {
+        state = advanceIncrementalParse(state, doc.slice(0, i), { ...options, phantomSuffix: suffix }).nextState;
+      }
+      // Standalone mode never carries a suffix — nothing to check.
+      advanceIncrementalParse(null, doc, BASE());
+      expect(errors).not.toHaveBeenCalled();
+    } finally {
+      errors.mockRestore();
+    }
   });
 });
