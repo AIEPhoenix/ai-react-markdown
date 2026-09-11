@@ -8,6 +8,8 @@ export default defineConfig(
   {
     ignores: [
       '**/dist/**',
+      'apps/docs/.astro/**',
+      'apps/docs/src/content/docs/**',
       '**/node_modules/**',
       // NOTE: `.storybook/` is deliberately NOT ignored. It holds the shared
       // decorators, the color-scheme context and the react-scan gate — real

@@ -1,5 +1,7 @@
 # ai-markdown
 
+The independent documentation site uses Starlight. Run `pnpm dev:docs` locally; see [site development and deployment](./docs/documentation-site.md).
+
 [![CI on main](https://img.shields.io/github/actions/workflow/status/ai-markdown/ai-markdown/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/ai-markdown/ai-markdown/actions/workflows/ci.yml)
 [![Latest stable GitHub release](https://img.shields.io/github/v/release/ai-markdown/ai-markdown?sort=semver&label=release)](https://github.com/ai-markdown/ai-markdown/releases)
 [![MIT license](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)

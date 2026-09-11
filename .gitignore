@@ -31,3 +31,9 @@ benchmarks/results/
 /.orca/
 /docs/plan/
 /docs/plans/
+
+# Starlight cache and content generated from canonical repository Markdown.
+apps/docs/.astro/
+apps/docs/src/content/docs/
+
+_site/

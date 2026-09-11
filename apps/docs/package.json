@@ -1,0 +1,24 @@
+{
+  "name": "@ai-markdown/docs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check": "astro check",
+    "test:docs": "node --test scripts/*.test.mjs && node scripts/check-links.mjs"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "0.42.0",
+    "@astrojs/markdown-remark": "^7.3.0",
+    "astro": "7.3.2",
+    "rehype-raw": "^7.0.0",
+    "unist-util-visit": "^5.0.0"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.4",
+    "typescript": "^6.0.3",
+    "hast-util-from-html": "^2.0.3"
+  }
+}

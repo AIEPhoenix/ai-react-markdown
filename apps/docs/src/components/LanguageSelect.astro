@@ -1,0 +1,10 @@
+---
+import { locales } from '../i18n/config.mjs';
+import DefaultLanguageSelect from '@astrojs/starlight/components/LanguageSelect.astro';
+import Select from '@astrojs/starlight/components/Select.astro';
+---
+
+{Object.keys(locales).length > 1 ? <DefaultLanguageSelect /> : (
+  <Select icon="translate" label={Astro.locals.t('languageSelect.accessibleLabel')}
+    options={[{ label: locales.root.label, value: Astro.url.pathname, selected: true }]} width="7em" />
+)}

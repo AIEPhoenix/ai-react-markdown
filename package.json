@@ -49,7 +49,13 @@
     "test:storybook-dev": "pnpm test:storybook:dev",
     "test:storybook-site": "pnpm test:storybook:site",
     "bench": "pnpm bench:unit",
-    "test:vue-browser:compat": "node scripts/test-vue-browser.mjs --browser firefox && node scripts/test-vue-browser.mjs --browser webkit"
+    "test:vue-browser:compat": "node scripts/test-vue-browser.mjs --browser firefox && node scripts/test-vue-browser.mjs --browser webkit",
+    "build:docs": "pnpm --filter @ai-markdown/docs build",
+    "preview:docs": "pnpm --filter @ai-markdown/docs preview",
+    "check:docs": "pnpm --filter @ai-markdown/docs check",
+    "test:docs": "pnpm --filter @ai-markdown/docs test:docs",
+    "dev:docs": "pnpm --filter @ai-markdown/docs dev",
+    "assemble:pages": "node scripts/assemble-pages.mjs"
   },
   "keywords": [
     "react",
