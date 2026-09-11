@@ -606,20 +606,31 @@ function hasBlankLineBetween(text: string, from: number, to: number): boolean {
  * The price in `It costs $$100 …` used to pair with the opener of the
  * display block below it, and the block's own closer then read as an
  * unclosed opener. Same rule as `findUnclosedDelimiter`'s inline reset.
- * Likewise an INDENTED flow opener is bounded by its container: a pair
- * whose body holds a line indented less than the opener is refused (the
- * scan's `dedentEnds` rule; see `opensMathFlow`), so a list item's open
- * block does not pair with the opener of a top-level block below the list.
+ *
+ * Likewise a pair may not cross the point where the unclosed scan ends a
+ * list item's block at the item's end (`dedentEnds`; see `flowIndent`).
+ * The pairs here are lazy — inside a block, a `$$x$$` line pairs the
+ * block's opener with its own first token — so a mid-line `$$` later in
+ * the block would otherwise pair with the first `$$` past the item, which
+ * the scan sees as an opener; the incremental wrapper freezes on the
+ * scan's verdict, so the two passes must draw that boundary in the same
+ * place (entry-floor evidence harness: a seam divergence after
+ * `   $$ x^2` in a list). The scan reports those points (`closures`), so
+ * this pass and the scan agree by construction.
  *
  * @param text Input string containing LaTeX expressions
  * @param runStartsAtLineStart Virtual predecessor for `opensMathFlow` when
  *   an opener sits at offset 0 (see `transformRun`).
+ * @param preceding The text before the run (see `listContentIndent`).
  * @returns String with pipes escaped in LaTeX expressions
  * @modified from https://github.com/lobehub/lobe-ui/blob/master/src/hooks/useMarkdown/latex.ts
  */
-function escapeLatexPipes(text: string, runStartsAtLineStart: boolean): string {
+function escapeLatexPipes(text: string, runStartsAtLineStart: boolean, preceding: readonly string[]): string {
   let out = '';
   let last = 0;
+  // The line endings at which the scan ends a list item's block, computed
+  // once, on the first display pair (most runs have none).
+  let closures: number[] | null = null;
   LATEX_BLOCK_REGEX.lastIndex = 0;
   let m: RegExpExecArray | null;
   while ((m = LATEX_BLOCK_REGEX.exec(text)) !== null) {
@@ -627,16 +638,19 @@ function escapeLatexPipes(text: string, runStartsAtLineStart: boolean): string {
     const display = m[1];
     const inline = m[2];
     if (display !== undefined) {
-      const indent = flowIndent(text, m.index, runStartsAtLineStart);
       const bodyStart = m.index + 2;
       const bodyEnd = m.index + match.length - 2;
+      if (closures === null) {
+        closures = [];
+        findUnclosedDelimiter(text, 'double-only', runStartsAtLineStart, preceding, closures);
+      }
       if (
-        (indent === -1 && hasBlankLineBetween(text, bodyStart, bodyEnd)) ||
-        (indent > 0 && hasDedentBetween(text, bodyStart, bodyEnd, indent))
+        (flowIndent(text, m.index, runStartsAtLineStart) === -1 && hasBlankLineBetween(text, bodyStart, bodyEnd)) ||
+        closures.some((at) => at >= bodyStart && at < bodyEnd)
       ) {
-        // Mid-line opener across a blank line, or an indented flow opener
-        // whose container ends before the candidate closer: literal here,
-        // and the closer may be the real opener of the next pair.
+        // Mid-line opener across a blank line, or a pair crossing the end
+        // of a list item's block: literal here, and the closer may be the
+        // real opener of the next pair.
         LATEX_BLOCK_REGEX.lastIndex = bodyStart;
         continue;
       }
@@ -676,9 +690,9 @@ interface UnclosedDelimiter {
   /** Index of the opener's first `$`. */
   start: number;
   kind: UnclosedKind;
-  /** A flow opener's indent (0-3). An indented opener sits inside a
-   *  container when there is one, and a later line indented less ends the
-   *  block (`opensMathFlow` docs). 0 for the other kinds. */
+  /** For a flow opener inside a list item, the item's content indent
+   *  (`listContentIndent`): a later line indented less ends the block. 0
+   *  for a top-level flow opener and for the other kinds. */
   indent: number;
 }
 
@@ -725,9 +739,11 @@ function nextDoubleDollarOnLine(text: string, from: number): number {
  * - An INDENTED flow opener is CONTAINER-LOCAL: it sits inside a list item
  *   whenever there is one, and the item ends at the first non-blank line
  *   indented less than the opener, so such a line ends the block and the
- *   scan forgets it (`dedentEnds`; the trade-offs are in the
- *   `opensMathFlow` docs). `- Item\n\n  $$\n  x\n\nAfter the list.` used
- *   to be truncated to `- Item`.
+ *   scan forgets it (`dedentEnds`; the container comes from the lines
+ *   before the opener, see `flowIndent` and `listContentIndent`).
+ *   `- Item\n\n  $$\n  x\n\nAfter the list.` used to be truncated to
+ *   `- Item`. Each such line ending is pushed to `closures` when given, so
+ *   `escapeLatexPipes` can refuse a pair crossing it.
  * - Inside an open `$$` a single `$` is content — the closed-pair regexes
  *   agree: a display pair is `$$…$$` whatever `$` it holds, and an inline
  *   `$…$` cannot hold a bare `$`. Conversely a `$$` arriving while a single
@@ -749,11 +765,16 @@ function nextDoubleDollarOnLine(text: string, from: number): number {
  * @param mode  `'both'` tracks `$$` and `$`; `'double-only'` tracks only `$$`.
  * @param runStartsAtLineStart  Virtual predecessor for `opensMathFlow` when
  *   an opener sits at offset 0 (see `transformRun`).
+ * @param preceding  The text before the run, for `listContentIndent`.
+ * @param closures  When given, receives the index of each line ending at
+ *   which a list item's block was ended by a dedent.
  */
 function findUnclosedDelimiter(
   text: string,
   mode: 'both' | 'double-only',
-  runStartsAtLineStart: boolean
+  runStartsAtLineStart: boolean,
+  preceding: readonly string[],
+  closures?: number[]
 ): UnclosedDelimiter | null {
   let open: UnclosedDelimiter | null = null;
   // Whether the scan has left the open FLOW opener's own line.
@@ -764,7 +785,10 @@ function findUnclosedDelimiter(
     if (c === '$' && i + 1 < text.length && text[i + 1] === '$' && !isEscapedByBackslashRun(text, i)) {
       if (open === null || open.kind === 'single') {
         const indent = flowIndent(text, i, runStartsAtLineStart);
-        open = indent === -1 ? { start: i, kind: 'inline', indent: 0 } : { start: i, kind: 'flow', indent };
+        // An indented opener may be list item content; the lines above
+        // say whether it is, and at what content indent (0 = it is not).
+        const container = indent > 0 ? listContentIndent(text, i - indent, preceding, indent) : 0;
+        open = indent === -1 ? { start: i, kind: 'inline', indent: 0 } : { start: i, kind: 'flow', indent: container };
         pastOpenerLine = false;
         i += 2;
       } else if (open.kind === 'flow' && pastOpenerLine) {
@@ -791,8 +815,10 @@ function findUnclosedDelimiter(
     } else {
       if ((c === '\n' || c === '\r') && open !== null) {
         if (open.kind === 'single' || (open.kind === 'inline' && isBlankLineAt(text, i))) open = null;
-        else if (open.kind === 'flow' && open.indent > 0 && dedentEnds(text, i, open.indent)) open = null;
-        else pastOpenerLine = true;
+        else if (open.kind === 'flow' && open.indent > 0 && dedentEnds(text, i, open.indent)) {
+          open = null;
+          closures?.push(i);
+        } else pastOpenerLine = true;
       }
       i += 1;
     }
@@ -800,8 +826,8 @@ function findUnclosedDelimiter(
   return open;
 }
 
-function escapeLatexPipesInUnclosed(text: string, runStartsAtLineStart: boolean): string {
-  const unclosed = findUnclosedDelimiter(text, 'both', runStartsAtLineStart);
+function escapeLatexPipesInUnclosed(text: string, runStartsAtLineStart: boolean, preceding: readonly string[]): string {
+  const unclosed = findUnclosedDelimiter(text, 'both', runStartsAtLineStart, preceding);
   if (unclosed === null) return text;
 
   // Escape pipes only in the unclosed tail
@@ -859,31 +885,30 @@ function escapeLatexPipesInUnclosed(text: string, runStartsAtLineStart: boolean)
  * like an unclosed opener — which truncated the block and every line after
  * it, in a finished document.
  *
- * The predicate is positional, not container-aware: a `$$` opening a line
- * inside a list item counts as a flow opener, and one after a blockquote's
- * `>` does not. What IS modelled is the one container fact that decided
- * whether a finished document lost content: an INDENTED flow opener (one
- * to three spaces — the only indented shape that is a flow opener at all)
- * is inside a container whenever there is one, and a container ends at the
- * first non-blank line indented less than its content. So a later line
- * indented less than the opener ends the candidate block (`dedentEnds` in
- * `findUnclosedDelimiter`, and the matching refusal in `escapeLatexPipes`),
- * whether or not a blank line precedes it — remark-math agrees for
- * `- Item\n\n  $$\n  x\nAfter` and for the blank-line form. Without this,
- * `- Item\n\n  $$\n  x\n\nAfter the list.` truncated to `- Item`: the item's
- * math never swallows past the item, and the paragraph after it was lost.
+ * The predicate is positional: a `$$` opening a line inside a list item
+ * counts as a flow opener, and one after a blockquote's `>` does not. One
+ * container fact IS modelled, because it decided whether a finished
+ * document lost content: a flow opener inside a LIST ITEM is scoped to the
+ * item, which ends at the first non-blank line indented less than the
+ * item's content, blank line before it or not — remark-math agrees for
+ * `- Item\n\n  $$\n  x\nAfter` and for the blank-line form. Such a line ends
+ * the block for the unclosed scan (`dedentEnds` in `findUnclosedDelimiter`),
+ * and the pair pass refuses a pair crossing that point (`escapeLatexPipes`).
+ * Without this, `- Item\n\n  $$\n  x\n\nAfter the list.` truncated to
+ * `- Item`: the item's math never swallows past the item, and the
+ * paragraph after the list was lost.
  *
- * The opener's own indent stands in for the container's content indent,
- * and the two can differ: `- Item\n\n   $$` (opener at three, content at
- * two) reads a line at two as a dedent although remark-math keeps it in the
- * block, and a top-level `  $$` with no container at all reads any column-0
- * line as one. Both err towards NOT truncating — the text is then handed
- * to remark-math untouched, which renders it as it would have anyway; the
- * only cost is a streaming frame that shows the still-open block instead
- * of hiding it. The other direction (truncating what remark-math keeps)
- * loses content from a finished document, which is the defect this rule
- * exists to stop. Blockquotes stay out of the model: `> $$` is not a flow
- * opener here, so nothing after it is ever truncated.
+ * Whether the opener IS in a list item, and at what content indent, comes
+ * from the lines before it (`listContentIndent`), never from the opener's
+ * own indent: remark-math allows up to three spaces of optional indent on
+ * a top-level fence whose body and closer sit at column 0, so an
+ * indent-only rule ended `  $$\nx+y\n$$\n\nAfter` at `x+y`, read the real
+ * closer as a new unclosed opener and truncated `After`. The walk back
+ * needs the text before the run; the incremental wrapper passes the frozen
+ * source prefix so both entry points read the same lines. Blockquotes stay
+ * out of the model: `> $$` is not a flow opener here, so nothing after it
+ * is ever truncated. A fence indented four or more columns (a nested
+ * item's block) is not a flow opener either — the residual that remains.
  *
  * The function is `flowIndent`: the indent (0-3 spaces) of a `$$` at `pos`
  * that opens a math flow, or -1 when it does not open one. The comments
@@ -911,6 +936,84 @@ function flowIndent(text: string, pos: number, runStartsAtLineStart: boolean): n
   return runStartsAtLineStart ? spaces : -1;
 }
 
+/** A CommonMark list marker line: up to three spaces, `-`/`*`/`+` or up to
+ *  nine digits with `.`/`)`, then the spaces before the content (or
+ *  nothing more on the line). */
+const LIST_MARKER_RE = /^( {0,3})([-*+]|\d{1,9}[.)])( *)/;
+
+/** Leading columns of a line; a tab is four, so it is never a dedent. */
+function lineIndent(line: string): number {
+  let n = 0;
+  while (n < line.length && line[n] === ' ') n += 1;
+  return n < line.length && line[n] === '\t' ? 4 : n;
+}
+
+/**
+ * The content indent of the innermost list item whose content holds the
+ * line starting at `lineStart` of `text`, or 0 when that line is not list
+ * item content. `preceding` is the text before `text` (the slice before
+ * the run, and the wrapper's frozen prefix before that), read only here
+ * and only backwards: the walk stops at the first line at column 0 — a
+ * marker line whose content indent fits (`<= indent`) means the line is
+ * inside that item; anything else at column 0 means it is not. Indented
+ * non-marker lines are item content or paragraph continuation and the
+ * walk goes on past them; a marker line whose content indent is deeper
+ * than `indent` is a sibling or nested item the line is not in, and the
+ * walk goes on to the enclosing one. Blank lines are skipped.
+ */
+function listContentIndent(text: string, lineStart: number, preceding: readonly string[], indent: number): number {
+  const chunks = preceding.length === 0 ? [text] : [...preceding, text];
+  let ci = chunks.length - 1;
+  let pos = lineStart;
+  let line = '';
+  for (;;) {
+    if (pos === 0) {
+      if (ci === 0) break;
+      ci -= 1;
+      pos = chunks[ci].length;
+      continue;
+    }
+    const chunk = chunks[ci];
+    let j = pos - 1;
+    while (j >= 0 && chunk[j] !== '\n' && chunk[j] !== '\r') j -= 1;
+    line = chunk.slice(j + 1, pos) + line;
+    if (j < 0) {
+      pos = 0;
+      continue;
+    }
+    const verdict = classifyLine(line, indent);
+    if (verdict !== null) return verdict;
+    line = '';
+    pos = chunk[j] === '\n' && j > 0 && chunk[j - 1] === '\r' ? j - 1 : j;
+  }
+  const verdict = line === '' ? null : classifyLine(line, indent);
+  return verdict ?? 0;
+}
+
+/** `listContentIndent`'s verdict for one line above the opener: a content
+ *  indent, 0 for "not in a list item", or `null` to keep walking. */
+function classifyLine(line: string, indent: number): number | null {
+  if (line.trim() === '') return null;
+  const marker = LIST_MARKER_RE.exec(line);
+  if (marker !== null) {
+    const spaces = marker[3].length;
+    const afterSpaces = marker[0].length;
+    // Content starts after one to four spaces; five or more, or nothing
+    // more on the line, means the content begins one column past the
+    // marker (CommonMark 5.2).
+    const content =
+      spaces >= 1 && spaces <= 4 && afterSpaces < line.length ? afterSpaces : marker[1].length + marker[2].length + 1;
+    if (spaces === 0 && afterSpaces < line.length) {
+      // `-x` / `1.x`: not a marker. Fall through to the indent test.
+    } else if (content <= indent) {
+      return content;
+    } else {
+      return null;
+    }
+  }
+  return lineIndent(line) === 0 ? 0 : null;
+}
+
 /**
  * Does the line after the line ending at `pos` end a container whose
  * content is indented `indent` columns — is it non-blank and indented less?
@@ -932,20 +1035,11 @@ function dedentEnds(text: string, pos: number, indent: number): boolean {
   return c !== ' ' && c !== '\t' && c !== '\n' && c !== '\r';
 }
 
-/** Does `text[from, to)` hold a line ending whose next line ends a
- *  container of content indent `indent` (see `dedentEnds`)? */
-function hasDedentBetween(text: string, from: number, to: number, indent: number): boolean {
-  for (let i = from; i < to; i++) {
-    const c = text[i];
-    if ((c === '\n' || c === '\r') && dedentEnds(text, i, indent)) return true;
-  }
-  return false;
-}
-
 function truncateUnclosedLatexBlock(
   text: string,
   runStartsAtLineStart: boolean,
-  unclosed = findUnclosedDelimiter(text, 'double-only', runStartsAtLineStart)
+  preceding: readonly string[],
+  unclosed = findUnclosedDelimiter(text, 'double-only', runStartsAtLineStart, preceding)
 ): string {
   // Only a FLOW opener swallows anything (the scan classified it with
   // `opensMathFlow`); an inline `$$` still open at the end is literal text.
@@ -1141,7 +1235,15 @@ export interface SliceResult {
  * COMPLETE input of the public call (see {@link selectMask}). "Default
  * processing without a mask" is unrepresentable on purpose.
  */
-export type ProcessSliceOptions = { legacy: true; probe: boolean } | { legacy?: false; probe: boolean; mask: string };
+export type ProcessSliceOptions = (
+  { legacy: true; probe: boolean } | { legacy?: false; probe: boolean; mask: string }
+) & {
+  /** The source before `slice` — the incremental wrapper's frozen prefix.
+   *  Read only backwards, by `listContentIndent`, to tell whether an
+   *  indented `$` opener is list item content; the stateless entry and
+   *  the evidence harnesses pass nothing (the slice IS the document). */
+  precedingText?: string;
+};
 
 // ─── Mask selection ─────────────────────────────────────────────────────────
 //
@@ -1232,7 +1334,8 @@ function transformRun(
   input: string,
   probe: boolean,
   runStartsAtLineStart: boolean,
-  seamEligible: boolean
+  seamEligible: boolean,
+  preceding: readonly string[]
 ): RunTransform {
   let text = input;
   let tailSensitive = false;
@@ -1241,9 +1344,9 @@ function transformRun(
   text = escapeCurrencyDollarSigns(text);
   text = convertLatexDelimiters(text);
   if (probe && RESIDUAL_OPEN_BRACKET_RE.test(text)) tailSensitive = true;
-  text = escapeLatexPipes(text, runStartsAtLineStart);
-  if (probe && findUnclosedDelimiter(text, 'both', runStartsAtLineStart) !== null) tailSensitive = true;
-  text = escapeLatexPipesInUnclosed(text, runStartsAtLineStart);
+  text = escapeLatexPipes(text, runStartsAtLineStart, preceding);
+  if (probe && findUnclosedDelimiter(text, 'both', runStartsAtLineStart, preceding) !== null) tailSensitive = true;
+  text = escapeLatexPipesInUnclosed(text, runStartsAtLineStart, preceding);
   if (probe && hasUnclosedTextCommand(text)) tailSensitive = true;
   text = escapeTextUnderscores(text);
   text = convertSingleToDoubleDollar(text);
@@ -1254,7 +1357,7 @@ function transformRun(
   // truncateUnclosedLatexBlock too — one O(run) pass, not two (r2 P2-2).
   let unclosedDouble: UnclosedDelimiter | null | undefined;
   if (probe || (seamEligible && LEADING_DOUBLE_DOLLAR_RE.test(text))) {
-    unclosedDouble = findUnclosedDelimiter(text, 'double-only', runStartsAtLineStart);
+    unclosedDouble = findUnclosedDelimiter(text, 'double-only', runStartsAtLineStart, preceding);
     if (unclosedDouble !== null) {
       tailSensitive = true;
       // The flag must track what truncation ACTUALLY does, not what an
@@ -1267,7 +1370,7 @@ function transformRun(
       }
     }
   }
-  text = truncateUnclosedLatexBlock(text, runStartsAtLineStart, unclosedDouble);
+  text = truncateUnclosedLatexBlock(text, runStartsAtLineStart, preceding, unclosedDouble);
   return { out: text, tailSensitive, truncatedAtSeamStart };
 }
 
@@ -1278,18 +1381,21 @@ function transformRun(
  *  fallback when the default arm cannot stand behind its output. A segment
  *  starts its own analysed text, so its start IS a line start for
  *  `opensMathFlow` — exactly what the old scan did by stopping at offset 0. */
-function processSliceLegacy(slice: string, probe: boolean): SliceResult {
+function processSliceLegacy(slice: string, probe: boolean, precedingText: string): SliceResult {
   const segments = splitByProtectedRegions(slice);
   const parts: string[] = [];
   let quiescent = true;
   let truncatedAtSeamStart = false;
+  let offset = 0;
   for (let index = 0; index < segments.length; index++) {
     const segment = segments[index];
+    const segmentStart = offset;
+    offset += segment.text.length;
     if (segment.kind !== 'text') {
       parts.push(segment.text);
       continue;
     }
-    const r = transformRun(segment.text, probe, true, index === 0);
+    const r = transformRun(segment.text, probe, true, index === 0, [precedingText, slice.slice(0, segmentStart)]);
     if (r.tailSensitive) quiescent = false;
     if (r.truncatedAtSeamStart) truncatedAtSeamStart = true;
     parts.push(r.out);
@@ -1450,7 +1556,7 @@ function emitRun(nodes: readonly RunNode[], mask: string): EmittedRun | null {
     } else {
       const inner = emitRun(node.children, mask);
       if (inner === null) return null;
-      const transformed = transformRun(inner.text, false, false, false);
+      const transformed = transformRun(inner.text, false, false, false, []);
       const restored = restore(transformed.out, inner.atoms, mask);
       if (restored === null) return null;
       atoms.push(node.open + restored + node.close);
@@ -1468,7 +1574,7 @@ function reportRestoreViolation(): void {
   }
 }
 
-function processSliceDefault(slice: string, probe: boolean, mask: string): SliceResult {
+function processSliceDefault(slice: string, probe: boolean, mask: string, precedingText: string): SliceResult {
   const segments = splitByProtectedRegions(slice);
   const parts: string[] = [];
   let quiescent = true;
@@ -1498,13 +1604,16 @@ function processSliceDefault(slice: string, probe: boolean, mask: string): Slice
     const emitted = emitRun(buildRunTree(runSegments), mask);
     if (emitted === null) {
       reportRestoreViolation();
-      return { ...processSliceLegacy(slice, probe), degradedReason: 'restore-invariant' };
+      return { ...processSliceLegacy(slice, probe, precedingText), degradedReason: 'restore-invariant' };
     }
-    const r = transformRun(emitted.text, probe, runStartsAtLineStart, seamEligible);
+    const r = transformRun(emitted.text, probe, runStartsAtLineStart, seamEligible, [
+      precedingText,
+      slice.slice(0, runStart),
+    ]);
     const restored = restore(r.out, emitted.atoms, mask);
     if (restored === null) {
       reportRestoreViolation();
-      return { ...processSliceLegacy(slice, probe), degradedReason: 'restore-invariant' };
+      return { ...processSliceLegacy(slice, probe, precedingText), degradedReason: 'restore-invariant' };
     }
     if (r.tailSensitive) quiescent = false;
     if (r.truncatedAtSeamStart) truncatedAtSeamStart = true;
@@ -1530,8 +1639,9 @@ function processSliceDefault(slice: string, probe: boolean, mask: string): Slice
  * @internal
  */
 export function processSlice(slice: string, options: ProcessSliceOptions): SliceResult {
-  if (options.legacy === true) return processSliceLegacy(slice, options.probe);
-  return processSliceDefault(slice, options.probe, options.mask);
+  const precedingText = options.precedingText ?? '';
+  if (options.legacy === true) return processSliceLegacy(slice, options.probe, precedingText);
+  return processSliceDefault(slice, options.probe, options.mask, precedingText);
 }
 
 /** A raw line holding only spaces / tabs / CR — a CommonMark blank line. */
@@ -1748,7 +1858,11 @@ export function createIncrementalLatexPreprocessor(options?: {
       };
       const cut = findRawSafeCut(active);
       if (cut > 0) {
-        const candidate = processSlice(active.slice(0, cut), { probe: true, mask });
+        const candidate = processSlice(active.slice(0, cut), {
+          probe: true,
+          mask,
+          precedingText: source.slice(0, frozenSrcEnd),
+        });
         if (candidate.degradedReason !== null) {
           // The attempt happened; the instrumentation contract is one
           // callback per attempt whatever its outcome.
@@ -1770,7 +1884,7 @@ export function createIncrementalLatexPreprocessor(options?: {
     // first run's B3 flag, so the per-run probes are skipped (they were
     // ~40% on top of the stateless cost for a document whose freeze never
     // succeeds; the backoff had already removed the other 2×).
-    const tail = processSlice(active, { probe: false, mask });
+    const tail = processSlice(active, { probe: false, mask, precedingText: source.slice(0, frozenSrcEnd) });
     if (tail.degradedReason !== null) return degrade(source, tail.degradedReason);
     // B3 seam correction: the original's run-level `trimEnd` reaches back
     // across our cut when the truncated `$$` block's run starts with

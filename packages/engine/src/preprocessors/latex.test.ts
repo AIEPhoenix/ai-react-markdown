@@ -877,22 +877,9 @@ y$ which spans lines`;
     expect(preprocessLaTeX(content)).toBe('before');
   });
 
-  test('truncates a line-start $$ indented three spaces while its body keeps the indent', () => {
-    const content = 'before\n\n   $$\n   \\frac{a}{b}\n\n   ## Swallowed';
+  test('truncates a line-start $$ indented three spaces', () => {
+    const content = 'before\n\n   $$\n\\frac{a}{b}\n\n## Swallowed';
     expect(preprocessLaTeX(content)).toBe('before');
-  });
-
-  test('an indented $$ whose body is dedented is left alone (container rule)', () => {
-    // remark-math does swallow the heading here — the opener is top-level,
-    // so its three spaces are fence indent, not a container's. The scan
-    // cannot see a container from the opener line alone, and an indented
-    // opener followed by a line indented less is the shape of a list item's
-    // block ending at its item, which used to lose the paragraph after the
-    // list from a finished document. That case wins: the text goes to
-    // remark-math untouched, and the streaming frame shows the open block
-    // instead of hiding it. See the container-rule suite below.
-    const content = 'before\n\n   $$\n\\frac{a}{b}\n\n## Not truncated';
-    expect(preprocessLaTeX(content)).toBe(content);
   });
 
   test('does not truncate at four spaces — that is an indented code block', () => {
@@ -1218,19 +1205,62 @@ describe('preprocessLaTeX — an indented $$ opener is bounded by its container'
     expect(mathShape(content)).toEqual(['list', '  listItem', '    math ""', 'paragraph', '  text']);
   });
 
-  test('an indented top-level opener (no container) errs towards not truncating', () => {
-    // remark-math swallows `After` here; the scan reads the column-0 line
-    // as a dedent and leaves the text alone, so remark-math gets the same
-    // bytes it would have had without a preprocessor.
-    const content = '  $$\n  x\n\nAfter';
-    expect(preprocessLaTeX(content)).toBe(content);
-    expect(preprocessLaTeX('  $$\n  x')).toBe('');
+  test('a top-level opener indented 1-3 spaces with an unindented body and closer keeps the prose after it', () => {
+    // remark-math allows up to three spaces of optional indent on a
+    // top-level fence. An indent-only container rule ended the block at
+    // the column-0 body, read the real closer as a new unclosed opener and
+    // truncated `After` (reviewer repro). The container comes from the
+    // lines above the opener now, and there is no list item here.
+    for (const indent of [' ', '  ', '   ']) {
+      const content = `${indent}$$\nx+y\n$$\n\nAfter`;
+      expect(preprocessLaTeX(content)).toBe(content);
+      expect(mathShape(content)).toEqual(['math "x+y"', 'paragraph', '  text']);
+      const noBlank = `${indent}$$\nx+y\n$$\nAfter`;
+      expect(preprocessLaTeX(noBlank)).toBe(noBlank);
+      const second = `${indent}$$\nx+y\n$$\n\nAfter\n\n$$\nE\n$$\n\nMore`;
+      expect(preprocessLaTeX(second)).toBe(second);
+      // The streaming tail after such a block is still truncated.
+      expect(preprocessLaTeX(`${indent}$$\nx+y\n$$\n\nAfter\n\n$$\nE =`)).toBe(`${indent}$$\nx+y\n$$\n\nAfter`);
+    }
+    // Four spaces is an indented code block: no math, nothing truncated.
+    const code = '    $$\nx+y\n$$\n\nAfter';
+    expect(preprocessLaTeX(code)).toBe(code);
+    expect(mathShape(code)[0]).toBe('code');
   });
 
-  test('ordered-list content indent works the same way', () => {
-    const content = '1. Item\n\n   $$\n   x\n\nAfter';
-    expect(preprocessLaTeX(content)).toBe(content);
+  test('a top-level indented opener with no closer is the streaming tail, as it always was', () => {
+    // No list item above it, so nothing bounds the block: remark-math
+    // would swallow `After` into the open block, and the truncation hides
+    // the block until its closer arrives.
+    expect(preprocessLaTeX('  $$\n  x\n\nAfter')).toBe('');
+    expect(preprocessLaTeX('  $$\n  x')).toBe('');
+    expect(preprocessLaTeX('before\n\n   $$\n\\frac{a}{b}\n\n## Swallowed')).toBe('before');
+  });
+
+  test('the container is read from the lines above the opener, not from its indent', () => {
+    // Ordered list: content indent 3.
+    const ordered = '1. Item\n\n   $$\n   x\n\nAfter';
+    expect(preprocessLaTeX(ordered)).toBe(ordered);
     expect(preprocessLaTeX('1. Item\n\n   $$\n   x')).toBe('1. Item');
+    // Opener deeper than the item's content: a line at the content indent
+    // is still inside the item, so the block is still open there.
+    expect(preprocessLaTeX('- Item\n\n   $$\n   x\n\n  After')).toBe('- Item');
+    expect(preprocessLaTeX('- Item\n\n   $$\n   x\n\nAfter')).toBe('- Item\n\n   $$\n   x\n\nAfter');
+    // The walk passes item continuation lines to reach the marker, and a
+    // nested item's marker whose content is deeper than the opener.
+    const continuation = '- Item\n  more text\n\n  $$\n  x\n\nAfter';
+    expect(preprocessLaTeX(continuation)).toBe(continuation);
+    const nested = '- a\n  - b\n\n  $$\n  x\n\nAfter';
+    expect(preprocessLaTeX(nested)).toBe(nested);
+    // A top-level paragraph's continuation line above the opener is not a
+    // list item: the block runs on, and the streaming tail is truncated.
+    expect(preprocessLaTeX('para\n  cont\n\n  $$\n  x\n\nAfter')).toBe('para\n  cont');
+    // `-x` and `---` are not list markers.
+    expect(preprocessLaTeX('-x\n\n  $$\n  x\n\nAfter')).toBe('-x');
+    expect(preprocessLaTeX('---\n\n  $$\n  x\n\nAfter')).toBe('---');
+    // The reviewer's case, and its blank-line-free form, still hold.
+    const reviewer = '- Item\n\n  $$\n  x\n\nAfter the list.';
+    expect(preprocessLaTeX(reviewer)).toBe(reviewer);
   });
 });
 
