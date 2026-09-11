@@ -1,0 +1,50 @@
+:root {
+  --sl-color-accent-low: #123c3d;
+  --sl-color-accent: #168875;
+  --sl-color-accent-high: #a4dfcb;
+  --sl-content-width: 54rem;
+}
+:root[data-theme='light'] {
+  --sl-color-accent-low: #e1f4ed;
+  --sl-color-accent: #086b58;
+  --sl-color-accent-high: #074d40;
+}
+.sl-markdown-content table {
+  font-size: 1rem;
+}
+
+:root {
+  --sl-nav-height: 4.5rem;
+}
+@media (max-width: 49.99rem) {
+  :root {
+    --sl-nav-height: 7rem;
+  }
+}
+
+/* Style Starlight's fixed frame so content scrolls behind the glass. */
+.page > header.header {
+  background-color: var(--sl-color-bg-nav);
+  border-bottom-color: color-mix(in srgb, var(--sl-color-text) 10%, transparent);
+}
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .page > header.header {
+    background-color: color-mix(in srgb, var(--sl-color-bg-nav) 78%, transparent);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    backdrop-filter: blur(20px) saturate(140%);
+  }
+}
+@media (prefers-reduced-transparency: reduce), (forced-colors: active) {
+  .page > header.header {
+    background-color: var(--sl-color-bg-nav);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+@media (max-width: 49.99rem) {
+  .sl-menu-button {
+    top: calc(var(--sl-nav-pad-y) + (2.75rem - var(--sl-menu-button-size)) / 2);
+    border-radius: 0.5rem;
+    box-shadow: none;
+  }
+}

@@ -1,6 +1,7 @@
 packages:
   - 'packages/*'
   - 'apps/storybook-*'
+  - 'apps/docs'
   - 'tooling/storybook-kit'
   # Benchmark apps and their kit. All private, none published. They are in the
   # workspace so they resolve `@ai-markdown/*` through the same `exports`

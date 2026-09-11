@@ -1,0 +1,138 @@
+---
+import DefaultHero from '@astrojs/starlight/components/Hero.astro';
+const { entry } = Astro.locals.starlightRoute;
+const home = entry.data.template === 'splash';
+const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
+---
+
+{home ? (
+  <section class="brand-hero" aria-labelledby="_top">
+    <div class="hero-copy">
+      <p class="eyebrow">OPEN SOURCE · REACT + VUE</p>
+      <h1 id="_top" data-page-title>Markdown for AI,<br /><span>built for the stream.</span></h1>
+      <p class="hero-tagline">From the first token to the final footnote.</p>
+      <p class="hero-description">Rich content, incremental streaming and thoughtful multilingual typography. One shared foundation for your interface.</p>
+      <div class="hero-actions">
+        <a class="get-started" href={`${base}docs/guides/getting-started/`}>Get started <span aria-hidden="true">↗</span></a>
+        <a class="read-docs" href={`${base}docs/`}>Read the docs <span aria-hidden="true">→</span></a>
+      </div>
+      <p class="hero-topics">STREAMING <span>/</span> MATH <span>/</span> MULTILINGUAL</p>
+    </div>
+    <div class="hero-art">
+      <img src={`${base}brand/organization-mark.png`} width="460" height="460" alt="AI Markdown's folded-paper m logo" fetchpriority="high" />
+    </div>
+  </section>
+) : <DefaultHero />}
+
+<style>
+.brand-hero {
+  display: grid;
+  grid-template-columns: 1.25fr 0.85fr;
+  align-items: center;
+  gap: 1rem;
+  margin-block: 1.5rem 2rem;
+  padding: clamp(1.75rem, 4vw, 3.5rem);
+  border-radius: 1.5rem;
+  background: #0a2035;
+  color: #f6f8f7;
+  overflow: hidden;
+}
+.eyebrow {
+  font: 500 0.75rem var(--sl-font-mono);
+  letter-spacing: 0.12em;
+  color: #91cabb;
+  margin-bottom: 1.75rem;
+}
+h1 {
+  color: #f6f8f7;
+  font-size: clamp(2.35rem, 4.8vw, 4rem);
+  line-height: 1.1;
+  letter-spacing: -0.055em;
+  font-weight: 650;
+}
+h1 span {
+  color: #a4dfcb;
+}
+.hero-tagline {
+  font-size: 1.2rem;
+  font-weight: 500;
+  margin-top: 1.75rem;
+  color: #e2eee9;
+}
+.hero-description {
+  font-size: 1rem;
+  line-height: 1.8;
+  color: #aac3d0;
+  max-width: 32rem;
+  margin-top: 0.75rem;
+}
+.hero-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+.hero-actions a {
+  display: inline-flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 0.8rem 1.25rem;
+  text-decoration: none;
+  font-size: 1rem;
+  font-weight: 600;
+  border-radius: 0.45rem;
+}
+.get-started {
+  background: #a4dfcb;
+  color: #0a2035;
+}
+.get-started:hover {
+  background: #c0f1df;
+}
+.read-docs {
+  color: #edf5f3;
+  border: 1px solid #476577;
+}
+.read-docs:hover {
+  border-color: #a4dfcb;
+}
+.hero-topics {
+  display: flex;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+  margin-top: 2.75rem;
+  font: 0.75rem var(--sl-font-mono);
+  letter-spacing: 0.12em;
+  color: #93b9bd;
+}
+.hero-topics span {
+  color: #52798b;
+}
+.hero-art {
+  min-width: 0;
+}
+.hero-art img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 1rem;
+}
+@media (max-width: 50rem) {
+  .brand-hero {
+    grid-template-columns: 1fr;
+    position: relative;
+  }
+  .hero-copy {
+    position: relative;
+    z-index: 1;
+  }
+  .hero-art {
+    max-width: 18rem;
+    margin-inline: auto;
+  }
+  .hero-topics {
+    margin-top: 1.75rem;
+  }
+}
+</style>

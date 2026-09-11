@@ -2,6 +2,8 @@
 
 For the completed 3.0.0 release and subsequent release verification, see [Releasing 3.0](./releasing-3.0.md).
 
+For the independent Starlight site, see [Documentation site](./documentation-site.md).
+
 For repository development, start with the [development command reference](./development-commands.md).
 
 Start with [Getting started](./getting-started.md) for React 19, Vue 3.5 and Mantine 9 installation, stylesheets and package boundaries. The five main packages share the stable `3.0.0` train; the highlight plugin versions independently. Advanced adapter authors can use the [core/engine API contracts](./api/core-engine-contracts.md).
