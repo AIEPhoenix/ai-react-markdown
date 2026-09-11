@@ -2,10 +2,12 @@
  * The host decides whether a next frame is expected (false for SSR), owns
  * this session, and resets it when render policy invalidates retained trees.
  * Parsing does not register chunks or publish document contributions.
- * Fallback order: incremental → full pipeline → plain-text frame (see
- * plainTextTrees); a pipeline-stage throw never escapes `parse`.
+ * Fallback order: incremental → full pipeline → plain-text frame, the last
+ * step ONLY for the engine's raw-depth signal (see plainTextTrees); any
+ * other full-pipeline throw, a consumer plugin's included, escapes `parse`.
  */
 import {
+  EngineRawHtmlDepthError,
   advanceIncrementalParse,
   buildPhantomSuffix,
   phantomSuffixCloser,
@@ -65,19 +67,23 @@ function endPoint(text: string): { line: number; column: number; offset: number 
 }
 
 /**
- * Last-resort trees for a frame whose FULL parse threw: the whole source as
- * one plain-text paragraph, positions covering the entire content so the
- * planner, cache keys and custom components see well-formed nodes. The
- * text is a hast text node — it renders escaped, never as markup.
+ * Last-resort trees for a frame whose FULL parse threw the engine's
+ * `EngineRawHtmlDepthError`: the whole source as one plain-text paragraph,
+ * positions covering the entire content so the planner, cache keys and
+ * custom components see well-formed nodes. The text is a hast text node — it
+ * renders escaped, never as markup.
  *
  * Why this exists: the incremental path already falls back to the full
  * pipeline, but the full pipeline itself can throw — a few thousand nested
- * raw `<div>` tags overflow the recursive hast-util-from-parse5 walk with
- * `RangeError: Maximum call stack size exceeded` — and nothing above the
- * session caught it, so one hostile message took the adapter subtree down.
- * The durable fix is a depth cap or an iterative walk in the
- * hast-util-from-parse5 fork; this keeps the surface alive until then.
- * The next frame is parsed normally again (retained state is cleared).
+ * raw `<div>` tags overflow the recursive hast-util-from-parse5 walk inside
+ * the raw-HTML step — and nothing above the session caught it, so one
+ * hostile message took the adapter subtree down. The engine's guarded raw
+ * step reports exactly that overflow as a typed error; nothing else is
+ * degraded, because a throwing consumer plugin or handler is a bug the host
+ * must see, not a frame to render as text. The durable fix is a depth cap
+ * or an iterative walk in the hast-util-from-parse5 fork; this keeps the
+ * surface alive until then. The next frame is parsed normally again
+ * (retained state is cleared).
  */
 function plainTextTrees(content: string): PipelineTrees {
   const position = { start: { line: 1, column: 1, offset: 0 }, end: endPoint(content) };
@@ -161,10 +167,10 @@ export function createPipelineSession(): PipelineSession {
       // O(document) line-lex per request. Hydration is unaffected (the
       // client's first frame rebuilds from null either way).
       // The ordinary full pipeline, with the plain-text last resort around
-      // it (see plainTextTrees). Dev-only stage telemetry
-      // (`ai-markdown:stage:*` performance measures; no-op in production)
-      // wraps only the stage calls — the surrounding option assembly is
-      // trivial.
+      // it for the engine's raw-depth signal only (see plainTextTrees).
+      // Dev-only stage telemetry (`ai-markdown:stage:*` performance
+      // measures; no-op in production) wraps only the stage calls — the
+      // surrounding option assembly is trivial.
       const fullPipeline = (): PipelineTrees => {
         try {
           const parsed = measureHere('parse', () =>
@@ -178,8 +184,17 @@ export function createPipelineSession(): PipelineSession {
           const hastRoot = measureHere('transform', () => transformStage(parsed));
           return { mdast: parsed.mdast, hast: hastRoot };
         } catch (error) {
+          // Only the engine's own signal for raw HTML nested past the call
+          // stack is degraded. Everything else — a consumer's remark/rehype
+          // plugin or handler throwing, a RangeError that is not that
+          // overflow — propagates exactly as it did before the fallback
+          // existed.
+          if (!(error instanceof EngineRawHtmlDepthError)) throw error;
           if (process.env.NODE_ENV !== 'production') {
-            console.error('[ai-react-markdown] full parse failed — rendering this frame as plain text:', error);
+            console.error(
+              '[ai-react-markdown] raw HTML nested past the call stack — rendering this frame as plain text:',
+              error
+            );
           }
           return plainTextTrees(content ?? '');
         }

@@ -18,6 +18,7 @@ Six engine-side corrections, all in the built-in LaTeX preprocessor and the shar
 - Currency escaping on a very long line is linear again (a 240 KB line with 32k `$`: 2.7 s to 11 ms), byte-identical.
 - `removeComments` strips comment spans instead of dropping the whole html node: `<details>` blocks with a comment inside, and `<!-- note --> visible text`, render their content. A comment-only block still disappears. The engine no longer depends on `remark-remove-comments`.
 - pangu runs before SmartyPants, so `中文"引号"中文` gets an opening and a closing quote (`中文 “引号” 中文`) instead of two closers.
+- Raw HTML nested past the call stack (a few thousand `<div>` tags, about 10 KB) no longer takes the adapter subtree down. The engine's raw-HTML step is guarded and reports its own stack overflow as the exported `EngineRawHtmlDepthError`; the shared pipeline session renders that one frame as an escaped plain-text paragraph and parses the next frame normally. Only that error is degraded: a throwing remark or rehype plugin or handler supplied by the host, and any `RangeError` that is not that overflow, propagate out of `parse` as before.
 
 ## 3.0.0 — Stable release and final candidate
 
