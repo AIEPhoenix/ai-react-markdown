@@ -31,7 +31,8 @@
  *   the other LITERAL_CONTENT_TAGS regions): hard boundaries. Treating code
  *   as a maskable atom was measured wrong twice; it stays a boundary.
  * - `multilineTag`: a whitelisted tag whose own bytes span a line ending
- *   (HTML_TAG_REGEX admits newlines inside attributes). A hard boundary,
+ *   (HTML_TAG_REGEX admits line endings between attributes and inside
+ *   quoted values, though never a blank line). A hard boundary,
  *   because replacing it by one mask would delete line endings from the
  *   analysed text and break every per-line rule in `processSlice`.
  * - `tag`: a single-line whitelisted tag — a SOFT atom: masked, not a
@@ -67,13 +68,64 @@ function getRepeatedMarkerLength(content: string, start: number, marker: FenceMa
   return end - start;
 }
 
+const HTML_TAG_NAMES =
+  'span|div|p|br|hr|img|a|em|strong|b|i|u|s|sub|sup|code|pre|table|tr|td|th|thead|tbody|tfoot|ul|ol|li|dl|dt|dd|h[1-6]|blockquote|details|summary|figure|figcaption|section|article|aside|nav|header|footer|main|mark|del|ins|small|abbr|cite|dfn|kbd|samp|var|ruby|rt|rp|bdo|wbr|input|button|select|textarea|label|fieldset|legend|output|iframe|video|audio|source|canvas|svg|math|time';
+
+/**
+ * One CommonMark attribute (spec 6.6, "open tag"): whitespace, a name, and
+ * optionally `=` with an unquoted, single-quoted or double-quoted value.
+ * Whitespace and quoted values may hold line endings — an inline tag can
+ * span lines of its paragraph — but never a blank line; that bound is not
+ * expressible here and is checked on the match (`crossesBlankLine`).
+ *
+ * Quoted values exclude `>` on purpose, though CommonMark admits one. No
+ * part of a match may then hold a `>`, so a tag always ends at the FIRST
+ * `>` after its `<` — which is what lets the incremental wrapper's cut rule
+ * treat a `>` as settling a latent `<` for good (`findRawSafeCut`). Admitting
+ * `>` in quotes broke that: `<span title="multi\n<b>$$x</b>\nline $5">` froze
+ * its first lines as text and then re-read them as one tag once the closing
+ * quote arrived. The old `[^>]*` form never admitted one either.
+ */
+const HTML_ATTRIBUTE =
+  String.raw`\s+[A-Za-z_:][A-Za-z0-9_.:-]*(?:\s*=\s*(?:[^\s"'=<>` + '`' + String.raw`]+|'[^'>]*'|"[^">]*"))?`;
+
 /**
  * Sticky regex for matching known HTML tags at a specific position.
  * The `y` (sticky) flag anchors the match at `lastIndex`, avoiding the need
  * to create a substring for each `<` character encountered during scanning.
+ *
+ * The attributes must parse as attributes. The old form, `(?:\s[^>]*)?`,
+ * took ANYTHING up to the next `>`: `a<b we have $x^2$ and c>d` was one tag
+ * and its formula was never converted, and a document holding many `<b`
+ * with no `>` re-scanned to its end for each one (2000/4000/8000 lines of
+ * `a <b x $1`: 31/114/405 ms — quadratic). A `$1` is not an attribute, so
+ * the match now fails on the spot. Closing tags are matched by the same
+ * form, as before (CommonMark allows only whitespace in them; being more
+ * permissive there costs nothing).
  */
-const HTML_TAG_REGEX =
-  /<\/?(span|div|p|br|hr|img|a|em|strong|b|i|u|s|sub|sup|code|pre|table|tr|td|th|thead|tbody|tfoot|ul|ol|li|dl|dt|dd|h[1-6]|blockquote|details|summary|figure|figcaption|section|article|aside|nav|header|footer|main|mark|del|ins|small|abbr|cite|dfn|kbd|samp|var|ruby|rt|rp|bdo|wbr|input|button|select|textarea|label|fieldset|legend|output|iframe|video|audio|source|canvas|svg|math|time)(?:\s[^>]*)?\/?>/iy;
+const HTML_TAG_REGEX = new RegExp(String.raw`<\/?(${HTML_TAG_NAMES})(?:${HTML_ATTRIBUTE})*\s*\/?>`, 'iy');
+
+/** Does `text[from, to)` contain a blank line — a line ending, optional
+ *  spaces/tabs, and another line ending? A tag cannot cross one: the
+ *  paragraph it would be inline HTML of ends there. Same rule as
+ *  `isBlankLineAt`, whose end-of-input caveat does not arise here (the
+ *  range ends at the tag's `>`). */
+function crossesBlankLine(text: string, from: number, to: number): boolean {
+  let i = from;
+  while (i < to) {
+    const c = text[i];
+    if (c !== '\n' && c !== '\r') {
+      i += 1;
+      continue;
+    }
+    let j = i + 1;
+    if (c === '\r' && text[j] === '\n') j += 1;
+    while (j < to && (text[j] === ' ' || text[j] === '\t')) j += 1;
+    if (j < to && (text[j] === '\n' || text[j] === '\r')) return true;
+    i = j;
+  }
+  return false;
+}
 
 /**
  * Tags whose inner text must be treated as literal (never processed as LaTeX).
@@ -270,7 +322,7 @@ export function splitByProtectedRegions(content: string): Segment[] {
       // Use sticky regex to match at position i without creating a substring.
       HTML_TAG_REGEX.lastIndex = i;
       const tagMatch = HTML_TAG_REGEX.exec(content);
-      if (tagMatch) {
+      if (tagMatch && !crossesBlankLine(content, i, i + tagMatch[0].length)) {
         let endIndex = i + tagMatch[0].length;
         // For literal-content tags (code/pre/math/...), protect the paired
         // <tag>...</tag> region so inner `$` never enters LaTeX processing.
@@ -335,9 +387,11 @@ const CURRENCY_REGEX = /(?<![\\$])\$(?!\$)(?=\d+(?:,\d{3})*(?:\.\d+)?(?:[KMBkmb]
 // - \[...\]( (markdown link)
 const DELIMITERS_REGEX = /(?<!!)\\\[([\S\s]*?[^\\])\\](?!\()|\\\((.*?)\\\)/g;
 const ARRAY_COL_SPEC_OR_PIPE_REGEX = /(\\begin\{(?:array|tabular[x*]?)\}\{[^}]*\})|(?<!\\)\|/g;
-// Display $$ allows multiline; inline $ forbids newlines (consistent with SINGLE_DOLLAR_REGEX).
+// Display $$ allows multiline (the blank-line bound on a mid-line opener is
+// applied by the exec loop in escapeLatexPipes, not here); inline $ forbids
+// newlines (consistent with SINGLE_DOLLAR_REGEX).
 // Both display delimiters use EXACTLY the delimiter lexicon of
-// findUnclosedDelimiterStart / isEscapedByBackslashRun: a `$$` preceded by
+// findUnclosedDelimiter / isEscapedByBackslashRun: a `$$` preceded by
 // an EVEN run of backslashes (zero included) is a delimiter, an odd run
 // escapes it — nothing else matters, in particular not a preceding `$`
 // (`$$$$` is an empty display, `\$$$x$$` opens at the second `$`). The
@@ -387,26 +441,39 @@ function escapeCurrencyDollarSigns(text: string): string {
   let lastIndex = 0;
   const currencyMatches = Array.from(text.matchAll(CURRENCY_REGEX));
 
-  // Track the processed content of the current line incrementally, together
-  // with its bare-`$` COUNT: the parity check below used to re-scan the whole
-  // processed line on every match, O(line²) for a line with many currency
-  // hits (12 KB table row: 59 ms per frame; 8 KB: 243 ms — 2026-08-19
-  // review r2 P2-1). Appending a piece adds its own count plus a seam
-  // correction (the previous last `$` loses its "not followed by `$`" when
-  // the piece starts with `$`).
-  let currentLineProcessed = '';
+  // Track the processed content of the current line incrementally, as its
+  // bare-`$` COUNT plus its last two characters: the parity check below used
+  // to re-scan the whole processed line on every match, O(line²) for a line
+  // with many currency hits (12 KB table row: 59 ms per frame; 8 KB: 243 ms
+  // — 2026-08-19 review r2 P2-1). Appending a piece adds its own count plus
+  // a seam correction (the previous last `$` loses its "not followed by `$`"
+  // when the piece starts with `$`).
+  //
+  // The line's text itself is NOT kept. It was, as `currentLineProcessed +=
+  // piece`, and only ever read for its last two characters — but reading
+  // one character of a string V8 has just concatenated flattens the rope,
+  // O(line) per match, so a 240 KB line holding 32k `$` spent 2.5 of its
+  // 3.0 s here. The two characters are all the seam corrections need; `''`
+  // stands for "no such character", as before.
+  let lineLast = '';
+  let lineBeforeLast = '';
   let currentLineDollars = 0;
   const appendToLine = (piece: string): void => {
     if (piece.length === 0) return;
-    const prevLast = currentLineProcessed.length > 0 ? currentLineProcessed[currentLineProcessed.length - 1] : '';
-    const prevBeforeLast = currentLineProcessed.length > 1 ? currentLineProcessed[currentLineProcessed.length - 2] : '';
-    const prevLastCounted = prevLast === '$' && prevBeforeLast !== '\\' && prevBeforeLast !== '$';
+    const prevLastCounted = lineLast === '$' && lineBeforeLast !== '\\' && lineBeforeLast !== '$';
     if (prevLastCounted && piece[0] === '$') currentLineDollars -= 1;
-    currentLineDollars += countBareDollars(piece, 0, piece.length, prevLast, '');
-    currentLineProcessed += piece;
+    currentLineDollars += countBareDollars(piece, 0, piece.length, lineLast, '');
+    if (piece.length >= 2) {
+      lineBeforeLast = piece[piece.length - 2];
+      lineLast = piece[piece.length - 1];
+    } else {
+      lineBeforeLast = lineLast;
+      lineLast = piece;
+    }
   };
   const resetLine = (rest: string): void => {
-    currentLineProcessed = '';
+    lineLast = '';
+    lineBeforeLast = '';
     currentLineDollars = 0;
     appendToLine(rest);
   };
@@ -416,7 +483,7 @@ function escapeCurrencyDollarSigns(text: string): string {
     const segment = text.substring(lastIndex, match.index);
     parts.push(segment);
 
-    // Update currentLineProcessed: keep only content after the last newline.
+    // Update the line state: keep only content after the last newline.
     const newlineIdx = Math.max(segment.lastIndexOf('\n'), segment.lastIndexOf('\r'));
     if (newlineIdx !== -1) {
       resetLine(segment.substring(newlineIdx + 1));
@@ -445,27 +512,25 @@ function escapeCurrencyDollarSigns(text: string): string {
     }
     const restDollars = countBareDollars(firstLineBeforeNextMatch, 0, firstLineBeforeNextMatch.length, '', '');
     if (restDollars % 2 !== 0) {
-      // Parity of `currentLineProcessed + firstLineBeforeNextMatch` (the
-      // current `$` itself excluded), summed from the two counts with the
-      // seam corrected both ways.
-      const L = currentLineProcessed;
-      const lLast = L.length > 0 ? L[L.length - 1] : '';
-      const lBeforeLast = L.length > 1 ? L[L.length - 2] : '';
-      const lLastCounted = lLast === '$' && lBeforeLast !== '\\' && lBeforeLast !== '$';
+      // Parity of `processed line + firstLineBeforeNextMatch` (the current
+      // `$` itself excluded), summed from the two counts with the seam
+      // corrected both ways.
+      const lLastCounted = lineLast === '$' && lineBeforeLast !== '\\' && lineBeforeLast !== '$';
       const f0 = firstLineBeforeNextMatch[0];
       let whole = currentLineDollars + restDollars;
-      // L's last `$` is now followed by F's first char.
+      // The line's last `$` is now followed by F's first char.
       if (lLastCounted && f0 === '$') whole -= 1;
-      // F's first `$` was counted with an empty predecessor; L supplies one.
-      if (f0 === '$' && (lLast === '\\' || lLast === '$') && firstLineBeforeNextMatch[1] !== '$') whole -= 1;
+      // F's first `$` was counted with an empty predecessor; the line
+      // supplies one.
+      if (f0 === '$' && (lineLast === '\\' || lineLast === '$') && firstLineBeforeNextMatch[1] !== '$') whole -= 1;
       if (whole % 2 !== 0) needEscape = false;
     }
 
     const replacement = needEscape ? '\\$' : '$';
     parts.push(replacement);
-    // Append to currentLineProcessed so subsequent parity checks on the same
-    // line see the correct count of unescaped `$` (e.g. a left-as-`$` opener
-    // that the next match's check must count).
+    // Append to the line state so subsequent parity checks on the same line
+    // see the correct count of unescaped `$` (e.g. a left-as-`$` opener that
+    // the next match's check must count).
     appendToLine(replacement);
     lastIndex = match.index + 1;
   }
@@ -506,19 +571,74 @@ const replaceUnescapedPipes = (formula: string): string =>
     colSpec !== undefined ? match : '\\vert{}'
   );
 /**
+ * Is the line ending at `pos` (`\n`, `\r`, or the `\r` of a CRLF) followed by
+ * a blank line — optional spaces/tabs and then another line ending? The end
+ * of input does NOT complete a blank line: the next line has not arrived,
+ * and a verdict that settled on EOF would settle differently once it did
+ * (the incremental wrapper freezes on these verdicts).
+ */
+function isBlankLineAt(text: string, pos: number): boolean {
+  let j = pos + 1;
+  if (text[pos] === '\r' && text[j] === '\n') j += 1;
+  while (j < text.length && (text[j] === ' ' || text[j] === '\t')) j += 1;
+  return j < text.length && (text[j] === '\n' || text[j] === '\r');
+}
+
+/** Does `text[from, to)` contain a line ending that starts a blank line? */
+function hasBlankLineBetween(text: string, from: number, to: number): boolean {
+  for (let i = from; i < to; i++) {
+    const c = text[i];
+    if ((c === '\n' || c === '\r') && isBlankLineAt(text, i)) return true;
+  }
+  return false;
+}
+
+/**
  * Escape pipes in LaTeX expressions to prevent them from being interpreted as
  * column separators in markdown tables.
  *
+ * A `$$` pair may span line endings, but only a MATH-FLOW opener
+ * (`opensMathFlow`: line start, at most three columns in) may span a blank
+ * line. remark-math pairs a mid-line `$$` (math text) inside its paragraph
+ * alone, and a paragraph ends at a blank line, so a mid-line `$$` whose
+ * nearest `$$` lies past a blank line is literal text; the scan resumes
+ * right after it so that `$$` can open the next pair — which it really is.
+ * The price in `It costs $$100 …` used to pair with the opener of the
+ * display block below it, and the block's own closer then read as an
+ * unclosed opener. Same rule as `findUnclosedDelimiter`'s inline reset.
+ *
  * @param text Input string containing LaTeX expressions
+ * @param runStartsAtLineStart Virtual predecessor for `opensMathFlow` when
+ *   an opener sits at offset 0 (see `transformRun`).
  * @returns String with pipes escaped in LaTeX expressions
  * @modified from https://github.com/lobehub/lobe-ui/blob/master/src/hooks/useMarkdown/latex.ts
  */
-function escapeLatexPipes(text: string): string {
-  return text.replaceAll(LATEX_BLOCK_REGEX, (match, display, inline) => {
-    if (display !== undefined) return `$$${replaceUnescapedPipes(display)}$$`;
-    if (inline !== undefined) return `$${replaceUnescapedPipes(inline)}$`;
-    return match;
-  });
+function escapeLatexPipes(text: string, runStartsAtLineStart: boolean): string {
+  let out = '';
+  let last = 0;
+  LATEX_BLOCK_REGEX.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = LATEX_BLOCK_REGEX.exec(text)) !== null) {
+    const match = m[0];
+    const display = m[1];
+    const inline = m[2];
+    if (display !== undefined) {
+      if (
+        hasBlankLineBetween(text, m.index + 2, m.index + match.length - 2) &&
+        !opensMathFlow(text, m.index, runStartsAtLineStart)
+      ) {
+        LATEX_BLOCK_REGEX.lastIndex = m.index + 2;
+        continue;
+      }
+      out += text.slice(last, m.index) + `$$${replaceUnescapedPipes(display)}$$`;
+    } else if (inline !== undefined) {
+      out += text.slice(last, m.index) + `$${replaceUnescapedPipes(inline)}$`;
+    } else {
+      out += text.slice(last, m.index) + match;
+    }
+    last = m.index + match.length;
+  }
+  return out + text.slice(last);
 }
 
 /**
@@ -537,47 +657,136 @@ function isEscapedByBackslashRun(text: string, pos: number): boolean {
   return count % 2 === 1;
 }
 
+/** The kind of an unclosed delimiter, as {@link findUnclosedDelimiter}
+ *  reports it: a `$$` that opens a math FLOW (the block the truncation
+ *  exists for), a `$$` that is inline math TEXT, or a single `$`. */
+type UnclosedKind = 'flow' | 'inline' | 'single';
+
+interface UnclosedDelimiter {
+  /** Index of the opener's first `$`. */
+  start: number;
+  kind: UnclosedKind;
+}
+
+/** Index of the next unescaped `$$` token on the SAME line at or after
+ *  `from`, or -1 when the line ends first. */
+function nextDoubleDollarOnLine(text: string, from: number): number {
+  for (let j = from; j + 1 < text.length; j++) {
+    const c = text[j];
+    if (c === '\n' || c === '\r') return -1;
+    if (c === '$' && text[j + 1] === '$' && !isEscapedByBackslashRun(text, j)) return j;
+  }
+  return -1;
+}
+
 /**
- * Find the start index of the trailing unclosed `$$` or `$` delimiter.
+ * Find the trailing unclosed delimiter — the last opener that was never
+ * closed — or `null` when every delimiter is paired.
  *
- * Scans through all dollar-sign tokens tracking open/close state.
- * Returns the index of the last *opening* delimiter that was never closed,
- * or `-1` if every delimiter is paired.
+ * The scan is KIND-AWARE, because the delimiters do not all pair the same
+ * way and a plain open/close toggle over the whole `$` stream — which is
+ * what this scan used to be — could not hold the rules below at once:
+ *
+ * - A `$$` opener is a FLOW opener (`opensMathFlow`: it starts its line, at
+ *   most three columns in) or INLINE math text. A single `$` opener is
+ *   inline too, and opens only in `'both'` mode. remark-math also refuses a
+ *   flow fence whose info string holds a `$`; that refinement is NOT
+ *   modelled, on purpose: a streaming `$$x^2$` (half its closer arrived)
+ *   would read as inline for one frame and surface as literal text instead
+ *   of staying truncated until the closer lands.
+ * - A single `$` is LINE-LOCAL: inline math never spans a line ending
+ *   anywhere in this file (both closed-pair regexes forbid `\n`, the
+ *   currency parity is per line), so a `$` still open when its line ends is
+ *   a stray character, not an opener, and the scan forgets it. It used to
+ *   stay open: one `US$` in a sentence made every `|` of a table three
+ *   paragraphs later a `\vert{}`. Only a `$` on the LAST line (no line
+ *   ending after it — the streaming tail) is reported unclosed.
+ * - An INLINE `$$` opener is PARAGRAPH-LOCAL: remark-math pairs it inside
+ *   its paragraph only, so one still open at a blank line is literal and
+ *   the scan forgets it — the `$$` after the blank is then the opener it
+ *   really is. A FLOW opener runs on across blank lines to its closer, or
+ *   to the end of input: that is the genuinely open trailing block the
+ *   truncation exists for. (The end of input does not complete a blank
+ *   line — see `isBlankLineAt`.)
+ * - Inside an open `$$` a single `$` is content — the closed-pair regexes
+ *   agree: a display pair is `$$…$$` whatever `$` it holds, and an inline
+ *   `$…$` cannot hold a bare `$`. Conversely a `$$` arriving while a single
+ *   `$` is open means the single was a stray; the `$$` opens.
+ * - Inside an open FLOW block, `$$` tokens on the lines AFTER the opener's
+ *   pair up per line and only a token with no partner on its line closes
+ *   the block. This is what keeps the truncation scan right after
+ *   `convertSingleToDoubleDollar`, which turns every `$x$` in the block
+ *   into a `$$x$$` pair: the toggle used to "close" the block on the first
+ *   of those and re-open a mid-line opener on the second, so an unclosed
+ *   streaming block holding one `$x$` was never truncated. On the opener's
+ *   OWN line the next `$$` closes, whatever follows it: `$$|a|$$ then …` is
+ *   inline math that happens to start a line, and remark-math agrees (a
+ *   fence's info string cannot hold a `$`). A closer is still any unpaired
+ *   `$$`, not only a closing fence line — `E = mc^2 $$` closes, as it
+ *   always did.
  *
  * @param text  Input string to scan.
  * @param mode  `'both'` tracks `$$` and `$`; `'double-only'` tracks only `$$`.
+ * @param runStartsAtLineStart  Virtual predecessor for `opensMathFlow` when
+ *   an opener sits at offset 0 (see `transformRun`).
  */
-function findUnclosedDelimiterStart(text: string, mode: 'both' | 'double-only'): number {
-  let unclosedStart = -1;
+function findUnclosedDelimiter(
+  text: string,
+  mode: 'both' | 'double-only',
+  runStartsAtLineStart: boolean
+): UnclosedDelimiter | null {
+  let open: UnclosedDelimiter | null = null;
+  // Whether the scan has left the open FLOW opener's own line.
+  let pastOpenerLine = false;
   let i = 0;
   while (i < text.length) {
-    if (text[i] === '$' && i + 1 < text.length && text[i + 1] === '$' && !isEscapedByBackslashRun(text, i)) {
-      unclosedStart = unclosedStart === -1 ? i : -1;
-      i += 2;
+    const c = text[i];
+    if (c === '$' && i + 1 < text.length && text[i + 1] === '$' && !isEscapedByBackslashRun(text, i)) {
+      if (open === null || open.kind === 'single') {
+        open = { start: i, kind: opensMathFlow(text, i, runStartsAtLineStart) ? 'flow' : 'inline' };
+        pastOpenerLine = false;
+        i += 2;
+      } else if (open.kind === 'flow' && pastOpenerLine) {
+        const partner = nextDoubleDollarOnLine(text, i + 2);
+        if (partner === -1) {
+          open = null;
+          i += 2;
+        } else {
+          i = partner + 2;
+        }
+      } else {
+        open = null;
+        i += 2;
+      }
     } else if (
       mode === 'both' &&
-      text[i] === '$' &&
+      c === '$' &&
       !isEscapedByBackslashRun(text, i) &&
       (i + 1 >= text.length || text[i + 1] !== '$')
     ) {
-      unclosedStart = unclosedStart === -1 ? i : -1;
+      if (open === null) open = { start: i, kind: 'single' };
+      else if (open.kind === 'single') open = null;
       i += 1;
     } else {
+      if ((c === '\n' || c === '\r') && open !== null) {
+        if (open.kind === 'single' || (open.kind === 'inline' && isBlankLineAt(text, i))) open = null;
+        else pastOpenerLine = true;
+      }
       i += 1;
     }
   }
-  return unclosedStart;
+  return open;
 }
 
-function escapeLatexPipesInUnclosed(text: string): string {
-  const unclosedStart = findUnclosedDelimiterStart(text, 'both');
-  if (unclosedStart === -1) return text;
+function escapeLatexPipesInUnclosed(text: string, runStartsAtLineStart: boolean): string {
+  const unclosed = findUnclosedDelimiter(text, 'both', runStartsAtLineStart);
+  if (unclosed === null) return text;
 
   // Escape pipes only in the unclosed tail
-  const before = text.substring(0, unclosedStart);
-  const delimLen = text[unclosedStart + 1] === '$' ? 2 : 1;
-  const delim = text.substring(unclosedStart, unclosedStart + delimLen);
-  const tail = text.substring(unclosedStart + delimLen);
+  const before = text.substring(0, unclosed.start);
+  const delimLen = unclosed.kind === 'single' ? 1 : 2;
+  const delim = text.substring(unclosed.start, unclosed.start + delimLen);
+  const tail = text.substring(unclosed.start + delimLen);
   return before + delim + replaceUnescapedPipes(tail);
 }
 
@@ -621,6 +830,13 @@ function escapeLatexPipesInUnclosed(text: string): string {
  * disappeared. Nothing errored, because a truncated document is perfectly
  * valid markdown — just not the one anyone wrote.
  *
+ * The pairing that decides "unclosed" is paragraph-aware as well
+ * (`findUnclosedDelimiter`): a mid-line `$$` still open at a blank line is
+ * literal, so `It costs $$100 per month.` followed by a real display block
+ * no longer "closes" at that block's opener and leaves its closer looking
+ * like an unclosed opener — which truncated the block and every line after
+ * it, in a finished document.
+ *
  * KNOWN RESIDUAL, deliberately not fixed here. The predicate is positional,
  * not container-aware, so a `$$` opening a line INSIDE a list item or
  * blockquote still counts. Measured: those do not swallow past their
@@ -653,13 +869,14 @@ function opensMathFlow(text: string, pos: number, runStartsAtLineStart: boolean)
 function truncateUnclosedLatexBlock(
   text: string,
   runStartsAtLineStart: boolean,
-  unclosedStart = findUnclosedDelimiterStart(text, 'double-only')
+  unclosed = findUnclosedDelimiter(text, 'double-only', runStartsAtLineStart)
 ): string {
-  if (unclosedStart === -1) return text;
-  if (!opensMathFlow(text, unclosedStart, runStartsAtLineStart)) return text;
+  // Only a FLOW opener swallows anything (the scan classified it with
+  // `opensMathFlow`); an inline `$$` still open at the end is literal text.
+  if (unclosed === null || unclosed.kind !== 'flow') return text;
 
   // Strip the unclosed $$ block and any trailing whitespace before it.
-  return text.substring(0, unclosedStart).trimEnd();
+  return text.substring(0, unclosed.start).trimEnd();
 }
 
 /**
@@ -777,9 +994,9 @@ export function preprocessLaTeX(str: string): string {
 //   past — but a code span cannot cross a blank line, so a blank settles
 //   every run before it),
 // - with no LATENT html tag before it — a viable `<`+letter start whose `>`
-//   has not arrived: HTML_TAG_REGEX admits newlines in attributes, so the
-//   match window spans lines and only a `>` anywhere after the `<` settles
-//   it permanently (B1 counterexample),
+//   has not arrived: HTML_TAG_REGEX admits line endings in attributes, so
+//   the match window spans lines and only a `>` after the `<` settles it
+//   (B1 counterexample) — or a blank line, which no tag can cross,
 // - and, decided on the TRANSFORMED slice (raw-text checks are unsound both
 //   ways because currency escaping rewrites the `$` token stream — B5):
 //   quiescence — no tail-sensitive transform engaged at slice end.
@@ -948,9 +1165,9 @@ function transformRun(
   text = escapeCurrencyDollarSigns(text);
   text = convertLatexDelimiters(text);
   if (probe && RESIDUAL_OPEN_BRACKET_RE.test(text)) tailSensitive = true;
-  text = escapeLatexPipes(text);
-  if (probe && findUnclosedDelimiterStart(text, 'both') !== -1) tailSensitive = true;
-  text = escapeLatexPipesInUnclosed(text);
+  text = escapeLatexPipes(text, runStartsAtLineStart);
+  if (probe && findUnclosedDelimiter(text, 'both', runStartsAtLineStart) !== null) tailSensitive = true;
+  text = escapeLatexPipesInUnclosed(text, runStartsAtLineStart);
   if (probe && hasUnclosedTextCommand(text)) tailSensitive = true;
   text = escapeTextUnderscores(text);
   text = convertSingleToDoubleDollar(text);
@@ -959,21 +1176,17 @@ function transformRun(
   // to rule out before the O(run) unclosed scan (plain prose is one run;
   // this scan was the last ~20% over stateless). The scan result feeds
   // truncateUnclosedLatexBlock too — one O(run) pass, not two (r2 P2-2).
-  let unclosedDouble: number | undefined;
+  let unclosedDouble: UnclosedDelimiter | null | undefined;
   if (probe || (seamEligible && LEADING_DOUBLE_DOLLAR_RE.test(text))) {
-    unclosedDouble = findUnclosedDelimiterStart(text, 'double-only');
-    if (unclosedDouble !== -1) {
+    unclosedDouble = findUnclosedDelimiter(text, 'double-only', runStartsAtLineStart);
+    if (unclosedDouble !== null) {
       tailSensitive = true;
       // The flag must track what truncation ACTUALLY does, not what an
       // unclosed `$$` used to imply: `truncateUnclosedLatexBlock` declines
       // on a delimiter that cannot open a math flow (indented four spaces,
       // after a tab, or mid-line), and a flag raised anyway made the
       // wrapper trim a newline the stateless path keeps (2026-09-02).
-      if (
-        seamEligible &&
-        opensMathFlow(text, unclosedDouble, runStartsAtLineStart) &&
-        text.slice(0, unclosedDouble).trim() === ''
-      ) {
+      if (seamEligible && unclosedDouble.kind === 'flow' && text.slice(0, unclosedDouble.start).trim() === '') {
         truncatedAtSeamStart = true;
       }
     }
@@ -1256,8 +1469,8 @@ function isBlankRawLine(text: string, from: number, to: number): boolean {
 
 /**
  * Last raw-safe cut in `active`, or -1. Raw conditions only (line start
- * inside a text segment, no dangling backtick run before the last blank
- * line, no latent `<`); the transformed-output quiescence check happens on
+ * inside a text segment, no dangling backtick run and no latent `<` since
+ * the last blank line); the transformed-output quiescence check happens on
  * the candidate slice afterwards.
  */
 function findRawSafeCut(active: string): number {
@@ -1299,7 +1512,13 @@ function findRawSafeCut(active: string): number {
       // its last `\n` is the START of a line that continues in the next
       // segment (property-suite counterexample: an empty remainder released
       // the latch and a cut landed past a still-unpaired backtick).
-      if (atLineStart && nl !== -1 && isBlankRawLine(text, lineStart, lineEnd)) backtickHazard = false;
+      // The same blank line settles a latent `<`: a tag cannot cross it
+      // (`crossesBlankLine` rejects the match), so no `>` arriving later
+      // can complete one that opened before it.
+      if (atLineStart && nl !== -1 && isBlankRawLine(text, lineStart, lineEnd)) {
+        backtickHazard = false;
+        latentLt = false;
+      }
       for (let i = lineStart; i < lineEnd; i++) {
         const ch = text[i];
         if (ch === '`') backtickHazard = true;

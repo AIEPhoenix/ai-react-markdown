@@ -522,7 +522,7 @@ const PLUGINS = [highlight, pangu]; // module scope — stable reference
 | ---------------- | ------------------------------------------------------------------------------------------------- |
 | `highlight`      | `==highlighted text==` syntax                                                                     |
 | `definitionList` | Definition lists ([PHP Markdown Extra](https://michelf.ca/projects/php-markdown/extra/#def-list)) |
-| `removeComments` | Strip HTML comments                                                                               |
+| `removeComments` | Strip HTML comments (only the comment; the HTML block around it still renders)                    |
 | `smartypants`    | Typographic substitutions: curly quotes, em-dashes (`--`), ellipses (`...`)                       |
 | `pangu`          | Auto-insert spaces between CJK and half-width characters                                          |
 

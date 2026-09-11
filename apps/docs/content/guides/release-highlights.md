@@ -6,6 +6,19 @@ Read an entry as a statement about that version. Older configuration names, depe
 
 Verification counts are historical results reported for the corresponding candidate. They are not newly executed checks for this documentation revision. Likewise, a clean fuzz or soak campaign establishes the result for its input families and configuration; later entries explain where expanding those families exposed additional defects.
 
+## Unreleased
+
+### Engine fixes (not yet released)
+
+Six engine-side corrections, all in the built-in LaTeX preprocessor and the shared remark chain. They change rendered bytes for the affected inputs and none of them has been through a soak campaign yet; the engine-impacting release gate applies before they ship.
+
+- A stray single `$` (`quoted in US$ per unit`) no longer makes every `|` after it, for the rest of the document, a `\vert{}`. Inline math is line-local, so an unpaired `$` on a finished line is literal. The unclosed-delimiter scan is kind-aware now: a `$x$` inside a `$$` block is content rather than a closer, and a display block that is still streaming with a `$x$` inside it is truncated like any other open block.
+- A mid-line `$$` (`It costs $$100 per month.`) is bounded by its paragraph, as in remark-math. It no longer pairs with the opener of a later display block, so the block and everything after it survive; a genuinely open trailing block is still truncated.
+- The lexer's HTML-tag match requires CommonMark attribute syntax and never crosses a blank line. `a<b` in prose no longer shields the math after it, and a document with many unclosed `<b` is scanned in linear time (8000 lines: 315 ms to 4 ms). Quoted attribute values may not contain `>`, as before.
+- Currency escaping on a very long line is linear again (a 240 KB line with 32k `$`: 2.7 s to 11 ms), byte-identical.
+- `removeComments` strips comment spans instead of dropping the whole html node: `<details>` blocks with a comment inside, and `<!-- note --> visible text`, render their content. A comment-only block still disappears. The engine no longer depends on `remark-remove-comments`.
+- pangu runs before SmartyPants, so `中文"引号"中文` gets an opening and a closing quote (`中文 “引号” 中文`) instead of two closers.
+
 ## 3.0.0 — Stable release and final candidate
 
 ### 3.0.0

@@ -512,9 +512,6 @@ importers:
       remark-rehype:
         specifier: ^11.1.2
         version: 11.1.2
-      remark-remove-comments:
-        specifier: ^1.1.1
-        version: 1.1.1
       remark-smartypants:
         specifier: ^3.0.3
         version: 3.0.3

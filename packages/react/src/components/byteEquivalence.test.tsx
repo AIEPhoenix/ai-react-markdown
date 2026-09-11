@@ -10,8 +10,8 @@
  *   MUST be preserved by the `inline` items in the render plan.
  * - All extra-syntax and display-optimize plugins enabled by
  *   the default engine plugin set (mark highlight, definition list,
- *   super/subscript, remove-comments, smartypants, pangu) MUST run on the
- *   same content as the legacy bare `<Markdown>` reference.
+ *   remove-comments, pangu, smartypants — in that chain order) MUST run on
+ *   the same content as the legacy bare `<Markdown>` reference.
  *
  * Scope of "byte-equivalence" in this suite:
  *
@@ -47,8 +47,9 @@ import remarkCjkFriendlyGfmStrikethrough from 'remark-cjk-friendly-gfm-strikethr
 import remarkMath from 'remark-math';
 import { remarkMark as remarkMarkHighlight } from '@ai-markdown/remark-mark-highlight';
 import { remarkDefinitionList, defListHastHandlers } from 'remark-definition-list';
-import remarkRemoveComments from 'remark-remove-comments';
 import remarkSmartypants from 'remark-smartypants';
+import type { Html as MdastHtml, Root as MdastRoot } from 'mdast';
+import { SKIP, visit } from 'unist-util-visit';
 import remarkPangu from 'remark-pangu';
 import rehypeRaw from '@ai-markdown/rehype-raw';
 import rehypeSanitize from 'rehype-sanitize';
@@ -73,7 +74,33 @@ interface PluginConfig {
 const SEALED_BY_NAME = { highlight, definitionList, removeComments, smartypants, pangu } as const;
 
 const ALL_EXTRAS: ExtraSyntaxName[] = ['highlight', 'definitionList'];
-const ALL_DISPLAY: DisplayOptimizeName[] = ['removeComments', 'smartypants', 'pangu'];
+// Chain order: pangu runs BEFORE SmartyPants (the legacy mirror below
+// follows this array's order, so it is load-bearing here too).
+const ALL_DISPLAY: DisplayOptimizeName[] = ['removeComments', 'pangu', 'smartypants'];
+
+/**
+ * Hand-kept mirror of the engine's `remarkStripComments` (the transformer
+ * behind `removeComments`): comment SPANS are stripped from html nodes and a
+ * node is dropped only when nothing but whitespace remains. The engine does
+ * not export it, and this file's mirrors are independent copies on purpose
+ * (see the module header) — so a drift in the engine's transformer shows up
+ * here as a byte difference, which is the point.
+ */
+function legacyStripComments() {
+  return (tree: MdastRoot): void => {
+    visit(tree, 'html', (node: MdastHtml, index, parent) => {
+      if (parent === undefined || index === undefined || !node.value.includes('<!--')) return;
+      const stripped = node.value.replace(/<!--[\s\S]*?-->/g, '');
+      if (stripped === node.value) return;
+      if (stripped.trim() === '') {
+        parent.children.splice(index, 1);
+        return [SKIP, index];
+      }
+      parent.children[index] = { ...node, value: stripped };
+      return SKIP;
+    });
+  };
+}
 
 // Deterministic document id used by both sides of the byte-equivalence test
 // so the per-document clobber prefix matches and the two pipelines stay
@@ -98,7 +125,7 @@ function legacyPlugins(config: PluginConfig) {
   const displayPlugins = config.display.map((ability) => {
     switch (ability) {
       case 'removeComments':
-        return remarkRemoveComments;
+        return legacyStripComments;
       case 'smartypants':
         return remarkSmartypants;
       case 'pangu':
@@ -215,11 +242,20 @@ const displayOptimizeCases: Array<[string, PluginConfig, string]> = [
     'Before.\n\n<!-- hidden comment -->\n\nAfter.',
   ],
   [
+    'remove HTML comments inside an html block — REMOVE_COMMENTS keeps the block',
+    { extras: [], display: ['removeComments'] },
+    '<details>\n<summary>Sum</summary>\n<!-- hidden -->\nBody\n</details>\n\n<!-- note --> visible text',
+  ],
+  [
     'smartypants curly quotes + em-dash — SMARTYPANTS plugin',
     { extras: [], display: ['smartypants'] },
     'He said "hello" -- and then walked away...',
   ],
   ['pangu CJK-Latin spacing — PANGU plugin', { extras: [], display: ['pangu'] }, '中文mixedwith English在一段里面。'],
+  // Order-sensitive: SmartyPants first makes both quotes closers
+  // (`中文” 引号” 中文`). The mirror follows the array order, so this case
+  // fails the moment either side runs the two in the other order.
+  ['CJK quotes — PANGU before SMARTYPANTS', { extras: [], display: ['pangu', 'smartypants'] }, '中文"引号"中文'],
 ];
 
 // ── Default config (everything enabled, as <AIMarkdown> ships) ────────────
@@ -230,6 +266,10 @@ const defaultCases: Array<[string, string]> = [
   [
     'default config + every-feature kitchen sink',
     '# Title\n\nIntro with ==mark== and H~2~O.\n\n<!-- hidden -->\n\n"Smart quotes" and 中文Latin spacing.\n\nTerm\n:   Definition.\n\nSee[^x].\n\n[^x]: footnote.',
+  ],
+  [
+    'default config + CJK quotes and a commented html block',
+    '中文"引号"中文 and "Latin"\n\n<details>\n<summary>Sum</summary>\n<!-- hidden -->\nBody\n</details>',
   ],
 ];
 

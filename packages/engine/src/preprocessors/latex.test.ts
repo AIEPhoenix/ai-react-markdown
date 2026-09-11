@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'vitest';
 import { preprocessLaTeX, splitByProtectedRegions } from './latex';
 
+const hasLineEnding = (text: string): boolean => text.includes('\n') || text.includes('\r');
+
 describe('preprocessLaTeX', () => {
   test('returns the same string if no LaTeX patterns are found', () => {
     const content = 'This is a test string without LaTeX or dollar signs';
@@ -500,6 +502,29 @@ y$ which spans lines`;
     expect(preprocessLaTeX(content)).toBe(expected);
   });
 
+  test('currency escaping on one very long line is linear in its dollar count (was quadratic)', () => {
+    // A 240 KB line holding 32k `$` (`'cost $5 and $6 '.repeat(16000)`)
+    // took 3.0 s, 2.5 s of it in appendToLine: `currentLineProcessed +=
+    // piece` followed by indexing the last character flattened V8's rope
+    // on every match. The string was only ever read for its last two
+    // characters, which are tracked on their own now.
+    const time = (repeats: number): number => {
+      const doc = 'cost $5 and $6 '.repeat(repeats);
+      const t = performance.now();
+      preprocessLaTeX(doc);
+      return performance.now() - t;
+    };
+    time(4000);
+    const t4 = time(4000);
+    const t16 = time(16000);
+    // Quadratic is 16x; linear is 4x. The floor absorbs timer noise.
+    expect(t16, `4000 repeats: ${t4.toFixed(1)} ms, 16000 repeats: ${t16.toFixed(1)} ms`).toBeLessThan(
+      Math.max(150, 8 * t4)
+    );
+    // And the bytes are what they always were.
+    expect(preprocessLaTeX('cost $5 and $6 '.repeat(3))).toBe('cost \\$5 and \\$6 '.repeat(3));
+  });
+
   // --- HTML tag protection ---
 
   test('does not treat $ inside <span> as LaTeX delimiter', () => {
@@ -535,6 +560,73 @@ y$ which spans lines`;
     const content = 'See <Section A> for $x^2$ details';
     const expected = 'See <Section A> for $$x^2$$ details';
     expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  // --- A tag match is bounded: attribute grammar, and never a blank line ---
+  //
+  // `<` + a known tag name used to match `(?:\s[^>]*)?` — anything up to the
+  // NEXT `>`, paragraphs away if need be. `a<b` in prose therefore opened a
+  // "tag" that swallowed every `$…$` up to a later `>`, and a document with
+  // many `<b` and no `>` re-scanned to the end for each one (quadratic). An
+  // open tag's attributes now have to look like CommonMark attributes (a
+  // name, optionally `=` and an unquoted or quoted value), and the whole
+  // match must sit inside one paragraph: a tag never crosses a blank line.
+
+  test('a<b prose is not a tag: the math after it converts and the later > is text', () => {
+    expect(preprocessLaTeX('When a<b we have $x^2$ and c>d')).toBe('When a<b we have $$x^2$$ and c>d');
+    expect(splitByProtectedRegions('When a<b we have $x^2$ and c>d')).toEqual([
+      { kind: 'text', text: 'When a<b we have $x^2$ and c>d' },
+    ]);
+  });
+
+  test('a tag never crosses a blank line, in whitespace or inside a quoted value', () => {
+    expect(preprocessLaTeX('a <b\n\nwe have $x^2$ and c>d')).toBe('a <b\n\nwe have $$x^2$$ and c>d');
+    expect(preprocessLaTeX('<span title="a\n\n$x$">')).toBe('<span title="a\n\n$$x$$">');
+    expect(preprocessLaTeX('<div class="x"\n\n>$y$')).toBe('<div class="x"\n\n>$$y$$');
+    // CRLF and lone-CR blank lines count too.
+    expect(preprocessLaTeX('<span title="a\r\n\r\n$x$">')).toBe('<span title="a\r\n\r\n$$x$$">');
+    expect(preprocessLaTeX('<span title="a\r\r$x$">')).toBe('<span title="a\r\r$$x$$">');
+  });
+
+  test('a legitimate multi-line tag is still protected', () => {
+    expect(preprocessLaTeX('<div\n  class="x" title="$5">$y$')).toBe('<div\n  class="x" title="$5">$$y$$');
+    expect(splitByProtectedRegions('<div\n  class="x" title="$5">$y$')).toEqual([
+      { kind: 'multilineTag', text: '<div\n  class="x" title="$5">' },
+      { kind: 'text', text: '$y$' },
+    ]);
+    // A quoted value may hold a plain line ending, `|`, `<` and `$` — but
+    // not `>`: a tag ends at the first `>` after its `<`, which is what the
+    // incremental cut rule relies on (see HTML_ATTRIBUTE).
+    expect(splitByProtectedRegions('<span title="a\nb<c|$1">$x$')).toEqual([
+      { kind: 'multilineTag', text: '<span title="a\nb<c|$1">' },
+      { kind: 'text', text: '$x$' },
+    ]);
+    expect(splitByProtectedRegions('<span title="a>b">$x$')).toEqual([{ kind: 'text', text: '<span title="a>b">$x$' }]);
+    // Unquoted values, valueless attributes, self-closing forms.
+    for (const tag of ['<a href=x>', '<input disabled>', '<br/>', '<br />', '<img src="a" alt=b />', '<b\n>']) {
+      expect(splitByProtectedRegions(`${tag}$x$`), tag).toEqual([
+        { kind: hasLineEnding(tag) ? 'multilineTag' : 'tag', text: tag },
+        { kind: 'text', text: '$x$' },
+      ]);
+    }
+  });
+
+  test('tag scanning is linear in the number of unclosed < (was quadratic)', () => {
+    // 2000/4000/8000 lines of `a <b x $1` took 31/114/405 ms before: every
+    // `<b` scanned to the end of the document for a `>` that never came.
+    // A `$1` cannot be an attribute, so each match now fails on the spot.
+    const time = (lines: number): number => {
+      const doc = Array.from({ length: lines }, () => 'a <b x $1').join('\n');
+      const t = performance.now();
+      preprocessLaTeX(doc);
+      return performance.now() - t;
+    };
+    time(2000);
+    const t2 = time(2000);
+    const t8 = time(8000);
+    // Quadratic is 16x; linear is 4x. The floor absorbs timer noise on a
+    // fast run where t2 is a couple of milliseconds.
+    expect(t8, `2000 lines: ${t2.toFixed(1)} ms, 8000 lines: ${t8.toFixed(1)} ms`).toBeLessThan(Math.max(60, 8 * t2));
   });
 
   // --- Paired literal-content HTML containers (issue: $ inside <code> etc.) ---
@@ -630,6 +722,60 @@ y$ which spans lines`;
     const content = '$$x +\n| y |$$';
     const expected = '$$x +\n\\vert{} y \\vert{}$$';
     expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  // --- A stray single `$` is line-local ---
+  //
+  // Inline `$…$` never spans a line ending anywhere in this file (the
+  // closed-pair regexes forbid `\n`, the currency parity is per line), so an
+  // unpaired single `$` on a finished line cannot open anything below it. It
+  // used to: `findUnclosedDelimiterStart('both')` toggled on every `$` in the
+  // whole run, and one `US$` in a sentence turned every `|` of a table three
+  // paragraphs later into `\vert{}`.
+
+  test('a stray single $ on an earlier line leaves a later table intact', () => {
+    const content = 'Prices are quoted in US$ per unit.\n\n| a | b |\n|---|---|\n| 1 | 2 |';
+    expect(preprocessLaTeX(content)).toBe(content);
+  });
+
+  test('a stray single $ mid-line leaves pipes on the following line alone', () => {
+    const content = 'US$ today\nx | y';
+    expect(preprocessLaTeX(content)).toBe(content);
+  });
+
+  test('a genuine inline $a | b$ on one line still escapes its pipe', () => {
+    expect(preprocessLaTeX('$a | b$')).toBe('$$a \\vert{} b$$');
+    expect(preprocessLaTeX('US$ first\n$a | b$ later')).toBe('US$ first\n$$a \\vert{} b$$ later');
+  });
+
+  test('an unclosed inline $ on the LAST line still escapes the pipes after it (streaming)', () => {
+    expect(preprocessLaTeX('US$ first\n\n$a | b')).toBe('US$ first\n\n$a \\vert{} b');
+  });
+
+  test('a closed $$…$$ spanning lines still escapes the pipes inside it', () => {
+    const content = 'US$ first\n\n$$\n| a | b |\n$$\n\n| c | d |';
+    const expected = 'US$ first\n\n$$\n\\vert{} a \\vert{} b \\vert{}\n$$\n\n| c | d |';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('an unclosed line-start $$ spanning lines still escapes and truncates', () => {
+    expect(preprocessLaTeX('US$ first\n\n$$\n| a | b |\n| c |')).toBe('US$ first');
+  });
+
+  test('a single $ inside an open $$ block is content, not a closer', () => {
+    // A closed block holding an inline `$x$`: the table below it survives.
+    const closed = '$$\n a $x$ b\n$$\n\n| t | t |';
+    expect(preprocessLaTeX(closed)).toBe('$$\n a $$x$$ b\n$$\n\n| t | t |');
+    // The same block still streaming: it is unclosed, so it is truncated —
+    // the old toggle read the converted `$$x$$` as closer + mid-line opener
+    // and left the half block for remark-math to swallow the page with.
+    expect(preprocessLaTeX('before\n\n$$\n a $x$ b\n')).toBe('before');
+    // On the opener's own line the next `$$` closes, whatever follows.
+    expect(preprocessLaTeX('$$|a|$$ then $$|b\\rangle')).toBe('$$\\vert{}a\\vert{}$$ then $$\\vert{}b\\rangle');
+  });
+
+  test('a stray single $ followed by $$ on the same line: the $$ opens', () => {
+    expect(preprocessLaTeX('$a $$b | c$$ d | e')).toBe('$a $$b \\vert{} c$$ d | e');
   });
 
   // --- Unclosed LaTeX blocks (streaming) ---
@@ -740,6 +886,49 @@ y$ which spans lines`;
   test('does not truncate after a tab — a tab is four columns', () => {
     const content = 'before\n\n\t$$\n\\frac{a}{b}\n\n## Still here\n\nplain.';
     expect(preprocessLaTeX(content)).toBe(content);
+  });
+
+  // --- An inline `$$` opener does not survive a blank line ---
+  //
+  // remark-math pairs a mid-line `$$` (math TEXT) only inside its paragraph:
+  // when the paragraph ends without a closer the `$$` is literal. Only a
+  // line-start `$$` (math FLOW) runs on across blank lines to its closing
+  // fence — that is the block the truncation exists for. The scan used to
+  // toggle on every `$$` regardless, so a price written `$$100` "closed" at
+  // the next display block's opener, the block's closer became an unclosed
+  // opener, and everything from the block onwards was truncated.
+
+  test('an unpaired mid-line $$ before a blank line does not truncate a later display block', () => {
+    const content = 'It costs $$100 per month.\n\n$$\nE = mc^2\n$$\n\nAfter the block.';
+    expect(preprocessLaTeX(content)).toBe(content);
+  });
+
+  test('an unpaired mid-line $$ before a blank line does not pair pipes across the blank', () => {
+    const content = 'It costs $$100 | per month.\n\n$$\n| a |\n$$\n\n| c | d |';
+    const expected = 'It costs $$100 | per month.\n\n$$\n\\vert{} a \\vert{}\n$$\n\n| c | d |';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('a real streaming tail after such a price is still truncated', () => {
+    expect(preprocessLaTeX('It costs $$100 per month.\n\n$$\nE =')).toBe('It costs $$100 per month.');
+    expect(preprocessLaTeX('text\n\n$$\nE =')).toBe('text');
+  });
+
+  test('a mid-line $$ still pairs across a plain line ending inside its paragraph', () => {
+    // No blank line between them: inline math may span a soft break.
+    expect(preprocessLaTeX('so $$a |\nb$$ done')).toBe('so $$a \\vert{}\nb$$ done');
+  });
+
+  test('a line-start $$ block still spans blank lines to its closer', () => {
+    const content = '$$\n| a |\n\n| b |\n$$\n\nafter';
+    const expected = '$$\n\\vert{} a \\vert{}\n\n\\vert{} b \\vert{}\n$$\n\nafter';
+    expect(preprocessLaTeX(content)).toBe(expected);
+  });
+
+  test('a mid-line $$ still open at the end of input is unclosed until its paragraph ends', () => {
+    // Nothing after it settles the question yet: the pipes after it are
+    // escaped (as for any unclosed tail) and nothing is truncated (mid-line).
+    expect(preprocessLaTeX('so $$a | b\nc | d')).toBe('so $$a \\vert{} b\nc \\vert{} d');
   });
 
   // --- Escaped $$ should not trigger unclosed-block truncation (H3) ---

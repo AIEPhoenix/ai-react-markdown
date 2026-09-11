@@ -7,11 +7,16 @@
 import { describe, expect, test } from 'vitest';
 import rehypeRaw from '@ai-markdown/rehype-raw';
 import rehypeSanitize from 'rehype-sanitize';
+import remarkPangu from 'remark-pangu';
+import remarkSmartypants from 'remark-smartypants';
+import type { Root as HastRoot, RootContent as HastContent } from 'hast';
 import { buildCoreRehypePlugins, buildCoreRemarkPlugins } from './pluginChain';
+import { parseStage, transformStage } from './markdown';
 import { rehypeVerifyEngineTags } from './rehypeVerifyEngineTags';
 import { sanitizeSchema } from './sanitizeSchema';
 import type { CrossChunkHandlerOptions } from './customMdastHandlers';
 import { defaultEnginePlugins, highlight, pangu, smartypants } from '../plugins/catalog';
+import type { AIMarkdownEnginePlugin } from '../plugins/defs';
 
 /** Unwrap `[plugin, options]` tuples to the plugin function for identity comparison. */
 function chainShape(chain: ReturnType<typeof buildCoreRemarkPlugins>) {
@@ -31,6 +36,61 @@ describe('buildCoreRemarkPlugins — user array order independence', () => {
     const c = buildCoreRemarkPlugins([pangu, smartypants, highlight]);
     expect(chainShape(b)).toEqual(chainShape(a));
     expect(chainShape(c)).toEqual(chainShape(a));
+  });
+});
+
+function textOf(node: HastRoot | HastContent): string {
+  if (node.type === 'text') return node.value;
+  if (node.type === 'element' || node.type === 'root') return node.children.map(textOf).join('');
+  return '';
+}
+
+function renderText(markdown: string, enginePlugins: readonly AIMarkdownEnginePlugin[]): string {
+  return textOf(
+    transformStage(
+      parseStage({
+        children: markdown,
+        remarkPlugins: buildCoreRemarkPlugins(enginePlugins),
+        rehypePlugins: buildCoreRehypePlugins(sanitizeSchema, ''),
+        remarkRehypeOptions: { allowDangerousHtml: true, clobberPrefix: '' },
+      })
+    )
+  ).trim();
+}
+
+describe('buildCoreRemarkPlugins — pangu runs before SmartyPants', () => {
+  // SmartyPants decides whether a straight quote opens or closes by the
+  // character before it. Run first, it sees `文"引` — no space before the
+  // quote — and calls both quotes closers; pangu then pads the CJK/Latin
+  // boundaries around the curly quotes, which lands as `中文” 引号” 中文`.
+  // With pangu first the quotes sit between spaces SmartyPants can read.
+
+  test('CJK prose quoting a word gets one opening and one closing quote', () => {
+    const out = renderText('中文"引号"中文', [pangu, smartypants]);
+    expect(out).not.toContain('”引号”');
+    expect(out).not.toContain('” 引号”');
+    // pangu pads the quotes on both sides; that spacing is its own rule.
+    expect(out).toBe('中文 “引号” 中文');
+  });
+
+  test('Latin prose is unchanged by the order', () => {
+    const md = 'He said "hello" -- and "quoted" text...';
+    expect(renderText(md, [pangu, smartypants])).toBe('He said “hello” — and “quoted” text…');
+    expect(renderText(md, [smartypants])).toBe('He said “hello” — and “quoted” text…');
+  });
+
+  test('the canonical chain places pangu before smartypants whatever the caller order', () => {
+    for (const selection of [
+      [smartypants, pangu],
+      [pangu, smartypants],
+    ]) {
+      const shape = chainShape(buildCoreRemarkPlugins(selection));
+      const iPangu = shape.indexOf(remarkPangu as never);
+      const iSmarty = shape.indexOf(remarkSmartypants as never);
+      expect(iPangu).toBeGreaterThan(-1);
+      expect(iSmarty).toBeGreaterThan(-1);
+      expect(iPangu).toBeLessThan(iSmarty);
+    }
   });
 });
 
