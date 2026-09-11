@@ -458,3 +458,78 @@ describe('seam flag tracks actual truncation', () => {
     replay(['\n ', '\t', '$', '$ E = mc^2\n\n']);
   });
 });
+
+describe('an indented $$ opener bounded by its container: both entry points agree', () => {
+  // The scan ends an indented flow opener's block at the first line
+  // indented less than the opener (`dedentEnds`), so a list item's open
+  // math no longer swallows the paragraph after the list. The verdict is
+  // append-stable — a non-blank line's indent is fixed once its first ink
+  // character is in, and a partial line of spaces is no verdict — which is
+  // what lets the wrapper freeze on it. These replay the shapes 1-char at
+  // a time (every straddle of the opener, the blank line and the dedent)
+  // and in chunks, and pin the settled output.
+
+  const REVIEWER = '- Item\n\n  $$\n  x\n\nAfter the list.';
+
+  test('the reviewer case: byte-equal per frame, and the last frame keeps the paragraph', () => {
+    replaySized(REVIEWER, 1);
+    replay(['- Item\n\n', '  $$\n', '  x\n', '\n', 'After the list.']);
+    expect(preprocessLaTeX(REVIEWER)).toBe(REVIEWER);
+    // Prefixes are truncated as streaming tails until the dedent lands.
+    expect(preprocessLaTeX('- Item\n\n  $$\n  x\n\n')).toBe('- Item');
+    expect(preprocessLaTeX('- Item\n\n  $$\n  x\n\nA')).toBe('- Item\n\n  $$\n  x\n\nA');
+  });
+
+  test('a truly unclosed tail inside the item: byte-equal, still truncated at the end', () => {
+    const doc = '- Item\n\n  $$\n  x';
+    replaySized(doc, 1);
+    expect(preprocessLaTeX(doc)).toBe('- Item');
+  });
+
+  test('a dedent without a blank line, and a following list item', () => {
+    for (const doc of ['- Item\n\n  $$\n  x\nAfter the list.', '- Item\n\n  $$\n  x\n- Next\n\nAfter']) {
+      replaySized(doc, 1);
+      expect(preprocessLaTeX(doc)).toBe(doc);
+    }
+  });
+
+  test('the item block does not pair with a later top-level block, and the stream freezes past it', () => {
+    const chunks = ['- Item\n\n  $$\n  a | b\n\n', 'After | text\n\n', '$$\n| c |\n', '$$\n\n', 'tail $z$\n'];
+    replay(chunks);
+    replaySized(chunks.join(''), 1);
+    // Backoff off so an attempt runs on every frame: the candidate holding
+    // the item's block is quiescent once the dedent has landed (the block
+    // is settled), so the wrapper freezes past it instead of re-scanning
+    // the whole document on every later frame.
+    let frozen = 0;
+    const incremental = createIncrementalLatexPreprocessor({
+      freezeThreshold: 0,
+      backoff: false,
+      onAttempt: ({ frozenBytes }) => {
+        frozen += frozenBytes;
+      },
+    });
+    let acc = '';
+    for (const chunk of chunks) {
+      acc += chunk;
+      expect(incremental(acc)).toBe(preprocessLaTeX(acc));
+    }
+    expect(frozen).toBeGreaterThanOrEqual(chunks[0].length + chunks[1].length);
+    expect(preprocessLaTeX(chunks.join(''))).toBe(
+      '- Item\n\n  $$\n  a | b\n\nAfter | text\n\n$$\n\\vert{} c \\vert{}\n$$\n\ntail $$z$$\n'
+    );
+  });
+
+  test('blockquote and same-line openers: byte-equal, nothing truncated (pinned)', () => {
+    for (const doc of ['> $$\nx\n\nAfter', '> $$\n> x\n\nAfter', '- $$ x\n\nAfter']) {
+      replaySized(doc, 1);
+      expect(preprocessLaTeX(doc)).toBe(doc);
+    }
+  });
+
+  test('CRLF and a partial next line of spaces', () => {
+    replaySized('- Item\r\n\r\n  $$\r\n  x\r\n\r\nAfter the list.', 1);
+    replaySized('- Item\n\n  $$\n  x\n\n  \n  \nAfter', 1);
+    replaySized('- Item\n\n  $$\n  x\n\n\tAfter', 1);
+  });
+});

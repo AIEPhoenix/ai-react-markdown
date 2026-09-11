@@ -606,6 +606,10 @@ function hasBlankLineBetween(text: string, from: number, to: number): boolean {
  * The price in `It costs $$100 …` used to pair with the opener of the
  * display block below it, and the block's own closer then read as an
  * unclosed opener. Same rule as `findUnclosedDelimiter`'s inline reset.
+ * Likewise an INDENTED flow opener is bounded by its container: a pair
+ * whose body holds a line indented less than the opener is refused (the
+ * scan's `dedentEnds` rule; see `opensMathFlow`), so a list item's open
+ * block does not pair with the opener of a top-level block below the list.
  *
  * @param text Input string containing LaTeX expressions
  * @param runStartsAtLineStart Virtual predecessor for `opensMathFlow` when
@@ -623,11 +627,17 @@ function escapeLatexPipes(text: string, runStartsAtLineStart: boolean): string {
     const display = m[1];
     const inline = m[2];
     if (display !== undefined) {
+      const indent = flowIndent(text, m.index, runStartsAtLineStart);
+      const bodyStart = m.index + 2;
+      const bodyEnd = m.index + match.length - 2;
       if (
-        hasBlankLineBetween(text, m.index + 2, m.index + match.length - 2) &&
-        !opensMathFlow(text, m.index, runStartsAtLineStart)
+        (indent === -1 && hasBlankLineBetween(text, bodyStart, bodyEnd)) ||
+        (indent > 0 && hasDedentBetween(text, bodyStart, bodyEnd, indent))
       ) {
-        LATEX_BLOCK_REGEX.lastIndex = m.index + 2;
+        // Mid-line opener across a blank line, or an indented flow opener
+        // whose container ends before the candidate closer: literal here,
+        // and the closer may be the real opener of the next pair.
+        LATEX_BLOCK_REGEX.lastIndex = bodyStart;
         continue;
       }
       out += text.slice(last, m.index) + `$$${replaceUnescapedPipes(display)}$$`;
@@ -666,6 +676,10 @@ interface UnclosedDelimiter {
   /** Index of the opener's first `$`. */
   start: number;
   kind: UnclosedKind;
+  /** A flow opener's indent (0-3). An indented opener sits inside a
+   *  container when there is one, and a later line indented less ends the
+   *  block (`opensMathFlow` docs). 0 for the other kinds. */
+  indent: number;
 }
 
 /** Index of the next unescaped `$$` token on the SAME line at or after
@@ -708,6 +722,12 @@ function nextDoubleDollarOnLine(text: string, from: number): number {
  *   to the end of input: that is the genuinely open trailing block the
  *   truncation exists for. (The end of input does not complete a blank
  *   line — see `isBlankLineAt`.)
+ * - An INDENTED flow opener is CONTAINER-LOCAL: it sits inside a list item
+ *   whenever there is one, and the item ends at the first non-blank line
+ *   indented less than the opener, so such a line ends the block and the
+ *   scan forgets it (`dedentEnds`; the trade-offs are in the
+ *   `opensMathFlow` docs). `- Item\n\n  $$\n  x\n\nAfter the list.` used
+ *   to be truncated to `- Item`.
  * - Inside an open `$$` a single `$` is content — the closed-pair regexes
  *   agree: a display pair is `$$…$$` whatever `$` it holds, and an inline
  *   `$…$` cannot hold a bare `$`. Conversely a `$$` arriving while a single
@@ -743,7 +763,8 @@ function findUnclosedDelimiter(
     const c = text[i];
     if (c === '$' && i + 1 < text.length && text[i + 1] === '$' && !isEscapedByBackslashRun(text, i)) {
       if (open === null || open.kind === 'single') {
-        open = { start: i, kind: opensMathFlow(text, i, runStartsAtLineStart) ? 'flow' : 'inline' };
+        const indent = flowIndent(text, i, runStartsAtLineStart);
+        open = indent === -1 ? { start: i, kind: 'inline', indent: 0 } : { start: i, kind: 'flow', indent };
         pastOpenerLine = false;
         i += 2;
       } else if (open.kind === 'flow' && pastOpenerLine) {
@@ -764,12 +785,13 @@ function findUnclosedDelimiter(
       !isEscapedByBackslashRun(text, i) &&
       (i + 1 >= text.length || text[i + 1] !== '$')
     ) {
-      if (open === null) open = { start: i, kind: 'single' };
+      if (open === null) open = { start: i, kind: 'single', indent: 0 };
       else if (open.kind === 'single') open = null;
       i += 1;
     } else {
       if ((c === '\n' || c === '\r') && open !== null) {
         if (open.kind === 'single' || (open.kind === 'inline' && isBlankLineAt(text, i))) open = null;
+        else if (open.kind === 'flow' && open.indent > 0 && dedentEnds(text, i, open.indent)) open = null;
         else pastOpenerLine = true;
       }
       i += 1;
@@ -837,14 +859,39 @@ function escapeLatexPipesInUnclosed(text: string, runStartsAtLineStart: boolean)
  * like an unclosed opener — which truncated the block and every line after
  * it, in a finished document.
  *
- * KNOWN RESIDUAL, deliberately not fixed here. The predicate is positional,
- * not container-aware, so a `$$` opening a line INSIDE a list item or
- * blockquote still counts. Measured: those do not swallow past their
- * container, so this over-truncates them. Modelling containers is the same
- * thing `splitByProtectedRegions` already declines to do, and doing it here
- * alone would be a second, disagreeing model of the same structure.
+ * The predicate is positional, not container-aware: a `$$` opening a line
+ * inside a list item counts as a flow opener, and one after a blockquote's
+ * `>` does not. What IS modelled is the one container fact that decided
+ * whether a finished document lost content: an INDENTED flow opener (one
+ * to three spaces — the only indented shape that is a flow opener at all)
+ * is inside a container whenever there is one, and a container ends at the
+ * first non-blank line indented less than its content. So a later line
+ * indented less than the opener ends the candidate block (`dedentEnds` in
+ * `findUnclosedDelimiter`, and the matching refusal in `escapeLatexPipes`),
+ * whether or not a blank line precedes it — remark-math agrees for
+ * `- Item\n\n  $$\n  x\nAfter` and for the blank-line form. Without this,
+ * `- Item\n\n  $$\n  x\n\nAfter the list.` truncated to `- Item`: the item's
+ * math never swallows past the item, and the paragraph after it was lost.
+ *
+ * The opener's own indent stands in for the container's content indent,
+ * and the two can differ: `- Item\n\n   $$` (opener at three, content at
+ * two) reads a line at two as a dedent although remark-math keeps it in the
+ * block, and a top-level `  $$` with no container at all reads any column-0
+ * line as one. Both err towards NOT truncating — the text is then handed
+ * to remark-math untouched, which renders it as it would have anyway; the
+ * only cost is a streaming frame that shows the still-open block instead
+ * of hiding it. The other direction (truncating what remark-math keeps)
+ * loses content from a finished document, which is the defect this rule
+ * exists to stop. Blockquotes stay out of the model: `> $$` is not a flow
+ * opener here, so nothing after it is ever truncated.
  */
 function opensMathFlow(text: string, pos: number, runStartsAtLineStart: boolean): boolean {
+  return flowIndent(text, pos, runStartsAtLineStart) !== -1;
+}
+
+/** The indent (0-3 spaces) of a `$$` at `pos` that opens a math flow, or
+ *  -1 when it does not open one. */
+function flowIndent(text: string, pos: number, runStartsAtLineStart: boolean): number {
   // Walk back over the current line. A line ending settles it (`\n`, or `\r`
   // — CRLF is met at its `\n`; a lone `\r` is a line ending here exactly as
   // it is for the lexer's blank-line rule and the currency counter). Reaching
@@ -855,15 +902,46 @@ function opensMathFlow(text: string, pos: number, runStartsAtLineStart: boolean)
   let spaces = 0;
   while (i > 0) {
     const prev = text[i - 1];
-    if (prev === '\n' || prev === '\r') return true;
+    if (prev === '\n' || prev === '\r') return spaces;
     i -= 1;
     // A tab counts as four columns, which is already an indented code block,
     // and any other character means the run does not begin the line.
-    if (text[i] !== ' ') return false;
+    if (text[i] !== ' ') return -1;
     spaces += 1;
-    if (spaces > 3) return false;
+    if (spaces > 3) return -1;
   }
-  return runStartsAtLineStart;
+  return runStartsAtLineStart ? spaces : -1;
+}
+
+/**
+ * Does the line after the line ending at `pos` end a container whose
+ * content is indented `indent` columns — is it non-blank and indented less?
+ * A blank line, or a line that has not finished arriving and holds only
+ * spaces so far, is no verdict (the incremental wrapper freezes on these
+ * verdicts, and a non-blank line's indent cannot change once its first ink
+ * character is in); a tab is four columns, never a dedent.
+ */
+function dedentEnds(text: string, pos: number, indent: number): boolean {
+  let j = pos + 1;
+  if (text[pos] === '\r' && text[j] === '\n') j += 1;
+  let spaces = 0;
+  while (j < text.length && text[j] === ' ' && spaces < indent) {
+    spaces += 1;
+    j += 1;
+  }
+  if (spaces >= indent || j >= text.length) return false;
+  const c = text[j];
+  return c !== ' ' && c !== '\t' && c !== '\n' && c !== '\r';
+}
+
+/** Does `text[from, to)` hold a line ending whose next line ends a
+ *  container of content indent `indent` (see `dedentEnds`)? */
+function hasDedentBetween(text: string, from: number, to: number, indent: number): boolean {
+  for (let i = from; i < to; i++) {
+    const c = text[i];
+    if ((c === '\n' || c === '\r') && dedentEnds(text, i, indent)) return true;
+  }
+  return false;
 }
 
 function truncateUnclosedLatexBlock(

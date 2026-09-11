@@ -877,9 +877,22 @@ y$ which spans lines`;
     expect(preprocessLaTeX(content)).toBe('before');
   });
 
-  test('truncates a line-start $$ indented three spaces', () => {
-    const content = 'before\n\n   $$\n\\frac{a}{b}\n\n## Swallowed';
+  test('truncates a line-start $$ indented three spaces while its body keeps the indent', () => {
+    const content = 'before\n\n   $$\n   \\frac{a}{b}\n\n   ## Swallowed';
     expect(preprocessLaTeX(content)).toBe('before');
+  });
+
+  test('an indented $$ whose body is dedented is left alone (container rule)', () => {
+    // remark-math does swallow the heading here — the opener is top-level,
+    // so its three spaces are fence indent, not a container's. The scan
+    // cannot see a container from the opener line alone, and an indented
+    // opener followed by a line indented less is the shape of a list item's
+    // block ending at its item, which used to lose the paragraph after the
+    // list from a finished document. That case wins: the text goes to
+    // remark-math untouched, and the streaming frame shows the open block
+    // instead of hiding it. See the container-rule suite below.
+    const content = 'before\n\n   $$\n\\frac{a}{b}\n\n## Not truncated';
+    expect(preprocessLaTeX(content)).toBe(content);
   });
 
   test('does not truncate at four spaces — that is an indented code block', () => {
@@ -1124,6 +1137,100 @@ describe('preprocessLaTeX — the kind-aware scanner keeps valid multiline math'
   test('the streaming tail `text\\n\\n$$\\nE =` is still truncated', () => {
     expect(preprocessLaTeX('text\n\n$$\nE =')).toBe('text');
     expect(mathShape(preprocessLaTeX('text\n\n$$\nE ='))).toEqual(['paragraph', '  text']);
+  });
+});
+
+describe('preprocessLaTeX — an indented $$ opener is bounded by its container', () => {
+  // remark-math scopes a `$$` fence inside a list item to the item: the
+  // first line indented less than the item's content ends the item, and
+  // the fence with it. The truncation used to cut from the opener to the
+  // end of input, which dropped the paragraph after the list from a
+  // finished document (`- Item` was all that was left).
+
+  test('a dedented paragraph after a blank line ends the block; nothing is truncated', () => {
+    const content = '- Item\n\n  $$\n  x\n\nAfter the list.';
+    expect(preprocessLaTeX(content)).toBe(content);
+    expect(mathShape(content)).toEqual([
+      'list',
+      '  listItem',
+      '    paragraph',
+      '      text',
+      '    math "x"',
+      'paragraph',
+      '  text',
+    ]);
+  });
+
+  test('a dedented line without a blank line before it ends the block too (remark-math agrees)', () => {
+    const content = '- Item\n\n  $$\n  x\nAfter the list.';
+    expect(preprocessLaTeX(content)).toBe(content);
+    expect(mathShape(content).slice(-2)).toEqual(['paragraph', '  text']);
+    const next = '- Item\n\n  $$\n  x\n- Next';
+    expect(preprocessLaTeX(next)).toBe(next);
+  });
+
+  test('a truly unclosed tail inside the item is still truncated (streaming)', () => {
+    expect(preprocessLaTeX('- Item\n\n  $$\n  x')).toBe('- Item');
+    // A trailing blank line, or a partial next line of spaces, is no verdict.
+    expect(preprocessLaTeX('- Item\n\n  $$\n  x\n\n')).toBe('- Item');
+    expect(preprocessLaTeX('- Item\n\n  $$\n  x\n\n  ')).toBe('- Item');
+  });
+
+  test('a line indented at least as much as the opener stays in the block', () => {
+    expect(preprocessLaTeX('- Item\n\n  $$\n  x\n\n  still\n\n  more')).toBe('- Item');
+    // A tab is four columns: never a dedent.
+    expect(preprocessLaTeX('- Item\n\n  $$\n  x\n\n\tAfter')).toBe('- Item');
+  });
+
+  test('the block ended by its container does not pair with a later top-level block', () => {
+    const content = '- Item\n\n  $$\n  a | b\n\nAfter | text\n\n$$\n| c |\n$$';
+    const expected = '- Item\n\n  $$\n  a | b\n\nAfter | text\n\n$$\n\\vert{} c \\vert{}\n$$';
+    expect(preprocessLaTeX(content)).toBe(expected);
+    expect(mathShape(expected)).toEqual([
+      'list',
+      '  listItem',
+      '    paragraph',
+      '      text',
+      '    math "a | b"',
+      'paragraph',
+      '  text',
+      'math "\\\\vert{} c \\\\vert{}"',
+    ]);
+  });
+
+  test('a column-0 $$ after the item opens a new top-level block, which is truncated', () => {
+    // The dedented `$$` ends the item (remark-math: the item's math is `x`)
+    // and opens an unclosed top-level flow — the streaming tail, cut as ever.
+    expect(preprocessLaTeX('- Item\n\n  $$\n  x\n$$')).toBe('- Item\n\n  $$\n  x');
+  });
+
+  test('a blockquote opener is not a flow opener; nothing after it is truncated (pinned)', () => {
+    for (const content of ['> $$\nx\n\nAfter', '> $$\n> x\n\nAfter']) {
+      expect(preprocessLaTeX(content)).toBe(content);
+      expect(mathShape(content).slice(-2)).toEqual(['paragraph', '  text']);
+    }
+  });
+
+  test('a same-line opener `- $$ x` is mid-line for the scan; nothing is truncated (pinned)', () => {
+    expect(preprocessLaTeX('- $$ x')).toBe('- $$ x');
+    const content = '- $$ x\n\nAfter';
+    expect(preprocessLaTeX(content)).toBe(content);
+    expect(mathShape(content)).toEqual(['list', '  listItem', '    math ""', 'paragraph', '  text']);
+  });
+
+  test('an indented top-level opener (no container) errs towards not truncating', () => {
+    // remark-math swallows `After` here; the scan reads the column-0 line
+    // as a dedent and leaves the text alone, so remark-math gets the same
+    // bytes it would have had without a preprocessor.
+    const content = '  $$\n  x\n\nAfter';
+    expect(preprocessLaTeX(content)).toBe(content);
+    expect(preprocessLaTeX('  $$\n  x')).toBe('');
+  });
+
+  test('ordered-list content indent works the same way', () => {
+    const content = '1. Item\n\n   $$\n   x\n\nAfter';
+    expect(preprocessLaTeX(content)).toBe(content);
+    expect(preprocessLaTeX('1. Item\n\n   $$\n   x')).toBe('1. Item');
   });
 });
 
