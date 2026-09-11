@@ -5,15 +5,40 @@ import { renderToString } from '@vue/server-renderer';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 import { useMarkdownChunk, type ChunkInput } from './useMarkdownChunk';
+import { AIMarkdown } from './AIMarkdown';
+import { AIMarkdownDocuments } from './documents';
+
+/** Pipeline runs per session, in session creation (= chunk setup) order.
+ * The wrapper is transparent; it only counts `parse` calls. */
+const parseCounts: number[] = [];
+vi.mock('@ai-markdown/core', async (importOriginal) => {
+  const core = await importOriginal<typeof import('@ai-markdown/core')>();
+  return {
+    ...core,
+    createPipelineSession: () => {
+      const session = core.createPipelineSession();
+      const index = parseCounts.push(0) - 1;
+      return {
+        reset: () => session.reset(),
+        parse: (options: Parameters<typeof session.parse>[0]) => {
+          parseCounts[index] += 1;
+          return session.parse(options);
+        },
+      };
+    },
+  };
+});
 
 interface HostNode {
   parent: HostNode | null;
   children: HostNode[];
   text: string;
+  tag?: string;
+  props: Record<string, unknown>;
 }
-const node = (text = ''): HostNode => ({ parent: null, children: [], text });
+const node = (text = ''): HostNode => ({ parent: null, children: [], text, props: {} });
 const host = createRenderer<HostNode, HostNode>({
-  createElement: () => node(),
+  createElement: (tag) => ({ ...node(), tag }),
   createText: node,
   createComment: node,
   setText: (n, text) => {
@@ -23,7 +48,9 @@ const host = createRenderer<HostNode, HostNode>({
     n.text = text;
     n.children = [];
   },
-  patchProp: () => {},
+  patchProp: (n, key, _prev, next) => {
+    n.props[key] = next;
+  },
   parentNode: (n) => n.parent,
   nextSibling: (n) => n.parent?.children[n.parent.children.indexOf(n) + 1] ?? null,
   insert(n, parent, anchor) {
@@ -37,6 +64,7 @@ const host = createRenderer<HostNode, HostNode>({
     n.parent = null;
   },
 });
+const anchors = (n: HostNode): HostNode[] => [...(n.tag === 'a' ? [n] : []), ...n.children.flatMap(anchors)];
 async function settle() {
   for (let i = 0; i < 8; i++) {
     await nextTick();
@@ -268,4 +296,106 @@ describe('chunk identity without crypto.randomUUID', () => {
     expect(registry.chunkData.size).toBe(0);
     expect(registry._subscribers.size).toBe(0);
   });
+});
+
+describe('registry notifications do not re-run unaffected chunk pipelines', () => {
+  for (const incrementalParse of [true, false]) {
+    test(`incrementalParse=${incrementalParse}: one append runs only the appended chunk`, async () => {
+      parseCounts.length = 0;
+      const chunks = shallowRef([
+        'Intro with a [site][u] link and a claim[^n].',
+        'Second section, plain prose.',
+        'Third section, plain prose.',
+        '[^n]: Shared footnote body',
+        'Tail with a claim[^n].',
+      ]);
+      // Render-function executions per chunk: the vnode update hook fires
+      // once per re-render of the component. Hooks and slot objects are
+      // created once and the slots marked stable; otherwise every parent
+      // render would force every child to update and hide what the registry
+      // alone triggers.
+      const renders: number[] = chunks.value.map(() => 0);
+      const updated = chunks.value.map((_, index) => () => {
+        renders[index] += 1;
+      });
+      const slots = chunks.value.map(() => ({ $stable: true }));
+      const app = host.createApp({
+        render: () =>
+          h(AIMarkdownDocuments, null, {
+            $stable: true,
+            default: () =>
+              chunks.value.map((content, index) =>
+                h(
+                  AIMarkdown,
+                  {
+                    key: index,
+                    content,
+                    documentId: 'doc',
+                    documentIndex: index,
+                    incrementalParse,
+                    onVnodeUpdated: updated[index],
+                  },
+                  slots[index]
+                )
+              ),
+          }),
+      });
+      const delta = (now: number[], before: number[]) => now.map((n, i) => n - before[i]);
+      const root = node();
+      try {
+        app.mount(root);
+        await settle();
+        expect(anchors(root).map((a) => a.props.href)).not.toContain('https://example.com');
+        const parsesAtMount = [...parseCounts];
+        const rendersAtMount = [...renders];
+        expect(parsesAtMount).toHaveLength(5);
+        // A second reference appended to the last chunk changes its
+        // contribution (ordered refs), so it publishes and the registry
+        // notifies every chunk. No label changes anywhere: every other
+        // chunk's phantom targets stay identity-stable and its frame is
+        // kept, so only the appended chunk's session parses again.
+        chunks.value = chunks.value.map((c, i) => (i === 4 ? c + ' And again[^n].' : c));
+        await settle();
+        expect(delta(parseCounts, parsesAtMount)).toEqual([0, 0, 0, 0, 1]);
+        // The notification carries a new occurrence for [^n] in the last
+        // chunk only; chunks whose resolved references did not change are
+        // not re-rendered either. The last chunk renders for its append and
+        // once more for the notification, which rebuilds the aggregate
+        // footer it owns.
+        expect(delta(renders, rendersAtMount)).toEqual([0, 0, 0, 0, 2]);
+        const parsesBeforeDef = [...parseCounts];
+        const rendersBeforeDef = [...renders];
+        // A definition appended to the last chunk resolves chunk 0's link.
+        // Chunk 0 legitimately parses again: its phantom targets change (the
+        // label is no longer missing), so its frame must be rebuilt. The
+        // last chunk parses twice: once for the append and once more after
+        // its label set changes and it re-registers under a fresh symbol.
+        // Chunks 1-3 reference nothing and stay untouched.
+        chunks.value = chunks.value.map((c, i) => (i === 4 ? c + '\n\n[u]: https://example.com' : c));
+        await settle();
+        expect(delta(parseCounts, parsesBeforeDef)).toEqual([1, 0, 0, 0, 2]);
+        // Chunk 0 re-renders once with the resolved link. The last chunk
+        // re-renders for the append, the re-registration and each
+        // notification of that churn, which rebuilds the footer it owns.
+        const rendersAfterDef = delta(renders, rendersBeforeDef);
+        expect(rendersAfterDef.slice(0, 4)).toEqual([1, 0, 0, 0]);
+        expect(rendersAfterDef[4]).toBeGreaterThanOrEqual(2);
+        expect(anchors(root).map((a) => a.props.href)).toContain('https://example.com');
+        const parsesBeforeMove = [...parseCounts];
+        const rendersBeforeMove = [...renders];
+        // Moving the destination changes no label set, so no phantom target
+        // moves and nobody but the edited chunk parses. Chunk 0 still shows
+        // the destination, so the notification must re-render it (and only
+        // it) with the new href.
+        chunks.value = chunks.value.map((c) => c.replace('https://example.com', 'https://example.org'));
+        await settle();
+
+        expect(delta(parseCounts, parsesBeforeMove)).toEqual([0, 0, 0, 0, 1]);
+        expect(delta(renders, rendersBeforeMove).slice(0, 4)).toEqual([1, 0, 0, 0]);
+        expect(anchors(root).map((a) => a.props.href)).toContain('https://example.org');
+      } finally {
+        app.unmount();
+      }
+    });
+  }
 });

@@ -19,6 +19,10 @@ Six engine-side corrections, all in the built-in LaTeX preprocessor and the shar
 - `removeComments` strips comment spans instead of dropping the whole html node: `<details>` blocks with a comment inside, and `<!-- note --> visible text`, render their content. A comment-only block still disappears. The engine no longer depends on `remark-remove-comments`.
 - pangu runs before SmartyPants, so `中文"引号"中文` gets an opening and a closing quote (`中文 “引号” 中文`) instead of two closers.
 
+### Vue adapter (not yet released)
+
+- A registry notification no longer re-parses every chunk in an `AIMarkdownDocuments` tree. One append to one of N chunks parses that chunk once; other chunks parse only when a label they wait on appears, and re-render only when a footnote number or link destination they show changes (measured: an append to the last of 5 chunks ran 6 parses, now 1).
+
 ## 3.0.0 — Stable release and final candidate
 
 ### 3.0.0

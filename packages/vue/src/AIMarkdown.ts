@@ -84,6 +84,8 @@ export const AIMarkdown = defineComponent({
     }));
     return () => {
       const frame = chunk.prepared.value;
+      // Registry facts behind this frame's placeholders; see useMarkdownChunk.
+      void chunk.resolution.value;
       const options = {
         registry: frame.registry,
         sym: frame.sym,
