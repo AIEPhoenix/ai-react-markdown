@@ -229,12 +229,21 @@ export function useMarkdownChunk(input: () => ChunkInput) {
   // reference here, and only here. The walk includes the local footnote
   // section that a registered chunk does not render; that over-approximates
   // and never misses a dependency.
+  //
+  // The snapshot is JSON over one tuple per placeholder, never values joined
+  // with a separator: `<https://example.com/a b> "c"` and
+  // `<https://example.com/a> "b c"` joined by a space are the same string,
+  // and the reference kept the stale destination. JSON keeps every field
+  // in its own slot and keeps the states the renderer treats differently
+  // apart: an unresolved label is `null`, a resolved one is `[url, title]`
+  // with a missing title as `null` and an empty title as `""`; a footnote
+  // number or occurrence is a number or `null`.
   const resolution = computed(() => {
     void version.value;
     const frame = prepared.value;
     const registry = frame.registry;
     if (!registry) return '';
-    const parts: string[] = [];
+    const parts: unknown[] = [];
     visit(frame.trees.hast, 'element', (node) => {
       const p = node.properties;
       if (node.tagName === 'footnote-sup') {
@@ -245,14 +254,14 @@ export function useMarkdownChunk(input: () => ChunkInput) {
           number !== null && frame.sym && Number.isFinite(local)
             ? registry.globalOccurrenceForRef(frame.sym, label, local)
             : null;
-        parts.push(`footnote ${label} ${number} ${occurrence}`);
+        parts.push(['footnote', label, number, occurrence]);
       } else if (node.tagName === 'cross-chunk-link' || node.tagName === 'cross-chunk-image') {
         const identifier = String(p.identifier ?? p.label ?? '');
         const def = registry.resolveLinkDef(identifier);
-        parts.push(`link ${identifier} ${def ? `${def.url} ${def.title ?? ''}` : ''}`);
+        parts.push(['link', identifier, def ? [def.url, def.title ?? null] : null]);
       }
     });
-    return parts.join('\n');
+    return JSON.stringify(parts);
   });
   return { prepared, aggregate, resolution, provenance };
 }

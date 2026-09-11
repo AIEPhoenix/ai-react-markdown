@@ -456,3 +456,67 @@ describe('a standalone AIMarkdown parses its first frame once', () => {
     expect(parseModes).toEqual([false]);
   });
 });
+
+describe('the resolution snapshot separates url, title and absence', () => {
+  // Three chunks: the reference chunk is neither the definition owner nor
+  // the aggregate owner, so only the resolution snapshot can re-render it.
+  const mountWithDefinition = async (initial: string) => {
+    const def = shallowRef(initial);
+    const app = host.createApp({
+      render: () =>
+        h(AIMarkdownDocuments, null, {
+          $stable: true,
+          default: () => [
+            h(AIMarkdown, { key: 'ref', documentId: 'doc', content: '[Link][x]' }),
+            h(AIMarkdown, { key: 'def', documentId: 'doc', content: def.value }),
+            h(AIMarkdown, { key: 'tail', documentId: 'doc', content: 'Tail' }),
+          ],
+        }),
+    });
+    const root = node();
+    app.mount(root);
+    await settle();
+    const link = () => {
+      const [anchor] = anchors(root);
+      return anchor ? { href: anchor.props.href, title: anchor.props.title } : null;
+    };
+    return {
+      link,
+      async replace(next: string) {
+        def.value = next;
+        await settle();
+      },
+      unmount: () => app.unmount(),
+    };
+  };
+
+  test('a url/title boundary move re-renders the reference', async () => {
+    const doc = await mountWithDefinition('[x]: <https://example.com/a b> "c"');
+    try {
+      expect(doc.link()).toEqual({ href: 'https://example.com/a%20b', title: 'c' });
+      // Same characters, different split: a joined "url title" string would
+      // not change and the reference would keep the stale destination.
+      await doc.replace('[x]: <https://example.com/a> "b c"');
+      expect(doc.link()).toEqual({ href: 'https://example.com/a', title: 'b c' });
+    } finally {
+      doc.unmount();
+    }
+  });
+
+  test('dropping the title re-renders the reference', async () => {
+    const doc = await mountWithDefinition('[x]: https://example.com/a "t"');
+    try {
+      expect(doc.link()).toEqual({ href: 'https://example.com/a', title: 't' });
+      await doc.replace('[x]: https://example.com/a');
+      expect(doc.link()).toEqual({ href: 'https://example.com/a', title: null });
+      // An empty title renders like no title; the snapshot still separates
+      // the two states, which costs one render and never a stale one.
+      await doc.replace('[x]: https://example.com/a ""');
+      expect(doc.link()).toEqual({ href: 'https://example.com/a', title: null });
+      await doc.replace('[x]: https://example.com/a "t"');
+      expect(doc.link()).toEqual({ href: 'https://example.com/a', title: 't' });
+    } finally {
+      doc.unmount();
+    }
+  });
+});
