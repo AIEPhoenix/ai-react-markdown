@@ -19,6 +19,10 @@ Six engine-side corrections, all in the built-in LaTeX preprocessor and the shar
 - `removeComments` strips comment spans instead of dropping the whole html node: `<details>` blocks with a comment inside, and `<!-- note --> visible text`, render their content. A comment-only block still disappears. The engine no longer depends on `remark-remove-comments`.
 - pangu runs before SmartyPants, so `中文"引号"中文` gets an opening and a closing quote (`中文 “引号” 中文`) instead of two closers.
 
+### React fixes (not yet released)
+
+- Coordinated chunks (`<AIMarkdownDocuments>` with a shared `documentId`) each wrapped in their own `<Suspense>` boundary hydrate without a recoverable "Hydration failed" error when one boundary hydrates after its siblings have registered: the hydration render reads no registry state, so it matches the server's literal `[^a]` / `[link][x]`, and the registry resolves them right after hydration as before.
+
 ## 3.0.0 — Stable release and final candidate
 
 ### 3.0.0
