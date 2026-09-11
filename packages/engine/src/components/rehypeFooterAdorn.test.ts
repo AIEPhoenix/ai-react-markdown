@@ -80,4 +80,19 @@ describe('rehypeFooterAdorn', () => {
     const tags = sec.children.map((c) => (c as HastElement).tagName);
     expect(tags).toEqual(['hr', 'h2', 'ol']);
   });
+
+  test('leaves a user-authored <section data-footnotes> (positioned) untouched', () => {
+    // Only the synthesized footer has no source position; raw HTML the
+    // author wrote survives rehype-raw with one. The attribute alone must
+    // not turn that element into the engine's footer.
+    const authored: HastElement = {
+      ...section(h2Label, ol),
+      properties: { dataFootnotes: '' },
+      position: { start: { line: 1, column: 1, offset: 0 }, end: { line: 3, column: 11, offset: 40 } },
+    };
+    const before = structuredClone(authored);
+    const root = tree(authored);
+    rehypeFooterAdorn()(root);
+    expect(root.children[0]).toEqual(before);
+  });
 });

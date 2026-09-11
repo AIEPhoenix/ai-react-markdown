@@ -22,12 +22,16 @@
  * rendering produce the same structure as the aggregate, so a 1-chunk doc and
  * an N-chunk coordinated doc with identical content look the same.
  *
- * Operates only on `<section data-footnotes>` and is idempotent.
+ * Operates only on the synthesized `<section data-footnotes>` (the shared
+ * `isFootnoteSection` predicate: tag, attribute, and NO source position — a
+ * raw section the author wrote carries one and is left untouched) and is
+ * idempotent.
  *
  * @module components/rehypeFooterAdorn
  */
 import { visit } from 'unist-util-visit';
 import type { Element as HastElement, Root as HastRoot, ElementContent } from 'hast';
+import { isFootnoteSection } from './hastPredicates';
 
 const FOOTNOTE_LABEL_ID_RE = /(?:^|-)footnote-label$/;
 
@@ -48,8 +52,7 @@ export default function rehypeFooterAdorn() {
   return (tree: HastRoot) => {
     visit(tree, 'element', (n) => {
       const el = n as HastElement;
-      if (el.tagName !== 'section') return;
-      if (!(el.properties && 'dataFootnotes' in el.properties)) return;
+      if (!isFootnoteSection(el)) return;
       // Strip the auto-generated <h2 id="...footnote-label"> — the visible
       // "Footnotes" header reads awkwardly, especially in streaming AI chat
       // contexts. To keep screen-reader announcement working, set

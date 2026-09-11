@@ -16,10 +16,23 @@ import type { Element as HastElement, ElementContent } from 'hast';
  * Detect mdast-util-to-hast's synthesized footnote `<section data-footnotes>`.
  * Position-based detection alone would be too broad — any future rehype plugin
  * that appends a position-less node would be misclassified. We assert by
- * `tagName === 'section'` AND presence of the `dataFootnotes` property.
+ * `tagName === 'section'` AND presence of the `dataFootnotes` property AND
+ * the absence of a source position.
+ *
+ * The position conjunct is what makes the signal unforgeable. The footer is
+ * synthesized by remark-rehype (or by core's aggregate builder) and carries
+ * no source offsets — on every shape measured, including footers rehype-raw
+ * reparented into a container a streaming tail left open. A raw
+ * `<section data-footnotes>` an author writes survives sanitize (the
+ * attribute is in the default schema) and comes out of rehype-raw WITH a
+ * position; without the conjunct it was adorned with the `<hr>` and
+ * aria-label, planned as the synthetic `__footnote_section__` slot, and in
+ * coordinated mode dropped in favour of the aggregate footer. The
+ * conformance oracle's own copy of this predicate documents the same
+ * measurement (conformanceOracles.ts).
  */
 export function isFootnoteSection(node: HastElement): boolean {
-  if (node.tagName !== 'section') return false;
+  if (node.tagName !== 'section' || node.position !== undefined) return false;
   const props = node.properties as Record<string, unknown> | undefined;
   return props?.dataFootnotes !== undefined;
 }
