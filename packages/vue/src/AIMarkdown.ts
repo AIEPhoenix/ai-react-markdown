@@ -55,14 +55,19 @@ export const AIMarkdown = defineComponent({
     const documentId = computed(() => props.documentId ?? id);
     const clobberPrefix = computed(() => `aimd-${encodeURIComponent(shortenDocumentId(documentId.value))}-`);
     const registry = shallowRef<RegistryController | null>(null);
-    const mounted = shallowRef(false);
+    // Whether a next frame can follow this one. A server render is one
+    // shot, so it takes the full pipeline and retains no incremental state;
+    // a client mount seeds the retained prefix from its first frame. Decided
+    // here rather than after mount: gating on a mounted flag parsed every
+    // client mount twice (fully, then again incrementally once the flag
+    // flipped), and hydration rebuilds from empty state either way.
+    const client = typeof window !== 'undefined';
     const plugins = computed(() => (props.enginePlugins ?? defaultEnginePlugins).filter(isEnginePlugin));
     const latex = createIncrementalLatexPreprocessor();
     const content = computed(() => preprocessAIMDContent(props.content, props.contentPreprocessors, latex));
     // Acquire only after mount. Server and hydration's first render have no
     // registry writes; discarded setup cannot leave an empty document shell.
     onMounted(() => {
-      mounted.value = true;
       watch(
         () => props.documentId,
         (next) => {
@@ -78,12 +83,14 @@ export const AIMarkdown = defineComponent({
       clobberPrefix: clobberPrefix.value,
       registry: registry.value,
       preserveOrphanReferences: props.preserveOrphanReferences ?? false,
-      incrementalParse: mounted.value && (props.incrementalParse ?? true),
+      incrementalParse: client && (props.incrementalParse ?? true),
       enginePlugins: plugins.value,
       sanitizeSchema: props.sanitizeSchema ?? sanitizeSchema,
     }));
     return () => {
       const frame = chunk.prepared.value;
+      // Registry facts behind this frame's placeholders; see useMarkdownChunk.
+      void chunk.resolution.value;
       const options = {
         registry: frame.registry,
         sym: frame.sym,

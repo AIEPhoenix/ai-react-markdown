@@ -1,4 +1,5 @@
 import { computed, onMounted, onUnmounted, shallowRef, useId, watch, watchPostEffect } from 'vue';
+import { visit } from 'unist-util-visit';
 import {
   buildCoreRemarkPlugins,
   buildCoreRehypePlugins,
@@ -12,7 +13,6 @@ import {
 import {
   createPipelineSession,
   createContributionSession,
-  createBlockPlanner,
   derivePhantomTargets,
   deriveCoordinationPolicy,
   buildContributionChain,
@@ -81,11 +81,28 @@ export function createProvenance(): string {
 /** Vue lifecycle binding for one mounted chunk.
  * Engine trees/registries stay outside deep reactive proxies. Vue tracks only
  * source inputs, allocation and the monotonic registry notification signal.
+ *
+ * There is no block planner here. The plan exists to key a per-block render
+ * cache, and React's block memo is the consumer; Vue converts the whole
+ * frame to VNodes on every render and lets Vue's patcher diff the result,
+ * so a plan would be computed every frame and read by nobody.
+ *
+ * The notification signal is fanned out through two identity-stable
+ * computeds rather than read by the pipeline directly. Every publish in the
+ * document notifies every chunk; if the pipeline computed depended on the
+ * raw counter, one append would re-run parse and VNode conversion for every
+ * chunk in the document. `phantomTargets` keeps its object identity while
+ * the missing-label sets are unchanged, so `prepared` (the parse) only
+ * re-runs for chunks whose targets actually moved; `resolution` folds the
+ * registry facts the renderer reads for this chunk's placeholders into one
+ * string, so the render only re-runs when a number, occurrence or
+ * destination it shows has changed. This mirrors React, where the pipeline
+ * memo is keyed on the ref-stable targets and placeholders subscribe per
+ * label.
  */
 export function useMarkdownChunk(input: () => ChunkInput) {
   const pipeline = createPipelineSession();
   const publisher = createContributionSession();
-  const planner = createBlockPlanner();
   const scanner = createDefLabelScanner();
   const provenance = createProvenance();
   // The registry keys allocations by this string and uses it as the Symbol
@@ -114,14 +131,22 @@ export function useMarkdownChunk(input: () => ChunkInput) {
       selectedPlugins.value.some((plugin) => plugin.name === 'definitionList')
     ),
   }));
-  const prepared = computed(() => {
+  // Depends on the registry counter so a newly published label is seen;
+  // returns the previous object when the derived sets are equal, which is
+  // what keeps `prepared` from re-running on unrelated notifications.
+  const phantomTargets = computed(() => {
     void version.value;
     const current = input();
-    const sym = allocation.value?.registry === current.registry ? (allocation.value?.sym ?? null) : null;
     targets = derivePhantomTargets(
       { content: current.content, ownLabels: ownLabels.value, labels: current.registry?.labelSet ?? null },
       targets
     );
+    return targets;
+  });
+  const prepared = computed(() => {
+    const current = input();
+    const sym = allocation.value?.registry === current.registry ? (allocation.value?.sym ?? null) : null;
+    const targets = phantomTargets.value;
     policy = deriveCoordinationPolicy(
       {
         coordinated: !!current.registry,
@@ -149,7 +174,6 @@ export function useMarkdownChunk(input: () => ChunkInput) {
       clobberPrefix: current.clobberPrefix,
       ownLabels: ownLabels.value,
       chain: buildContributionChain({ ...frameOptions, clobberPrefix: current.clobberPrefix }),
-      plan: planner(trees.mdast, trees.hast, current.content, { phantomFootnoteLabels: targets.missingFootnotes }),
     };
   });
   let stopRegistration: (() => void) | undefined;
@@ -198,5 +222,46 @@ export function useMarkdownChunk(input: () => ChunkInput) {
     if (!frame.registry || !frame.sym || frame.registry.chunkOrder.at(-1) !== frame.sym) return null;
     return buildAggregateTree(frame.registry, frame.clobberPrefix, input().preserveOrphanReferences);
   });
-  return { prepared, aggregate, provenance };
+  // Everything render.ts asks the registry while converting this frame's
+  // placeholders (footnote number and occurrence, link/image destination),
+  // as one string. Equal string, equal render: the renderer must read this
+  // so a definition published by another chunk still re-renders the
+  // reference here, and only here. The walk includes the local footnote
+  // section that a registered chunk does not render; that over-approximates
+  // and never misses a dependency.
+  //
+  // The snapshot is JSON over one tuple per placeholder, never values joined
+  // with a separator: `<https://example.com/a b> "c"` and
+  // `<https://example.com/a> "b c"` joined by a space are the same string,
+  // and the reference kept the stale destination. JSON keeps every field
+  // in its own slot and keeps the states the renderer treats differently
+  // apart: an unresolved label is `null`, a resolved one is `[url, title]`
+  // with a missing title as `null` and an empty title as `""`; a footnote
+  // number or occurrence is a number or `null`.
+  const resolution = computed(() => {
+    void version.value;
+    const frame = prepared.value;
+    const registry = frame.registry;
+    if (!registry) return '';
+    const parts: unknown[] = [];
+    visit(frame.trees.hast, 'element', (node) => {
+      const p = node.properties;
+      if (node.tagName === 'footnote-sup') {
+        const label = String(p.label ?? '');
+        const number = registry.globalNumber(label);
+        const local = Number(p.localOccurrence);
+        const occurrence =
+          number !== null && frame.sym && Number.isFinite(local)
+            ? registry.globalOccurrenceForRef(frame.sym, label, local)
+            : null;
+        parts.push(['footnote', label, number, occurrence]);
+      } else if (node.tagName === 'cross-chunk-link' || node.tagName === 'cross-chunk-image') {
+        const identifier = String(p.identifier ?? p.label ?? '');
+        const def = registry.resolveLinkDef(identifier);
+        parts.push(['link', identifier, def ? [def.url, def.title ?? null] : null]);
+      }
+    });
+    return JSON.stringify(parts);
+  });
+  return { prepared, aggregate, resolution, provenance };
 }
