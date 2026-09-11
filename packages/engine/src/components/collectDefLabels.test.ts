@@ -128,6 +128,60 @@ describe('createDefLabelScanner', () => {
     replay([`${bom}[a]: /u\n\n`, `${bom}[b]: /v\n`]);
   });
 
+  test('raw BOM-led input takes a full-parse path that equals the full collector for any BOM count', () => {
+    // Stage A strips every leading BOM before the engine, so this is the
+    // scanner driven directly. It must not strip one BOM itself and hand
+    // the rest to its parser, which drops one more: agreement with the
+    // full collector then rested on the line-start probe happening to
+    // reject the second BOM, not on a contract. A raw BOM-led source now
+    // takes a full parse of the raw text, so the two are equal by
+    // construction for any BOM count.
+    const bom = '\uFEFF';
+    const bodies = ['[a]: /u\n', '[^n]: note\n', '# h\n\n[a]: /u\n', 'prose\n\n[^n]: note\n\n[b]: /v\n'];
+    for (const n of [0, 1, 2, 3]) {
+      for (const body of bodies) {
+        const source = `${bom.repeat(n)}${body}`;
+        expect(asPlain(createDefLabelScanner().scan(source)), JSON.stringify(source)).toEqual(
+          asPlain(collectDefLabels(source))
+        );
+        // Character-granular append stream, then a regenerated (non-append) frame.
+        replay([...source, '\n[^z]: tail\n']);
+        replay([source, `${bom.repeat(n)}${body}\n\n[c]: /w\n`, 'regenerated\n\n[d]: /x\n']);
+      }
+    }
+    // The line-1 definition really is BOM-count dependent on the raw path
+    // (this is what the conservative full parse preserves).
+    expect(asPlain(collectDefLabels(`${bom}[a]: /u\n`)).link).toEqual(['A']);
+    expect(asPlain(collectDefLabels(`${bom}${bom}[a]: /u\n`)).link).toEqual([]);
+  });
+
+  test('a raw BOM-led frame is a full parse of the whole source and leaves no frozen state behind', () => {
+    let calls: string[] = [];
+    const counting = (s: string) => {
+      calls.push(s);
+      return collectDefLabels(s);
+    };
+    const bom = '\uFEFF';
+    const scanner = createDefLabelScanner(counting);
+    const source = `${bom}${bom}intro\n\n[a]: /u\n`;
+    scanner.scan(source);
+    expect(calls).toEqual([source]); // the raw source, BOMs included
+    // Equal sets on the next frame keep the previous object.
+    calls = [];
+    const first = scanner.scan(source + 'more prose');
+    const second = scanner.scan(source + 'more prose and more');
+    expect(second).toBe(first);
+    expect(calls).toEqual([source + 'more prose', source + 'more prose and more']);
+    // A BOM-free regeneration afterwards resumes the normal path from
+    // scratch: the frozen prefix parse covers only the stripped-prefix
+    // slice, never anything derived from the BOM frames.
+    calls = [];
+    expect(asPlain(scanner.scan('intro\n\n[a]: /u\n\n[b]: /v\n'))).toEqual(
+      asPlain(collectDefLabels('intro\n\n[a]: /u\n\n[b]: /v\n'))
+    );
+    for (const call of calls) expect(call.charCodeAt(0)).not.toBe(0xfeff);
+  });
+
   test('region boundary is CRLF-aware', () => {
     expect(lastRegionStart('a\n\nb')).toBe(3);
     expect(lastRegionStart('a\r\n\r\nb')).toBe(5);

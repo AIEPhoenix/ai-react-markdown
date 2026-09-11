@@ -18,6 +18,7 @@ Six engine-side corrections, all in the built-in LaTeX preprocessor and the shar
 - Currency escaping on a very long line is linear again (a 240 KB line with 32k `$`: 2.7 s to 11 ms), byte-identical.
 - `removeComments` strips comment spans instead of dropping the whole html node: `<details>` blocks with a comment inside, and `<!-- note --> visible text`, render their content. A comment-only block still disappears. The engine no longer depends on `remark-remove-comments`.
 - pangu runs before SmartyPants, so `中文"引号"中文` gets an opening and a closing quote (`中文 “引号” 中文`) instead of two closers.
+- Stage A removes every document-leading byte order mark, not just the first. With one stripped there and a second dropped by micromark, `\uFEFF\uFEFF# Heading` rendered a heading and `\uFEFF\uFEFF[x]: /url` became a definition (a raw parse of either is a paragraph), while three BOMs left one in the text. Normalizing the whole run is an explicit preprocessing contract, not raw-micromark equivalence for multi-BOM input; a U+FEFF anywhere else stays text. The definition-label scanner, when driven directly with raw BOM-led input, now takes a full-parse path that equals `collectDefLabels` exactly instead of stripping one BOM itself and letting its parser strip another.
 
 ### Cross-chunk coordination fixes (not yet released)
 

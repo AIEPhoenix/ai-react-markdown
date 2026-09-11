@@ -9,6 +9,7 @@ import {
   collectDefLabels,
   createRegistry,
   parseStage,
+  preprocessAIMDContent,
   sanitizeSchema,
   transformStage,
 } from '@ai-markdown/engine';
@@ -54,6 +55,32 @@ describe('framework-neutral pipeline consumer', () => {
     }
     for (const content of [source, source.replace('Opening', 'Rewritten'), 'Replacement']) {
       expect(session.parse({ ...options, content })).toEqual(full(content));
+    }
+  });
+
+  test('after Stage A, a BOM-led stream plans blocks whose source slices match for any leading BOM count', () => {
+    // Stage A strips every document-leading U+FEFF; the block planner then
+    // slices the same string the parser positioned. With one BOM stripped
+    // here and another dropped inside micromark, every offset would be one
+    // short of the string the planner slices.
+    const body = '# Title\n\nClaim[^n].\n\n[^n]: Note\n\n[x]: /url\n\nTail [x].\n';
+    for (const bomCount of [1, 2, 3]) {
+      const raw = `${'﻿'.repeat(bomCount)}${body}`;
+      const session = createPipelineSession();
+      const plan = createBlockPlanner();
+      for (let length = 1; length <= raw.length; length++) {
+        const content = preprocessAIMDContent(raw.slice(0, length));
+        const frame = session.parse({ ...options, content });
+        expect(frame, `${bomCount} BOMs, frame ${length}`).toEqual(full(content));
+        const built = plan(frame.mdast, frame.hast, content);
+        for (const block of built.blocks) {
+          expect(content.slice(block.startOffset, block.endOffset), `${bomCount} BOMs, frame ${length}`).toBe(
+            block.raw
+          );
+        }
+        if (built.blocks.length > 0) expect(built.blocks[0].startOffset).toBe(0);
+      }
+      expect(preprocessAIMDContent(raw)).toBe(body);
     }
   });
 
