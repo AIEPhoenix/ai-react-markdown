@@ -1,8 +1,8 @@
-# Release Highlights
+# Release history
 
 This document records the user-visible changes, implementation fixes, and verification evidence for each release. Entries are grouped by release line and listed newest first. Use the [Git history](https://github.com/ai-markdown/ai-markdown/commits/main/) for individual commits and the [releases page](https://github.com/ai-markdown/ai-markdown/releases) for published release records.
 
-Read an entry as a statement about that version. Older configuration names, dependency choices, default values, soak sizes, and performance measurements remain here so an upgrade can be understood in context. For the current API, use the package READMEs and the [developer guide index](index.md); for a 1.x upgrade, start with the [migration mapping](migrating-to-v2.md).
+Read an entry as a statement about that version. Older configuration names, dependency choices, default values, soak sizes, and performance measurements remain here so an upgrade can be understood in context. For the current API, use the [React](../reference/react.md), [Vue](../reference/vue.md) and [Mantine](../reference/react-mantine.md) references and the [guide directory](index.md); for a 1.x upgrade, start with the [migration mapping](migrating-to-v2.md).
 
 Verification counts are historical results reported for the corresponding candidate. They are not newly executed checks for this documentation revision. Likewise, a clean fuzz or soak campaign establishes the result for its input families and configuration; later entries explain where expanding those families exposed additional defects.
 

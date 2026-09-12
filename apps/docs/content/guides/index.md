@@ -4,12 +4,12 @@ Start with the [documentation overview](../index.md) to choose an adapter, or [G
 
 ## Choose your adapter
 
-| Application              | First render                                              | Next task                                                                              |
-| ------------------------ | --------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| React                    | [React setup](react-quick-start.md)                       | [Streaming chat](streaming-chat-example.md), [custom components](custom-components.md) |
-| Vue                      | [Vue setup](vue-quick-start.md)                           | [Streaming](vue-streaming.md), [custom rendering](vue-customization.md)                |
-| React with Mantine       | [Mantine setup](react-mantine-quick-start.md)             | [Code blocks and diagrams](../reference/react-mantine.md#code-block-rendering)         |
-| Framework adapter author | [Core and engine contracts](api/core-engine-contracts.md) | [Architecture](architecture.md)                                                        |
+| Application              | First render                                        | Next task                                                                              |
+| ------------------------ | --------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| React                    | [React setup](react-quick-start.md)                 | [Streaming chat](streaming-chat-example.md), [custom components](custom-components.md) |
+| Vue                      | [Vue setup](vue-quick-start.md)                     | [Streaming](vue-streaming.md), [custom rendering](vue-customization.md)                |
+| React with Mantine       | [Mantine setup](react-mantine-quick-start.md)       | [Code blocks and diagrams](mantine-code-blocks.md)                                     |
+| Framework adapter author | [Build a framework adapter](building-an-adapter.md) | [Core and engine contracts](api/core-engine-contracts.md)                              |
 
 ## By scenario (start here)
 
@@ -27,7 +27,7 @@ Start with the [documentation overview](../index.md) to choose an adapter, or [G
 
 ## Full topic index
 
-The sidebar lists the framework tutorials and API references. For repository work, use [development commands](development-commands.md), [core testing](core-testing.md), [soak coverage](soak-coverage.md), [Storybook development](storybook.md), [documentation and deployment](documentation-site.md), and [releasing](releasing-3.0.md).
+The sidebar lists the framework tutorials and API references. For repository work, use [development commands](development-commands.md), [core testing](core-testing.md), [soak coverage](soak-coverage.md), [Storybook development](storybook.md), [documentation and deployment](documentation-site.md), and [releasing](releasing.md).
 
 Historical [1.x-to-2.x migration](migrating-to-v2.md) and [benchmark measurements](benchmark.md) describe their named versions, not today's installation requirements.
 
@@ -57,7 +57,7 @@ When in doubt, pin your overrides explicitly rather than relying on defaults.
 ## Conventions used in this guide
 
 - **Code blocks** are labeled by purpose. Complete recipes include their required imports; smaller fragments assume the surrounding application values, and wrapper templates use explicitly named placeholder modules. Install the package peers and import required CSS before using them.
-- **Footguns** sections at the end of each document collect anti-patterns and stability traps. Read them once per surface.
+- **Footguns** sections, where present, collect anti-patterns and stability traps. For symptoms and fixes across adapters, see [Troubleshooting](troubleshooting.md).
 - `// ✅` and `// ⚠️` callouts mark recommended vs anti-pattern code lines.
 - Where a behavior is shared by `@ai-markdown/react` and `@ai-markdown/react-mantine`, the example uses `AIMarkdown` (React adapter); apply identically to `MantineAIMarkdown`.
 
@@ -83,7 +83,7 @@ Follow a value through its owner before changing its documentation. Public props
 | What does an omitted prop do?              | React prop resolver and the wrapper's parameter defaults | Package props reference, migration guide   |
 | When can an old parse or block be reused?  | Incremental advance, block planner, MarkdownContent      | Architecture, streaming and performance    |
 | Which chunk owns a reference?              | Document registry and consuming placeholder              | Cross-chunk coordination, URL sanitization |
-| What text is displayed or copied?          | Engine preprocessor chain and Mantine code renderer      | Content preprocessors, Mantine README      |
+| What text is displayed or copied?          | Engine preprocessor chain and Mantine code renderer      | Content preprocessors, Mantine reference   |
 | When is a streamed result complete?        | Transport state, smooth controller, document queue       | Chat example, smooth streaming             |
 | What proves an optimization was exercised? | Coverage map, oracle tests, soak manifests               | Soak coverage, experimental record         |
 
@@ -91,4 +91,4 @@ When contributing documentation, retain useful examples and historical measureme
 
 ## Release maintenance
 
-- [Published-artifact verification](releasing-3.0.md#repeatable-published-artifact-verification)
+- [Published-artifact verification](releasing.md#repeatable-published-artifact-verification)

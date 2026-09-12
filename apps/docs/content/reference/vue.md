@@ -151,11 +151,52 @@ The `waiting` slot is used only when this component is inside `AIMarkdownDocumen
 
 The component exposes `flush()` through its template ref. Flushing respects the engine's grapheme hold-back while the source is live; it does not pretend that an unfinished grapheme is complete.
 
-For your own wrapper, call `useSmoothStream(() => ({ content, streaming, pacing }))` or `useDocumentSmoothStream(() => ({ content, streaming, pacing, documentId, coordinate }))` during setup. Returned `content` and `streaming` are read-only computed refs; the document variant also returns `pending`. Pass `.value` in render functions and let templates unwrap refs. Always pass a getter over live state rather than capturing a one-time object snapshot.
+For your own wrapper, call `useSmoothStream` or `useDocumentSmoothStream` during setup with a getter returning current string/boolean values. Read `.value` from application refs inside that getter; see the [complete wrapper example](../guides/vue-streaming.md#build-a-custom-wrapper-with-a-live-getter). Returned `content` and `streaming` are read-only computed refs; the document variant also returns `pending`. Pass `.value` in render functions and let templates unwrap refs. Always pass a getter over live state rather than capturing a one-time object snapshot.
+
+## Composable reference
+
+Import both composables and their input types from `@ai-markdown/vue`. Call them during component setup; a getter supplies live configuration rather than a one-time snapshot.
+
+| Input field  | Type                 | Default / contract                                                                      |
+| ------------ | -------------------- | --------------------------------------------------------------------------------------- |
+| `content`    | `string`             | Required complete accumulated source                                                    |
+| `streaming`  | `boolean`            | Omitted means the producer is not active                                                |
+| `pacing`     | `SmoothStreamPacing` | `smooth`, `balanced`, or `responsive`; omitted uses the engine's balanced preset        |
+| `documentId` | `string`             | Document variant only; an explicit ID inside `AIMarkdownDocuments` enables coordination |
+| `coordinate` | `boolean`            | Document variant only; `false` opts out, otherwise eligible participants coordinate     |
+
+`SmoothStreamInput` contains the first three fields. `DocumentSmoothStreamInput` extends it with document identity and coordination. Both functions take `input: () => Input`.
+
+| Returned member                   | Contract                                                                                                       |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `content: ComputedRef<string>`    | Read-only visible source; templates unwrap top-level refs and render functions use `.value`                    |
+| `streaming: ComputedRef<boolean>` | True while the producer is active or the visible source still differs from the input                           |
+| `flush(): void`                   | Reveals available text; before mounting there is no controller to flush; live grapheme hold-back still applies |
+| `pending: ComputedRef<boolean>`   | Document variant only; true while an empty-at-mount participant waits for its turn                             |
+
+Controllers and watchers are created on mount and released on unmount. Initial/SSR content is complete. Changing pacing updates the existing controller's live options. The document variant releases its previous coordinator subscription when document identity or coordination eligibility changes.
+
+`AIMarkdownSmoothStream` applies these results to `AIMarkdown`. Its extra props are `pacing` (default `balanced`) and `coordinate` (default `true`), and its template ref exposes `flush()`. It does not emit a completion event; use the returned computed state in a custom composable wrapper when your application needs to observe reveal completion.
+
+## Slots and context types
+
+| Slot                                         | Context and behavior                                                                                                                               |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| An HTML element name such as `strong` or `a` | Receives `MarkdownElementContext`; takes precedence over the matching `components` entry                                                           |
+| `cursor`                                     | Receives `{ streaming: true }`; supplies content inside the measured cursor shell while the renderer is streaming and `streamingCursor` is enabled |
+| `waiting`                                    | Smooth component only; no slot props; replaces the renderer while document turn-taking is pending                                                  |
+
+`MarkdownElementContext` contains `node` (the render-owned HAST element), `properties` (sanitized element properties), `children` (converted Vue children), `streaming` (boolean), and `metadata` (unknown application data). It is the element-slot contract, not the cursor-slot contract.
+
+`MarkdownComponents` is a read-only tag-to-Vue-component map. Mapped components receive element attributes plus `node`, `streaming`, and `metadata`, with converted children in their default slot. `MarkdownElementSlot` is a function from `MarkdownElementContext` to a Vue child value. See [custom rendering](../guides/vue-customization.md) for complete examples.
+
+`AIMarkdownDocuments` accepts its default slot and renders a fragment. It has no declared configuration props; orphan-reference policy belongs to each renderer. It owns the document scope, rather than adding a layout element.
 
 ## Cursor behavior
 
 The cursor measures the final visible prose text using DOM ranges and follows content mutation, resizing and scrolling. Code, math, image and unsupported element tails hide it rather than anchoring to an earlier paragraph. Shared `deriveTailSignal` identifies invisible link definitions and footnote-definition tails; a footnote cursor is shown only when its actual footer is in this component. Observers and animation frames are released on unmount. The default animation respects reduced motion.
+
+The exported `AIMarkdownStreamingCursor` has no declared custom props. Its default slot supplies the indicator, falling back to `▍`. It measures its direct parent and renders an absolutely positioned, `aria-hidden` shell. Prefer the renderer's `cursor` slot, which keeps the component inside the correct measurement root and supplies the tail markers. If mounting the cursor directly, your wrapper owns its placement and mount/unmount condition; the standalone component does not read a `streaming` prop.
 
 ## API and distribution
 

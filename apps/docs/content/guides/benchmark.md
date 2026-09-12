@@ -1,4 +1,4 @@
-# Benchmark: block-memo × incremental parse
+# Historical benchmark: July 2026
 
 This page preserves the in-browser comparison study for block memoization and incremental prefix-freeze parsing. It separates pipeline stage time from React commit time and keeps the measured payload sizes, run counts, and noise bands so the reported savings can be interpreted and reproduced.
 
@@ -167,8 +167,4 @@ on the dev machine.
 
 ## Re-measure a current change
 
-Choose the question first. For an incremental-parser change, compare parse and transform stages with identical plugin selections and input snapshots. For a custom renderer or code-highlighting change, use a production browser app and include the same CSS and providers an application uses. For coordinated references, include multiple mounted chunks and definition changes; standalone numbers cannot estimate registry fanout.
-
-Record the commit, package versions, browser, device, build mode, payload, delivery schedule, and repetitions with the result. Preserve correctness checking alongside timing. Normalize generated document prefixes only where the equality harness requires it; do not erase a meaningful href, missing footer, or reordered node merely to make a comparison pass.
-
-Compare each scenario with itself before and after the change. Report medians or repeated runs with their spread, identify timeouts explicitly, and separate warm startup from steady streaming. A large relative parser saving can coexist with a small end-to-end improvement when highlighting or layout dominates; that is a useful attribution result, not a contradiction.
+Follow [Benchmarking](benchmarking.md) for current measurement methods and reporting requirements.
