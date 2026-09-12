@@ -8,13 +8,15 @@ export function normalizeBase(base = '/') {
   return `${base.replace(/\/+$/, '')}/`;
 }
 
-export function rewriteUrl(url, source, entries, base = '/', storybook = '') {
+export function rewriteUrl(url, source, entries, base = '/', storybook = '', locale = '') {
+  const localizedBase = `${normalizeBase(base)}${locale ? `${locale}/` : ''}`;
+  if (url.startsWith('english:')) return `${normalizeBase(base)}${url.slice('english:'.length)}`;
   const publicSite = 'https://ai-markdown.github.io/';
   if (url === publicSite || url.startsWith(`${publicSite}docs/`) || url.startsWith(`${publicSite}examples/`))
-    return `${normalizeBase(base)}${url.slice(publicSite.length)}`;
-  if (url === 'examples:') return `${normalizeBase(base)}examples/`;
+    return `${localizedBase}${url.slice(publicSite.length)}`;
+  if (url === 'examples:') return `${localizedBase}examples/`;
   if (url.startsWith('storybook:')) {
-    if (!storybook) return `${normalizeBase(base)}docs/guides/storybook/`;
+    if (!storybook) return `${localizedBase}docs/guides/storybook/`;
     const suffix = url.slice('storybook:'.length);
     return `${storybook.replace(/\/$/, '')}/${suffix}`;
   }
@@ -56,7 +58,8 @@ export function repositoryLinks({ base = '/', storybook = '' } = {}) {
             page.canonicalSource || page.source,
             localizedEntries,
             base,
-            storybook
+            storybook,
+            page.locale || ''
           );
         }
       }

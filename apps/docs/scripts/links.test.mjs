@@ -126,3 +126,31 @@ test('moved references keep legacy README source links and fragments', () => {
     );
   }
 });
+
+test('Chinese links keep their locale while explicit English and Storybook links keep their target', () => {
+  const entries = [
+    { source: 'apps/docs/content/guides/next.md', slug: 'zh-cn/docs/guides/next', locale: 'zh-cn' },
+    { source: 'apps/docs/content/guides/next.md', slug: 'docs/guides/next' },
+  ];
+  const source = 'apps/docs/content/guides/current.md';
+  for (const base of ['/', '/ai-markdown/']) {
+    assert.equal(rewriteUrl('next.md', source, entries, base, '', 'zh-cn'), `${base}zh-cn/docs/guides/next/`);
+    assert.equal(rewriteUrl('examples:', source, entries, base, '', 'zh-cn'), `${base}zh-cn/examples/`);
+    assert.equal(
+      rewriteUrl('https://ai-markdown.github.io/docs/', source, entries, base, '', 'zh-cn'),
+      `${base}zh-cn/docs/`
+    );
+    assert.equal(
+      rewriteUrl('english:docs/guides/next/', source, entries, base, '', 'zh-cn'),
+      `${base}docs/guides/next/`
+    );
+    assert.equal(
+      rewriteUrl('storybook:vue/', source, entries, base, '', 'zh-cn'),
+      `${base}zh-cn/docs/guides/storybook/`
+    );
+    assert.equal(
+      rewriteUrl('storybook:vue/', source, entries, base, `${base}storybook/`, 'zh-cn'),
+      `${base}storybook/vue/`
+    );
+  }
+});

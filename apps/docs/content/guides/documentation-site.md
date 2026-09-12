@@ -1,6 +1,6 @@
 # Documentation site
 
-The independent documentation site uses [Astro Starlight](https://starlight.astro.build/getting-started/) in the private `apps/docs` workspace. React and Vue have separate API entries; Mantine is a React integration. Shared concepts and Core / Engine contracts have their own navigation groups. The initial site uses the repository's English content.
+The independent documentation site uses [Astro Starlight](https://starlight.astro.build/getting-started/) in the private `apps/docs` workspace. React and Vue have separate API entries; Mantine is a React integration. Shared concepts and Core / Engine contracts have their own navigation groups. English keeps unprefixed URLs; Simplified Chinese uses `/zh-cn/`.
 
 ## Run and build
 
@@ -22,7 +22,7 @@ No renderer package build is required. The site renders documentation and code e
 - `apps/docs/content/guides/*.md` and `apps/docs/content/guides/api/*.md` are the canonical usage, architecture and maintenance guides.
 - `apps/docs/content/reference/{react,vue,react-mantine}.md` own the full adapter references. Their routes remain `/docs/react/`, `/docs/vue/` and `/docs/react/mantine/`.
 - Adapter package READMEs contain installation, a minimal example and documentation links. Core, engine and the independently versioned highlight plugin still use their package READMEs as their reference sources.
-- `apps/docs/content/` owns the documentation overview, example directory and optional translations. The standalone English homepage lives in `apps/docs/src/pages/index.astro`.
+- `apps/docs/content/` owns the documentation overview, example directory and translations. English and Chinese homepage routes share `apps/docs/src/components/Home.astro`; the Examples routes share `Examples.astro`.
 - `apps/docs/scripts/content.mjs` maps these sources to routes and generates Starlight frontmatter with an edit link to the canonical file. The adapter references declare their former README paths as source aliases, so existing README links and fragments still resolve to the full site reference.
 - `apps/docs/src/content/docs/` is generated and ignored by Git. Do not edit it. Development watches canonical sources and regenerates changed pages, including additions and deletions.
 
@@ -65,11 +65,11 @@ The optional Sites configuration in `apps/docs/.openai/hosting.json` identifies 
 
 The site root `/` is a standalone project homepage. `/docs/` is the documentation overview, and guides and package references live below that path (for example `/docs/react/` and `/docs/guides/getting-started/`). `DOCS_BASE` remains an optional deployment prefix for the whole site, so `/preview/` produces `/preview/` and `/preview/docs/`.
 
-The shared header provides Docs navigation, search, a language menu and Starlight's Auto / Light / Dark selector on both the homepage and documentation pages. Auto follows the system color scheme; explicit choices persist across navigation and reloads. The language menu currently contains only English.
+The shared header provides Docs navigation, search, a language menu and Starlight's Auto / Light / Dark selector on both the homepage and documentation pages. Auto follows the system color scheme; explicit choices persist across navigation and reloads. The language menu switches between English and Simplified Chinese while retaining the equivalent page.
 
-Language configuration lives in `apps/docs/src/i18n/config.mjs`. English is the `root` locale, so English URLs have no `/en/` prefix. Custom navigation translations live in `apps/docs/src/content/i18n/en.json`; Starlight supplies the standard UI translations.
+Language configuration lives in `apps/docs/src/i18n/config.mjs`. English is the `root` locale, so English URLs have no `/en/` prefix. Custom navigation translations live in `apps/docs/src/content/i18n/`; Starlight supplies the standard UI translations.
 
-To add another documentation language, add its locale configuration and translated guides under `apps/docs/content/translations/<locale>/`, mirroring the canonical repository paths (for example `fr/apps/docs/content/guides/getting-started.md` or `fr/apps/docs/content/reference/vue.md`). Keep the leading H1 and the original source-relative links. Generated pages use `/<locale>/docs/...`; missing translations use Starlight's English fallback. The language selector automatically switches to Starlight's multilingual selector once another locale is enabled. Localized homepage content and its route must be added before publishing that locale; the initial homepage is English only.
+To add another documentation language, add its locale configuration and translated guides under `apps/docs/content/translations/<locale>/`, mirroring the canonical repository paths (for example `fr/apps/docs/content/guides/getting-started.md` or `fr/apps/docs/content/reference/vue.md`). Keep the leading H1 and the original source-relative links. Generated pages use `/<locale>/docs/...`; missing translations use Starlight's English fallback. Both published locales have homepage and Examples routes. Add equivalent standalone routes before publishing any further locale. Chinese articles link to English details with the explicit `english:` link prefix; historical archive pages provide Chinese introductions while preserving the full English records. Storybook catalogs currently retain their English controls and story names. The documentation tests require a Chinese source for every English topic and verify localized routes, links and search indexes.
 
 ## GitHub Pages
 

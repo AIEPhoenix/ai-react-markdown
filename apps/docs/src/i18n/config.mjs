@@ -1,2 +1,2 @@
-// English uses unprefixed routes. Add published languages here when translations are ready.
-export const locales = { root: { label: 'English', lang: 'en' } };
+// English keeps its existing unprefixed URLs.
+export const locales = { root: { label: 'English', lang: 'en' }, 'zh-cn': { label: '简体中文', lang: 'zh-CN' } };

@@ -11,7 +11,7 @@ const inDocs = Astro.url.pathname.startsWith(`${localizedBase}docs/`);
 
 <div class="site-header">
   <div class="brand"><SiteTitle /></div>
-  <nav aria-label="Primary" class="primary-nav">
+  <nav aria-label={locale === 'zh-cn' ? '主导航' : 'Primary'} class="primary-nav">
     <a href={`${localizedBase}docs/`} aria-current={inDocs ? 'location' : undefined}>{Astro.locals.t('nav.docs')}</a>
     <a class="examples-link" aria-current={Astro.url.pathname.startsWith(`${localizedBase}examples/`) ? 'page' : undefined} href={`${localizedBase}examples/`}>{Astro.locals.t('nav.examples')}</a>
     <a class="github-link" href="https://github.com/ai-markdown/ai-markdown">GitHub ↗</a>

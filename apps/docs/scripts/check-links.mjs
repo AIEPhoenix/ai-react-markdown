@@ -7,6 +7,7 @@ import { fromHtml } from 'hast-util-from-html';
 import { visit } from 'unist-util-visit';
 import { root, pages } from './content.mjs';
 import { normalizeBase } from './links.mjs';
+import { locales } from '../src/i18n/config.mjs';
 
 const dist = resolve(root, env.DOCS_DIST || 'apps/docs/dist');
 const base = normalizeBase(env.DOCS_BASE);
@@ -41,33 +42,51 @@ for (const file of html) {
   documents.set(file, { ids, links, tree });
 }
 const failures = [];
-for (const [route, sidebar] of [
-  ['', false],
-  ['docs', true],
-  ['examples', false],
-]) {
-  const document = documents.get(resolve(dist, route, 'index.html'));
-  assert(document, `Missing ${route || 'homepage'}`);
-  let html;
-  const options = [];
-  visit(document.tree, 'element', (node) => {
-    if (node.tagName === 'html') html = node;
-    if (node.tagName === 'option') options.push(node);
-  });
-  assert.equal(html.properties.lang, 'en');
-  assert.equal('dataHasSidebar' in html.properties, sidebar, `Wrong sidebar on ${route || 'homepage'}`);
-  for (const theme of ['auto', 'light', 'dark']) assert(options.some((option) => option.properties.value === theme));
-  assert(options.some((option) => option.children.some((child) => child.type === 'text' && child.value === 'English')));
-  assert(document.links.includes(`${base}docs/`), 'Docs navigation must enter the documentation area');
-  assert(document.links.includes(`${base}examples/`), 'Examples navigation must enter the embedded workspace');
-  if (route === 'examples') {
-    let embedded = false;
+for (const [locale, config] of Object.entries(locales)) {
+  const prefix = locale === 'root' ? '' : `${locale}/`;
+  for (const [pageRoute, sidebar] of [
+    ['', false],
+    ['docs', true],
+    ['examples', false],
+  ]) {
+    const route = `${prefix}${pageRoute}`;
+    const document = documents.get(resolve(dist, route, 'index.html'));
+    assert(document, `Missing ${route || 'homepage'}`);
+    let html;
+    const options = [];
     visit(document.tree, 'element', (node) => {
-      if (node.tagName === 'iframe' && node.properties.id === 'examples-catalog') {
-        embedded = Boolean(node.properties.src && node.properties.title);
-      }
+      if (node.tagName === 'html') html = node;
+      if (node.tagName === 'option') options.push(node);
     });
-    assert(embedded, 'Examples must include an accessible Storybook iframe');
+    assert.equal(html.properties.lang, config.lang);
+    assert.equal('dataHasSidebar' in html.properties, sidebar, `Wrong sidebar on ${route || 'homepage'}`);
+    for (const theme of ['auto', 'light', 'dark']) assert(options.some((option) => option.properties.value === theme));
+    for (const [targetLocale, targetConfig] of Object.entries(locales)) {
+      const targetPrefix = targetLocale === 'root' ? '' : `${targetLocale}/`;
+      const target = `${base}${targetPrefix}${pageRoute ? `${pageRoute}/` : ''}`;
+      assert(
+        options.some(
+          (option) =>
+            option.properties.value === target &&
+            option.children.some((child) => child.type === 'text' && child.value === targetConfig.label)
+        ),
+        `Missing language target: ${target}`
+      );
+    }
+    assert(document.links.includes(`${base}${prefix}docs/`), 'Docs navigation must enter the documentation area');
+    assert(
+      document.links.includes(`${base}${prefix}examples/`),
+      'Examples navigation must enter the embedded workspace'
+    );
+    if (pageRoute === 'examples') {
+      let embedded = false;
+      visit(document.tree, 'element', (node) => {
+        if (node.tagName === 'iframe' && node.properties.id === 'examples-catalog') {
+          embedded = Boolean(node.properties.src && node.properties.title);
+        }
+      });
+      assert(embedded, 'Examples must include an accessible Storybook iframe');
+    }
   }
 }
 for (const { slug } of pages())
@@ -98,5 +117,10 @@ for (const [file, { links }] of documents) {
 }
 // Search is part of the static deliverable, not just a development affordance.
 await stat(resolve(dist, 'pagefind/pagefind.js'));
+const searchIndex = JSON.parse(await readFile(resolve(dist, 'pagefind/pagefind-entry.json'), 'utf8'));
+for (const { lang } of Object.values(locales)) {
+  const index = searchIndex.languages[lang.toLowerCase()];
+  assert(index?.page_count > 0, `Missing search index for ${lang}`);
+}
 if (failures.length) throw new Error(`Built-site links failed:\n${failures.join('\n')}`);
 stdout.write(`Checked ${documents.size} HTML pages, all local links/anchors, and the Pagefind bundle.\n`);

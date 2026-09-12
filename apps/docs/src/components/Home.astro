@@ -1,0 +1,342 @@
+---
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+import { Code } from '@astrojs/starlight/components';
+const chinese = Astro.props.chinese === true;
+const copy: Record<string, string> = {
+  "AI Markdown — Markdown for streaming interfaces": "AI Markdown — 为流式界面而生的 Markdown",
+  "Render rich Markdown in React and Vue. Built for streaming AI responses, with a shared engine and flexible framework integrations.": "在 React 和 Vue 中呈现丰富的 Markdown。共享解析引擎，适配 AI 流式响应与不同框架。",
+  "Markdown for AI, built for the stream.": "为 AI 而生，为流式呈现而设计。",
+  "From the first token to the final response. Rich Markdown for React and Vue, built on one shared engine.": "从第一个字符到完整回答，用共享引擎为 React 和 Vue 呈现丰富的 Markdown。",
+  "Get started": "快速开始",
+  "Read the docs": "阅读文档",
+  "01 / MADE FOR THE IN-BETWEEN": "01 / 从容处理生成中的内容",
+  "A document in motion.": "让文档随内容生长。",
+  "An open code fence. An unfinished formula. A footnote still on its way. Keep appending to one Markdown string while AI Markdown handles the intermediate states.": "尚未闭合的代码块、正在生成的公式、稍后到达的脚注。持续追加同一份 Markdown 字符串，由 AI Markdown 处理生成过程中的状态。",
+  "Explore streaming →": "了解流式渲染 →",
+  "Rendered message": "渲染结果",
+  "From tokens to thoughtful answers.": "从逐字生成到完整表达。",
+  "A clear answer, with ": "清晰的回答，配合",
+  "rich formatting": "丰富格式",
+  " and room for every language.": "，让不同语言自然呈现。",
+  "02 / CHOOSE YOUR STARTING POINT": "02 / 选择你的框架",
+  "One engine. Your framework.": "共享引擎，融入你的框架。",
+  "Components, hooks and custom renderers that fit your application.": "用组件、Hooks 与自定义渲染器融入 React 应用。",
+  "React documentation →": "React 文档 →",
+  "Reactive props, scoped slots and composables for Vue applications.": "为 Vue 应用提供响应式属性、作用域插槽和组合式函数。",
+  "Vue documentation →": "Vue 文档 →",
+  "Theme-aware typography, highlighted code and Mermaid diagrams.": "集成主题排版、代码高亮和 Mermaid 图表。",
+  "Mantine integration →": "Mantine 集成 →",
+  "Rendering capabilities": "渲染能力",
+  "Room for your UI.": "为你的界面留出空间。",
+  "Use your own components, styles and URL policies. Keep application behavior in your application.": "使用自己的组件、样式和 URL 策略，由应用掌控交互行为。",
+  "Find a customization guide →": "查看定制指南 →",
+  "Built on shared foundations.": "立足于共享基础。",
+  "Parsing and streaming coordination live in the shared engine and core. Framework adapters handle the lifecycle.": "引擎与核心层负责解析和流式协调，框架适配器管理各自的生命周期。",
+  "Explore Core / Engine →": "了解 Core / Engine →",
+  "ai-markdown · From the first token to the final footnote.": "ai-markdown · 从第一个字符到最后一条脚注。",
+  "Meet the project ↗": "了解项目 ↗"
+};
+const t = (value: string) => chinese ? (copy[value] ?? value) : value;
+const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
+const docs = `${base}${chinese ? 'zh-cn/' : ''}docs/`;
+const example = `import AIMarkdown, { AIMarkdownStreamingCursor } from '@ai-markdown/react';
+import '@ai-markdown/react/typography/default.css';
+
+export function Message({ text, streaming }: { text: string; streaming: boolean }) {
+  return (
+    <AIMarkdown
+      content={text}
+      streaming={streaming}
+      streamingCursor={AIMarkdownStreamingCursor}
+    />
+  );
+}`;
+---
+
+<StarlightPage frontmatter={{
+  title: t("AI Markdown \u2014 Markdown for streaming interfaces"),
+  description: t("Render rich Markdown in React and Vue. Built for streaming AI responses, with a shared engine and flexible framework integrations."),
+  template: 'splash',
+  editUrl: false,
+  lastUpdated: false,
+  pagination: false,
+  pagefind: false,
+  hero: {
+    title: t("Markdown for AI, built for the stream."),
+    tagline: t("From the first token to the final response. Rich Markdown for React and Vue, built on one shared engine."),
+    actions: [
+      { text: t("Get started"), link: `${docs}guides/getting-started/`, icon: 'right-arrow' },
+      { text: t("Read the docs"), link: docs, variant: 'minimal' },
+    ],
+  },
+}}>
+  <div class="home-content not-content">
+    <section class="showcase" aria-labelledby="showcase-title">
+      <div class="section-intro">
+        <p class="eyebrow">{t("01 / MADE FOR THE IN-BETWEEN")}</p>
+        <h2 id="showcase-title">{t("A document in motion.")}</h2>
+        <p>{t("An open code fence. An unfinished formula. A footnote still on its way. Keep appending to one Markdown string while AI Markdown handles the intermediate states.")}</p>
+        <a href={`${docs}guides/streaming-and-performance/`}>{t("Explore streaming \u2192")}</a>
+      </div>
+      <div class="example-panel">
+        <div class="panel-label"><span>React</span><span>Message.tsx</span></div>
+        <Code code={example} lang="tsx" />
+        <div class="rendered-example">
+          <span class="output-label">{t("Rendered message")}</span>
+          <h3>{t("From tokens to thoughtful answers.")}</h3>
+          <p>{t("A clear answer, with ")}<strong>{t("rich formatting")}</strong>{t(" and room for every language.")}<span class="stream-cursor" aria-hidden="true"></span></p>
+          <div class="multilingual-sample"><span lang="en">Hello, world.</span><span lang="zh-Hans">你好，世界。</span><span lang="ja">こんにちは、世界。</span></div>
+          <div class="format-labels"><span>Markdown</span><span>GFM</span><span>LaTeX</span><span>CJK</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="framework-section" aria-labelledby="framework-title">
+      <p class="eyebrow">{t("02 / CHOOSE YOUR STARTING POINT")}</p>
+      <h2 id="framework-title">{t("One engine. Your framework.")}</h2>
+      <div class="framework-grid">
+        <a href={`${docs}react/`} class="framework-card"><span class="card-number">@ai-markdown/react</span><h3>React</h3><p>{t("Components, hooks and custom renderers that fit your application.")}</p><span class="card-link">{t("React documentation \u2192")}</span></a>
+        <a href={`${docs}vue/`} class="framework-card"><span class="card-number">@ai-markdown/vue</span><h3>Vue</h3><p>{t("Reactive props, scoped slots and composables for Vue applications.")}</p><span class="card-link">{t("Vue documentation \u2192")}</span></a>
+        <a href={`${docs}react/mantine/`} class="framework-card"><span class="card-number">@ai-markdown/react-mantine</span><h3>Mantine</h3><p>{t("Theme-aware typography, highlighted code and Mermaid diagrams.")}</p><span class="card-link">{t("Mantine integration \u2192")}</span></a>
+      </div>
+    </section>
+
+    <section class="principles" aria-label={t("Rendering capabilities")}>
+      <div><h2>{t("Room for your UI.")}</h2><p>{t("Use your own components, styles and URL policies. Keep application behavior in your application.")}</p><a href={`${docs}guides/`}>{t("Find a customization guide \u2192")}</a></div>
+      <div><h2>{t("Built on shared foundations.")}</h2><p>{t("Parsing and streaming coordination live in the shared engine and core. Framework adapters handle the lifecycle.")}</p><a href={`${docs}guides/api/core-engine-contracts/`}>{t("Explore Core / Engine \u2192")}</a></div>
+    </section>
+    <footer class="home-footer"><span>{t("ai-markdown \u00b7 From the first token to the final footnote.")}</span><a href="https://github.com/ai-markdown">{t("Meet the project \u2197")}</a></footer>
+  </div>
+</StarlightPage>
+
+<style>
+.home-content a {
+  color: var(--sl-color-text-accent);
+}
+.home-content {
+  --home-border: var(--sl-color-hairline-light);
+}
+.home-content section {
+  margin-block: 5rem;
+}
+.showcase {
+  display: grid;
+  grid-template-columns: 0.85fr 1.15fr;
+  gap: 3rem;
+  align-items: center;
+}
+.home-content .eyebrow {
+  color: var(--sl-color-text-accent);
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+.home-content h2 {
+  margin-top: 0.75rem;
+  font-size: clamp(1.8rem, 3vw, 2.6rem);
+  line-height: 1.2;
+  letter-spacing: -0.03em;
+}
+.home-content p {
+  margin-block: 1rem;
+  color: var(--sl-color-gray-2);
+  line-height: 1.75;
+}
+.section-intro > a,
+.principles a {
+  display: inline-block;
+  margin-top: 1.25rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.example-panel {
+  overflow: hidden;
+  border: 1px solid var(--home-border);
+  border-radius: 1rem;
+  background: var(--sl-color-bg-nav);
+}
+.panel-label {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.875rem 1.25rem;
+  font-family: var(--sl-font-mono);
+  font-size: 0.875rem;
+  border-bottom: 1px solid var(--home-border);
+}
+.example-panel :global(.expressive-code) {
+  margin: 0;
+}
+.example-panel :global(.expressive-code pre) {
+  border: 0;
+  border-radius: 0;
+}
+.rendered-example {
+  padding: 1.5rem;
+  border-top: 1px solid var(--home-border);
+}
+.output-label {
+  font-size: 0.875rem;
+  color: var(--sl-color-gray-2);
+}
+.rendered-example h3 {
+  font-size: 1.2rem;
+  margin-block: 1rem 0.5rem;
+}
+.stream-cursor {
+  display: inline-block;
+  height: 1em;
+  width: 0.4em;
+  margin-inline-start: 0.2em;
+  vertical-align: -0.1em;
+  background: var(--sl-color-text-accent);
+}
+.format-labels {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 1.25rem;
+}
+.format-labels span {
+  font-size: 0.8125rem;
+  padding: 0.15rem 0.6rem;
+  border: 1px solid var(--home-border);
+  border-radius: 0.3rem;
+}
+.framework-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin-top: 2rem;
+}
+.framework-card {
+  display: flex;
+  flex-direction: column;
+  padding: 1.75rem;
+  border: 1px solid var(--home-border);
+  border-radius: 0.75rem;
+  text-decoration: none;
+  color: var(--sl-color-text);
+}
+.framework-card:hover {
+  border-color: var(--sl-color-text-accent);
+  background: var(--sl-color-bg-nav);
+}
+.card-number {
+  font-family: var(--sl-font-mono);
+  font-size: 0.8125rem;
+  color: var(--sl-color-gray-2);
+}
+.framework-card h3 {
+  font-size: 1.75rem;
+  margin-block: 1.5rem 0;
+}
+.framework-card p {
+  flex: 1;
+}
+.card-link {
+  color: var(--sl-color-text-accent);
+  font-weight: 600;
+  margin-top: 1rem;
+}
+.principles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4rem;
+  padding-top: 3rem;
+  border-top: 1px solid var(--home-border);
+}
+.home-footer {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding-block: 2rem;
+  border-top: 1px solid var(--home-border);
+  font-size: 0.875rem;
+  color: var(--sl-color-gray-2);
+}
+@media (max-width: 50rem) {
+  .showcase,
+  .framework-grid,
+  .principles {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+  .home-content section {
+    margin-block: 3rem;
+  }
+}
+
+.home-content section {
+  margin-block: 4.5rem;
+}
+.home-content .eyebrow {
+  font-family: var(--sl-font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+}
+.showcase {
+  grid-template-columns: 0.8fr 1.2fr;
+  gap: 3.5rem;
+}
+.section-intro {
+  border-inline-start: 2px solid var(--sl-color-accent);
+  padding-inline-start: 1.5rem;
+}
+.example-panel {
+  box-shadow: 0 18px 55px -30px #062a354d;
+}
+.panel-label {
+  background: var(--sl-color-accent-low);
+}
+.rendered-example {
+  background: var(--sl-color-bg);
+}
+.multilingual-sample {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  color: var(--sl-color-gray-2);
+  margin-block: 1rem;
+  font-size: 0.875rem;
+}
+.framework-card {
+  border-radius: 0.75rem;
+  border-top: 3px solid var(--sl-color-accent);
+  transition:
+    border-color 150ms ease,
+    background 150ms ease;
+}
+.framework-card:nth-child(2) {
+  border-top-color: #42b883;
+}
+.framework-card:nth-child(3) {
+  border-top-color: #339af0;
+}
+.framework-card .card-number {
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+.framework-card h3 {
+  margin-top: 1rem;
+}
+.principles {
+  gap: 3.5rem;
+}
+.home-footer {
+  font-family: var(--sl-font-mono);
+  font-size: 0.75rem;
+}
+@media (max-width: 50rem) {
+  .showcase {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .framework-card {
+    transition: none;
+  }
+}
+</style>
