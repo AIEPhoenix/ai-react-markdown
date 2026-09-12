@@ -228,15 +228,15 @@ order, so existing code needs no update.
 | -------------------------- | ----------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `preserveOrphanReferences` | `boolean`   | `true`  | Controls orphan-reference protection for every chunk under this wrapper. Unconditionally overrides each chunk's `preserveOrphanReferences` prop. Does not gate cross-chunk coordination itself (that's gated by wrapper + `documentId`).                                                                                                          |
 | `smoothTurnTaking`         | `boolean`   | `true`  | Wrapper-level switch for smooth-stream turn-taking: when `true`, `<AIMarkdownSmoothStream>` chunks sharing this `documentId` type one at a time in mount order. `false` lets every chunk pace independently. See [smooth streaming → turn-taking](https://ai-markdown.github.io/docs/guides/smooth-streaming/#multi-chunk-documents-turn-taking). |
-| `children`                 | `ReactNode` | -       | The `<AIMarkdown>` instances to coordinate. Nesting `<AIMarkdownDocuments>` inside another `<AIMarkdownDocuments>` throws.                                                                                                                                                                                                                        |
+| `children`                 | `ReactNode` | -       | The `<AIMarkdown>` instances to coordinate. Do not nest document wrappers: development throws; production logs an error and renders children using the outer wrapper.                                                                                                                                                                             |
 
 ### `useDocumentRegistry(documentId)`
 
-Returns the cross-chunk `Registry` for the given `documentId`, or
-`null` when called outside `<AIMarkdownDocuments>` or when
-`documentId` is empty. The `Registry` shape is exported and stable
-across minor versions — use it when writing typed helpers that operate
-on the cross-chunk registry directly.
+The full signature is `useDocumentRegistry(documentId: string | undefined, documentIdExplicit?: boolean): Registry | null`. The second argument defaults to `true`; pass `false` when the identity was generated automatically rather than supplied for coordination.
+
+Returns the provider-owned registry for the ID, or `null` outside `<AIMarkdownDocuments>`, for an empty/undefined ID, or when `documentIdExplicit` is false. The read-only `Registry` type is exported; the hook does not register a chunk or subscribe the component to registry changes.
+
+For reactive reads, pair a registry subscription with cleanup through React's external-store API; see [Reactive registry reads](../guides/cross-chunk-coordination.md#reactively-reading-the-registry). Treat returned definitions and snapshots as borrowed data. Provider and renderer lifecycle owns registration and release; a consumer of this read hook must not mutate registry internals.
 
 ```tsx
 import { useDocumentRegistry, type Registry } from '@ai-markdown/react';
