@@ -79,6 +79,7 @@ test('the READMEs and the allowlisted guides follow the train version; historica
       ['apps', 'docs', 'content', 'reference', 'vue.md'],
       ['apps', 'docs', 'content', 'reference', 'react-mantine.md'],
       ['apps', 'docs', 'content', 'guides', 'index.md'],
+      ['apps', 'docs', 'content', 'guides', 'getting-started.md'],
       ['apps', 'docs', 'content', 'guides', 'extending-via-subpackage.md'],
     ])
       assert.equal(read(root, ...file), rewritten, file.join('/'));
@@ -89,7 +90,6 @@ test('the READMEs and the allowlisted guides follow the train version; historica
       'framework-transition.md',
       'releasing-3.0.md',
       'architecture.md',
-      'getting-started.md',
     ])
       assert.equal(read(root, 'apps', 'docs', 'content', 'guides', name), historical, name);
     assert.equal(JSON.parse(read(root, 'package.json')).version, '3.1.0');
@@ -130,7 +130,50 @@ test('the allowlist names the guides that carry a current-release snippet in thi
   const source = readFileSync(resolve('scripts', 'version-packages.mjs'), 'utf8');
   const [, list] = source.match(/const TRACKING_GUIDES = \[([^\]]*)\]/);
   const listed = [...list.matchAll(/'([^']+)'/g)].map(([, name]) => name);
-  assert.deepEqual(listed.sort(), ['extending-via-subpackage.md', 'index.md']);
+  assert.deepEqual(listed.sort(), ['extending-via-subpackage.md', 'getting-started.md', 'index.md']);
   for (const name of listed)
     assert.match(read(resolve('apps', 'docs', 'content', 'guides'), name), /@ai-markdown\/react/);
+});
+
+test('the real requirements page follows candidate and stable bumps without rewriting history', () => {
+  const root = fixture();
+  try {
+    const guidePath = ['apps', 'docs', 'content', 'guides', 'getting-started.md'];
+    const currentGuide = read(resolve('.'), ...guidePath);
+    const currentVersion = JSON.parse(read(resolve('.'), 'package.json')).version;
+    assert.ok(currentGuide.includes('This guide targets the `' + currentVersion + '` package train.'));
+    writeFileSync(join(root, ...guidePath), currentGuide);
+    const historyPath = ['apps', 'docs', 'content', 'guides', 'release-highlights.md'];
+    const history = read(resolve('.'), ...historyPath);
+    writeFileSync(join(root, ...historyPath), history);
+    for (const version of ['3.1.0-rc.1', '3.1.0']) {
+      run(root, version);
+      assert.equal(
+        read(root, ...guidePath),
+        currentGuide.replace(
+          'This guide targets the `' + currentVersion + '` package train.',
+          'This guide targets the `' + version + '` package train.'
+        )
+      );
+      assert.equal(read(root, ...historyPath), history);
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('current integration peer snippets match the Mantine manifest', () => {
+  const expected = JSON.parse(read(resolve('.'), 'packages', 'react-mantine', 'package.json')).peerDependencies[
+    '@ai-markdown/react'
+  ];
+  for (const path of [
+    ['apps', 'docs', 'content', 'reference', 'react-mantine.md'],
+    ['apps', 'docs', 'content', 'guides', 'extending-via-subpackage.md'],
+  ]) {
+    const ranges = [...read(resolve('.'), ...path).matchAll(/"@ai-markdown\/react":\s*"([^"]+)"/g)].map(
+      ([, range]) => range
+    );
+    assert.ok(ranges.length > 0, path.join('/'));
+    for (const range of ranges) assert.equal(range, expected, path.join('/'));
+  }
 });

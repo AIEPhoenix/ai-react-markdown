@@ -1,6 +1,6 @@
 # React hooks and providers
 
-Context hooks read the surrounding React renderer tree. The stability helpers can be used in other React components too. For component props, see the [React reference](../../reference/react.md#props-api-reference). Vue has separate setup composables.
+Context hooks read the surrounding React renderer tree. The stability helpers can be used in other React components too. For component props, see the [React props reference](react-props.md). For pacing hooks, see the [smooth streaming API](../smooth-streaming.md#api-reference); for registry access, see [`useDocumentRegistry`](../../reference/react.md#usedocumentregistrydocumentid). Vue has [separate setup composables](../../reference/vue.md#composable-reference).
 
 ## Hooks
 

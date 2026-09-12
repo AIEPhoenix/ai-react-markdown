@@ -59,7 +59,7 @@ pnpm add @ai-markdown/react
 yarn add @ai-markdown/react
 ```
 
-The React adapter declares both `@ai-markdown/core` and `@ai-markdown/engine` as ordinary dependencies, pinned to the same train version when packed (`3.0.1` in this checkout). Applications install `@ai-markdown/react`; the package manager resolves the shared layers automatically. Core owns sessions, planning and coordination, while engine owns parsing and tree algorithms. Adapter authors may depend on these layers directly and should keep their versions aligned. Exact pins reduce version mismatch; they do not guarantee a single module instance across arbitrary nested installations.
+The React adapter declares both `@ai-markdown/core` and `@ai-markdown/engine` as ordinary dependencies, pinned to the same train version when packed. Applications install `@ai-markdown/react`; the package manager resolves the shared layers automatically. Core owns sessions, planning and coordination, while engine owns parsing and tree algorithms. Adapter authors may depend on these layers directly and should keep their versions aligned. Exact pins reduce version mismatch; they do not guarantee a single module instance across arbitrary nested installations.
 
 ### Peer Dependencies
 

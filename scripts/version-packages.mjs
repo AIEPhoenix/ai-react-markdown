@@ -99,7 +99,7 @@ for (const dir of packageDirs) {
 // as written. Add a guide here only when its install or peer snippet is
 // meant to move with every train version.
 const GUIDES_DIR = join(ROOT, 'apps', 'docs', 'content', 'guides');
-const TRACKING_GUIDES = ['index.md', 'extending-via-subpackage.md'];
+const TRACKING_GUIDES = ['index.md', 'extending-via-subpackage.md', 'getting-started.md'];
 const readmePaths = [
   join(ROOT, 'README.md'),
   ...packageDirs.map((dir) => join(PACKAGES_DIR, dir, 'README.md')),
@@ -119,9 +119,17 @@ for (const readmePath of readmePaths) {
   for (const [pattern, replacement] of README_PATTERNS) {
     after = after.replace(pattern, replacement);
   }
+  // The requirements page names the checkout's train explicitly. Keep the
+  // versioned statement narrow so historical release descriptions never move.
+  if (readmePath === join(GUIDES_DIR, 'getting-started.md')) {
+    after = after.replace(
+      new RegExp('This guide targets the `' + VERSION + '` package train\\.'),
+      'This guide targets the `' + newVersion + '` package train.'
+    );
+  }
   if (after !== before) {
     writeFileSync(readmePath, after);
-    console.log(`${readmePath.slice(ROOT.length + 1)}: React version refs → ${newVersion}`);
+    console.log(`${readmePath.slice(ROOT.length + 1)}: Current version refs → ${newVersion}`);
   }
 }
 

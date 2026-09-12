@@ -30,6 +30,14 @@ The sidebar separates shared Concepts from React, Vue and Mantine (React) tutori
 
 New top-level guides and API guides are included automatically. Add their navigation entries in `apps/docs/astro.config.mjs`. Internal planning/review directories are excluded. Retained release history is identified by version and is separate from current integration guidance.
 
+## Keep current versions accurate
+
+The [package requirements page](getting-started.md) names the current train. `pnpm version-packages <version>` updates that statement along with allowlisted React install and peer snippets. Avoid repeating the train version in other introductory prose; link to the requirements page or the relevant peer table instead.
+
+`pnpm test:release-control` checks the requirements statement against the root manifest and the integration peer snippets against Mantine's manifest. It also exercises candidate-to-stable updates on the actual requirements page while keeping release history unchanged. These checks cover the version statements and peer snippets, not every API or external dependency requirement: review framework and Node requirements when their manifests change.
+
+Historical releases, migration records and benchmark measurements keep their original versions. Do not add them to the updater's current-guide allowlist. Published npm README snapshots belong to their original tarballs; changing a repository README does not replace an already published version.
+
 ## Links and deployment paths
 
 Rendered Markdown links, reference links and raw HTML links to included documents become site routes. Source-code links remain GitHub links. Absolute GitHub `blob/main` links to included documents also become site routes. Code blocks are never rewritten. Edit links always target canonical sources.

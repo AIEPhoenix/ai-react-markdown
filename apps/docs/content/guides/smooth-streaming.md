@@ -226,9 +226,20 @@ switch is `smoothTurnTaking` on `<AIMarkdownDocuments>` (default `true`).
 
 ### `useSmoothStream(options)`
 
-Options: `content`, `streaming`, `pacing` (the same preset, unprefixed),
-and `onDrained`. Returns `{ content, streaming, flush }` where `content` is
-the revealed prefix and `streaming` stays `true` until drained.
+Import the hook and `UseSmoothStreamOptions` / `UseSmoothStreamResult` types from `@ai-markdown/react`. Call the hook in a React component or custom hook.
+
+| Option      | Type                                   | Default and behavior                                                                                    |
+| ----------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `content`   | `string`                               | Required complete accumulated source                                                                    |
+| `streaming` | `boolean`                              | `false`; reports whether the producer is active                                                         |
+| `pacing`    | `SmoothStreamPacing`                   | `balanced`; updates live without replacing the controller                                               |
+| `onDrained` | `() => void`                           | Omitted; called once when a real backlog finishes, not for an initial/static snap or source replacement |
+| `now`       | `() => number`                         | Engine clock; advanced test seam, captured when the hook constructs its controller                      |
+| `schedule`  | `(callback: () => void) => () => void` | Engine frame scheduler; advanced test seam, captured at construction                                    |
+
+The result is `{ content: string, streaming: boolean, flush: () => void }`. `content` is the visible prefix; `streaming` is true while the producer is active or text remains to reveal. `flush` has stable identity and reveals available text immediately, subject to live grapheme hold-back. It does not stop the producer.
+
+Initial and server content is complete. Effects feed later input to the retained controller; unmount disposes it and unsubscribes. Callback identity changes are safe: the next committed effect updates `onDrained`. An injected scheduler must invoke its callback asynchronously and return a cancellation function; changing `now` or `schedule` on later renders does not replace the controller.
 
 ### `useDocumentSmoothStream(options)`
 
