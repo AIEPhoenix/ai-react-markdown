@@ -1,4 +1,4 @@
-# Getting started
+# Packages and requirements
 
 ai-markdown renders accumulated Markdown in React 19 or Vue 3.5. Both adapters use the same parsing engine and shared orchestration; their components, customization and lifecycle APIs follow their host framework. This guide targets stable `3.0.1`. Install without a dist-tag to select `latest`, or pin `3.0.1` for reproducible integrations.
 
@@ -19,85 +19,25 @@ React and Vue each depend on matching exact versions of core and engine. Core de
 
 The legacy `@ai-react-markdown/core` was a React renderer; its replacement is `@ai-markdown/react`. The new `@ai-markdown/core` has no React components or Vue components. See the [migration guide](framework-transition.md) before renaming existing imports.
 
+## Runtime requirements
+
+Server/build consumers require Node `^20.19.0 || >=22.12.0`. The CJS output loads ESM dependencies through Node's `require(ESM)` support; earlier Node 20/22 releases can fail with `ERR_REQUIRE_ESM`. Repository contributors use the versions in [`.nvmrc`](../../../../.nvmrc) and [`package.json`](../../../../package.json).
+
+React requires React and React DOM 19. Vue requires `^3.5.0`; Mantine is a React integration using Mantine 9. The framework quick starts below include their required peers and stylesheet imports. KaTeX is an optional peer: declare it directly when importing its stylesheet for math, rather than relying on hoisting.
+
+Browser API requirements and hydration boundaries are documented in the [React](../reference/react.md#compatibility) and [Vue](../reference/vue.md#requirements-and-dependencies) references. Shared parsing does not imply identical framework or browser behavior.
+
 ## React 19
 
-In a React application:
-
-```bash
-pnpm add @ai-markdown/react react@^19 react-dom@^19 katex
-```
-
-```tsx
-import AIMarkdown from '@ai-markdown/react';
-import '@ai-markdown/react/typography/default.css';
-import 'katex/dist/katex.min.css';
-
-export function Answer() {
-  return <AIMarkdown content={'# Answer\n\n**Markdown**, $x^2$ and 中文.'} />;
-}
-```
-
-The default typography CSS supplies the React presentation and `--aim-*` tokens. A custom `Typography` can provide its own styles. In a React Server Components application, render the adapter from a client boundary; load global styles in the application's permitted global stylesheet entry. See the [React reference](../reference/react.md) for props and environment details.
+Follow the [React quick start](react-quick-start.md) for installation, required stylesheets and a complete minimal example.
 
 ## Vue 3.5
 
-In a Vue application:
-
-```bash
-pnpm add @ai-markdown/vue vue@^3.5.0 katex
-```
-
-```vue
-<script setup lang="ts">
-import { ref } from 'vue';
-import AIMarkdown from '@ai-markdown/vue';
-import '@ai-markdown/vue/styles.css';
-import 'katex/dist/katex.min.css';
-
-const content = ref('# Answer\n\n**Markdown**, $x^2$ and 中文.');
-</script>
-
-<template>
-  <AIMarkdown :content="content" />
-</template>
-```
-
-Vue's stylesheet supplies basic code/table layout and cursor animation. Customize the wrapper with `class` and `style`, or replace element renderers with `components` and scoped slots. React typography variants, hooks and `--aim-*` token contracts do not belong to Vue. See the [Vue reference](../reference/vue.md) for SSR/hydration and complete examples.
+Follow the [Vue quick start](vue-quick-start.md) for installation, required stylesheets and a complete minimal example.
 
 ## React with Mantine 9
 
-```bash
-pnpm add @ai-markdown/react @ai-markdown/react-mantine \
-  react@^19 react-dom@^19 @mantine/core@^9 @mantine/code-highlight@^9 \
-  highlight.js@^11.11.2 katex
-```
-
-````tsx
-import { MantineProvider } from '@mantine/core';
-import { CodeHighlightAdapterProvider, createHighlightJsAdapter } from '@mantine/code-highlight';
-import hljs from 'highlight.js';
-import MantineAIMarkdown from '@ai-markdown/react-mantine';
-import '@mantine/core/styles.css';
-import '@mantine/code-highlight/styles.css';
-import '@ai-markdown/react-mantine/styles.css';
-import 'katex/dist/katex.min.css';
-
-const adapter = createHighlightJsAdapter(hljs);
-
-export function Answer() {
-  return (
-    <MantineProvider>
-      <CodeHighlightAdapterProvider adapter={adapter}>
-        <MantineAIMarkdown content={'# Answer\n\n```js\nconsole.log("Hello");\n```'} />
-      </CodeHighlightAdapterProvider>
-    </MantineProvider>
-  );
-}
-````
-
-Keep the stylesheet order above. Mantine supplies its own typography; add the React typography stylesheet only if the application also renders standalone React Markdown. Mermaid arrives as an integration dependency. Vue has no Mantine or built-in code-toolbar/Mermaid integration. See the [Mantine reference](../reference/react-mantine.md) for `codeBlock` options and slot precedence.
-
-KaTeX is an optional peer of engine and both adapters (`^0.16 || ^0.17`). The setup commands include it for math examples; omit its direct dependency and CSS import if your application does not use math. Declare it directly whenever you import its stylesheet, so installation does not depend on hoisting. The public packages declare Node `^20.19.0 || >=22.12.0` because their CJS output loads ESM dependencies through Node’s `require(ESM)` support. Earlier Node 20/22 releases can fail with `ERR_REQUIRE_ESM`; repository development uses the version in [`.nvmrc`](../../../../.nvmrc) and the pinned pnpm version in [`package.json`](../../../../package.json).
+Follow the [Mantine quick start](react-mantine-quick-start.md) for installation, required stylesheets and a complete minimal example.
 
 ## React and Vue API differences
 
@@ -120,33 +60,9 @@ Both adapters enable incremental parsing by default on the client. Both accept `
 
 ## Streaming input and document boundaries
 
-Accumulate decoded transport deltas in application state and pass the complete current string on every update. The renderer does not implement Fetch, SSE framing, cancellation or retries. `streaming` reports producer state; it does not turn incremental parsing on. Do not append a cursor character to Markdown source.
+Pass one complete accumulated string per message. Your application owns transport decoding, framing, cancellation and retries; `streaming` reports producer state rather than enabling incremental parsing.
 
-For React, update the `content` and `streaming` props with state. For Vue, use reactive values:
-
-```vue
-<script setup lang="ts">
-import { ref } from 'vue';
-import { AIMarkdownSmoothStream } from '@ai-markdown/vue';
-
-const content = ref('');
-const streaming = ref(true);
-// Your transport appends decoded text to content.value.
-// On completion or cancellation, set streaming.value = false.
-</script>
-
-<template>
-  <AIMarkdownSmoothStream :content="content" :streaming="streaming" pacing="balanced" />
-</template>
-```
-
-Smooth components display initial content immediately, then animate future appends. The displayed streaming state stays active while queued text drains after producer completion. Vue custom wrappers call `useSmoothStream(() => ({ content: content.value, streaming: streaming.value }))` during setup; React wrappers call `useSmoothStream({ content, streaming })` during render.
-
-Use one renderer per message unless the application intentionally divides a logical document into independently parseable sections. For shared references, put those sections inside the matching framework's `AIMarkdownDocuments`, give them the same explicit document ID, and provide stable keys and `documentIndex` values when order can change. A network packet may end inside a fence or formula; the registry cannot join syntax across component boundaries.
-
-Server rendering and initial hydration keep local footnote semantics. Cross-chunk definitions become available after mounted contributions commit. Render a complete document through one component when server-only output must resolve all references. Keep mutable sessions and registries local to each consumer/request.
-
-Continue with the [React chat recipe](streaming-chat-example.md), [Vue streaming and turn-taking](../reference/vue.md#smooth-streaming-and-turn-taking), or [Vue multi-chunk example](../reference/vue.md#multiple-chunks-in-one-document).
+Read [Streaming input](streaming-input.md) for completion and smooth reveal, and [Documents and references](documents-and-references.md) when one logical document intentionally spans multiple renderers. Then follow the [React chat recipe](streaming-chat-example.md) or [Vue streaming guide](vue-streaming.md).
 
 ## Run the examples in this repository
 

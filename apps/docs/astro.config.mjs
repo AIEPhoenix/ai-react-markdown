@@ -31,7 +31,11 @@ export default defineConfig({
       sidebar: [
         {
           label: 'Start here',
-          items: [{ slug: 'docs', label: 'Overview' }, 'docs/guides/getting-started', 'docs/examples'],
+          items: [
+            { slug: 'docs', label: 'Overview' },
+            { slug: 'docs/guides/getting-started', label: 'Packages & requirements' },
+            'docs/examples',
+          ],
         },
         {
           label: 'Concepts',
@@ -45,7 +49,7 @@ export default defineConfig({
           label: 'React',
           collapsed: true,
           items: [
-            { slug: 'docs/react', label: 'Installation & API' },
+            { slug: 'docs/guides/react-quick-start', label: 'Quick start' },
             { slug: 'docs/guides/streaming-chat-example', label: 'Streaming chat' },
             { slug: 'docs/guides/smooth-streaming', label: 'Smooth streaming' },
             { slug: 'docs/guides/streaming-cursor', label: 'Cursor' },
@@ -56,23 +60,31 @@ export default defineConfig({
             { slug: 'docs/guides/design-tokens', label: 'CSS tokens' },
             { slug: 'docs/guides/typescript-generics', label: 'TypeScript' },
             { slug: 'docs/guides/streaming-and-performance', label: 'Performance' },
+            { slug: 'docs/guides/react-ssr', label: 'SSR & hydration' },
+            { slug: 'docs/react', label: 'Props & components' },
+            { slug: 'docs/guides/api/react-hooks', label: 'Hooks & providers' },
           ],
         },
         {
           label: 'Vue',
           collapsed: true,
           items: [
-            { slug: 'docs/vue', label: 'Installation & API' },
+            { slug: 'docs/guides/vue-quick-start', label: 'Quick start' },
             { slug: 'docs/guides/vue-streaming', label: 'Streaming' },
             { slug: 'docs/guides/vue-documents', label: 'Documents & references' },
             { slug: 'docs/guides/vue-customization', label: 'Custom rendering & styling' },
             { slug: 'docs/guides/vue-ssr', label: 'SSR & lifecycle' },
+            { slug: 'docs/vue', label: 'API reference' },
           ],
         },
         {
           label: 'Mantine (React)',
           collapsed: true,
-          items: [{ slug: 'docs/react/mantine', label: 'Setup, code blocks & API' }],
+          items: [
+            { slug: 'docs/guides/react-mantine-quick-start', label: 'Quick start' },
+            { slug: 'docs/guides/mantine-code-blocks', label: 'Code blocks & diagrams' },
+            { slug: 'docs/react/mantine', label: 'API reference' },
+          ],
         },
         {
           label: 'Advanced',

@@ -4,11 +4,11 @@ Render Markdown in React and Vue, including responses that arrive over time. Sta
 
 ## Choose your framework
 
-| Your application     | Start here                                                            | What it provides                                              |
-| -------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------- |
-| React 19             | [React quick start](guides/getting-started.md#react-19)               | Components, hooks and customizable element renderers          |
-| Vue 3.5              | [Vue quick start](guides/getting-started.md#vue-35)                   | Components, scoped slots and setup composables                |
-| React with Mantine 9 | [Mantine quick start](guides/getting-started.md#react-with-mantine-9) | Theme-aware typography, highlighted code and Mermaid diagrams |
+| Your application     | Start here                                                 | What it provides                                              |
+| -------------------- | ---------------------------------------------------------- | ------------------------------------------------------------- |
+| React 19             | [React quick start](guides/react-quick-start.md)           | Components, hooks and customizable element renderers          |
+| Vue 3.5              | [Vue quick start](guides/vue-quick-start.md)               | Components, scoped slots and setup composables                |
+| React with Mantine 9 | [Mantine quick start](guides/react-mantine-quick-start.md) | Theme-aware typography, highlighted code and Mermaid diagrams |
 
 [Compare package and setup requirements](guides/getting-started.md). Choose Mantine when your React application uses that design system. Core and engine are available directly for adapter authors; applications normally install their framework adapter and its peers.
 

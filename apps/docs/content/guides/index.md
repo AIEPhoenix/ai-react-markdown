@@ -6,9 +6,9 @@ Start with the [documentation overview](../index.md) to choose an adapter, or [G
 
 | Application              | First render                                              | Next task                                                                              |
 | ------------------------ | --------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| React                    | [React setup](getting-started.md#react-19)                | [Streaming chat](streaming-chat-example.md), [custom components](custom-components.md) |
-| Vue                      | [Vue setup](getting-started.md#vue-35)                    | [Streaming](vue-streaming.md), [custom rendering](vue-customization.md)                |
-| React with Mantine       | [Mantine setup](getting-started.md#react-with-mantine-9)  | [Code blocks and diagrams](../reference/react-mantine.md#code-block-rendering)         |
+| React                    | [React setup](react-quick-start.md)                       | [Streaming chat](streaming-chat-example.md), [custom components](custom-components.md) |
+| Vue                      | [Vue setup](vue-quick-start.md)                           | [Streaming](vue-streaming.md), [custom rendering](vue-customization.md)                |
+| React with Mantine       | [Mantine setup](react-mantine-quick-start.md)             | [Code blocks and diagrams](../reference/react-mantine.md#code-block-rendering)         |
 | Framework adapter author | [Core and engine contracts](api/core-engine-contracts.md) | [Architecture](architecture.md)                                                        |
 
 ## By scenario (start here)
