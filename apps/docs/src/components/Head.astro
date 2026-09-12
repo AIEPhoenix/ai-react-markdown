@@ -1,0 +1,10 @@
+---
+const { entry, head } = Astro.locals.starlightRoute;
+const notFound = entry.id === '404';
+// A static 404 document serves arbitrary missing URLs, so it has no canonical or translated route.
+const tags = notFound
+  ? head.filter(({ tag, attrs }) => !(tag === 'link' && ['canonical', 'alternate'].includes(String(attrs?.rel))))
+  : head;
+---
+{tags.map(({ tag: Tag, attrs, content }) => <Tag {...attrs} set:html={content} />)}
+{notFound && <meta name="robots" content="noindex" />}

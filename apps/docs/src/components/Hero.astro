@@ -3,7 +3,7 @@ import DefaultHero from '@astrojs/starlight/components/Hero.astro';
 const { entry, locale } = Astro.locals.starlightRoute;
 const chinese = locale === 'zh-cn';
 const localizedBase = `${import.meta.env.BASE_URL.replace(/\/?$/, '/')}${chinese ? 'zh-cn/' : ''}`;
-const home = entry.data.template === 'splash';
+const home = entry.data.template === 'splash' && entry.id !== '404';
 const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 ---
 

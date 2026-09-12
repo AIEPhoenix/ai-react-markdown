@@ -21,6 +21,7 @@ export default defineConfig({
       locales,
       components: {
         Header: './src/components/Header.astro',
+        Head: './src/components/Head.astro',
         Hero: './src/components/Hero.astro',
         SiteTitle: './src/components/SiteTitle.astro',
         LanguageSelect: './src/components/LanguageSelect.astro',

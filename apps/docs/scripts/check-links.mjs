@@ -42,6 +42,19 @@ for (const file of html) {
   documents.set(file, { ids, links, tree });
 }
 const failures = [];
+const notFound = documents.get(resolve(dist, '404.html'));
+assert(notFound, 'Missing static 404 page');
+let noindex = false;
+visit(notFound.tree, 'element', (node) => {
+  if (node.tagName === 'meta' && node.properties.name === 'robots')
+    noindex = String(node.properties.content).includes('noindex');
+  if (node.tagName === 'link')
+    assert(
+      !node.properties.rel?.some((rel) => ['canonical', 'alternate'].includes(rel)),
+      '404 must not advertise nonexistent translated routes'
+    );
+});
+assert(noindex, 'The static 404 page must not be indexed');
 for (const [locale, config] of Object.entries(locales)) {
   const prefix = locale === 'root' ? '' : `${locale}/`;
   for (const [pageRoute, sidebar] of [

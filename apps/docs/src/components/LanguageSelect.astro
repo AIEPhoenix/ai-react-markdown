@@ -2,9 +2,19 @@
 import { locales } from '../i18n/config.mjs';
 import DefaultLanguageSelect from '@astrojs/starlight/components/LanguageSelect.astro';
 import Select from '@astrojs/starlight/components/Select.astro';
+const notFound = Astro.locals.starlightRoute.entry.id === '404';
+const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 ---
 
-{Object.keys(locales).length > 1 ? <DefaultLanguageSelect /> : (
+{notFound ? (
+  <nav aria-label={Astro.locals.t('languageSelect.accessibleLabel')} class="error-languages">
+    {Object.entries(locales).map(([code, locale]) => <a href={`${base}${code === 'root' ? '' : `${code}/`}`}>{locale.label}</a>)}
+  </nav>
+) : Object.keys(locales).length > 1 ? <DefaultLanguageSelect /> : (
   <Select icon="translate" label={Astro.locals.t('languageSelect.accessibleLabel')}
     options={[{ label: locales.root.label, value: Astro.url.pathname, selected: true }]} width="7em" />
 )}
+
+<style>
+  .error-languages { display: flex; gap: 0.75rem; font-size: 0.875rem; }
+</style>
