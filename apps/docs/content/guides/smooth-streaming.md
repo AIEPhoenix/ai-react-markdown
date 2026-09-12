@@ -1,4 +1,4 @@
-# Smooth Streaming (Typewriter Pacing)
+# React smooth streaming
 
 Examples below use React hooks and component slots; the engine controller is framework-independent. Vue exposes similarly named composables that accept a live getter and return computed refs. See the [Vue guide](../../../../packages/vue/README.md#smooth-streaming-and-turn-taking) and [package setup](getting-started.md).
 

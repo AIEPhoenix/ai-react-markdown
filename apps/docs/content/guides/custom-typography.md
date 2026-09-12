@@ -1,4 +1,4 @@
-# Custom Typography
+# React custom typography
 
 `Typography`, `ExtraStyles` and variant props are React APIs. Vue uses its base stylesheet, wrapper class/style attributes and element slots. See the [Vue guide](../../../../packages/vue/README.md#minimal-component) and [package setup](getting-started.md).
 

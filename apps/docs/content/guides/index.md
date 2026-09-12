@@ -1,91 +1,35 @@
-# ai-markdown — Usage & Customization
+# Guide directory
 
-For the completed 3.0.0 release and subsequent release verification, see [Releasing 3.0](releasing-3.0.md).
-
-For the independent Starlight site, see [Documentation site](documentation-site.md).
-
-For repository development, start with the [development command reference](development-commands.md).
-
-Start with [Getting started](getting-started.md) for React 19, Vue 3.5 and Mantine 9 installation, stylesheets and package boundaries. The five main packages share the stable `3.0.1` train; the highlight plugin versions independently. Advanced adapter authors can use the [core/engine API contracts](api/core-engine-contracts.md).
-
-For the final legacy release and the subsequent multi-framework package migration, read [From ai-react-markdown to ai-markdown](framework-transition.md). The [shared core README](../../../../packages/core/README.md) documents the extracted shared layer.
-
-These guides explain how to integrate, customize, and maintain ai-markdown against the code in this repository. Start with the [project README](../../../../README.md) for package selection and installation, or a package's README for its full public API. This directory goes deeper into rendering contracts, lifecycle behavior, implementation boundaries, and verification.
-
-The examples target the current `@ai-markdown` 3.0 stable package structure. React retains the flat-prop API introduced in 2.x; Vue uses its own component props and setup composables. React hooks, `customComponents`, typography variants and behavior providers are not Vue APIs. Each usage guide identifies its framework scope and links to the corresponding Vue entry when applicable. The [migration guide](migrating-to-v2.md) includes removed 1.x APIs for comparison; [release highlights](release-highlights.md) and benchmark records preserve the behavior and measurements of the versions they describe.
-
-For an ordinary chat message, accumulate transport deltas into one Markdown string and update one renderer. Add custom components for application behavior, tokens for visual adjustments, and `<AIMarkdownDocuments>` only when one logical document is deliberately split into multiple Markdown units. This distinction matters because reference coordination cannot join syntax split across component boundaries.
-
-The scenario index below is the shortest route to a working integration. The full index also includes architecture and maintenance material for contributors.
+Start with the [documentation overview](../index.md) to choose an adapter, or [Getting started](getting-started.md) for installation and stylesheet requirements. The pages below are organized by task; React hooks and typography APIs do not apply to Vue.
 
 ## Choose your adapter
 
-| Application           | Package reference                                                                            | Usage path                                                                           |
-| --------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| React 19              | [React README](../../../../packages/react/README.md)                                         | The React recipes below; Mantine inherits these props                                |
-| Vue 3.5               | [Vue README](../../../../packages/vue/README.md)                                             | Vue setup, scoped slots, SSR, streaming and references                               |
-| React with Mantine 9  | [Mantine README](../../../../packages/react-mantine/README.md)                               | Providers, styles, code highlighting and Mermaid                                     |
-| New framework adapter | [Core](../../../../packages/core/README.md), [engine](../../../../packages/engine/README.md) | [Public contracts](api/core-engine-contracts.md) and [architecture](architecture.md) |
+| Application              | First render                                              | Next task                                                                                     |
+| ------------------------ | --------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| React                    | [React setup](getting-started.md#react-19)                | [Streaming chat](streaming-chat-example.md), [custom components](custom-components.md)        |
+| Vue                      | [Vue setup](getting-started.md#vue-35)                    | [Streaming](vue-streaming.md), [custom rendering](vue-customization.md)                       |
+| React with Mantine       | [Mantine setup](getting-started.md#react-with-mantine-9)  | [Code blocks and diagrams](../../../../packages/react-mantine/README.md#code-block-rendering) |
+| Framework adapter author | [Core and engine contracts](api/core-engine-contracts.md) | [Architecture](architecture.md)                                                               |
 
 ## By scenario (start here)
 
-Most readers come in with a task, not a curriculum. Pick the row that matches what you're doing:
+| Task                                                      | Guide                                                     |
+| --------------------------------------------------------- | --------------------------------------------------------- |
+| Understand accumulated input, completion and cancellation | [Streaming input](streaming-input.md)                     |
+| Split a logical document into sections                    | [Documents and references](documents-and-references.md)   |
+| Understand what incremental parsing saves                 | [Rendering and performance](rendering-and-performance.md) |
+| Try your own Markdown                                     | [Examples and Playgrounds](../examples.md)                |
+| Transform the source before parsing                       | [Content preprocessors](content-preprocessors.md)         |
+| Configure URL and HTML policies                           | [URL sanitization](url-sanitization.md)                   |
+| Render CJK text                                           | [CJK typography](cjk-typography.md)                       |
+| Upgrade from the old package scope                        | [Package migration](framework-transition.md)              |
+| See versioned changes                                     | [Release highlights](release-highlights.md)               |
 
-| You're doing…                                                               | Start with                                                 | Then read                                                                                                                                                   |
-| --------------------------------------------------------------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Building a streaming chat UI**                                            | [Streaming chat: end-to-end](streaming-chat-example.md)    | [Streaming & performance](streaming-and-performance.md) + [Cross-chunk coordination](cross-chunk-coordination.md) + [Metadata context](metadata-context.md) |
-| **Showing a "still generating" cursor during streaming**                    | [Streaming cursor](streaming-cursor.md)                    | [Streaming & performance](streaming-and-performance.md)                                                                                                     |
-| **Smoothing bursty token chunks into a steady typewriter reveal**           | [Smooth streaming](smooth-streaming.md)                    | [Streaming cursor](streaming-cursor.md) + [Streaming & performance](streaming-and-performance.md)                                                           |
-| **Rendering Chinese / Japanese / Korean content**                           | [CJK typography](cjk-typography.md)                        | [Design tokens](design-tokens.md) for font customization                                                                                                    |
-| **Splitting one logical document across multiple `<AIMarkdown>` instances** | [Cross-chunk coordination](cross-chunk-coordination.md)    | [Streaming & performance](streaming-and-performance.md)                                                                                                     |
-| **Retheming colors, spacing, fonts**                                        | [Design tokens](design-tokens.md)                          | [Custom typography](custom-typography.md) (only if tokens aren't enough)                                                                                    |
-| **Replacing element renderers (custom `<a>`, `<pre>`, …)**                  | [Custom components](custom-components.md)                  | [Metadata context](metadata-context.md) (for callbacks)                                                                                                     |
-| **Doing a security review / allowing private URL schemes**                  | [URL sanitization](url-sanitization.md)                    | [Architecture](architecture.md) (for the pipeline picture)                                                                                                  |
-| **Adding typed metadata / behavior-group fields**                           | [TypeScript generics](typescript-generics.md)              | [Extending via a sub-package](extending-via-subpackage.md) (if you'll publish it)                                                                           |
-| **Upgrading from 1.x**                                                      | [Migrating from 1.x to 2.0](migrating-to-v2.md)            | [TypeScript generics](typescript-generics.md)                                                                                                               |
-| **Transforming raw markdown before render**                                 | [Content preprocessors](content-preprocessors.md)          | —                                                                                                                                                           |
-| **Building your own `@yourorg/ai-markdown-…` integration**                  | [Extending via a sub-package](extending-via-subpackage.md) | [Architecture](architecture.md), [TypeScript generics](typescript-generics.md)                                                                              |
-| **Debugging unexpected render output**                                      | [Architecture](architecture.md)                            | [Streaming & performance](streaming-and-performance.md) (cache invariants)                                                                                  |
-| **Tracking what changed across versions**                                   | [Release highlights](release-highlights.md)                | —                                                                                                                                                           |
-| **Evaluating the performance flags before enabling them**                   | [Benchmark](benchmark.md)                                  | [Streaming & performance](streaming-and-performance.md)                                                                                                     |
+## Full topic index
 
-For live React, Vue and Mantine examples, see [Interactive examples](storybook.md).
+The sidebar lists the framework tutorials and API references. For repository work, use [development commands](development-commands.md), [core testing](core-testing.md), [soak coverage](soak-coverage.md), [Storybook development](storybook.md), [documentation and deployment](documentation-site.md), and [releasing](releasing-3.0.md).
 
-If none of these matches, the full topic index below covers every surface.
-
----
-
-<details>
-<summary><strong>Full topic index</strong> (every document in this directory, by customization surface)</summary>
-
-| #   | Document                                                   | When you need it                                                                                             |
-| --- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| 1   | [Custom components](custom-components.md)                  | Replace any HTML element renderer (`a`, `img`, `pre`, `table`, …) with your own React component              |
-| 2   | [Custom typography](custom-typography.md)                  | Swap the `Typography` slot — themed wrapper, custom font stack, design system integration                    |
-| 3   | [Design tokens](design-tokens.md)                          | Override CSS custom properties to retheme without writing a custom typography component                      |
-| 4   | [Content preprocessors](content-preprocessors.md)          | Transform the raw markdown string before parsing — frontmatter stripping, regex fixes, dialect normalization |
-| 5   | [URL sanitization & custom schemes](url-sanitization.md)   | Allow `myapp://`, `tel:`, or any other scheme through both sanitization gates safely                         |
-| 6   | [Cross-chunk coordination](cross-chunk-coordination.md)    | Render chunked chat messages whose footnotes / `[ref]` / `![ref]` resolve across `<AIMarkdown>` instances    |
-| 7   | [Metadata context](metadata-context.md)                    | Pass arbitrary data (callbacks, ids, app state) to deeply nested custom components without prop drilling     |
-| 8   | [Streaming & performance](streaming-and-performance.md)    | Reason about block-level memoization, `streaming`-aware custom components, and the cache-flush footguns      |
-| 9   | [Streaming cursor](streaming-cursor.md)                    | Show a "still generating" indicator after the last streamed character — visible through token stalls         |
-| 10  | [Smooth streaming](smooth-streaming.md)                    | Reveal bursty token chunks as a steady typewriter — pacing model, wrapper composition, non-React controller  |
-| 11  | [TypeScript generics](typescript-generics.md)              | Type the metadata generic and the wrapper narrow-hook pattern for behavior groups                            |
-| 12  | [Extending via a sub-package](extending-via-subpackage.md) | Build your own `@yourorg/ai-markdown-<integration>` package, following the Mantine model                     |
-| 13  | [Architecture overview](architecture.md)                   | Mental model: render pipeline, context layering, registry design                                             |
-| 14  | [Migrating from 1.x to 2.0](migrating-to-v2.md)            | The complete v2.0.0 breaking-change map — every removed symbol with its one-to-one destination               |
-| ★   | [Streaming chat: end-to-end](streaming-chat-example.md)    | Complete SSE framing, cancellation, React state, and a Next.js-style route                                   |
-| ★   | [CJK typography](cjk-typography.md)                        | Chinese / Japanese / Korean text — line breaking, pangu spacing, font stack                                  |
-| ★   | [Release highlights](release-highlights.md)                | What's notable in each version — distilled from the commit log                                               |
-| ★   | [Benchmark](benchmark.md)                                  | Measured numbers for block-memo × incremental parse, methodology, and how to reproduce them                  |
-| ★   | [Soak coverage](soak-coverage.md)                          | Map stateful optimizations to oracles, tests, release legs, and engagement checks                            |
-| ★   | [Core contracts and state sequences](core-testing.md)      | Independent core gate, module ownership, fixed-seed sequences and failure replay                             |
-
-The documents can be read independently; code recipes that build on earlier definitions say so. Cross-references are inlined where helpful.
-
-</details>
-
----
+Historical [1.x-to-2.x migration](migrating-to-v2.md) and [benchmark measurements](benchmark.md) describe their named versions, not today's installation requirements.
 
 ## A note on stability
 

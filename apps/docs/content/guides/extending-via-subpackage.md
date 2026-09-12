@@ -1,4 +1,4 @@
-# Extending via a Sub-package
+# Build a React integration
 
 These examples target the 3.0.1 package train. Match the React peer version when distributing an integration; see [Getting started](getting-started.md) for installation and package boundaries.
 

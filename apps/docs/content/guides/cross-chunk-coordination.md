@@ -1,4 +1,4 @@
-# Cross-Chunk Coordination
+# React documents and references
 
 The examples and registry hook below use React. Vue supplies its own `AIMarkdownDocuments` and `AIMarkdown` with the same explicit document ID model, but no React registry hook or provider-level orphan override. See the [Vue guide](../../../../packages/vue/README.md#multiple-chunks-in-one-document) and [package setup](getting-started.md).
 

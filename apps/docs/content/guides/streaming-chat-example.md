@@ -1,4 +1,4 @@
-# Streaming Chat: End-to-End Example
+# React streaming chat
 
 This end-to-end recipe uses React and a Next.js-style route. The transport rules also apply to Vue; feed accumulated text to the Vue component instead of using React state or hooks. See the [Vue guide](../../../../packages/vue/README.md#minimal-component) and [package setup](getting-started.md).
 

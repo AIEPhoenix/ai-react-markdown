@@ -1,4 +1,4 @@
-# Design Tokens (CSS Custom Properties)
+# React CSS tokens
 
 These `--aim-*` tokens belong to React’s typography stylesheet. Vue’s base stylesheet and Mantine’s presentation have separate styling contracts. See the [Vue guide](../../../../packages/vue/README.md#minimal-component) and [package setup](getting-started.md).
 
@@ -11,8 +11,8 @@ Most dimensions derive from the instance's `fontSize`. That makes a compact mess
 All spacing, font-size, and heading tokens are anchored to `--aim-font-size-root`, which the React renderer injects from the `fontSize` prop. The default variant's tokens are defined as `calc(var(--aim-font-size-root) * k)` — meaning **changing `fontSize` scales the dimensions expressed through the root token**.
 
 ```tsx
-<AIMarkdown content={c} fontSize="0.875rem" /> // 14px-ish — everything scales down
-<AIMarkdown content={c} fontSize="1.125rem" /> // 18px-ish — everything scales up
+<AIMarkdown content={c} fontSize="0.875rem" /> // 14px-ish — root-token dimensions scale down
+<AIMarkdown content={c} fontSize="1.125rem" /> // 18px-ish — root-token dimensions scale up
 ```
 
 You only need to override individual tokens when you want non-proportional changes (e.g. tighter spacing without smaller text, larger H1 without bigger body, etc.).

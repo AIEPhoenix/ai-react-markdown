@@ -8,25 +8,6 @@ Engine supplies syntax, tree transformations, incremental algorithms, reference 
 
 Core does not re-export the entire engine API or accept ReactNode, VNode, DOM elements, or framework lifecycles. Adapters own tree-to-component conversion, subscription/unmount timing, SSR hydration, slots/context, and cursor measurement. See the [Vue README](../../../../../packages/vue/README.md) for implementation and usage.
 
-## API differences from beta.1
-
-| Surface                                                                    | Decision                                                       | Reason                                                                                     |
-| -------------------------------------------------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Engine root `export *`                                                     | Replace all star exports with explicit exports                 | Adding a source helper must not silently expand the supported API                          |
-| `PipelineSession` / `PipelineTrees`                                        | Add named types; factories explicitly return `PipelineSession` | Fix the parse/reset contract without letting declarations grow with implementation objects |
-| `ContributionSession`                                                      | Add a named publication interface                              | Consumers receive only the commit capability                                               |
-| `BlockPlanner`                                                             | Add a named function type                                      | Distinguish the stateful factory from its per-frame planning call                          |
-| `isEnginePlugin`                                                           | Add a public configuration guard                               | React/Vue can validate catalog objects without reading internal stages                     |
-| `getEnginePluginInternals` / `EnginePluginInternals` / `EnginePluginStage` | Remove from the root; retain internally                        | Stages are pipeline implementation details; the replacement exposes a boolean decision     |
-| `codePointSnapshots`                                                       | Remove from the root; development stories import source        | Test/demo frame generation is not a production adapter contract                            |
-| `attributeHastChildren`                                                    | Remove from the root; retain inside the algorithm              | Incremental parsing owns HAST attribution                                                  |
-| `SENTINEL_FN_CONTENT` / `SENTINEL_LINK_URL`                                | Remove from the root                                           | Adapters should not construct or match phantom protocol constants                          |
-| Extra preprocessor array in `preprocessAIMDContent`                        | Accept readonly arrays                                         | The implementation only iterates over inputs and need not require mutability               |
-| Block digest/fingerprint helpers                                           | Retain as advanced APIs                                        | React's cache uses them; validity still depends on tree and reference policy               |
-| `computeFreezeBoundary` and stage timing                                   | Retain as advanced diagnostics                                 | Development tools use them; no promise of fixed performance values or log bytes            |
-
-These changes were made during the prerelease series and are part of the stable 3.0.0 API. When upgrading from beta.1, use the documented public entries rather than private dist paths. React component, hook, plugin, and CSS public paths retain their existing shape. The existing brand string inside plugin objects remains unchanged so an organization rename alone does not change the semantics of deployed configurations.
-
 ## Core factories and lifecycles
 
 | Capability                           | Inputs and output                                                  | State and release                                                                                                                   |
@@ -44,7 +25,7 @@ These changes were made during the prerelease series and are part of the stable 
 
 Treat parse/preparation results as borrowed readonly values even where underlying HAST types contain mutable arrays. Clone before changing trees or properties. The shared layer neither deep-freezes every node nor promises fresh identity for every object; adapters must not communicate by mutating snapshots.
 
-An incremental-path failure clears retained state and attempts a full parse. If the full pipeline also fails, the error still propagates synchronously; fallback does not swallow all invalid configurations. `incrementalParse=false` also clears retained state and suits one-shot SSR. The server does not need browser detection to make this choice.
+An incremental-path failure clears retained parse state and retries a full parse. Most full-pipeline errors propagate synchronously, including errors thrown by application plugins or handlers. A guarded raw-HTML depth failure reported as `EngineRawHtmlDepthError` is the specific exception: the session renders that frame as escaped plain text, clears retained state and attempts normal parsing on the next frame. An arbitrary `RangeError` does not trigger this fallback. `incrementalParse=false` also clears retained state and suits one-shot SSR. The server does not need browser detection to make this choice.
 
 Block keys match logical positions; they do not guarantee cache validity. URL policy, registry, component, and tree-identity changes may still require reconversion. Some scanning/planning remains O(blocks) or O(document); updates are not guaranteed to cost only in proportion to newly appended characters.
 
@@ -83,3 +64,22 @@ The engine controller manages the visible prefix of one source; the core coordin
 After building, run `pnpm check:public-api`. The script compares complete declarations, with comments removed, against the [engine](../../../../../tooling/api-reports/engine.api.txt), [core](../../../../../tooling/api-reports/core.api.txt), [React](../../../../../tooling/api-reports/react.api.txt), [React plugins](../../../../../tooling/api-reports/react-plugins.api.txt), [Mantine](../../../../../tooling/api-reports/react-mantine.api.txt), and [Vue](../../../../../tooling/api-reports/vue.api.txt) snapshots. It rejects private registry/coordinator types, local node_modules paths, and framework dependencies in shared layers, and checks that root entries have no star exports. Review signature changes before running `node scripts/check-public-api.mjs --update`.
 
 Snapshots are not semantic proofs. Unit tests cover lifecycle and immutability contracts; real browsers cover Vue's three complete adapter paths. Packed consumers install tarballs outside the workspace and separately exercise ESM/CJS, dev/prod, SSR, and TypeScript. Engine-impacting releases require validated local soak evidence and manual release approval; see [soak coverage](../soak-coverage.md) for the impact policy and evidence reuse rules. Engine soak coverage must not be mistaken for core or adapter lifecycle coverage.
+
+## API differences from beta.1
+
+| Surface                                                                    | Decision                                                       | Reason                                                                                     |
+| -------------------------------------------------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Engine root `export *`                                                     | Replace all star exports with explicit exports                 | Adding a source helper must not silently expand the supported API                          |
+| `PipelineSession` / `PipelineTrees`                                        | Add named types; factories explicitly return `PipelineSession` | Fix the parse/reset contract without letting declarations grow with implementation objects |
+| `ContributionSession`                                                      | Add a named publication interface                              | Consumers receive only the commit capability                                               |
+| `BlockPlanner`                                                             | Add a named function type                                      | Distinguish the stateful factory from its per-frame planning call                          |
+| `isEnginePlugin`                                                           | Add a public configuration guard                               | React/Vue can validate catalog objects without reading internal stages                     |
+| `getEnginePluginInternals` / `EnginePluginInternals` / `EnginePluginStage` | Remove from the root; retain internally                        | Stages are pipeline implementation details; the replacement exposes a boolean decision     |
+| `codePointSnapshots`                                                       | Remove from the root; development stories import source        | Test/demo frame generation is not a production adapter contract                            |
+| `attributeHastChildren`                                                    | Remove from the root; retain inside the algorithm              | Incremental parsing owns HAST attribution                                                  |
+| `SENTINEL_FN_CONTENT` / `SENTINEL_LINK_URL`                                | Remove from the root                                           | Adapters should not construct or match phantom protocol constants                          |
+| Extra preprocessor array in `preprocessAIMDContent`                        | Accept readonly arrays                                         | The implementation only iterates over inputs and need not require mutability               |
+| Block digest/fingerprint helpers                                           | Retain as advanced APIs                                        | React's cache uses them; validity still depends on tree and reference policy               |
+| `computeFreezeBoundary` and stage timing                                   | Retain as advanced diagnostics                                 | Development tools use them; no promise of fixed performance values or log bytes            |
+
+These changes were made during the prerelease series and are part of the stable 3.0.0 API. When upgrading from beta.1, use the documented public entries rather than private dist paths. React component, hook, plugin, and CSS public paths retain their existing shape. The existing brand string inside plugin objects remains unchanged so an organization rename alone does not change the semantics of deployed configurations.

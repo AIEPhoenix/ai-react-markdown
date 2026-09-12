@@ -1,4 +1,4 @@
-# Custom Components
+# React custom components
 
 React uses `customComponents` and React children. Vue uses `components` or named element slots with `MarkdownElementContext`. See the [Vue guide](../../../../packages/vue/README.md#custom-vue-components-and-slots) and [package setup](getting-started.md).
 

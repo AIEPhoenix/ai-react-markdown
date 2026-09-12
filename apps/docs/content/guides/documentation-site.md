@@ -25,7 +25,7 @@ No renderer package build is required. The site renders documentation and code e
 - `apps/docs/scripts/content.mjs` maps these sources to routes and generates Starlight frontmatter with an edit link to the original file.
 - `apps/docs/src/content/docs/` is generated and ignored by Git. Do not edit it. Development watches canonical sources and regenerates changed pages, including additions and deletions.
 
-Guides retain their existing framework scope. A shared navigation group does not make React hooks, typography tokens or Mantine providers into Vue APIs. Follow each guide's Vue links for Vue-specific integration.
+The sidebar separates shared Concepts from React, Vue and Mantine (React) tutorials. Advanced material, contributor workflows and versioned release history have separate groups. Put a guide under the framework whose APIs it uses; do not label React hooks or typography recipes as shared capabilities.
 
 New top-level guides and API guides are included automatically. Add their navigation entries in `apps/docs/astro.config.mjs`. Internal planning/review directories are excluded. Retained release history is identified by version and is separate from current integration guidance.
 
@@ -89,3 +89,16 @@ DOCS_DIST=_site pnpm test:docs
 The public homepage is **`https://ai-markdown.github.io/`**. Its publishing repository is `ai-markdown/ai-markdown.github.io`, as required for GitHub organization sites. That repository calls this repository's reusable Pages workflow and checks out application source from `ai-markdown/ai-markdown`. It checks for source changes approximately every 15 minutes (scheduled runs may be delayed); manual dispatch publishes immediately. No cross-repository write credential is stored.
 
 The organization deployment uses `/` as its base: `/docs/` contains documentation, `/examples/` embeds the full Storybook UI with framework switches, and `/storybook/` remains available for direct links and standalone use. The existing project deployment under `/ai-markdown/` remains a working mirror. Both deployments derive their base from their own Pages settings.
+
+### Verify both public deployments
+
+The organization root and project mirror are separate workflow runs. A successful project Pages deployment does not mean the root website has received the same source yet.
+
+After merging a documentation update, let the organization publishing schedule run or dispatch it explicitly:
+
+```bash
+gh workflow run publish.yml --repo ai-markdown/ai-markdown.github.io --ref main
+gh run list --repo ai-markdown/ai-markdown.github.io --workflow publish.yml --limit 3
+```
+
+Wait for that run to succeed. Compare `/source-commit.txt` on the organization root with the intended source commit, then open the changed documentation pages. Verify `/ai-markdown/source-commit.txt` and the corresponding pages independently for the project mirror. Check Examples and its embedded Storybook as part of the assembled site; a docs-only local build does not establish that the catalog is deployed.

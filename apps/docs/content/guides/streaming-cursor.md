@@ -1,4 +1,4 @@
-# Streaming Cursor
+# React streaming cursor
 
 The component-slot API below is React-specific. Vue enables its cursor by default with a boolean `streamingCursor` prop and customizes it through the `cursor` slot. See the [Vue guide](../../../../packages/vue/README.md#cursor-behavior) and [package setup](getting-started.md).
 

@@ -1,6 +1,6 @@
-# Releasing 3.0
+# Releasing and the 3.0 acceptance record
 
-**3.0.0 is published.** Engine, core, React, React/Mantine and Vue are on npm `latest` at `3.0.0`; the independently versioned highlight plugin is `1.0.2`. The [stable release](https://github.com/ai-markdown/ai-markdown/releases/tag/v3.0.0) and its [release workflow](https://github.com/ai-markdown/ai-markdown/actions/runs/34494100859) completed successfully. Exact-version and default npm installs passed the published-consumer checks.
+**Historical record:** this page records the original `3.0.0` promotion and the release procedure used afterward. At that promotion, engine, core, React, React/Mantine and Vue were published to npm `latest` at `3.0.0`; the independently versioned highlight plugin was `1.0.2`. This is not a statement of today’s npm channel. See [release highlights](release-highlights.md) for subsequent releases. The [stable release](https://github.com/ai-markdown/ai-markdown/releases/tag/v3.0.0) and its [release workflow](https://github.com/ai-markdown/ai-markdown/actions/runs/34494100859) completed successfully. Exact-version and default npm installs passed the published-consumer checks.
 
 ## Compatibility contract
 

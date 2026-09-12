@@ -1,4 +1,4 @@
-# TypeScript Generics
+# React TypeScript generics
 
 These metadata generics and definition factories belong to `@ai-markdown/react`. Vue exposes `AIMarkdownProps`, `MarkdownComponents` and a `MarkdownElementContext` whose metadata is `unknown`. See the [Vue guide](../../../../packages/vue/README.md#api-and-distribution) and [package setup](getting-started.md).
 
