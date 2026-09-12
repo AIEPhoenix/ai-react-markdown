@@ -30,6 +30,6 @@ In React, `incrementalParse` is effective only while `blockMemo` is enabled; tur
 ## Continue with measured guidance
 
 - [React streaming and performance](streaming-and-performance.md): cache invalidation, stable props and profiling.
-- [Mantine streaming code](../../../../packages/react-mantine/README.md#streaming-code-source-display-and-asynchronous-work): source, displayed code and asynchronous presentation work.
+- [Mantine streaming code](../reference/react-mantine.md#streaming-code-source-display-and-asynchronous-work): source, displayed code and asynchronous presentation work.
 - [Benchmark record](benchmark.md): measurements for the specific historical versions and workloads recorded there; these are not current-version performance promises.
 - [Soak coverage](soak-coverage.md): how contributors check equivalence and exercise stateful optimizations.

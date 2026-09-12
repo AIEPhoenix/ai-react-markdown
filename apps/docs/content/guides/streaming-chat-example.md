@@ -1,6 +1,6 @@
 # React streaming chat
 
-This end-to-end recipe uses React and a Next.js-style route. The transport rules also apply to Vue; feed accumulated text to the Vue component instead of using React state or hooks. See the [Vue guide](../../../../packages/vue/README.md#minimal-component) and [package setup](getting-started.md).
+This end-to-end recipe uses React and a Next.js-style route. The transport rules also apply to Vue; feed accumulated text to the Vue component instead of using React state or hooks. See the [Vue guide](../reference/vue.md#minimal-component) and [package setup](getting-started.md).
 
 A streaming chat integration needs three contracts: how the server frames a response, how the client accumulates and terminates it, and what the Markdown renderer receives. This example makes those contracts explicit. The renderer receives the full accumulated string; the transport owns deltas, cancellation, errors, and completion.
 
@@ -256,7 +256,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 }
 ```
 
-This is an organizational choice for the example, not a claim that all component-level stylesheet imports are forbidden. A Mantine integration also needs its provider/adapter setup and the three Mantine-related stylesheets shown in the [package README](../../../../packages/react-mantine/README.md#css-dependencies).
+This is an organizational choice for the example, not a claim that all component-level stylesheet imports are forbidden. A Mantine integration also needs its provider/adapter setup and the three Mantine-related stylesheets shown in the [package reference](../reference/react-mantine.md#css-dependencies).
 
 ### Streaming API route
 

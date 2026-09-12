@@ -20,4 +20,4 @@ If building a low-level wrapper around core, keep trees, registries and coordina
 
 Repository tests cover standalone hydration, document references and switching, customization, smooth waiting/drain and cursor behavior in Chromium, Firefox and WebKit. Bounded ownership/forced-GC checks are Chromium-specific. Packed consumers exercise ESM/CJS, declarations, CSS and server rendering outside the workspace.
 
-These checks do not establish Nuxt-specific packaging or KeepAlive/Suspense combinations. Those integrations need their own coverage before being treated as supported. See the [Vue verification reference](../../../../packages/vue/README.md#verification-and-scope) for commands and the precise test scope.
+These checks do not establish Nuxt-specific packaging or KeepAlive/Suspense combinations. Those integrations need their own coverage before being treated as supported. See the [Vue verification reference](../reference/vue.md#verification-and-scope) for commands and the precise test scope.

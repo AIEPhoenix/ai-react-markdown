@@ -1,6 +1,6 @@
 # React streaming cursor
 
-The component-slot API below is React-specific. Vue enables its cursor by default with a boolean `streamingCursor` prop and customizes it through the `cursor` slot. See the [Vue guide](../../../../packages/vue/README.md#cursor-behavior) and [package setup](getting-started.md).
+The component-slot API below is React-specific. Vue enables its cursor by default with a boolean `streamingCursor` prop and customizes it through the `cursor` slot. See the [Vue guide](../reference/vue.md#cursor-behavior) and [package setup](getting-started.md).
 
 `streamingCursor` is a component slot for a visual “still generating” indicator. The React adapter mounts it inside the typography wrapper while `streaming` is true. The exported `AIMarkdownStreamingCursor` positions a small overlay after the final supported text anchor and keeps animating during pauses in delivery.
 

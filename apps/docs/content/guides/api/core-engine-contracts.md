@@ -6,7 +6,7 @@ This guide defines the shared contracts used by framework adapters. The document
 
 Engine supplies syntax, tree transformations, incremental algorithms, reference registries, and streaming controllers. Core supplies reusable sessions, block planning, contribution preparation/publication, aggregate footnotes, and turn-taking coordination. React and Vue explicitly depend on both core and engine; UI integrations depend on their corresponding framework adapter.
 
-Core does not re-export the entire engine API or accept ReactNode, VNode, DOM elements, or framework lifecycles. Adapters own tree-to-component conversion, subscription/unmount timing, SSR hydration, slots/context, and cursor measurement. See the [Vue README](../../../../../packages/vue/README.md) for implementation and usage.
+Core does not re-export the entire engine API or accept ReactNode, VNode, DOM elements, or framework lifecycles. Adapters own tree-to-component conversion, subscription/unmount timing, SSR hydration, slots/context, and cursor measurement. See the [Vue reference](../../reference/vue.md) for implementation and usage.
 
 ## Core factories and lifecycles
 

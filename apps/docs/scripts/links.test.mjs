@@ -110,3 +110,19 @@ test('README website and examples links follow the current deployment base', () 
     '/preview/examples/'
   );
 });
+
+test('moved references keep legacy README source links and fragments', () => {
+  const moved = [
+    { source: 'apps/docs/content/reference/vue.md', aliases: ['packages/vue/README.md'], slug: 'docs/vue' },
+  ];
+  for (const link of [
+    '../../../../packages/vue/README.md#component-props',
+    'https://github.com/ai-markdown/ai-markdown/blob/main/packages/vue/README.md#component-props',
+    '../reference/vue.md#component-props',
+  ]) {
+    assert.equal(
+      rewriteUrl(link, 'apps/docs/content/guides/getting-started.md', moved, '/preview/'),
+      '/preview/docs/vue/#component-props'
+    );
+  }
+});

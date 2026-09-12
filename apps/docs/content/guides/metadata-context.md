@@ -1,6 +1,6 @@
 # React metadata context
 
-The hooks and providers below are React-specific. Vue passes `metadata` and `streaming` to mapped components and scoped element slots. See the [Vue guide](../../../../packages/vue/README.md#custom-vue-components-and-slots) and [package setup](getting-started.md).
+The hooks and providers below are React-specific. Vue passes `metadata` and `streaming` to mapped components and scoped element slots. See the [Vue guide](../reference/vue.md#custom-vue-components-and-slots) and [package setup](getting-started.md).
 
 `metadata` carries application data to custom Markdown components through a dedicated React context. Use it for message IDs, callbacks, citation records, and other information that a renderer needs without changing the Markdown parser's configuration. The library passes the value through without cloning or deep comparison.
 

@@ -34,6 +34,6 @@ Replacing `content` is supported. When a new message also needs a fresh coordina
 
 - **React:** [end-to-end chat](streaming-chat-example.md), [smooth rendering](smooth-streaming.md), [cursor](streaming-cursor.md).
 - **Vue:** [streaming and composables](vue-streaming.md).
-- **Mantine:** [smooth streaming](../../../../packages/react-mantine/README.md#smooth-streaming) and [code display cadence](../../../../packages/react-mantine/README.md#streaming-code-source-display-and-asynchronous-work).
+- **Mantine:** [smooth streaming](../reference/react-mantine.md#smooth-streaming) and [code display cadence](../reference/react-mantine.md#streaming-code-source-display-and-asynchronous-work).
 
 Use a cursor component or slot instead of appending a cursor character to the Markdown source. This keeps the indicator out of parsing, copying and saved content.

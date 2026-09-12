@@ -26,7 +26,7 @@ export function rewriteUrl(url, source, entries, base = '/', storybook = '') {
   const target = absoluteRepo
     ? decodeURI(pathname)
     : posix.normalize(posix.join(posix.dirname(source), decodeURI(pathname)));
-  const page = entries.find((entry) => entry.source === target);
+  const page = entries.find((entry) => entry.source === target || entry.aliases?.includes(target));
   if (page) return `${normalizeBase(base)}${page.slug ? `${page.slug}/` : ''}${suffix}`;
   if (absoluteRepo) return url;
   return `${repo}/blob/main/${target}${suffix}`;

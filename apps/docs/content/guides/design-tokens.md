@@ -1,6 +1,6 @@
 # React CSS tokens
 
-These `--aim-*` tokens belong to React’s typography stylesheet. Vue’s base stylesheet and Mantine’s presentation have separate styling contracts. See the [Vue guide](../../../../packages/vue/README.md#minimal-component) and [package setup](getting-started.md).
+These `--aim-*` tokens belong to React’s typography stylesheet. Vue’s base stylesheet and Mantine’s presentation have separate styling contracts. See the [Vue guide](../reference/vue.md#minimal-component) and [package setup](getting-started.md).
 
 The default React typography stylesheet exposes CSS custom properties for spacing, text sizes, heading hierarchy, colors, and math. Override those properties to adapt Markdown to your design system while retaining the built-in element rules. The tokens belong to the React adapter's default stylesheet; Mantine uses its own typography and scoped Mantine variables.
 

@@ -163,7 +163,7 @@ This rule was learned once before, recorded in a commit named for it, and then n
 - **Test coverage for behavior changes.** New behavior gets new tests; bug fixes get regression tests. The `byteEquivalence.test.tsx` harness exists to catch silent drift between code paths — leverage it.
 - **Reference stability discipline.** Anything that participates in the block-memo cache (`customComponents`, `urlTransform`, `sanitizeSchema`, `contentPreprocessors`, `config`) must be safe under inline / module-scope / `useMemo`. See [`apps/docs/content/guides/streaming-and-performance.md`](https://ai-markdown.github.io/docs/guides/streaming-and-performance/).
 - **Docs updates.** If your PR changes public API or visible behavior, update the relevant doc(s):
-  - Props / config → root `README.md` + `packages/<pkg>/README.md` + JSDoc.
+  - Props / config → the canonical adapter reference under `apps/docs/content/reference/` + relevant task guide + JSDoc. Update a package README when its installation or minimal example changes; core/engine/plugin references still originate in their package READMEs.
   - Mechanism / invariant → relevant file under `apps/docs/content/guides/`.
   - Notable release-level changes → `apps/docs/content/guides/release-highlights.md`.
 - **No new dependencies without a reason.** Each `package.json` dep adds bundle weight and supply-chain surface. Justify them in the PR description.

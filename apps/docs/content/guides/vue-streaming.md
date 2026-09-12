@@ -96,4 +96,4 @@ Vue enables its cursor by default while streaming. Disable it with `:streaming-c
 
 The `waiting` slot belongs to document turn-taking: it appears only inside `AIMarkdownDocuments` when an earlier smooth participant has not finished. A standalone smooth component does not wait for another message.
 
-Explore [Vue examples](storybook:vue/) and the [complete Vue reference](../../../../packages/vue/README.md#smooth-streaming-and-turn-taking) for the component and composable contracts.
+Explore [Vue examples](storybook:vue/) and the [complete Vue reference](../reference/vue.md#smooth-streaming-and-turn-taking) for the component and composable contracts.

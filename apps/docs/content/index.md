@@ -26,7 +26,7 @@ For a typical chat message, accumulate incoming text into one string and update 
 
 ## Customize your renderer
 
-Start with [React custom components](guides/custom-components.md), [Vue components and slots](guides/vue-customization.md), or [Mantine configuration](../../../packages/react-mantine/README.md#configuration). Use the [guide directory](guides/index.md) for preprocessing, URL policies, typography and metadata.
+Start with [React custom components](guides/custom-components.md), [Vue components and slots](guides/vue-customization.md), or [Mantine configuration](reference/react-mantine.md#configuration). Use the [guide directory](guides/index.md) for preprocessing, URL policies, typography and metadata.
 
 <span id="build-an-adapter"></span>
 

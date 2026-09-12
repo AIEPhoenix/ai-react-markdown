@@ -1,6 +1,6 @@
 # React streaming and performance
 
-The `blockMemo` prop, hooks and profiling examples below are React-specific. Vue shares the incremental engine and core pipeline/contribution sessions. It does not use the block planner or React’s per-block render cache: each frame’s HAST is converted to VNodes and Vue’s patcher compares the result. See the [Vue guide](../../../../packages/vue/README.md#component-props) and [package setup](getting-started.md).
+The `blockMemo` prop, hooks and profiling examples below are React-specific. Vue shares the incremental engine and core pipeline/contribution sessions. It does not use the block planner or React’s per-block render cache: each frame’s HAST is converted to VNodes and Vue’s patcher compares the result. See the [Vue guide](../reference/vue.md#component-props) and [package setup](getting-started.md).
 
 Streaming repeatedly renders a growing Markdown document. Engine provides append-aware preprocessing and verified incremental parsing; React uses the shared core block planner and caches rendered React nodes. The `streaming` prop describes lifecycle state; it does not enable those optimizations. `blockMemo` and `incrementalParse` are both on by default.
 

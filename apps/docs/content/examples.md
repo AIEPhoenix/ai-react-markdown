@@ -12,7 +12,7 @@ Explore live rendering behavior in the Storybook catalogs. React and Vue share c
 
 If no hosted catalog is configured, these links open the [local Storybook instructions](guides/storybook.md). Run `pnpm storybook` from the repository root to start the combined catalog on port 6006, React on 6007 and Vue on 6008.
 
-For installation and supported APIs, use the [React](../../../packages/react/README.md), [Vue](../../../packages/vue/README.md) and [Mantine](../../../packages/react-mantine/README.md) references.
+For installation and supported APIs, use the [React](reference/react.md), [Vue](reference/vue.md) and [Mantine](reference/react-mantine.md) references.
 
 ## Playgrounds: try your own Markdown
 

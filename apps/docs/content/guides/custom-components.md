@@ -1,6 +1,6 @@
 # React custom components
 
-React uses `customComponents` and React children. Vue uses `components` or named element slots with `MarkdownElementContext`. See the [Vue guide](../../../../packages/vue/README.md#custom-vue-components-and-slots) and [package setup](getting-started.md).
+React uses `customComponents` and React children. Vue uses `components` or named element slots with `MarkdownElementContext`. See the [Vue guide](../reference/vue.md#custom-vue-components-and-slots) and [package setup](getting-started.md).
 
 `customComponents` lets you replace the React renderer for an HTML element produced by the Markdown pipeline. Use it for links, images, tables, headings, task controls, and code blocks that need application behavior. The parser still owns Markdown syntax; your component receives the resulting element's attributes, React children, and an optional hast `node`.
 

@@ -1,6 +1,6 @@
 # URL Sanitization & Custom Schemes
 
-The two-stage policy is shared by React and Vue. Examples use React imports; Vue exports `extendSanitizeSchema`, `defaultUrlTransform` and `UrlTransform` from its root and accepts `:sanitize-schema` and `:url-transform`. See the [Vue guide](../../../../packages/vue/README.md#component-props) and [package setup](getting-started.md).
+The two-stage policy is shared by React and Vue. Examples use React imports; Vue exports `extendSanitizeSchema`, `defaultUrlTransform` and `UrlTransform` from its root and accepts `:sanitize-schema` and `:url-transform`. See the [Vue guide](../reference/vue.md#component-props) and [package setup](getting-started.md).
 
 URL handling has two stages. The sanitize schema first decides which HTML elements, attributes, and protocols survive. The render-time `urlTransform` then evaluates each surviving URL-bearing attribute. To allow a private protocol such as `myapp:`, configure both stages for the particular attribute that needs it.
 

@@ -27,9 +27,15 @@ export function pages() {
           ? 'docs/guides'
           : source.replace(/^apps\/docs\/content\/guides\//, 'docs/guides/').replace(/\.md$/, ''),
     })),
-    ...['react', 'vue', 'react-mantine', 'core', 'engine', 'remark-mark-highlight'].map((name) => ({
+    ...['react', 'vue', 'react-mantine'].map((name) => ({
+      source: `apps/docs/content/reference/${name}.md`,
+      // Preserve links to the former canonical source, including fragments.
+      aliases: [`packages/${name}/README.md`],
+      slug: `docs/${name === 'react-mantine' ? 'react/mantine' : name}`,
+    })),
+    ...['core', 'engine', 'remark-mark-highlight'].map((name) => ({
       source: `packages/${name}/README.md`,
-      slug: `docs/${name === 'react-mantine' ? 'react/mantine' : name === 'remark-mark-highlight' ? 'plugins/highlight' : name}`,
+      slug: `docs/${name === 'remark-mark-highlight' ? 'plugins/highlight' : name}`,
     })),
   ];
   const translated = Object.keys(locales)
@@ -38,7 +44,7 @@ export function pages() {
       english.flatMap((page) => {
         const source = `apps/docs/content/translations/${locale}/${page.source}`;
         return existsSync(resolve(root, source))
-          ? [{ source, slug: `${locale}/${page.slug}`, locale, canonicalSource: page.source }]
+          ? [{ ...page, source, slug: `${locale}/${page.slug}`, locale, canonicalSource: page.source }]
           : [];
       })
     );

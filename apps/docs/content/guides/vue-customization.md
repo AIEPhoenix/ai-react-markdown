@@ -64,4 +64,4 @@ An element slot takes precedence over the matching `components` entry. `metadata
 
 Markdown is not interpreted as a Vue template. The adapter rejects event attributes and DOM insertion properties even if a broadened sanitizer admits them. Custom components and slots are trusted application code, so their own output remains their responsibility.
 
-Use [URL sanitization](url-sanitization.md) for the shared sanitizer and final URL policy, and the [Vue props reference](../../../../packages/vue/README.md#component-props) for the Vue configuration surface. Keep schemas and configuration maps immutable while in use; replace them when their meaning changes.
+Use [URL sanitization](url-sanitization.md) for the shared sanitizer and final URL policy, and the [Vue props reference](../reference/vue.md#component-props) for the Vue configuration surface. Keep schemas and configuration maps immutable while in use; replace them when their meaning changes.

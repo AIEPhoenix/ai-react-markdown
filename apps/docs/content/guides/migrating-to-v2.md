@@ -341,7 +341,7 @@ replacement (nothing on the v2 surface is deep-partial).
   `extendSanitizeSchema` — unchanged from 1.x.
 - **Flat props share one namespace across core and wrappers.** Wrapper
   authors must check the prop-name registry (the props table in the
-  [core README](../../../../packages/react/README.md#props-api-reference)) before
+  [React reference](../reference/react.md#props-api-reference)) before
   adding fields; collisions are compile errors for TS consumers but
   silent overrides for plain-JS consumers.
 

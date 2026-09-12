@@ -83,7 +83,7 @@ for (const dir of packageDirs) {
   console.log(`${pkg.name}: ${oldVersion} → ${newVersion}`);
 }
 
-// Sync React version references in READMEs and the allowlisted guides
+// Sync React version references in READMEs, adapter references and allowlisted guides
 // (peer-dep install snippets like `"@ai-markdown/react": "^1.4.5"` and inline
 // examples like `@ai-markdown/react@1.4.5`) so docs don't drift behind
 // releases. The peer snippet is rewritten to the same range package.json
@@ -104,6 +104,7 @@ const readmePaths = [
   join(ROOT, 'README.md'),
   ...packageDirs.map((dir) => join(PACKAGES_DIR, dir, 'README.md')),
   ...TRACKING_GUIDES.map((name) => join(GUIDES_DIR, name)),
+  ...['react', 'vue', 'react-mantine'].map((name) => join(ROOT, 'apps', 'docs', 'content', 'reference', `${name}.md`)),
 ];
 const VERSION = String.raw`\d+\.\d+\.\d+(?:-[\w.]+)?`;
 const peerRange = newVersion.includes('-') ? newVersion : `^${newVersion}`;

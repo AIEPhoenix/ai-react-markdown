@@ -2,7 +2,7 @@
 
 **Upgrade from legacy v2.14.1 to stable 3.0.0 under `@ai-markdown`.** The GitHub repository has moved to `ai-markdown/ai-markdown`. Package names, directory ownership and shared-core distribution change together. React components, hooks, configuration names and stylesheet behavior retain their existing shape.
 
-The first beta established the new package boundaries. Beta.2 added the Vue adapter and narrowed the advanced engine/core APIs. This migration guide now targets stable 3.0.0; install without a prerelease tag. All published versions of the four legacy `@ai-react-markdown` packages now carry package-specific migration notices. Existing versions and Git tags remain available; their dist-tags and tarballs are unchanged. The legacy line receives no new features; critical fixes are considered as needed.
+The first beta established the new package boundaries. Beta.2 added the Vue adapter and narrowed the advanced engine/core APIs. This guide records the changes introduced in stable 3.0.0. For current versions, peer ranges and installation commands, use [Getting started](getting-started.md). All published versions of the four legacy `@ai-react-markdown` packages now carry package-specific migration notices. Existing versions and Git tags remain available; their dist-tags and tarballs are unchanged. The legacy line receives no new features; critical fixes are considered as needed.
 
 ## Package and import mapping
 
@@ -39,7 +39,7 @@ export function Answer({ content, streaming }: { content: string; streaming: boo
 
 Continue passing the complete accumulated Markdown string. `AIMarkdown`, the narrow hooks, `AIMarkdownDocuments`, component slots and flat configuration names retain their React API. Existing custom typography uses the same variant filename under the new package path. Import `createRemendPreprocessor` from the React root and sealed plugin objects from `@ai-markdown/react/plugins`. The `/plugins` entry exports the catalog and its types, not preprocessors. Vue exports its catalog and preprocessor helpers from `@ai-markdown/vue` directly.
 
-React 19 is the supported initial peer range. ESM/CJS, development/production conditions, declarations and the React `use client` directive are retained. KaTeX remains an optional peer; install it and import its stylesheet when using math rendering, following the [React README](../../../../packages/react/README.md). Custom renderers must still apply the documented final-element URL policy.
+React 19 is the supported initial peer range. ESM/CJS, development/production conditions, declarations and the React `use client` directive are retained. KaTeX remains an optional peer; install it and import its stylesheet when using math rendering, following the [React reference](../reference/react.md). Custom renderers must still apply the documented final-element URL policy.
 
 ## Mantine integration
 
@@ -48,7 +48,7 @@ pnpm remove @ai-react-markdown/mantine
 pnpm add @ai-markdown/react @ai-markdown/react-mantine
 ```
 
-Keep the existing React 19, Mantine 9 and highlight.js peers. The stable integration declares the React adapter peer `^3.0.0`; upgrade the two together. Import `@ai-markdown/react-mantine/styles.css` after the Mantine styles and retain the providers shown in the [Mantine README](../../../../packages/react-mantine/README.md). `MantineAIMarkdown`, `codeBlock` and caller slot precedence are unchanged.
+Keep the existing React 19, Mantine 9 and highlight.js peers. The initial 3.0.0 integration declared the React adapter peer `^3.0.0`; later releases may raise the minimum. Upgrade the two together using the current reference. Import `@ai-markdown/react-mantine/styles.css` after the Mantine styles and retain the providers shown in the [Mantine reference](../reference/react-mantine.md). `MantineAIMarkdown`, `codeBlock` and caller slot precedence are unchanged.
 
 The integration remains React-specific; it cannot render Vue nodes. Mermaid loading and the optional math stylesheet follow the existing integration behavior.
 
@@ -78,7 +78,7 @@ The repository transfer and first publication of all five train packages are com
 
 Shared-core tests load production/development ESM and CJS in fresh Node processes, reject framework resolution and execute parsing/planning without browser globals. Session tests compare incremental output with a full engine pipeline and cover reset, fallback and explicit contribution timing. React tests cover node identity, SSR, Strict Mode, coordination and browser interaction. Published artifacts must additionally resolve outside the workspace, including declarations, plugin entries and CSS paths.
 
-The [Vue adapter](../../../../packages/vue/README.md) now consumes the same preparation contracts and supplies VNode conversion, scoped references, SSR hydration, component/slot extension and streaming UI. It requires Vue `^3.5.0`; it is available as stable 3.0.0 on npm. The former prototype is archived. See the [API contracts](api/core-engine-contracts.md) for stable contracts and the advanced API changes since beta.1.
+The [Vue adapter](../reference/vue.md) now consumes the same preparation contracts and supplies VNode conversion, scoped references, SSR hydration, component/slot extension and streaming UI. It requires Vue `^3.5.0`; its first stable release was 3.0.0. The former prototype is archived. See the [API contracts](api/core-engine-contracts.md) for stable contracts and the advanced API changes since beta.1.
 
 Vue is part of the published stable release train. Functional integration checks cover Chromium, Firefox and WebKit; forced-GC lifecycle checks remain Chromium-specific. Nuxt-specific integration and KeepAlive/Suspense combinations still require their own coverage before being advertised.
 

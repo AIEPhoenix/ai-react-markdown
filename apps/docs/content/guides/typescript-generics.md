@@ -1,6 +1,6 @@
 # React TypeScript generics
 
-These metadata generics and definition factories belong to `@ai-markdown/react`. Vue exposes `AIMarkdownProps`, `MarkdownComponents` and a `MarkdownElementContext` whose metadata is `unknown`. See the [Vue guide](../../../../packages/vue/README.md#api-and-distribution) and [package setup](getting-started.md).
+These metadata generics and definition factories belong to `@ai-markdown/react`. Vue exposes `AIMarkdownProps`, `MarkdownComponents` and a `MarkdownElementContext` whose metadata is `unknown`. See the [Vue guide](../reference/vue.md#api-and-distribution) and [package setup](getting-started.md).
 
 The React adapter has one component generic: `TMetadata`. It describes the value supplied through `metadata`, while ordinary props describe theme, lifecycle, pipeline choices, and rendering slots. There is no configuration generic in v2.
 

@@ -4,12 +4,12 @@ Start with the [documentation overview](../index.md) to choose an adapter, or [G
 
 ## Choose your adapter
 
-| Application              | First render                                              | Next task                                                                                     |
-| ------------------------ | --------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| React                    | [React setup](getting-started.md#react-19)                | [Streaming chat](streaming-chat-example.md), [custom components](custom-components.md)        |
-| Vue                      | [Vue setup](getting-started.md#vue-35)                    | [Streaming](vue-streaming.md), [custom rendering](vue-customization.md)                       |
-| React with Mantine       | [Mantine setup](getting-started.md#react-with-mantine-9)  | [Code blocks and diagrams](../../../../packages/react-mantine/README.md#code-block-rendering) |
-| Framework adapter author | [Core and engine contracts](api/core-engine-contracts.md) | [Architecture](architecture.md)                                                               |
+| Application              | First render                                              | Next task                                                                              |
+| ------------------------ | --------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| React                    | [React setup](getting-started.md#react-19)                | [Streaming chat](streaming-chat-example.md), [custom components](custom-components.md) |
+| Vue                      | [Vue setup](getting-started.md#vue-35)                    | [Streaming](vue-streaming.md), [custom rendering](vue-customization.md)                |
+| React with Mantine       | [Mantine setup](getting-started.md#react-with-mantine-9)  | [Code blocks and diagrams](../reference/react-mantine.md#code-block-rendering)         |
+| Framework adapter author | [Core and engine contracts](api/core-engine-contracts.md) | [Architecture](architecture.md)                                                        |
 
 ## By scenario (start here)
 
@@ -33,7 +33,7 @@ Historical [1.x-to-2.x migration](migrating-to-v2.md) and [benchmark measurement
 
 ## A note on stability
 
-Public APIs follow semantic versioning from 3.0.0. Upgrade the release-train packages together. The table below describes the stable React API policy; earlier prereleases may have different contracts. Vue has a separate public prop/type surface documented in its README.
+Public APIs follow semantic versioning from 3.0.0. Upgrade the release-train packages together. The table below describes the stable React API policy; earlier prereleases may have different contracts. Vue has a separate public prop/type surface documented in its [reference](../reference/vue.md).
 
 | Surface                                                                                                              | Stability under minor versions                                                      |
 | -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |

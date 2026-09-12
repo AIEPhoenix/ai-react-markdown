@@ -37,7 +37,7 @@ export function Answer() {
 }
 ```
 
-The default typography CSS supplies the React presentation and `--aim-*` tokens. A custom `Typography` can provide its own styles. In a React Server Components application, render the adapter from a client boundary; load global styles in the application's permitted global stylesheet entry. See the [React README](../../../../packages/react/README.md) for props and environment details.
+The default typography CSS supplies the React presentation and `--aim-*` tokens. A custom `Typography` can provide its own styles. In a React Server Components application, render the adapter from a client boundary; load global styles in the application's permitted global stylesheet entry. See the [React reference](../reference/react.md) for props and environment details.
 
 ## Vue 3.5
 
@@ -62,7 +62,7 @@ const content = ref('# Answer\n\n**Markdown**, $x^2$ and 中文.');
 </template>
 ```
 
-Vue's stylesheet supplies basic code/table layout and cursor animation. Customize the wrapper with `class` and `style`, or replace element renderers with `components` and scoped slots. React typography variants, hooks and `--aim-*` token contracts do not belong to Vue. See the [Vue README](../../../../packages/vue/README.md) for SSR/hydration and complete examples.
+Vue's stylesheet supplies basic code/table layout and cursor animation. Customize the wrapper with `class` and `style`, or replace element renderers with `components` and scoped slots. React typography variants, hooks and `--aim-*` token contracts do not belong to Vue. See the [Vue reference](../reference/vue.md) for SSR/hydration and complete examples.
 
 ## React with Mantine 9
 
@@ -95,7 +95,7 @@ export function Answer() {
 }
 ````
 
-Keep the stylesheet order above. Mantine supplies its own typography; add the React typography stylesheet only if the application also renders standalone React Markdown. Mermaid arrives as an integration dependency. Vue has no Mantine or built-in code-toolbar/Mermaid integration. See the [Mantine README](../../../../packages/react-mantine/README.md) for `codeBlock` options and slot precedence.
+Keep the stylesheet order above. Mantine supplies its own typography; add the React typography stylesheet only if the application also renders standalone React Markdown. Mermaid arrives as an integration dependency. Vue has no Mantine or built-in code-toolbar/Mermaid integration. See the [Mantine reference](../reference/react-mantine.md) for `codeBlock` options and slot precedence.
 
 KaTeX is an optional peer of engine and both adapters (`^0.16 || ^0.17`). The setup commands include it for math examples; omit its direct dependency and CSS import if your application does not use math. Declare it directly whenever you import its stylesheet, so installation does not depend on hoisting. The public packages declare Node `^20.19.0 || >=22.12.0` because their CJS output loads ESM dependencies through Node’s `require(ESM)` support. Earlier Node 20/22 releases can fail with `ERR_REQUIRE_ESM`; repository development uses the version in [`.nvmrc`](../../../../.nvmrc) and the pinned pnpm version in [`package.json`](../../../../package.json).
 
@@ -146,7 +146,7 @@ Use one renderer per message unless the application intentionally divides a logi
 
 Server rendering and initial hydration keep local footnote semantics. Cross-chunk definitions become available after mounted contributions commit. Render a complete document through one component when server-only output must resolve all references. Keep mutable sessions and registries local to each consumer/request.
 
-Continue with the [React chat recipe](streaming-chat-example.md), [Vue streaming and turn-taking](../../../../packages/vue/README.md#smooth-streaming-and-turn-taking), or [Vue multi-chunk example](../../../../packages/vue/README.md#multiple-chunks-in-one-document).
+Continue with the [React chat recipe](streaming-chat-example.md), [Vue streaming and turn-taking](../reference/vue.md#smooth-streaming-and-turn-taking), or [Vue multi-chunk example](../reference/vue.md#multiple-chunks-in-one-document).
 
 ## Run the examples in this repository
 

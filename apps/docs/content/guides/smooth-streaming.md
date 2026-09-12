@@ -1,6 +1,6 @@
 # React smooth streaming
 
-Examples below use React hooks and component slots; the engine controller is framework-independent. Vue exposes similarly named composables that accept a live getter and return computed refs. See the [Vue guide](../../../../packages/vue/README.md#smooth-streaming-and-turn-taking) and [package setup](getting-started.md).
+Examples below use React hooks and component slots; the engine controller is framework-independent. Vue exposes similarly named composables that accept a live getter and return computed refs. See the [Vue guide](../reference/vue.md#smooth-streaming-and-turn-taking) and [package setup](getting-started.md).
 
 LLM tokens arrive in bursty network chunks — a 40-character clump, a 300 ms
 stall, three clumps back-to-back. Rendering each chunk the moment it lands

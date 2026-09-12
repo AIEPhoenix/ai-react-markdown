@@ -52,6 +52,10 @@ function fixture(version = '3.0.0') {
     'getting-started.md',
   ])
     writeFileSync(join(guides, name), document(`^${version}`, version));
+  const references = join(root, 'apps', 'docs', 'content', 'reference');
+  mkdirSync(references, { recursive: true });
+  for (const name of ['react', 'vue', 'react-mantine'])
+    writeFileSync(join(references, `${name}.md`), document(`^${version}`, version));
   return root;
 }
 
@@ -71,6 +75,9 @@ test('the READMEs and the allowlisted guides follow the train version; historica
       ['README.md'],
       ['packages', 'react-mantine', 'README.md'],
       ['packages', 'remark-mark-highlight', 'README.md'],
+      ['apps', 'docs', 'content', 'reference', 'react.md'],
+      ['apps', 'docs', 'content', 'reference', 'vue.md'],
+      ['apps', 'docs', 'content', 'reference', 'react-mantine.md'],
       ['apps', 'docs', 'content', 'guides', 'index.md'],
       ['apps', 'docs', 'content', 'guides', 'extending-via-subpackage.md'],
     ])

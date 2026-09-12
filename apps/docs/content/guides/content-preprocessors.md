@@ -1,6 +1,6 @@
 # Content Preprocessors
 
-Preprocessing runs in the shared engine. The examples use React imports; Vue exports `createRemendPreprocessor` and `AIMDContentPreprocessor` from `@ai-markdown/vue` and accepts `:content-preprocessors`. See the [Vue guide](../../../../packages/vue/README.md#component-props) and [package setup](getting-started.md).
+Preprocessing runs in the shared engine. The examples use React imports; Vue exports `createRemendPreprocessor` and `AIMDContentPreprocessor` from `@ai-markdown/vue` and accepts `:content-preprocessors`. See the [Vue guide](../reference/vue.md#component-props) and [package setup](getting-started.md).
 
 A content preprocessor is a synchronous `(content: string) => string` function. It runs before Markdown parsing and is suitable for source-format cleanup: removing a known frontmatter header, translating an application marker, or normalizing a controlled dialect. It receives text, not syntax nodes or React context.
 
